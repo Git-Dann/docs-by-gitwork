@@ -242,6 +242,8 @@ export interface ProposalMetadata {
   version: string;
   notes?: string;
   internalComments?: string;
+  productSignOff: boolean;
+  techSignOff: boolean;
   approvalChecked: boolean;
 }
 

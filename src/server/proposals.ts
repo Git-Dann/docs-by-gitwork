@@ -87,6 +87,8 @@ function normalizeMetadata(value: Prisma.JsonValue | null | undefined): Proposal
     client: metadata.client ?? DEFAULT_PROPOSAL_METADATA.client,
     owner: metadata.owner ?? DEFAULT_PROPOSAL_METADATA.owner,
     version: metadata.version ?? DEFAULT_PROPOSAL_METADATA.version,
+    productSignOff: Boolean(metadata.productSignOff),
+    techSignOff: Boolean(metadata.techSignOff),
     approvalChecked: Boolean(metadata.approvalChecked),
   };
 }

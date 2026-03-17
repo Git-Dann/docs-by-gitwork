@@ -287,6 +287,8 @@ export const DEFAULT_PROPOSAL_METADATA: ProposalMetadata = {
   version: "v1.0",
   notes: "Internal drafting notes (not included in export).",
   internalComments: "Awaiting legal review on SLA language.",
+  productSignOff: false,
+  techSignOff: false,
   approvalChecked: false,
 };
 
@@ -297,6 +299,8 @@ export const EMPTY_PROPOSAL_METADATA: ProposalMetadata = {
   version: "",
   notes: "",
   internalComments: "",
+  productSignOff: false,
+  techSignOff: false,
   approvalChecked: false,
 };
 

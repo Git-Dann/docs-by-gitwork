@@ -9,9 +9,11 @@ import {
   getDefaultProposalSections,
   getEmptyProposalSections,
 } from "@/lib/default-template";
+import { resolveProposalStatus } from "@/lib/proposal-workflow";
 import type {
   CostingSectionData,
   CTAInput,
+  DocumentStatus,
   ProposalDocument,
   ProposalListItem,
   ProposalSection,
@@ -178,16 +180,20 @@ function createSeedProposal({
   version,
   updatedAt,
   approvalChecked,
+  productSignOff,
+  techSignOff,
 }: {
   id: string;
   title: string;
   clientName: string;
   productName: string;
-  status: ProposalDocument["status"];
+  status: DocumentStatus;
   summary: string;
   version: string;
   updatedAt: string;
   approvalChecked: boolean;
+  productSignOff?: boolean;
+  techSignOff?: boolean;
 }): ProposalDocument {
   const createdAt = updatedAt;
 
@@ -209,6 +215,8 @@ function createSeedProposal({
       client: clientName,
       owner: DEFAULT_OWNER_NAME,
       version,
+      productSignOff: productSignOff ?? approvalChecked,
+      techSignOff: techSignOff ?? approvalChecked,
       approvalChecked,
     },
     exportSettings: {},
@@ -250,6 +258,8 @@ function getSeedProposals(): ProposalDocument[] {
       version: "v1.0",
       updatedAt: "2026-03-12T13:51:13.961Z",
       approvalChecked: true,
+      productSignOff: true,
+      techSignOff: true,
     }),
     createSeedProposal({
       id: DEFAULT_SECONDARY_PROPOSAL_ID,
@@ -261,6 +271,8 @@ function getSeedProposals(): ProposalDocument[] {
       version: "v1.0",
       updatedAt: "2026-03-12T00:13:57.855Z",
       approvalChecked: false,
+      productSignOff: false,
+      techSignOff: false,
     }),
   ];
 }
@@ -367,6 +379,7 @@ function patchProposal(
   const nextProposal: ProposalDocument = {
     ...existing,
     ...input,
+    status: resolveProposalStatus(existing.status, input.status, input.metadata ?? existing.metadata),
     metadata: input.metadata ?? existing.metadata,
     exportSettings: input.exportSettings ?? existing.exportSettings,
     sections: input.sections ?? existing.sections,
@@ -517,6 +530,12 @@ export function duplicatePocProposal(id: string) {
   const duplicate = deepClone(existing);
   duplicate.id = nextId;
   duplicate.title = `${existing.title} Copy`;
+  duplicate.metadata = {
+    ...duplicate.metadata,
+    productSignOff: false,
+    techSignOff: false,
+    approvalChecked: false,
+  };
   duplicate.status = "DRAFT";
   duplicate.createdAt = nowIso();
   duplicate.updatedAt = duplicate.createdAt;

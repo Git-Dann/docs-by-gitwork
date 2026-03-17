@@ -31,11 +31,28 @@ export function formatDate(value?: string | null): string {
 }
 
 export function statusLabel(status: DocumentStatus): string {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((chunk) => chunk[0]?.toUpperCase() + chunk.slice(1))
-    .join(" ");
+  switch (status) {
+    case "DRAFT":
+      return "Draft";
+    case "PRODUCT_SIGN_OFF":
+      return "Product Sign Off";
+    case "TECH_SIGN_OFF":
+      return "Tech Sign Off";
+    case "IN_REVIEW":
+      return "Product + Tech Sign Off";
+    case "APPROVED":
+      return "Approved";
+    case "SENT":
+      return "Sent";
+    case "ARCHIVED":
+      return "Archived";
+    default:
+      return status
+        .toLowerCase()
+        .split("_")
+        .map((chunk) => chunk[0]?.toUpperCase() + chunk.slice(1))
+        .join(" ");
+  }
 }
 
 export function statusTone(status: DocumentStatus): string {

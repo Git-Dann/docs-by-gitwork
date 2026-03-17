@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
-import { formatDate } from "@/lib/format";
+import { formatDate, statusLabel } from "@/lib/format";
 import {
   useArchiveProposal,
   useCreateProposal,
@@ -20,6 +20,7 @@ const statusOptions = [
   "DRAFT",
   "PRODUCT_SIGN_OFF",
   "TECH_SIGN_OFF",
+  "IN_REVIEW",
   "APPROVED",
   "ARCHIVED",
 ] as const;
@@ -119,7 +120,7 @@ export function ProposalList() {
             >
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option === "ALL" ? "All statuses" : option.replace("_", " ")}
+                  {option === "ALL" ? "All statuses" : statusLabel(option)}
                 </option>
               ))}
             </select>

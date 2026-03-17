@@ -35,9 +35,10 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Button, buttonStyles } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { proposalSectionBlueprints } from "@/lib/default-template";
-import { useExportProposal, useProposal, useUpdateProposal } from "@/hooks/use-proposals";
+import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
-import type { DocumentStatus, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+import { deriveProposalStatus } from "@/lib/proposal-workflow";
+import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
 type EditorTab = "overview" | "builder";
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -46,31 +47,6 @@ const tabs: Array<{ id: EditorTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "builder", label: "Builder" },
 ];
-
-const workflowStatuses: DocumentStatus[] = [
-  "DRAFT",
-  "PRODUCT_SIGN_OFF",
-  "TECH_SIGN_OFF",
-  "APPROVED",
-];
-
-const exportOptionConfig = [
-  { key: "includeCover", label: "Include cover page" },
-  { key: "includeSupportingLinks", label: "Include supporting links" },
-  { key: "includeAssumptions", label: "Include assumptions" },
-  { key: "includeOutOfScope", label: "Include out of scope" },
-  { key: "includeFooter", label: "Include sign-off footer" },
-] as const;
-
-function getExportOptions(settings?: Record<string, unknown> | null) {
-  return {
-    includeCover: settings?.includeCover !== false,
-    includeSupportingLinks: settings?.includeSupportingLinks !== false,
-    includeAssumptions: settings?.includeAssumptions !== false,
-    includeOutOfScope: settings?.includeOutOfScope !== false,
-    includeFooter: settings?.includeFooter !== false,
-  };
-}
 
 function loadProposalBuilderPanel() {
   return import("@/components/proposals/proposal-builder-panel");
@@ -107,10 +83,27 @@ function createDraftSectionId() {
   return `draft-section-${generated}`;
 }
 
+const approvalOptions = [
+  {
+    key: "productSignOff",
+    label: "Product sign off",
+    description: "Product review is complete.",
+  },
+  {
+    key: "techSignOff",
+    label: "Tech sign off",
+    description: "Technical review is complete.",
+  },
+  {
+    key: "approvalChecked",
+    label: "Approved",
+    description: "CEO approval is complete.",
+  },
+] as const;
+
 export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const { data, isPending, error } = useProposal(proposalId);
   const updateMutation = useUpdateProposal(proposalId);
-  const exportMutation = useExportProposal(proposalId);
 
   const [localDraft, setLocalDraft] = useState<ProposalDocument | null>(null);
   const [activeTab, setActiveTab] = useState<EditorTab>("overview");
@@ -155,7 +148,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     return sectionEntries.find((entry) => entry.id === resolvedActiveId) ?? sectionEntries[0];
   }, [sectionEntries, activeSectionId, defaultActiveSectionId]);
 
-  const exportOptions = useMemo(() => getExportOptions(draft?.exportSettings), [draft?.exportSettings]);
   const publicSharePath = `/preview/${proposalId}`;
   const publicShareUrl =
     typeof window !== "undefined" ? `${window.location.origin}${publicSharePath}` : publicSharePath;
@@ -228,7 +220,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }, []);
 
   function updateDraft(nextDraft: ProposalDocument) {
-    setLocalDraft(nextDraft);
+    setLocalDraft({
+      ...nextDraft,
+      status: deriveProposalStatus(nextDraft.metadata),
+    });
     setSaveState("saving");
   }
 
@@ -321,17 +316,50 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
 
   async function handleShareLink() {
-    const result = await exportMutation.mutateAsync({
-      format: "SHARE_LINK",
-      settings: exportOptions,
-    });
-
-    if (typeof window !== "undefined" && result.export.url) {
-      const shareUrl = `${window.location.origin}${result.export.url}`;
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+    if (typeof window === "undefined") {
+      return;
     }
+
+    await navigator.clipboard.writeText(publicShareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  function handleExportPdf() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.open(`/app/proposals/${proposalId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+  }
+
+  function handleApprovalToggle(key: (typeof approvalOptions)[number]["key"], checked: boolean) {
+    if (!draft) {
+      return;
+    }
+
+    const nextMetadata = {
+      ...draft.metadata,
+      [key]: checked,
+    };
+
+    if (key === "approvalChecked" && checked) {
+      nextMetadata.productSignOff = true;
+      nextMetadata.techSignOff = true;
+    }
+
+    if ((key === "productSignOff" || key === "techSignOff") && !checked) {
+      nextMetadata.approvalChecked = false;
+    }
+
+    if (key === "approvalChecked" && !checked) {
+      nextMetadata.approvalChecked = false;
+    }
+
+    updateDraft({
+      ...draft,
+      metadata: nextMetadata,
+    });
   }
 
   if (isPending) {
@@ -415,64 +443,36 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 <div>
                   <p className="text-sm font-semibold text-[var(--text-1)]">Approve, share & export</p>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
-                    Manage proposal sign-off, control shared output, and publish the client-facing link from one place.
+                    Manage internal sign-off, copy the public link, and export the client-facing A4 PDF from one place.
                   </p>
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">Approvals</p>
-                  <div className="mt-3 space-y-2">
-                  {workflowStatuses.map((status) => (
-                    <label
-                      key={status}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={draft.status === status}
-                        onChange={() =>
-                          updateDraft({
-                            ...draft,
-                            status,
-                          })
-                        }
-                        className="h-4 w-4 rounded border-[var(--border-1)] text-[var(--brand-600)]"
-                      />
-                      <span>{statusLabel(status)}</span>
-                    </label>
-                  ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">Export settings</p>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
-                    Control what appears in the shared and export-ready proposal output.
+                    Product and tech sign-off can both be selected. CEO approval is the final state.
                   </p>
-
                   <div className="mt-3 space-y-2">
-                  {exportOptionConfig.map((option) => (
-                    <label
-                      key={option.key}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={exportOptions[option.key]}
-                        onChange={(event) =>
-                          updateDraft({
-                            ...draft,
-                            exportSettings: {
-                              ...draft.exportSettings,
-                              [option.key]: event.target.checked,
-                            },
-                          })
-                        }
-                        className="h-4 w-4 rounded border-[var(--border-1)] text-[var(--brand-600)]"
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  ))}
+                    {approvalOptions.map((option) => {
+                      const checked = Boolean(draft.metadata[option.key]);
+                      return (
+                        <label
+                          key={option.key}
+                          className="flex items-start gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-[var(--border-1)] text-[var(--brand-600)]"
+                          />
+                          <span className="space-y-0.5">
+                            <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
+                            <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -502,7 +502,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     size="sm"
                     className="flex-1 justify-center"
                     onClick={handleShareLink}
-                    loading={exportMutation.isPending}
                     leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
                   >
                     {copied ? "Copied" : "Share"}
@@ -512,13 +511,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     variant="primary"
                     size="sm"
                     className="flex-1 justify-center"
-                    onClick={() =>
-                      exportMutation.mutate({
-                        format: "PDF",
-                        settings: exportOptions,
-                      })
-                    }
-                    loading={exportMutation.isPending}
+                    onClick={handleExportPdf}
                     leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
                   >
                     Export
@@ -1025,7 +1018,6 @@ function serializeDraft(draft: ProposalDocument) {
     version: draft.version,
     expiresAt: draft.expiresAt ?? null,
     metadata: draft.metadata,
-    exportSettings: draft.exportSettings,
     sections: draft.sections.map((section, index) => ({
       ...section,
       sortOrder: index,

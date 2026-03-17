@@ -119,6 +119,8 @@ export const metadataSchema = z.object({
   version: z.string(),
   notes: z.string().optional(),
   internalComments: z.string().optional(),
+  productSignOff: z.boolean(),
+  techSignOff: z.boolean(),
   approvalChecked: z.boolean(),
 });
 
