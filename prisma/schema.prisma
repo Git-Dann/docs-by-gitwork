@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentType {
+  PROPOSAL
+  SLA
+  OTHER
+}
+
+enum DocumentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  SENT
+  ARCHIVED
+}
+
+enum TimelineView {
+  LIST
+  MILESTONE
+}
+
+enum CostKind {
+  ONE_OFF
+  RECURRING
+}
+
+enum AssetType {
+  COVER_IMAGE
+  SECTION_GRAPHIC
+  DIAGRAM
+  LOGO
+  SCREENSHOT
+}
+
+enum AssetSize {
+  SMALL
+  MEDIUM
+  LARGE
+  FULL
+}
+
+enum AssetAlignment {
+  LEFT
+  CENTER
+  RIGHT
+  FULL
+}
+
+enum LinkType {
+  INTERNAL_ROUTE
+  EXTERNAL_URL
+  DECK_LINK
+  DOCUMENT_LINK
+  EMAIL_LINK
+}
+
+enum CTARole {
+  PRIMARY
+  SECONDARY
+}
+
+enum ExportFormat {
+  PRINT
+  PDF
+  SHARE_LINK
+}
+
+enum ExportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+model User {
+  id          String            @id @default(cuid())
+  email       String            @unique
+  name        String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  memberships WorkspaceMember[]
+  documents   Document[]        @relation("DocumentOwner")
+  proofDocuments ProofDocument[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  slug        String            @unique
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+  documents   Document[]
+  templates   DocumentTemplate[]
+  proofDocuments ProofDocument[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String    @default("OWNER")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model DocumentTemplate {
+  id           String       @id @default(cuid())
+  workspaceId  String?
+  name         String
+  slug         String       @unique
+  description  String?
+  documentType DocumentType @default(PROPOSAL)
+  sections     Json
+  metadata     Json?
+  isDefault    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  documents    Document[]
+}
+
+model Document {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  ownerId        String
+  templateId     String?
+  documentType   DocumentType    @default(PROPOSAL)
+  status         DocumentStatus  @default(DRAFT)
+  title          String
+  productName    String?
+  clientName     String?
+  summary        String?
+  version        String          @default("v1.0")
+  expiresAt      DateTime?
+  metadata       Json?
+  exportSettings Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  archivedAt     DateTime?
+  owner          User            @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template       DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  sections       DocumentSection[]
+  costLineItems  CostLineItem[]
+  timelinePhases TimelinePhase[]
+  assets         Asset[]
+  links          Link[]
+  ctas           CTA[]
+  exports        Export[]
+  proofDocuments ProofDocument[]
+
+  @@index([workspaceId, status])
+  @@index([updatedAt])
+}
+
+model ProofDocument {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  ownerId      String
+  proposalId   String?
+  title        String
+  slug         String    @unique
+  shareUrl     String
+  tokenUrl     String
+  accessToken  String
+  source       String    @default("proof")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastOpenedAt DateTime  @default(now())
+  archivedAt   DateTime?
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  proposal     Document? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, lastOpenedAt])
+  @@index([proposalId, lastOpenedAt])
+}
+
+model DocumentSection {
+  id          String   @id @default(cuid())
+  documentId  String
+  key         String
+  title       String
+  description String?
+  sortOrder   Int
+  isVisible   Boolean  @default(true)
+  data        Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  assets      Asset[]
+
+  @@index([documentId, sortOrder])
+}
+
+model CostLineItem {
+  id          String   @id @default(cuid())
+  documentId  String
+  category    String
+  itemName    String
+  description String?
+  quantity    Decimal  @db.Decimal(12, 2)
+  unitCost    Decimal  @db.Decimal(12, 2)
+  subtotal    Decimal  @db.Decimal(12, 2)
+  costKind    CostKind @default(ONE_OFF)
+  sortOrder   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, sortOrder])
+}
+
+model TimelinePhase {
+  id          String       @id @default(cuid())
+  documentId  String
+  name        String
+  duration    String
+  summary     String
+  deliverables Json
+  sortOrder   Int
+  viewMode    TimelineView @default(LIST)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  document    Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, sortOrder])
+}
+
+model Asset {
+  id         String         @id @default(cuid())
+  documentId String
+  sectionId  String?
+  type       AssetType
+  title      String
+  url        String
+  altText    String
+  placement  String
+  caption    String?
+  size       AssetSize      @default(MEDIUM)
+  alignment  AssetAlignment @default(LEFT)
+  sortOrder  Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  document   Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  section    DocumentSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, placement])
+}
+
+model Link {
+  id         String   @id @default(cuid())
+  documentId String
+  label      String
+  url        String
+  type       LinkType
+  notes      String?
+  sortOrder  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, sortOrder])
+}
+
+model CTA {
+  id              String   @id @default(cuid())
+  documentId      String
+  role            CTARole
+  label           String
+  destination     String
+  destinationType LinkType
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, role])
+}
+
+model Export {
+  id          String       @id @default(cuid())
+  documentId  String
+  format      ExportFormat
+  status      ExportStatus @default(PENDING)
+  url         String?
+  settings    Json?
+  requestedAt DateTime     @default(now())
+  completedAt DateTime?
+  document    Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, requestedAt])
+}

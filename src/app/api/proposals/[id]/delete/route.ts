@@ -1,0 +1,27 @@
+import { NextRequest } from "next/server";
+import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
+
+interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  try {
+    const { id } = await context.params;
+
+    await prisma.document.delete({
+      where: {
+        id,
+      },
+    });
+
+    return apiOk({ ok: true });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Record to delete does not exist")) {
+      return apiError("Proposal not found", 404);
+    }
+
+    return fromError(error);
+  }
+}
