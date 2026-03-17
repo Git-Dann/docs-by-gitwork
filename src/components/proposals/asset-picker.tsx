@@ -101,7 +101,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
                   >
                     {assetTypes.map((type) => (
                       <option key={type} value={type}>
@@ -154,7 +154,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
                   >
                     {placementOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -194,7 +194,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
                   >
                     {sizeOptions.map((size) => (
                       <option key={size} value={size}>
@@ -217,7 +217,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
                   >
                     {alignmentOptions.map((alignment) => (
                       <option key={alignment} value={alignment}>

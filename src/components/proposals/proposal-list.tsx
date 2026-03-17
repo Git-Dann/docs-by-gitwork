@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronUpDownIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,7 +15,14 @@ import {
 } from "@/hooks/use-proposals";
 import { StatusBadge } from "@/components/status-badge";
 
-const statusOptions = ["ALL", "DRAFT", "IN_REVIEW", "APPROVED", "SENT", "ARCHIVED"] as const;
+const statusOptions = [
+  "ALL",
+  "DRAFT",
+  "PRODUCT_SIGN_OFF",
+  "TECH_SIGN_OFF",
+  "APPROVED",
+  "ARCHIVED",
+] as const;
 const sortOptions = [
   { label: "Last updated", value: "updatedAt:desc" },
   { label: "Oldest updated", value: "updatedAt:asc" },
@@ -104,11 +111,11 @@ export function ProposalList() {
             </Button>
           ) : null}
 
-          <label className="relative">
+          <label>
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as (typeof statusOptions)[number])}
-              className="proposal-field-compact min-w-[150px] appearance-none pr-10"
+              className="proposal-field-compact app-select-compact min-w-[150px]"
             >
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
@@ -116,14 +123,13 @@ export function ProposalList() {
                 </option>
               ))}
             </select>
-            <ChevronUpDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
           </label>
 
-          <label className="relative">
+          <label>
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as (typeof sortOptions)[number]["value"])}
-              className="proposal-field-compact min-w-[160px] appearance-none pr-10"
+              className="proposal-field-compact app-select-compact min-w-[160px]"
             >
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -131,7 +137,6 @@ export function ProposalList() {
                 </option>
               ))}
             </select>
-            <ChevronUpDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
           </label>
 
           <Button

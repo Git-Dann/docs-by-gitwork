@@ -85,7 +85,7 @@ export function ObjectivesEditor({
 
               event.target.value = "";
             }}
-            className="proposal-field-compact min-w-[220px] text-sm"
+            className="proposal-field-compact app-select-compact min-w-[220px] text-sm"
           >
             <option value="">Use snippet...</option>
             {snippets.map((snippet, index) => (

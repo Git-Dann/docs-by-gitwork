@@ -117,7 +117,7 @@ export function ProposalProofPanel({
           <select
             value={selectedExistingId}
             onChange={(event) => setSelectedExistingId(event.target.value)}
-            className="mt-3 h-11 w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+            className="app-select mt-3 h-11 w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
           >
             <option value="">Select a Proof draft</option>
             {attachCandidates.map((document) => (

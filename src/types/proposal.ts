@@ -1,5 +1,7 @@
 export type DocumentStatus =
   | "DRAFT"
+  | "PRODUCT_SIGN_OFF"
+  | "TECH_SIGN_OFF"
   | "IN_REVIEW"
   | "APPROVED"
   | "SENT"

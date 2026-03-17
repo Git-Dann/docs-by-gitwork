@@ -21,7 +21,7 @@ export default function ProposalPrintPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-3 px-4 py-4 print:max-w-none print:px-0 print:py-0">
       <PrintToolbar proposalId={id} />
-      <ProposalPreview proposal={data.proposal} className="print:[&_.xl\\:block]:!hidden" />
+      <ProposalPreview proposal={data.proposal} showTableOfContents={false} frame={false} />
     </main>
   );
 }

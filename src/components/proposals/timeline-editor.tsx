@@ -79,7 +79,7 @@ export function TimelineEditor({
                 viewMode: event.target.value as "LIST" | "MILESTONE",
               })
             }
-            className="h-9 rounded-md border border-[var(--border-1)] bg-white px-2 text-xs"
+            className="app-select-compact h-9 rounded-md border border-[var(--border-1)] bg-white text-xs"
           >
             <option value="LIST">Simple list</option>
             <option value="MILESTONE">Milestone timeline</option>

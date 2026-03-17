@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
+  "PRODUCT_SIGN_OFF",
+  "TECH_SIGN_OFF",
   "IN_REVIEW",
   "APPROVED",
   "SENT",

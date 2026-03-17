@@ -445,7 +445,7 @@ function TechStackMultiSelect({
 
   return (
     <details className="relative">
-      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-lg border border-[var(--border-1)] bg-white px-2 py-2 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-lg border border-[var(--border-1)] bg-white px-3 pr-4 py-2 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
         <span className="flex flex-wrap gap-1.5">
           {value.length ? (
             value.map((entry) => (

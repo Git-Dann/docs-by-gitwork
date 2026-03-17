@@ -32,12 +32,12 @@ const variantStyles: Record<ButtonVariant, string> = {
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  xs: "h-8 rounded-lg px-2.5 text-xs font-medium",
-  sm: "h-9 rounded-xl px-3 text-sm font-medium",
-  md: "h-10 rounded-xl px-4 text-sm font-medium",
+  xs: "h-[42px] rounded-xl px-3 text-sm font-medium",
+  sm: "h-[42px] rounded-xl px-3.5 text-sm font-medium",
+  md: "h-[42px] rounded-xl px-4 text-sm font-medium",
   lg: "h-11 rounded-xl px-4 text-base font-medium",
-  "icon-sm": "h-8 w-8 rounded-lg p-0",
-  "icon-md": "h-9 w-9 rounded-xl p-0",
+  "icon-sm": "h-10 w-10 rounded-xl p-0",
+  "icon-md": "h-[42px] w-[42px] rounded-xl p-0",
 };
 
 export function buttonStyles({
@@ -50,7 +50,7 @@ export function buttonStyles({
   className?: string;
 }) {
   return cn(
-    "inline-flex items-center justify-center gap-1.5 border transition outline-none",
+    "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border text-center leading-none transition outline-none [&_svg]:shrink-0",
     "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
     "disabled:pointer-events-none disabled:opacity-45",
     variantStyles[variant],

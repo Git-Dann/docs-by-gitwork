@@ -95,7 +95,7 @@ export function LinkManager({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
                   >
                     {linkTypeOptions.map((type) => (
                       <option key={type} value={type}>

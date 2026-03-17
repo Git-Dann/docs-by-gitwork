@@ -97,7 +97,7 @@ export function TouchpointEditor({
 
               event.target.value = "";
             }}
-            className="h-8 rounded-md border border-[var(--border-1)] bg-white px-2 text-xs"
+            className="app-select-compact h-8 rounded-md border border-[var(--border-1)] bg-white text-xs"
           >
             <option value="">Add snippet...</option>
             {touchpointSnippets.map((snippet) => (

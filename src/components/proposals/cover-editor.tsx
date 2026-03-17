@@ -48,7 +48,7 @@ export function CoverEditor({
                 brandLockup: event.target.value as CoverSectionData["brandLockup"],
               })
             }
-            className="w-full"
+            className="app-select w-full"
           >
             <option value="GITWORK">Gitwork only</option>
             <option value="CLIENT_X_GITWORK">Client x Gitwork</option>

@@ -42,6 +42,10 @@ export function statusTone(status: DocumentStatus): string {
   switch (status) {
     case "DRAFT":
       return "bg-slate-100 text-slate-700";
+    case "PRODUCT_SIGN_OFF":
+      return "bg-sky-100 text-sky-800";
+    case "TECH_SIGN_OFF":
+      return "bg-violet-100 text-violet-800";
     case "IN_REVIEW":
       return "bg-amber-100 text-amber-800";
     case "APPROVED":
