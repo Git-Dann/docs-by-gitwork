@@ -16,6 +16,7 @@ import {
   createPocProposal,
   deletePocProposal,
   duplicatePocProposal,
+  getPocClientDetail,
   getPocProposal,
   listPocClients,
   listPocProofDocuments,
@@ -89,6 +90,15 @@ export async function listClients(params?: { search?: string }) {
 
 export async function createClient(input: { name: string }) {
   return createPocClient(input);
+}
+
+export async function getClientDetail(slug: string) {
+  const clientDetail = getPocClientDetail(slug);
+  if (!clientDetail) {
+    throw new Error("Client not found.");
+  }
+
+  return clientDetail;
 }
 
 export async function saveCosting(

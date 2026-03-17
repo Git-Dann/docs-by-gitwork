@@ -7,6 +7,7 @@ import {
   createProposal,
   deleteProposal,
   duplicateProposal,
+  getClientDetail,
   getProposal,
   listClients,
   listProposals,
@@ -66,6 +67,14 @@ export function useCreateClient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
+  });
+}
+
+export function useClientDetail(slug: string) {
+  return useQuery({
+    queryKey: ["client", slug],
+    queryFn: () => getClientDetail(slug),
+    enabled: Boolean(slug),
   });
 }
 

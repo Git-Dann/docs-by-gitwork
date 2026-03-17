@@ -72,7 +72,7 @@ export function AppShell({
   const clientRows = useMemo(() => {
     return (clientListData?.clients ?? []).map((client, index) => ({
       name: client.name,
-      href: `/app/clients?client=${encodeURIComponent(client.name)}`,
+      href: `/app/clients/${client.slug}`,
       logoClass: clientAccentClasses[index % clientAccentClasses.length],
       logoText: client.name.charAt(0).toUpperCase(),
     }));

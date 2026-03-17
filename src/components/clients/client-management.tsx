@@ -2,34 +2,19 @@
 
 import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { useClientList, useCreateClient } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
 
 export function ClientManagement() {
-  const searchParams = useSearchParams();
-  const selectedClient = searchParams.get("client")?.trim() ?? "";
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [clientName, setClientName] = useState("");
   const { data, isPending, error } = useClientList({ search });
   const createMutation = useCreateClient();
 
-  useEffect(() => {
-    if (!selectedClient) {
-      return;
-    }
-
-    setSearch(selectedClient);
-  }, [selectedClient]);
-
   const clients = data?.clients ?? [];
-  const highlightedClient = useMemo(
-    () => clients.find((client) => client.name.toLowerCase() === selectedClient.toLowerCase()) ?? null,
-    [clients, selectedClient],
-  );
 
   async function handleCreate() {
     await createMutation.mutateAsync({ name: clientName });
@@ -62,26 +47,6 @@ export function ClientManagement() {
           </Button>
         </div>
       </section>
-
-      {highlightedClient ? (
-        <section className="rounded-2xl border border-[var(--border-1)] bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">Selected client</p>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">{highlightedClient.name}</h2>
-              <p className="mt-1 text-sm text-[var(--text-3)]">
-                {highlightedClient.proposalCount} proposal{highlightedClient.proposalCount === 1 ? "" : "s"} linked
-              </p>
-            </div>
-            <Link
-              href={`/app/proposals?client=${encodeURIComponent(highlightedClient.name)}`}
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              View proposals
-            </Link>
-          </div>
-        </section>
-      ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-[var(--border-1)] bg-white">
         <div className="overflow-x-auto">
@@ -116,10 +81,10 @@ export function ClientManagement() {
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap gap-2">
                         <Link
-                          href={`/app/proposals?client=${encodeURIComponent(client.name)}`}
+                          href={`/app/clients/${client.slug}`}
                           className={buttonStyles({ variant: "secondary", size: "xs" })}
                         >
-                          View proposals
+                          Open client
                         </Link>
                         <Link
                           href={`/app/proposals?new=1&client=${encodeURIComponent(client.name)}`}

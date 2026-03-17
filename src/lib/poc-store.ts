@@ -584,6 +584,35 @@ export function listPocClients(filters?: { search?: string }) {
   return { clients };
 }
 
+export function getPocClientDetail(slug: string) {
+  const state = readState();
+  const client = state.clients.find((entry) => entry.slug === slug);
+
+  if (!client) {
+    return null;
+  }
+
+  const proposals = sortProposals(
+    state.proposals.filter(
+      (proposal) => proposal.clientName?.trim().toLowerCase() === client.name.trim().toLowerCase(),
+    ),
+    "updatedAt:desc",
+  );
+  const proposalIds = new Set(proposals.map((proposal) => proposal.id));
+  const proofDocuments = state.proofDocuments
+    .filter((document) => !document.archivedAt)
+    .filter((document) => (document.proposalId ? proposalIds.has(document.proposalId) : false))
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+
+  return {
+    client: toClientListItem(client, state.proposals),
+    proposals: proposals.map((proposal) =>
+      toListItem(proposal, state.templates.find((template) => template.id === proposal.templateId)?.name),
+    ),
+    proofDocuments,
+  };
+}
+
 export function createPocClient(input: { name: string }) {
   const state = readState();
   const name = input.name.trim();
