@@ -36,7 +36,7 @@ import { Button, buttonStyles } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { proposalSectionBlueprints } from "@/lib/default-template";
 import { useExportProposal, useProposal, useUpdateProposal } from "@/hooks/use-proposals";
-import { cn, formatCurrency, formatDate } from "@/lib/format";
+import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import type { DocumentStatus, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
 type EditorTab = "overview" | "builder";
@@ -371,23 +371,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <h1 className="mt-3 text-5xl font-semibold tracking-tight text-[var(--text-1)]">{draft.title}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-3)]">
-              <select
-                value={draft.status}
-                onChange={(event) =>
-                  updateDraft({
-                    ...draft,
-                    status: event.target.value as DocumentStatus,
-                  })
-                }
-                className="proposal-field-compact app-select-compact min-w-[220px] text-sm font-medium text-[var(--text-1)]"
-              >
-                {workflowStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())}
-                  </option>
-                ))}
-                {draft.status === "ARCHIVED" ? <option value="ARCHIVED">Archived</option> : null}
-              </select>
+              <StatusBadge status={draft.status} />
               <span className={cn("inline-flex items-center gap-1", saveTone)}>
                 {saveState === "saved" ? (
                   <CheckCircleIcon className="h-3.5 w-3.5" />
@@ -426,6 +410,35 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
               <div className="absolute right-0 z-30 mt-2 w-[360px] rounded-2xl border border-[var(--border-1)] bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
                 <div>
+                  <p className="text-sm font-semibold text-[var(--text-1)]">Workflow status</p>
+                  <p className="mt-1 text-sm text-[var(--text-3)]">
+                    Choose the current proposal sign-off state. The chip below the title updates from this.
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {workflowStatuses.map((status) => (
+                    <label
+                      key={status}
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] px-3 py-2.5 text-sm text-[var(--text-2)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.status === status}
+                        onChange={() =>
+                          updateDraft({
+                            ...draft,
+                            status,
+                          })
+                        }
+                        className="h-4 w-4 rounded border-[var(--border-1)] text-[var(--brand-600)]"
+                      />
+                      <span>{statusLabel(status)}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-5 border-t border-[var(--border-1)] pt-4">
                   <p className="text-sm font-semibold text-[var(--text-1)]">Export settings</p>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
                     Control what appears in the shared and export-ready proposal output.
