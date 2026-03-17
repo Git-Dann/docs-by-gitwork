@@ -3,10 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   archiveProposal,
+  createClient,
   createProposal,
   deleteProposal,
   duplicateProposal,
   getProposal,
+  listClients,
   listProposals,
   requestExport,
   saveCosting,
@@ -42,6 +44,27 @@ export function useCreateProposal() {
     mutationFn: createProposal,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useClientList(filters?: {
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: ["clients", filters],
+    queryFn: () => listClients(filters),
+  });
+}
+
+export function useCreateClient() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createClient,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }
@@ -54,6 +77,7 @@ export function useUpdateProposal(id: string) {
     onSuccess: (result) => {
       queryClient.setQueryData(["proposal", id], result);
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }
@@ -65,6 +89,7 @@ export function useDuplicateProposal() {
     mutationFn: duplicateProposal,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }
@@ -87,6 +112,7 @@ export function useDeleteProposal() {
     mutationFn: deleteProposal,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }

@@ -13,59 +13,18 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
+import { useClientList, useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
 
-const primaryNav = [
-  {
-    href: "/app",
-    label: "Dashboard",
-    icon: Squares2X2Icon,
-  },
-  {
-    href: "/app/proposals",
-    label: "Proposals",
-    icon: ChartBarSquareIcon,
-    badge: "10",
-  },
-  {
-    href: "/app/proof",
-    label: "Proof",
-    icon: DocumentTextIcon,
-  },
-  {
-    href: "/app/templates",
-    label: "Saved Docs",
-    icon: StarIcon,
-  },
-] as const;
-
-const clientRows = [
-  {
-    name: "Catalog",
-    href: "/app/proposals?client=catalog",
-    logoClass: "bg-indigo-600",
-    logoText: "C",
-  },
-  {
-    name: "Warpspeed",
-    href: "/app/proposals?client=warpspeed",
-    logoClass: "bg-zinc-900",
-    logoText: "W",
-  },
-  {
-    name: "Boltshift",
-    href: "/app/proposals?client=boltshift",
-    logoClass: "bg-blue-600",
-    logoText: "B",
-  },
-  {
-    name: "Sisyphus",
-    href: "/app/proposals?client=sisyphus",
-    logoClass: "bg-emerald-600",
-    logoText: "S",
-  },
+const clientAccentClasses = [
+  "bg-indigo-600",
+  "bg-zinc-900",
+  "bg-blue-600",
+  "bg-emerald-600",
+  "bg-amber-500",
+  "bg-rose-600",
 ] as const;
 
 export function AppShell({
@@ -84,6 +43,11 @@ export function AppShell({
   mainClassName?: string;
 }) {
   const pathname = usePathname();
+  const { data: proposalListData } = useProposalList({
+    status: "ALL",
+    sort: "updatedAt:desc",
+  });
+  const { data: clientListData } = useClientList();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -103,24 +67,63 @@ export function AppShell({
   }
 
   const isCollapsed = forceCollapsedSidebar ? true : collapsed;
+  const proposals = proposalListData?.proposals ?? [];
+  const proposalCount = proposals.length;
+  const clientRows = useMemo(() => {
+    return (clientListData?.clients ?? []).map((client, index) => ({
+      name: client.name,
+      href: `/app/clients?client=${encodeURIComponent(client.name)}`,
+      logoClass: clientAccentClasses[index % clientAccentClasses.length],
+      logoText: client.name.charAt(0).toUpperCase(),
+    }));
+  }, [clientListData?.clients]);
+
+  const primaryNav = [
+    {
+      href: "/app",
+      label: "Dashboard",
+      icon: Squares2X2Icon,
+    },
+    {
+      href: "/app/proposals",
+      label: "Proposals",
+      icon: ChartBarSquareIcon,
+      badge: proposalCount ? String(proposalCount) : undefined,
+    },
+    {
+      href: "/app/proof",
+      label: "Proof",
+      icon: DocumentTextIcon,
+    },
+    {
+      href: "/app/templates",
+      label: "Saved Docs",
+      icon: StarIcon,
+    },
+  ] as const;
 
   return (
     <div className="h-screen bg-[var(--surface-0)] p-4 text-[var(--text-1)]">
       <div className="mx-auto grid h-[calc(100vh-2rem)] max-w-[1800px] grid-cols-1 gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
         <aside
           className={cn(
-            "hidden h-full flex-col rounded-[24px] border border-[var(--border-1)] bg-white p-3 shadow-[0_1px_0_rgba(15,23,34,0.02)] lg:flex",
+            "hidden h-full flex-col rounded-[24px] border border-[var(--border-1)] bg-white p-3 lg:flex",
             isCollapsed ? "w-[96px]" : "w-[332px]",
           )}
         >
           {isCollapsed ? (
-            <CollapsedRail pathname={pathname} onExpand={toggleCollapsed} canExpand={!forceCollapsedSidebar} />
+            <CollapsedRail
+              pathname={pathname}
+              onExpand={toggleCollapsed}
+              canExpand={!forceCollapsedSidebar}
+              primaryNav={primaryNav}
+            />
           ) : (
-            <ExpandedRail pathname={pathname} onCollapse={toggleCollapsed} />
+            <ExpandedRail pathname={pathname} onCollapse={toggleCollapsed} primaryNav={primaryNav} clientRows={clientRows} />
           )}
         </aside>
 
-        <div className="flex min-h-0 flex-col rounded-[24px] border border-[var(--border-1)] bg-white shadow-[0_1px_0_rgba(15,23,34,0.02)]">
+        <div className="flex min-h-0 flex-col rounded-[24px] bg-transparent">
           {hideContentHeader ? null : (
             <header className="border-b border-[var(--border-1)] px-5 py-4 sm:px-7">
               <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
@@ -139,10 +142,17 @@ function CollapsedRail({
   pathname,
   onExpand,
   canExpand,
+  primaryNav,
 }: {
   pathname: string | null;
   onExpand: () => void;
   canExpand: boolean;
+  primaryNav: ReadonlyArray<{
+    href: string;
+    label: string;
+    icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
+    badge?: string;
+  }>;
 }) {
   return (
     <>
@@ -249,12 +259,26 @@ function CollapsedRail({
 function ExpandedRail({
   pathname,
   onCollapse,
+  primaryNav,
+  clientRows,
 }: {
   pathname: string | null;
   onCollapse: () => void;
+  primaryNav: ReadonlyArray<{
+    href: string;
+    label: string;
+    icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
+    badge?: string;
+  }>;
+  clientRows: Array<{
+    name: string;
+    href: string;
+    logoClass: string;
+    logoText: string;
+  }>;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-[20px] border border-[var(--border-1)] bg-white p-4">
+    <div className="flex h-full min-h-0 flex-col rounded-[20px] bg-white p-4">
       <button
         type="button"
         onClick={onCollapse}
@@ -291,7 +315,12 @@ function ExpandedRail({
           </section>
 
           <section className="mt-8">
-            <p className="mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--text-3)] uppercase">Clients</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--text-3)] uppercase">Clients</p>
+              <Link href="/app/clients" className="text-xs font-medium text-[var(--text-3)] hover:text-[var(--text-1)]">
+                Manage
+              </Link>
+            </div>
             <ul className="space-y-1.5">
               {clientRows.map((client) => (
                 <li key={client.name}>
@@ -300,7 +329,7 @@ function ExpandedRail({
                     className={buttonStyles({
                       variant: "tertiary",
                       size: "sm",
-                      className: "w-full justify-between gap-2.5 px-3 text-[18px] font-semibold tracking-[-0.02em]",
+                      className: "w-full justify-start gap-2.5 px-3 text-[18px] font-semibold tracking-[-0.02em]",
                     })}
                   >
                     <span className="flex items-center gap-2.5">
@@ -314,11 +343,16 @@ function ExpandedRail({
                       </span>
                       {client.name}
                     </span>
-                    <ChevronRightIcon className="h-5 w-5 text-[var(--text-3)]" />
+                    <ChevronRightIcon className="ml-auto h-5 w-5 text-[var(--text-3)]" />
                   </Link>
                 </li>
               ))}
             </ul>
+            {!clientRows.length ? (
+              <p className="px-3 pt-1 text-sm text-[var(--text-3)]">
+                Add clients in the Clients area, or create a proposal with a client name.
+              </p>
+            ) : null}
           </section>
         </div>
 
@@ -367,8 +401,8 @@ function SidebarLink({
         className={cn(
           "flex items-center justify-between rounded-xl border px-3 py-2 text-[18px] font-semibold tracking-[-0.02em] transition",
           active
-            ? "border-[var(--border-1)] bg-[var(--surface-1)] text-[var(--text-1)]"
-            : "border-transparent text-[var(--text-2)] hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
+            ? "border-[var(--border-1)] bg-white text-[var(--text-1)] shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
+            : "border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
         )}
       >
         <span className="flex items-center gap-2.5">
@@ -498,7 +532,7 @@ function ProfileMenu() {
 
 function BrandGlyph({ className }: { className?: string }) {
   return (
-    <div className={cn("relative rounded-[14px] border border-[var(--border-1)] bg-white shadow-[0_4px_12px_rgba(15,23,42,0.12)]", className)}>
+    <div className={cn("relative rounded-[14px] border border-[var(--border-1)] bg-white shadow-[0_4px_10px_rgba(15,23,42,0.08)]", className)}>
       <span className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_45%_30%,#a78bfa_0%,#7c3aed_45%,#4c1d95_100%)]" />
     </div>
   );

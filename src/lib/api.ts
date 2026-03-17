@@ -2,21 +2,22 @@ import type {
   CostingSectionData,
   ProposalDocument,
   ProposalListItem,
-  TemplateSummary,
 } from "@/types/proposal";
+import type { ClientListItem } from "@/types/client";
 import type {
   ProofCreateDocumentInput,
-  ProofDocumentRecord,
   ProofDocumentUpdateInput,
   ProofHealthResponse,
 } from "@/lib/proof";
 import {
   archivePocProposal,
+  createPocClient,
   createPocProofDocument,
   createPocProposal,
   deletePocProposal,
   duplicatePocProposal,
   getPocProposal,
+  listPocClients,
   listPocProofDocuments,
   listPocProposals,
   listPocTemplates,
@@ -30,6 +31,10 @@ import {
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
+}
+
+export interface ClientListResponse {
+  clients: ClientListItem[];
 }
 
 export async function listProposals(params: {
@@ -76,6 +81,14 @@ export async function deleteProposal(id: string) {
 
 export async function fetchTemplates() {
   return listPocTemplates();
+}
+
+export async function listClients(params?: { search?: string }) {
+  return listPocClients(params);
+}
+
+export async function createClient(input: { name: string }) {
+  return createPocClient(input);
 }
 
 export async function saveCosting(

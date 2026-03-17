@@ -289,6 +289,16 @@ export const DEFAULT_PROPOSAL_METADATA: ProposalMetadata = {
   approvalChecked: false,
 };
 
+export const EMPTY_PROPOSAL_METADATA: ProposalMetadata = {
+  client: "",
+  owner: "",
+  expiryDate: "",
+  version: "",
+  notes: "",
+  internalComments: "",
+  approvalChecked: false,
+};
+
 export const defaultCostLineItems: CostLineItemInput[] = [
   {
     category: "Mobile Engineer",
@@ -415,5 +425,101 @@ export function getDefaultProposalSections(): ProposalSection[] {
     sortOrder: index,
     isVisible: blueprint.visible ?? true,
     data: blueprint.data,
+  }));
+}
+
+function getBlankProposalSectionData(key: SectionKey): ProposalSectionData {
+  switch (key) {
+    case "cover":
+      return {
+        proposalTitle: "",
+        productName: "",
+        clientName: "",
+        subtitle: "",
+        date: "",
+        confidentiality: "",
+        heroImage: "",
+      };
+    case "introduction":
+      return {
+        statement: "",
+        summary: "",
+        graphic: "",
+      };
+    case "product_overview":
+      return {
+        platformDescription: "",
+        audience: "",
+        valueProposition: "",
+        platformsSupported: "",
+        workflowGraphic: "",
+      };
+    case "objectives":
+      return {
+        items: [],
+      };
+    case "touchpoints":
+      return {
+        items: [],
+      };
+    case "timeline":
+      return {
+        viewMode: "LIST",
+      };
+    case "costing":
+      return {
+        currency: "GBP",
+        discount: 0,
+        taxRate: 0,
+        monthlyCostSummary: "",
+        durationSummary: "",
+        totalCostLabel: "",
+        supportingNarrative: "",
+        paymentScheduleIntro: "",
+        paymentTerms: "",
+        vatNotice: "",
+        ipTransferNotice: "",
+        teamAllocations: [],
+        paymentSchedule: [],
+        additionalNotes: [],
+      };
+    case "cta_next_steps":
+      return {
+        headline: "",
+        body: "",
+      };
+    case "supporting_links_assets":
+      return {
+        notes: "",
+      };
+    case "assumptions":
+    case "out_of_scope":
+      return {
+        items: [],
+      };
+    case "signoff_footer":
+      return {
+        preparedBy: "",
+        team: "",
+        contactDetails: "",
+        footerNote: "",
+        showBrandingBlock: true,
+        signaturePlaceholder: false,
+      };
+    default:
+      return {
+        items: [],
+      } as ProposalSectionData;
+  }
+}
+
+export function getEmptyProposalSections(): ProposalSection[] {
+  return proposalSectionBlueprints.map((blueprint, index) => ({
+    key: blueprint.key,
+    title: blueprint.title,
+    description: blueprint.description,
+    sortOrder: index,
+    isVisible: blueprint.visible ?? true,
+    data: getBlankProposalSectionData(blueprint.key),
   }));
 }

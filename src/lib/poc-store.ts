@@ -1,11 +1,13 @@
 import {
   DEFAULT_PROPOSAL_METADATA,
+  EMPTY_PROPOSAL_METADATA,
   defaultAssets,
   defaultCostLineItems,
   defaultCtas,
   defaultLinks,
   defaultTimelinePhases,
   getDefaultProposalSections,
+  getEmptyProposalSections,
 } from "@/lib/default-template";
 import type {
   CostingSectionData,
@@ -17,6 +19,7 @@ import type {
   TemplateSummary,
   TimelinePhaseInput,
 } from "@/types/proposal";
+import type { ClientListItem, ClientRecord } from "@/types/client";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -36,6 +39,7 @@ interface PocState {
   proposals: ProposalDocument[];
   templates: TemplateSummary[];
   proofDocuments: ProofDocumentRecord[];
+  clients: ClientRecord[];
 }
 
 function deepClone<T>(value: T): T {
@@ -62,6 +66,48 @@ function slugify(input: string) {
     .slice(0, 48);
 }
 
+function ensureClientInState(state: PocState, clientName?: string | null) {
+  const name = clientName?.trim();
+  if (!name) {
+    return;
+  }
+
+  const existing = state.clients.find((client) => client.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    existing.updatedAt = nowIso();
+    if (!existing.slug) {
+      existing.slug = slugify(name);
+    }
+    return;
+  }
+
+  const timestamp = nowIso();
+  state.clients.push({
+    id: createId("client"),
+    name,
+    slug: slugify(name),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+function getSeedClients(): ClientRecord[] {
+  const state = getSeedProposals().reduce(
+    (seedState, proposal) => {
+      ensureClientInState(seedState, proposal.clientName);
+      return seedState;
+    },
+    {
+      proposals: [],
+      templates: [],
+      proofDocuments: [],
+      clients: [],
+    } as PocState,
+  );
+
+  return state.clients;
+}
+
 function createSections(proposalId: string, title: string, clientName: string, productName: string) {
   return deepClone(getDefaultProposalSections()).map((section, index) => {
     const nextSection: ProposalSection = {
@@ -80,6 +126,29 @@ function createSections(proposalId: string, title: string, clientName: string, p
         proposalTitle: title,
         clientName,
         productName,
+      };
+    }
+
+    return nextSection;
+  });
+}
+
+function createEmptySections(proposalId: string, title: string, clientName: string) {
+  return deepClone(getEmptyProposalSections()).map((section, index) => {
+    const nextSection: ProposalSection = {
+      ...section,
+      id: `${proposalId}_section_${section.key}_${index}`,
+      sortOrder: index,
+    };
+
+    if (section.key === "cover") {
+      nextSection.data = {
+        ...(section.data as ProposalSection["data"] & {
+          proposalTitle: string;
+          clientName: string;
+        }),
+        proposalTitle: title,
+        clientName,
       };
     }
 
@@ -201,6 +270,7 @@ function getSeedState(): PocState {
     proposals: getSeedProposals(),
     templates: getSeedTemplates(),
     proofDocuments: [],
+    clients: getSeedClients(),
   };
 }
 
@@ -227,6 +297,21 @@ function readState(): PocState {
       proposals: Array.isArray(parsed.proposals) && parsed.proposals.length ? parsed.proposals : seed.proposals,
       templates: Array.isArray(parsed.templates) && parsed.templates.length ? parsed.templates : seed.templates,
       proofDocuments: Array.isArray(parsed.proofDocuments) ? parsed.proofDocuments : [],
+      clients:
+        Array.isArray(parsed.clients) && parsed.clients.length
+          ? parsed.clients
+          : seed.proposals.reduce(
+              (clientsState, proposal) => {
+                ensureClientInState(clientsState, proposal.clientName);
+                return clientsState.clients;
+              },
+              {
+                proposals: [],
+                templates: [],
+                proofDocuments: [],
+                clients: [...seed.clients],
+              } as PocState,
+            ),
     };
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
@@ -279,7 +364,7 @@ function patchProposal(
   existing: ProposalDocument,
   input: Partial<ProposalDocument>,
 ): ProposalDocument {
-  return {
+  const nextProposal: ProposalDocument = {
     ...existing,
     ...input,
     metadata: input.metadata ?? existing.metadata,
@@ -291,6 +376,38 @@ function patchProposal(
     links: input.links ?? existing.links,
     ctas: input.ctas ?? existing.ctas,
     updatedAt: nowIso(),
+  };
+
+  const coverSection = nextProposal.sections.find((section) => section.key === "cover");
+  const coverData = coverSection?.data as
+    | {
+        proposalTitle?: string;
+        clientName?: string;
+        productName?: string;
+      }
+    | undefined;
+
+  if (coverData) {
+    nextProposal.title = coverData.proposalTitle ?? nextProposal.title;
+    nextProposal.clientName = coverData.clientName ?? nextProposal.clientName;
+    nextProposal.productName = coverData.productName ?? nextProposal.productName;
+    nextProposal.metadata = {
+      ...nextProposal.metadata,
+      client: coverData.clientName ?? nextProposal.metadata.client,
+    };
+  }
+
+  return nextProposal;
+}
+
+function toClientListItem(client: ClientRecord, proposals: ProposalDocument[]): ClientListItem {
+  const proposalCount = proposals.filter(
+    (proposal) => proposal.clientName?.trim().toLowerCase() === client.name.trim().toLowerCase(),
+  ).length;
+
+  return {
+    ...client,
+    proposalCount,
   };
 }
 
@@ -339,30 +456,38 @@ export function createPocProposal(input: {
   const templateId = input.templateId ?? state.templates.find((template) => template.isDefault)?.id ?? DEFAULT_TEMPLATE_ID;
   const id = createId("proposal");
   const createdAt = nowIso();
-  const clientName = input.clientName?.trim() || "New Client";
-  const productName = input.productName?.trim() || "Docs by Gitwork";
+  const clientName = input.clientName?.trim() || "";
   const title = input.title.trim() || "Untitled Proposal";
-
-  const proposal = createSeedProposal({
+  const proposal: ProposalDocument = {
     id,
-    title,
-    clientName,
-    productName,
+    workspaceId: DEFAULT_WORKSPACE_ID,
+    ownerId: DEFAULT_OWNER_ID,
+    templateId,
+    documentType: "PROPOSAL",
     status: "DRAFT",
+    title,
+    productName: "",
+    clientName,
     summary: "",
-    version: "v1.0",
+    version: "",
+    expiresAt: null,
+    metadata: {
+      ...EMPTY_PROPOSAL_METADATA,
+      client: clientName,
+    },
+    exportSettings: {},
     updatedAt: createdAt,
-    approvalChecked: false,
-  });
-
-  proposal.templateId = templateId;
-  proposal.createdAt = createdAt;
-  proposal.updatedAt = createdAt;
-  proposal.metadata.client = clientName;
-  proposal.metadata.owner = DEFAULT_OWNER_NAME;
-  proposal.metadata.version = "v1.0";
+    createdAt,
+    sections: createEmptySections(id, title, clientName),
+    costLineItems: [],
+    timelinePhases: [],
+    assets: [],
+    links: [],
+    ctas: [],
+  };
 
   state.proposals.unshift(proposal);
+  ensureClientInState(state, clientName);
   writeState(state);
   return { proposal };
 }
@@ -376,6 +501,7 @@ export function updatePocProposal(id: string, input: Partial<ProposalDocument>) 
 
   const updated = patchProposal(state.proposals[index], input);
   state.proposals[index] = updated;
+  ensureClientInState(state, updated.clientName);
   writeState(state);
   return { proposal: updated };
 }
@@ -420,6 +546,7 @@ export function duplicatePocProposal(id: string) {
   }));
 
   state.proposals.unshift(duplicate);
+  ensureClientInState(state, duplicate.clientName);
   writeState(state);
   return { proposal: duplicate };
 }
@@ -437,6 +564,50 @@ export function deletePocProposal(id: string) {
 
 export function listPocTemplates() {
   return { templates: readState().templates };
+}
+
+export function listPocClients(filters?: { search?: string }) {
+  const state = readState();
+  const search = filters?.search?.trim().toLowerCase() ?? "";
+
+  const clients = state.clients
+    .filter((client) => {
+      if (!search) {
+        return true;
+      }
+
+      return client.name.toLowerCase().includes(search);
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((client) => toClientListItem(client, state.proposals));
+
+  return { clients };
+}
+
+export function createPocClient(input: { name: string }) {
+  const state = readState();
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("Client name is required.");
+  }
+
+  const existing = state.clients.find((client) => client.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    return { client: existing };
+  }
+
+  const timestamp = nowIso();
+  const client: ClientRecord = {
+    id: createId("client"),
+    name,
+    slug: slugify(name),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  state.clients.unshift(client);
+  writeState(state);
+  return { client };
 }
 
 export function savePocCosting(

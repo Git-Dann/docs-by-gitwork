@@ -1,12 +1,10 @@
 "use client";
 
 import { ChevronUpDownIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
-import { fetchTemplates } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import {
   useArchiveProposal,
@@ -27,6 +25,9 @@ const sortOptions = [
 
 export function ProposalList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const clientFilter = searchParams.get("client")?.trim() ?? "";
+  const openCreate = searchParams.get("new") === "1";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("ALL");
   const [sort, setSort] = useState<(typeof sortOptions)[number]["value"]>("updatedAt:desc");
@@ -34,52 +35,42 @@ export function ProposalList() {
   const [form, setForm] = useState({
     title: "",
     clientName: "",
-    productName: "",
-    templateId: "",
   });
+
+  useEffect(() => {
+    setSearch(clientFilter);
+    setForm((previous) => ({
+      ...previous,
+      clientName: clientFilter,
+    }));
+  }, [clientFilter]);
+
+  useEffect(() => {
+    if (openCreate) {
+      setShowCreate(true);
+    }
+  }, [openCreate]);
 
   const { data, isPending, error } = useProposalList({
     search,
     status,
     sort,
   });
-
-  const { data: templatesResponse } = useQuery({
-    queryKey: ["templates"],
-    queryFn: fetchTemplates,
-  });
-
-  const templates = useMemo(
-    () => templatesResponse?.templates ?? [],
-    [templatesResponse?.templates],
-  );
   const createMutation = useCreateProposal();
   const duplicateMutation = useDuplicateProposal();
   const archiveMutation = useArchiveProposal();
   const deleteMutation = useDeleteProposal();
 
-  const selectedTemplate = useMemo(
-    () =>
-      templates.find((template) => template.id === form.templateId) ??
-      templates.find((template) => template.isDefault) ??
-      templates[0],
-    [form.templateId, templates],
-  );
-
   async function handleCreate() {
     const created = await createMutation.mutateAsync({
       title: form.title || "Untitled Proposal",
       clientName: form.clientName,
-      productName: form.productName,
-      templateId: selectedTemplate?.id,
     });
 
     setShowCreate(false);
     setForm({
       title: "",
       clientName: "",
-      productName: "",
-      templateId: "",
     });
 
     router.push(`/app/proposals/${created.proposal.id}`);
@@ -87,7 +78,7 @@ export function ProposalList() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
+      <section className="rounded-xl border border-[rgba(16,24,40,0.08)] bg-white p-4">
         <div className="flex flex-wrap items-center gap-3">
           <label className="relative min-w-[220px] flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-[var(--text-3)]" />
@@ -98,6 +89,20 @@ export function ProposalList() {
               className="h-10 w-full rounded-md border border-[var(--border-1)] bg-white pl-9 pr-3 text-sm outline-none transition focus:border-[var(--brand-500)]"
             />
           </label>
+
+          {clientFilter ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => {
+                setSearch("");
+                router.push("/app/proposals");
+              }}
+            >
+              Clear client filter
+            </Button>
+          ) : null}
 
           <label className="relative">
             <select
@@ -142,28 +147,27 @@ export function ProposalList() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-[var(--border-1)] bg-white">
+      <section className="overflow-hidden rounded-xl border border-[rgba(16,24,40,0.08)] bg-white">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[var(--border-1)] text-sm">
-            <thead className="bg-[var(--surface-1)]">
+          <table className="min-w-full divide-y divide-[rgba(16,24,40,0.08)] text-sm">
+            <thead className="bg-white">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Proposal</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Template</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Last updated</th>
                 <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border-1)]">
+            <tbody className="divide-y divide-[rgba(16,24,40,0.08)]">
               {isPending ? (
                 <tr>
-                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={5}>
+                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={4}>
                     Loading proposals...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td className="px-4 py-6 text-red-600" colSpan={5}>
+                  <td className="px-4 py-6 text-red-600" colSpan={4}>
                     {(error as Error).message}
                   </td>
                 </tr>
@@ -174,14 +178,11 @@ export function ProposalList() {
                       <Link href={`/app/proposals/${proposal.id}`} className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">
                         {proposal.title}
                       </Link>
-                      <p className="mt-0.5 text-xs text-[var(--text-3)]">
-                        {proposal.productName || "No product"} · {proposal.clientName || "No client"}
-                      </p>
+                      <p className="mt-0.5 text-xs text-[var(--text-3)]">{proposal.clientName || "No client"}</p>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={proposal.status} />
                     </td>
-                    <td className="px-4 py-3 text-[var(--text-2)]">{proposal.templateName || "-"}</td>
                     <td className="px-4 py-3 text-[var(--text-2)]">{formatDate(proposal.updatedAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
@@ -225,7 +226,7 @@ export function ProposalList() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={5}>
+                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={4}>
                     No proposals found.
                   </td>
                 </tr>
@@ -247,24 +248,23 @@ export function ProposalList() {
           <div className="absolute inset-0 flex items-center justify-center p-4">
             <div className="w-full max-w-lg rounded-xl border border-[var(--border-1)] bg-white p-5 shadow-lg">
               <h2 className="text-lg font-semibold">Create proposal</h2>
-            <p className="mt-1 text-sm text-[var(--text-3)]">
-              Start from a structured template and customize in the editor.
-            </p>
+              <p className="mt-1 text-sm text-[var(--text-3)]">
+                Start with a title and optional client. The proposal will open blank in the builder.
+              </p>
 
-            <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
-                  Proposal title
-                </span>
-                <input
-                  value={form.title}
-                  onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))}
-                  className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
-                  placeholder="Project proposal"
-                />
-              </label>
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
+                    Proposal title
+                  </span>
+                  <input
+                    value={form.title}
+                    onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))}
+                    className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
+                    placeholder="Project proposal"
+                  />
+                </label>
 
-              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
                     Client
@@ -275,64 +275,30 @@ export function ProposalList() {
                       setForm((previous) => ({ ...previous, clientName: event.target.value }))
                     }
                     className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
-                    placeholder="Acme Health"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
-                    Product
-                  </span>
-                  <input
-                    value={form.productName}
-                    onChange={(event) =>
-                      setForm((previous) => ({ ...previous, productName: event.target.value }))
-                    }
-                    className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
-                    placeholder="Docs by Gitwork"
+                    placeholder="Dan's Garden"
                   />
                 </label>
               </div>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
-                  Template
-                </span>
-                <select
-                  value={selectedTemplate?.id ?? ""}
-                  onChange={(event) =>
-                    setForm((previous) => ({ ...previous, templateId: event.target.value }))
-                  }
-                  className="h-10 w-full rounded-md border border-[var(--border-1)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-500)]"
+              <div className="mt-5 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  variant="secondary"
+                  size="md"
                 >
-                  {templates.map((template) => (
-                    <option value={template.id} key={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                variant="secondary"
-                size="md"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCreate}
-                loading={createMutation.isPending}
-                variant="primary"
-                size="md"
-              >
-                {createMutation.isPending ? "Creating..." : "Create proposal"}
-              </Button>
-            </div>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCreate}
+                  loading={createMutation.isPending}
+                  variant="primary"
+                  size="md"
+                >
+                  {createMutation.isPending ? "Creating..." : "Create proposal"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

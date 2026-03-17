@@ -32,7 +32,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
-import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { proposalSectionBlueprints } from "@/lib/default-template";
 import { useExportProposal, useProposal, useUpdateProposal } from "@/hooks/use-proposals";
@@ -410,7 +409,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       </section>
 
       {activeTab === "overview" ? (
-        <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} proposalId={proposalId} />
+        <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
       ) : (
         <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
           <TableOfContentsCard
@@ -635,11 +634,9 @@ function GrabberHandle() {
 function OverviewCanvas({
   proposal,
   sections,
-  proposalId,
 }: {
   proposal: ProposalDocument;
   sections: ProposalSection[];
-  proposalId: string;
 }) {
   const cover = sections.find((section) => section.key === "cover")?.data as
     | {
@@ -754,139 +751,86 @@ function OverviewCanvas({
   const linksCount = proposal.links.filter((link) => link.url.trim().length > 0).length;
   const ctaCount = proposal.ctas.filter((cta) => cta.label.trim().length > 0).length;
   const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY");
-  const secondaryCta = proposal.ctas.find((cta) => cta.role === "SECONDARY");
 
-  const clientName = proposal.clientName || proposal.metadata.client || cover?.clientName || "-";
-  const owner = proposal.metadata.owner || "-";
+  const clientName = proposal.clientName || proposal.metadata.client || cover?.clientName || "";
+  const owner = proposal.metadata.owner || "";
   const expiryDate = proposal.expiresAt ?? proposal.metadata.expiryDate ?? null;
-  const overviewStatement =
-    introduction?.statement ||
-    introduction?.summary ||
-    productOverview?.platformDescription ||
-    "Use this space to summarise the proposal, the delivery model, and the outcomes stakeholders are approving.";
-
-  const summaryItems = [
-    productOverview?.valueProposition,
-    productOverview?.audience,
-    ...((touchpoints?.items ?? []).slice(0, 2).map((item) => item.title).filter(Boolean) as string[]),
-  ].filter(Boolean) as string[];
+  const isEmptyProposal =
+    !clientName &&
+    !proposal.productName &&
+    !proposal.summary &&
+    !proposal.version &&
+    !introduction?.statement &&
+    !introduction?.summary &&
+    !productOverview?.platformDescription &&
+    !productOverview?.audience &&
+    !productOverview?.valueProposition &&
+    !proposal.costLineItems.length &&
+    !proposal.timelinePhases.length &&
+    !objectiveCount &&
+    !touchpointCount &&
+    !linksCount &&
+    !assetsCount &&
+    !ctaCount;
 
   return (
     <article className="space-y-7 rounded-2xl border border-[var(--border-1)] bg-white p-6">
       <header>
         <h3 className="text-4xl font-semibold tracking-tight text-[var(--text-1)]">Proposal overview</h3>
         <p className="mt-1 text-lg text-[var(--text-3)]">
-          A live snapshot of commercial, delivery, and stakeholder readiness across this proposal.
+          A light snapshot of the proposal setup, delivery shape, and commercial status.
         </p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-        <OverviewMetricCard
-          eyebrow="Commercial"
-          title={formatCurrency(grandTotal, currency)}
-          subtitle="Grand total"
-        >
-          <OverviewStatRow label="Billable team" value={billableTeamCount} />
-          <OverviewStatRow label="One-off" value={formatCurrency(oneOffTotal, currency)} />
-          <OverviewStatRow label="Recurring" value={formatCurrency(recurringTotal, currency)} />
-          <OverviewStatRow
-            label={`Discount (${discount}%)`}
-            value={formatCurrency(discountAmount, currency)}
-          />
-          <OverviewStatRow label={`Tax (${taxRate}%)`} value={formatCurrency(taxAmount, currency)} />
-        </OverviewMetricCard>
-
-        <OverviewMetricCard eyebrow="Delivery" title={`${phasesCount} phases`} subtitle="Delivery plan">
-          <OverviewStatRow label="Deliverables" value={deliverablesCount} />
-          <OverviewStatRow label="Workstreams" value={workstreamCount} />
-          <OverviewStatRow label="Milestones" value={paymentMilestoneCount} />
-          <OverviewStatRow
-            label="Timeline mode"
-            value={(timeline?.viewMode ?? "LIST").toLowerCase().replace(/^\w/, (char) => char.toUpperCase())}
-          />
-          <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
-        </OverviewMetricCard>
-
-        <OverviewMetricCard
-          eyebrow="Scope"
-          title={`${touchpointCount} touchpoints`}
-          subtitle="Structured scope coverage"
-        >
-          <OverviewStatRow label="Objectives" value={objectiveCount} />
-          <OverviewStatRow label="Features" value={featureCount} />
-          <OverviewStatRow label="Visible modules" value={visibleSectionsCount} />
-          <OverviewStatRow label="Template sections" value={sections.length} />
-        </OverviewMetricCard>
-
-        <OverviewMetricCard eyebrow="Stakeholders" title={clientName} subtitle="Client and ownership">
-          <OverviewStatRow label="Owner" value={owner} />
-          <OverviewStatRow label="Prepared by" value={signoff?.preparedBy || "-"} />
-          <OverviewStatRow label="Team" value={signoff?.team || "-"} />
-          <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
-        </OverviewMetricCard>
-
-        <OverviewMetricCard eyebrow="Engagement" title={`${ctaCount} calls to action`} subtitle="Links and assets">
-          <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "-"} />
-          <OverviewStatRow label="Secondary CTA" value={secondaryCta?.label || "-"} />
-          <OverviewStatRow label="Links" value={linksCount} />
-          <OverviewStatRow label="Assets" value={assetsCount} />
-        </OverviewMetricCard>
-
-        <OverviewMetricCard
-          eyebrow="Governance"
-          title={proposal.metadata.approvalChecked ? "Ready for approval" : "Needs approval"}
-          subtitle="Controls and boundaries"
-        >
-          <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
-          <OverviewStatRow
-            label="Approval"
-            value={proposal.metadata.approvalChecked ? "Checked" : "Pending"}
-          />
-          <OverviewStatRow label="Assumptions" value={assumptionCount} />
-          <OverviewStatRow label="Out of scope" value={outOfScopeCount} />
-        </OverviewMetricCard>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-3)]">
-            Executive summary
+      {isEmptyProposal ? (
+        <section className="rounded-2xl bg-[var(--surface-0)] p-6 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
+          <h4 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">Nothing to summarise yet</h4>
+          <p className="mt-2 max-w-2xl text-base leading-7 text-[var(--text-3)]">
+            New proposals now start blank. Use Builder to add client details, scope, timeline, and pricing. The overview will stay empty until there is something real to summarise.
           </p>
-          <p className="mt-3 text-xl leading-relaxed text-[var(--text-2)]">{overviewStatement}</p>
+        </section>
+      ) : (
+        <section className="grid gap-4 xl:grid-cols-2">
+          <OverviewMetricCard
+            eyebrow="Commercial"
+            title={formatCurrency(grandTotal, currency)}
+            subtitle="Current proposal value"
+          >
+            <OverviewStatRow label="Billable people" value={billableTeamCount} />
+            <OverviewStatRow label="One-off" value={formatCurrency(oneOffTotal, currency)} />
+            <OverviewStatRow label="Recurring" value={formatCurrency(recurringTotal, currency)} />
+            <OverviewStatRow label={`Discount (${discount}%)`} value={formatCurrency(discountAmount, currency)} />
+            <OverviewStatRow label={`VAT (${taxRate}%)`} value={formatCurrency(taxAmount, currency)} />
+          </OverviewMetricCard>
 
-          {summaryItems.length ? (
-            <ul className="mt-4 space-y-2 text-base leading-relaxed text-[var(--text-2)]">
-              {summaryItems.slice(0, 4).map((item) => (
-                <li key={item} className="flex items-start gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+          <OverviewMetricCard eyebrow="Delivery" title={`${phasesCount} phases`} subtitle="Implementation shape">
+            <OverviewStatRow label="Deliverables" value={deliverablesCount} />
+            <OverviewStatRow label="Workstreams" value={workstreamCount} />
+            <OverviewStatRow label="Milestones" value={paymentMilestoneCount} />
+            <OverviewStatRow
+              label="Timeline mode"
+              value={(timeline?.viewMode ?? "LIST").toLowerCase().replace(/^\w/, (char) => char.toUpperCase())}
+            />
+            <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
+          </OverviewMetricCard>
 
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-[var(--border-1)] bg-white p-5">
-            <h4 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">At a glance</h4>
-            <div className="mt-4 space-y-3">
-              <OverviewInfoRow label="Proposal" value={proposal.title} />
-              <OverviewInfoRow label="Product" value={proposal.productName || cover?.productName || "-"} />
-              <OverviewInfoRow
-                label="Audience"
-                value={
-                  productOverview?.audience ||
-                  "Add a product overview audience statement to surface it here."
-                }
-              />
-              <OverviewInfoRow label="Version" value={proposal.version || proposal.metadata.version || "-"} />
-              <OverviewInfoRow label="Contact" value={signoff?.contactDetails || "-"} />
-            </div>
-          </div>
+          <OverviewMetricCard eyebrow="Scope" title={`${touchpointCount} touchpoints`} subtitle="Structured proposal coverage">
+            <OverviewStatRow label="Objectives" value={objectiveCount} />
+            <OverviewStatRow label="Features" value={featureCount} />
+            <OverviewStatRow label="Visible modules" value={visibleSectionsCount} />
+            <OverviewStatRow label="Assumptions" value={assumptionCount} />
+            <OverviewStatRow label="Out of scope" value={outOfScopeCount} />
+          </OverviewMetricCard>
 
-          <ProposalProofPanel proposalId={proposalId} proposalTitle={proposal.title} />
-        </div>
-      </section>
+          <OverviewMetricCard eyebrow="Stakeholders" title={clientName || "No client set"} subtitle="Client and ownership">
+            <OverviewStatRow label="Owner" value={owner || "Not set"} />
+            <OverviewStatRow label="Prepared by" value={signoff?.preparedBy || "Not set"} />
+            <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
+            <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
+            <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
+          </OverviewMetricCard>
+        </section>
+      )}
     </article>
   );
 }
@@ -903,7 +847,7 @@ function OverviewMetricCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-0)] p-5">
+    <section className="rounded-2xl bg-[var(--surface-0)] p-5 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-3)]">{eyebrow}</p>
       <h4 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text-1)]">{title}</h4>
       <p className="mt-1 text-sm text-[var(--text-3)]">{subtitle}</p>
@@ -923,21 +867,6 @@ function OverviewStatRow({
     <div className="flex items-center justify-between gap-3 text-sm">
       <span className="text-[var(--text-3)]">{label}</span>
       <span className="text-right font-semibold text-[var(--text-1)]">{value}</span>
-    </div>
-  );
-}
-
-function OverviewInfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
-  return (
-    <div className="border-b border-[var(--border-1)] pb-3 last:border-b-0 last:pb-0">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-3)]">{label}</p>
-      <div className="mt-1 text-base leading-relaxed text-[var(--text-2)]">{value}</div>
     </div>
   );
 }

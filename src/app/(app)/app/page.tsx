@@ -9,6 +9,12 @@ const cards = [
     action: "Open proposals",
   },
   {
+    title: "Clients",
+    body: "Create and manage client records before attaching proposals to them.",
+    href: "/app/clients",
+    action: "Open clients",
+  },
+  {
     title: "Template foundation",
     body: "Manage reusable document templates and section structures.",
     href: "/app/templates",
@@ -28,7 +34,7 @@ export default function AppDashboardPage() {
       title="Dashboard"
       subtitle="Docs by Gitwork. Proposal generation optimized for internal delivery teams."
     >
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <article key={card.title} className="rounded-xl border border-[var(--border-1)] bg-white p-4">
             <h2 className="text-base font-semibold">{card.title}</h2>
