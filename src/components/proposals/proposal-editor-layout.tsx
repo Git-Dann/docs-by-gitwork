@@ -400,27 +400,32 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   variant: "primary",
                   size: "md",
                   className:
-                    "list-none gap-2 [&::-webkit-details-marker]:hidden",
+                    "list-none gap-2 pr-2 [&::-webkit-details-marker]:hidden",
                 })}
               >
-                <ArrowDownTrayIcon className="h-4 w-4" />
-                Export
+                <CheckCircleIcon className="h-4 w-4" />
+                Approve, Share & Export
+                <span className="rounded-full border border-white/20 bg-white/12 px-2 py-1 text-[11px] font-semibold tracking-[0.01em] text-white/95">
+                  {statusLabel(draft.status)}
+                </span>
                 <ChevronDownIcon className="h-4 w-4 opacity-80 transition group-open:rotate-180" />
               </summary>
 
               <div className="absolute right-0 z-30 mt-2 w-[360px] rounded-2xl border border-[var(--border-1)] bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--text-1)]">Workflow status</p>
+                  <p className="text-sm font-semibold text-[var(--text-1)]">Approve, share & export</p>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
-                    Choose the current proposal sign-off state. The chip below the title updates from this.
+                    Manage proposal sign-off, control shared output, and publish the client-facing link from one place.
                   </p>
                 </div>
 
-                <div className="mt-4 space-y-2">
+                <div className="mt-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">Approvals</p>
+                  <div className="mt-3 space-y-2">
                   {workflowStatuses.map((status) => (
                     <label
                       key={status}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] px-3 py-2.5 text-sm text-[var(--text-2)]"
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
                     >
                       <input
                         type="checkbox"
@@ -436,20 +441,20 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       <span>{statusLabel(status)}</span>
                     </label>
                   ))}
+                  </div>
                 </div>
 
-                <div className="mt-5 border-t border-[var(--border-1)] pt-4">
-                  <p className="text-sm font-semibold text-[var(--text-1)]">Export settings</p>
+                <div className="mt-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">Export settings</p>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
                     Control what appears in the shared and export-ready proposal output.
                   </p>
-                </div>
 
-                <div className="mt-4 space-y-2">
+                  <div className="mt-3 space-y-2">
                   {exportOptionConfig.map((option) => (
                     <label
                       key={option.key}
-                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] px-3 py-2.5 text-sm text-[var(--text-2)]"
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
                     >
                       <input
                         type="checkbox"
@@ -468,6 +473,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       <span>{option.label}</span>
                     </label>
                   ))}
+                  </div>
                 </div>
 
                 <div className="mt-4 rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
