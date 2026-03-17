@@ -70,7 +70,7 @@ export function CoverEditor({
         Display format: <span className="font-medium">{value.productName || "Product"} by Gitwork</span>
       </p>
       <p className="text-xs text-[var(--text-3)]">
-        Cover logos and graphics are handled in Supporting Links & Assets. Use a `Logo` asset with placement `Cover client logo` if you want the client x Gitwork lockup.
+        Public preview branding is handled in Supporting Links & Assets. Use placements `Cover brand logo`, `Cover client logo`, `Cover top accent`, and `Cover bottom accent` to update the shareable cover without code changes.
       </p>
     </div>
   );

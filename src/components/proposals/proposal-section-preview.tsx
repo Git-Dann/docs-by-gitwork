@@ -541,8 +541,17 @@ function CoverPagePreview({
       }
     | undefined;
   const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY" && cta.label.trim().length > 0);
+  const brandLogo = proposal.assets.find(
+    (asset) => asset.placement === "cover-brand-logo" && asset.url.trim().length > 0,
+  );
   const clientLogo = proposal.assets.find(
     (asset) => asset.type === "LOGO" && asset.placement === "cover-client-logo" && asset.url.trim().length > 0,
+  );
+  const topAccent = proposal.assets.find(
+    (asset) => asset.placement === "cover-top-accent" && asset.url.trim().length > 0,
+  );
+  const bottomAccent = proposal.assets.find(
+    (asset) => asset.placement === "cover-bottom-accent" && asset.url.trim().length > 0,
   );
   const clientName = data.clientName || proposal.clientName || proposal.metadata.client || "Client";
   const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
@@ -552,16 +561,24 @@ function CoverPagePreview({
       id={sectionId}
       className="relative isolate overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-white px-8 py-10 sm:px-16 sm:py-14"
     >
-      <CoverAccent position="top" />
-      <CoverAccent position="bottom" />
+      <CoverAccent position="top" assetUrl={topAccent?.url} altText={topAccent?.altText || "Top cover accent"} />
+      <CoverAccent
+        position="bottom"
+        assetUrl={bottomAccent?.url}
+        altText={bottomAccent?.altText || "Bottom cover accent"}
+      />
 
       <div className="relative z-10 mx-auto flex min-h-[1080px] max-w-4xl flex-col items-center justify-between text-center">
         <div className="w-full pt-10">
           <div className="flex justify-center">
             {data.brandLockup === "CLIENT_X_GITWORK" ? (
-              <ClientGitworkLockup clientName={clientName} clientLogoUrl={clientLogo?.url} />
+              <ClientGitworkLockup
+                clientName={clientName}
+                clientLogoUrl={clientLogo?.url}
+                brandLogoUrl={brandLogo?.url}
+              />
             ) : (
-              <GitworkLockup />
+              <GitworkLockup brandLogoUrl={brandLogo?.url} />
             )}
           </div>
 
@@ -607,7 +624,30 @@ function CoverPagePreview({
   );
 }
 
-function CoverAccent({ position }: { position: "top" | "bottom" }) {
+function CoverAccent({
+  position,
+  assetUrl,
+  altText,
+}: {
+  position: "top" | "bottom";
+  assetUrl?: string;
+  altText: string;
+}) {
+  if (assetUrl) {
+    return (
+      <div
+        className={position === "top" ? "pointer-events-none absolute inset-x-0 top-0" : "pointer-events-none absolute inset-x-0 bottom-0"}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={assetUrl}
+          alt={altText}
+          className={position === "top" ? "w-full object-contain align-top" : "w-full object-contain align-bottom"}
+        />
+      </div>
+    );
+  }
+
   if (position === "top") {
     return (
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-center px-10">
@@ -627,10 +667,15 @@ function CoverAccent({ position }: { position: "top" | "bottom" }) {
   );
 }
 
-function GitworkLockup() {
+function GitworkLockup({ brandLogoUrl }: { brandLogoUrl?: string }) {
   return (
     <div className="flex flex-col items-center gap-5">
-      <GitworkMark className="h-24 w-24" />
+      {brandLogoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brandLogoUrl} alt="Gitwork logo" className="h-24 w-auto object-contain" />
+      ) : (
+        <GitworkMark className="h-24 w-24" />
+      )}
       <span className="text-2xl font-medium tracking-[-0.02em] text-[var(--text-2)]">Gitwork</span>
     </div>
   );
@@ -639,9 +684,11 @@ function GitworkLockup() {
 function ClientGitworkLockup({
   clientName,
   clientLogoUrl,
+  brandLogoUrl,
 }: {
   clientName: string;
   clientLogoUrl?: string;
+  brandLogoUrl?: string;
 }) {
   return (
     <div className="flex items-center gap-8">
@@ -652,7 +699,12 @@ function ClientGitworkLockup({
         <span className="max-w-[320px] text-5xl font-semibold tracking-[-0.05em] text-[#1d4ed8]">{clientName}</span>
       )}
       <span className="text-5xl font-light text-[var(--text-1)]">×</span>
-      <GitworkMark className="h-24 w-24" />
+      {brandLogoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brandLogoUrl} alt="Gitwork logo" className="h-24 w-auto object-contain" />
+      ) : (
+        <GitworkMark className="h-24 w-24" />
+      )}
     </div>
   );
 }

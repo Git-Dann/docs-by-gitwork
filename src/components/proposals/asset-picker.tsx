@@ -13,7 +13,10 @@ const assetTypes: AssetInput["type"][] = [
 ];
 const placementOptions = [
   { value: "cover", label: "Cover" },
+  { value: "cover-brand-logo", label: "Cover brand logo" },
   { value: "cover-client-logo", label: "Cover client logo" },
+  { value: "cover-top-accent", label: "Cover top accent" },
+  { value: "cover-bottom-accent", label: "Cover bottom accent" },
   { value: "introduction", label: "Introduction" },
   { value: "product_overview", label: "Product overview" },
   { value: "objectives", label: "Objectives" },
