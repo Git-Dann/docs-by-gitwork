@@ -1,6 +1,5 @@
 "use client";
 
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   DndContext,
   KeyboardSensor,
@@ -477,37 +476,35 @@ function TableOfContentsCard({
       <div className="flex items-center justify-between border-b border-[var(--border-1)] pb-4">
         <h2 className="text-3xl font-semibold tracking-tight text-[var(--text-1)]">Table of Contents</h2>
         {editable ? (
-          <Menu as="div" className="relative">
-            <MenuButton
+          <details className="group relative">
+            <summary
               className={buttonStyles({
                 variant: "secondary",
                 size: "md",
-                className: "gap-2 rounded-xl px-3.5",
+                className:
+                  "list-none gap-2 rounded-xl px-3.5 [&::-webkit-details-marker]:hidden",
               })}
             >
               <PlusIcon className="h-4 w-4" />
               Add
-            </MenuButton>
+            </summary>
 
-            <MenuItems className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-[var(--border-1)] bg-white py-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)] focus:outline-none">
+            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-[var(--border-1)] bg-white py-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
               {proposalSectionBlueprints.map((module) => (
-                <MenuItem key={module.key}>
-                  {({ focus }) => (
-                    <button
-                      type="button"
-                      onClick={() => onAddSection?.(module.key)}
-                      className={cn(
-                        "flex w-full items-center justify-between px-4 py-3 text-left text-lg font-medium tracking-[-0.01em] text-[var(--text-2)]",
-                        focus ? "bg-[var(--surface-1)] text-[var(--text-1)]" : "",
-                      )}
-                    >
-                      <span>{module.title}</span>
-                    </button>
-                  )}
-                </MenuItem>
+                <button
+                  key={module.key}
+                  type="button"
+                  onClick={(event) => {
+                    onAddSection?.(module.key);
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                  }}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-lg font-medium tracking-[-0.01em] text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                >
+                  <span>{module.title}</span>
+                </button>
               ))}
-            </MenuItems>
-          </Menu>
+            </div>
+          </details>
         ) : null}
       </div>
 

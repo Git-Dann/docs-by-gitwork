@@ -1,14 +1,13 @@
 "use client";
 
-import { Dialog, DialogPanel, DialogTitle, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
-import { CheckIcon, ChevronUpDownIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { ChevronUpDownIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { fetchTemplates } from "@/lib/api";
-import { cn, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import {
   useArchiveProposal,
   useCreateProposal,
@@ -100,77 +99,35 @@ export function ProposalList() {
             />
           </label>
 
-          <Listbox value={status} onChange={setStatus}>
-            <div className="relative">
-              <ListboxButton
-                className={buttonStyles({
-                  variant: "secondary",
-                  size: "md",
-                  className: "min-w-[150px] justify-between",
-                })}
-              >
-                <span>{status === "ALL" ? "All statuses" : status.replace("_", " ")}</span>
-                <ChevronUpDownIcon className="h-4 w-4 text-[var(--text-3)]" />
-              </ListboxButton>
-              <ListboxOptions className="absolute z-20 mt-1 w-full rounded-md border border-[var(--border-1)] bg-white p-1 shadow-sm focus:outline-none">
-                {statusOptions.map((option) => (
-                  <ListboxOption
-                    key={option}
-                    value={option}
-                    className={({ focus }) =>
-                      cn(
-                        "cursor-pointer rounded px-2 py-1.5 text-sm",
-                        focus ? "bg-[var(--surface-1)]" : "",
-                      )
-                    }
-                  >
-                    {({ selected }) => (
-                      <div className="flex items-center justify-between">
-                        <span>{option === "ALL" ? "All statuses" : option.replace("_", " ")}</span>
-                        {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
-                      </div>
-                    )}
-                  </ListboxOption>
-                ))}
-              </ListboxOptions>
-            </div>
-          </Listbox>
+          <label className="relative">
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value as (typeof statusOptions)[number])}
+              className="proposal-field-compact min-w-[150px] appearance-none pr-10"
+            >
+              {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option === "ALL" ? "All statuses" : option.replace("_", " ")}
+                </option>
+              ))}
+            </select>
+            <ChevronUpDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
+          </label>
 
-          <Listbox value={sort} onChange={setSort}>
-            <div className="relative">
-              <ListboxButton
-                className={buttonStyles({
-                  variant: "secondary",
-                  size: "md",
-                  className: "min-w-[160px] justify-between",
-                })}
-              >
-                <span>{sortOptions.find((option) => option.value === sort)?.label}</span>
-                <ChevronUpDownIcon className="h-4 w-4 text-[var(--text-3)]" />
-              </ListboxButton>
-              <ListboxOptions className="absolute z-20 mt-1 w-full rounded-md border border-[var(--border-1)] bg-white p-1 shadow-sm focus:outline-none">
-                {sortOptions.map((option) => (
-                  <ListboxOption
-                    key={option.value}
-                    value={option.value}
-                    className={({ focus }) =>
-                      cn(
-                        "cursor-pointer rounded px-2 py-1.5 text-sm",
-                        focus ? "bg-[var(--surface-1)]" : "",
-                      )
-                    }
-                  >
-                    {({ selected }) => (
-                      <div className="flex items-center justify-between">
-                        <span>{option.label}</span>
-                        {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
-                      </div>
-                    )}
-                  </ListboxOption>
-                ))}
-              </ListboxOptions>
-            </div>
-          </Listbox>
+          <label className="relative">
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as (typeof sortOptions)[number]["value"])}
+              className="proposal-field-compact min-w-[160px] appearance-none pr-10"
+            >
+              {sortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <ChevronUpDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
+          </label>
 
           <Button
             type="button"
@@ -278,12 +235,18 @@ export function ProposalList() {
         </div>
       </section>
 
-      <Dialog open={showCreate} onClose={setShowCreate} className="relative z-30">
-        <div className="fixed inset-0 bg-zinc-900/40" aria-hidden="true" />
+      {showCreate ? (
+        <div className="fixed inset-0 z-30">
+          <button
+            type="button"
+            aria-label="Close create proposal modal"
+            className="absolute inset-0 bg-zinc-900/40"
+            onClick={() => setShowCreate(false)}
+          />
 
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-lg rounded-xl border border-[var(--border-1)] bg-white p-5 shadow-lg">
-            <DialogTitle className="text-lg font-semibold">Create proposal</DialogTitle>
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-xl border border-[var(--border-1)] bg-white p-5 shadow-lg">
+              <h2 className="text-lg font-semibold">Create proposal</h2>
             <p className="mt-1 text-sm text-[var(--text-3)]">
               Start from a structured template and customize in the editor.
             </p>
@@ -370,9 +333,10 @@ export function ProposalList() {
                 {createMutation.isPending ? "Creating..." : "Create proposal"}
               </Button>
             </div>
-          </DialogPanel>
+            </div>
+          </div>
         </div>
-      </Dialog>
+      ) : null}
     </div>
   );
 }

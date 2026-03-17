@@ -10,29 +10,23 @@ import type {
   ProofDocumentUpdateInput,
   ProofHealthResponse,
 } from "@/lib/proof";
-
-interface ApiErrorPayload {
-  error: string;
-  details?: unknown;
-}
-
-async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const payload = (await response.json()) as T | ApiErrorPayload;
-  if (!response.ok) {
-    const message = (payload as ApiErrorPayload).error ?? "Request failed";
-    throw new Error(message);
-  }
-
-  return payload as T;
-}
+import {
+  archivePocProposal,
+  createPocProofDocument,
+  createPocProposal,
+  deletePocProposal,
+  duplicatePocProposal,
+  getPocProposal,
+  listPocProofDocuments,
+  listPocProposals,
+  listPocTemplates,
+  requestPocExport,
+  savePocCosting,
+  savePocEngagement,
+  savePocTimeline,
+  updatePocProofDocument,
+  updatePocProposal,
+} from "@/lib/poc-store";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -43,12 +37,7 @@ export async function listProposals(params: {
   status?: string;
   sort?: string;
 }) {
-  const query = new URLSearchParams();
-  if (params.search) query.set("search", params.search);
-  if (params.status) query.set("status", params.status);
-  if (params.sort) query.set("sort", params.sort);
-
-  return request<ProposalListResponse>(`/api/proposals?${query.toString()}`);
+  return listPocProposals(params);
 }
 
 export async function createProposal(input: {
@@ -57,46 +46,36 @@ export async function createProposal(input: {
   productName?: string;
   templateId?: string;
 }) {
-  return request<{ proposal: ProposalDocument }>("/api/proposals", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return createPocProposal(input);
 }
 
 export async function getProposal(id: string) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}`);
+  const proposal = getPocProposal(id);
+  if (!proposal) {
+    throw new Error("Proposal not found.");
+  }
+
+  return { proposal };
 }
 
 export async function updateProposal(id: string, input: Partial<ProposalDocument>) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  return updatePocProposal(id, input);
 }
 
 export async function duplicateProposal(id: string) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}/duplicate`, {
-    method: "POST",
-  });
+  return duplicatePocProposal(id);
 }
 
 export async function archiveProposal(id: string) {
-  return request<{ proposal: { id: string; status: string } }>(
-    `/api/proposals/${id}/archive`,
-    {
-      method: "POST",
-    },
-  );
+  return archivePocProposal(id);
 }
 
 export async function deleteProposal(id: string) {
-  return request<{ ok: true }>(`/api/proposals/${id}/delete`, {
-    method: "DELETE",
-  });
+  return deletePocProposal(id);
 }
 
 export async function fetchTemplates() {
-  return request<{ templates: TemplateSummary[] }>("/api/templates");
+  return listPocTemplates();
 }
 
 export async function saveCosting(
@@ -119,10 +98,7 @@ export async function saveCosting(
     additionalNotes?: string[];
   },
 ) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}/costing`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return savePocCosting(id, input);
 }
 
 export async function saveTimeline(
@@ -132,10 +108,7 @@ export async function saveTimeline(
     viewMode?: "LIST" | "MILESTONE";
   },
 ) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}/timeline`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return savePocTimeline(id, input);
 }
 
 export async function saveEngagement(
@@ -145,10 +118,7 @@ export async function saveEngagement(
     links: ProposalDocument["links"];
   },
 ) {
-  return request<{ proposal: ProposalDocument }>(`/api/proposals/${id}/engagement`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return savePocEngagement(id, input);
 }
 
 export async function requestExport(
@@ -158,44 +128,21 @@ export async function requestExport(
     settings?: Record<string, unknown>;
   },
 ) {
-  return request<{
-    export: {
-      id: string;
-      format: "PRINT" | "PDF" | "SHARE_LINK";
-      status: "PENDING" | "READY" | "FAILED";
-      url: string | null;
-      requestedAt: string;
-    };
-  }>(`/api/proposals/${id}/export`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return requestPocExport(id, input);
 }
 
-export async function getProofHealth() {
-  return request<ProofHealthResponse>("/api/proof/health");
+export async function getProofHealth(): Promise<ProofHealthResponse> {
+  throw new Error("Proof service is disabled in POC mode.");
 }
 
 export async function listProofDocuments(params?: { proposalId?: string | null }) {
-  const query = new URLSearchParams();
-  if (params?.proposalId) {
-    query.set("proposalId", params.proposalId);
-  }
-
-  const suffix = query.size ? `?${query.toString()}` : "";
-  return request<{ documents: ProofDocumentRecord[] }>(`/api/proof/documents${suffix}`);
+  return listPocProofDocuments(params);
 }
 
 export async function createProofDocument(input: ProofCreateDocumentInput) {
-  return request<{ document: ProofDocumentRecord }>("/api/proof/documents", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return createPocProofDocument(input);
 }
 
 export async function updateProofDocument(id: string, input: ProofDocumentUpdateInput) {
-  return request<{ document: ProofDocumentRecord }>(`/api/proof/documents/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  return updatePocProofDocument(id, input);
 }

@@ -1,34 +1,31 @@
-export const dynamic = "force-dynamic";
+"use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
-import { prisma } from "@/lib/prisma";
-import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { useProposal } from "@/hooks/use-proposals";
 
-interface ProposalPreviewPageProps {
-  params: Promise<{ id: string }>;
-}
+export default function ProposalPreviewPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? "";
+  const { data, isPending, error } = useProposal(id);
 
-export default async function ProposalPreviewPage({ params }: ProposalPreviewPageProps) {
-  const { id } = await params;
-
-  const proposal = await prisma.document.findUnique({
-    where: {
-      id,
-    },
-    include: proposalInclude,
-  });
-
-  if (!proposal) {
+  if (isPending) {
     return (
-      <AppShell title="Preview" subtitle="Proposal not found.">
-        <p className="text-sm text-rose-700">Proposal not found.</p>
+      <AppShell title="Proposal Preview" subtitle="Loading proposal preview.">
+        <p className="text-sm text-[var(--text-3)]">Loading proposal...</p>
       </AppShell>
     );
   }
 
-  const serialized = serializeProposal(proposal);
+  if (error || !data?.proposal) {
+    return (
+      <AppShell title="Preview" subtitle="Proposal not found.">
+        <p className="text-sm text-rose-700">{(error as Error)?.message ?? "Proposal not found."}</p>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell
@@ -51,7 +48,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
           </Link>
         </div>
 
-        <ProposalPreview proposal={serialized} />
+        <ProposalPreview proposal={data.proposal} />
       </div>
     </AppShell>
   );

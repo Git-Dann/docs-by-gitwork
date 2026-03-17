@@ -1,6 +1,5 @@
 "use client";
 
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
@@ -445,8 +444,8 @@ function TechStackMultiSelect({
   }
 
   return (
-    <Menu as="div" className="relative">
-      <MenuButton className="flex min-h-9 min-w-[260px] items-center justify-between gap-3 rounded-lg border border-[var(--border-1)] bg-white px-2 py-2 text-left text-sm text-[var(--text-1)]">
+    <details className="relative">
+      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-lg border border-[var(--border-1)] bg-white px-2 py-2 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
         <span className="flex flex-wrap gap-1.5">
           {value.length ? (
             value.map((entry) => (
@@ -462,33 +461,27 @@ function TechStackMultiSelect({
           )}
         </span>
         <ChevronDownIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
-      </MenuButton>
+      </summary>
 
-      <MenuItems className="absolute left-0 z-20 mt-2 max-h-80 w-[320px] overflow-y-auto rounded-2xl border border-[var(--border-1)] bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)] focus:outline-none">
+      <div className="absolute left-0 z-20 mt-2 max-h-80 w-[320px] overflow-y-auto rounded-2xl border border-[var(--border-1)] bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
         {techStackOptions.map((option) => {
           const selected = value.includes(option);
           return (
-            <MenuItem key={option}>
-              {({ focus }) => (
-                <button
-                  type="button"
-                  onClick={() => toggle(option)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm",
-                    focus ? "bg-[var(--surface-1)]" : "",
-                  )}
-                >
-                  <span className={selected ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}>
-                    {option}
-                  </span>
-                  {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
-                </button>
-              )}
-            </MenuItem>
+            <button
+              key={option}
+              type="button"
+              onClick={() => toggle(option)}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-1)]"
+            >
+              <span className={selected ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}>
+                {option}
+              </span>
+              {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
+            </button>
           );
         })}
-      </MenuItems>
-    </Menu>
+      </div>
+    </details>
   );
 }
 

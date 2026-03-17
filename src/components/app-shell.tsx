@@ -1,6 +1,5 @@
 "use client";
 
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   ArrowRightOnRectangleIcon,
   ChartBarSquareIcon,
@@ -14,7 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 
@@ -387,9 +386,37 @@ function SidebarLink({
 }
 
 function ProfileMenu() {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
   return (
-    <Menu as="div" className="relative mt-4">
-      <MenuButton className={buttonStyles({ variant: "secondary", size: "md", className: "h-auto w-full justify-start p-3 text-left" })}>
+    <div ref={menuRef} className="relative mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={buttonStyles({ variant: "secondary", size: "md", className: "h-auto w-full justify-start p-3 text-left" })}
+      >
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -402,86 +429,70 @@ function ProfileMenu() {
             <p className="truncate text-sm text-[var(--text-3)]">olivia@untitledui.com</p>
           </div>
         </div>
-      </MenuButton>
+      </button>
 
-      <MenuItems className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[380px] rounded-[20px] border border-[var(--border-1)] bg-white p-2 shadow-[0_20px_45px_rgba(15,23,42,0.12)] focus:outline-none">
-        <MenuItem>
-          {({ focus }) => (
-            <button
-              className={cn(
-                buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" }),
-                focus ? "bg-[var(--surface-1)]" : "",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <UserCircleIcon className="h-5 w-5" />
-                View profile
-              </span>
-              <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘K→P</span>
-            </button>
-          )}
-        </MenuItem>
+      {open ? (
+        <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[380px] rounded-[20px] border border-[var(--border-1)] bg-white p-2 shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
+          <button
+            type="button"
+            className={buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+          >
+            <span className="flex items-center gap-2">
+              <UserCircleIcon className="h-5 w-5" />
+              View profile
+            </span>
+            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘K→P</span>
+          </button>
 
-        <MenuItem>
-          {({ focus }) => (
-            <button
-              className={cn(
-                buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" }),
-                focus ? "bg-[var(--surface-1)]" : "",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <Cog8ToothIcon className="h-5 w-5" />
-                Account settings
-              </span>
-              <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘S</span>
-            </button>
-          )}
-        </MenuItem>
+          <button
+            type="button"
+            className={buttonStyles({ variant: "tertiary", size: "sm", className: "mt-1 w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+          >
+            <span className="flex items-center gap-2">
+              <Cog8ToothIcon className="h-5 w-5" />
+              Account settings
+            </span>
+            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘S</span>
+          </button>
 
-        <div className="my-2 border-t border-[var(--border-1)]" />
+          <div className="my-2 border-t border-[var(--border-1)]" />
 
-        <div className="rounded-xl border border-[var(--border-1)] p-2">
-          <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
-              alt="Olivia Rhye"
-              className="h-11 w-11 rounded-full object-cover"
-            />
-            <div className="relative">
-              <p className="text-sm font-semibold text-[var(--text-1)]">Olivia Rhye</p>
-              <p className="text-xs text-[var(--text-3)]">olivia@untitledui.com</p>
-              <span className="absolute -bottom-0.5 -left-2 h-2.5 w-2.5 rounded-full border border-white bg-emerald-500" />
+          <div className="rounded-xl border border-[var(--border-1)] p-2">
+            <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
+                alt="Olivia Rhye"
+                className="h-11 w-11 rounded-full object-cover"
+              />
+              <div className="relative">
+                <p className="text-sm font-semibold text-[var(--text-1)]">Olivia Rhye</p>
+                <p className="text-xs text-[var(--text-3)]">olivia@untitledui.com</p>
+                <span className="absolute -bottom-0.5 -left-2 h-2.5 w-2.5 rounded-full border border-white bg-emerald-500" />
+              </div>
             </div>
+
+            <Button className="mt-2 w-full" variant="secondary" size="sm" type="button">
+              +
+              Add User
+            </Button>
           </div>
 
-          <Button className="mt-2 w-full" variant="secondary" size="sm" type="button">
-            +
-            Add User
-          </Button>
+          <div className="my-2 border-t border-[var(--border-1)]" />
+
+          <button
+            type="button"
+            className={buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+          >
+            <span className="flex items-center gap-2">
+              <ArrowRightOnRectangleIcon className="h-5 w-5" />
+              Sign out
+            </span>
+            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌥⇧Q</span>
+          </button>
         </div>
-
-        <div className="my-2 border-t border-[var(--border-1)]" />
-
-        <MenuItem>
-          {({ focus }) => (
-            <button
-              className={cn(
-                buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" }),
-                focus ? "bg-[var(--surface-1)]" : "",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <ArrowRightOnRectangleIcon className="h-5 w-5" />
-                Sign out
-              </span>
-              <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌥⇧Q</span>
-            </button>
-          )}
-        </MenuItem>
-      </MenuItems>
-    </Menu>
+      ) : null}
+    </div>
   );
 }
 
