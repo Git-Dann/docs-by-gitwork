@@ -51,6 +51,7 @@ export interface CoverSectionData {
   date: string;
   confidentiality: string;
   heroImage?: string;
+  brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
 }
 
 export interface IntroductionSectionData {

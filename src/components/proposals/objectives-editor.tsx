@@ -2,6 +2,7 @@
 
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
 import type { ObjectiveItem } from "@/types/proposal";
 
 const snippets = [
@@ -24,6 +25,19 @@ export function ObjectivesEditor({
 }) {
   const safeItems = items ?? [];
 
+  function createObjective(overrides?: Partial<ObjectiveItem>) {
+    return {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2, 10),
+      title: "",
+      description: "",
+      icon: "sparkles",
+      ...overrides,
+    };
+  }
+
   function move(index: number, delta: -1 | 1) {
     const targetIndex = index + delta;
     if (targetIndex < 0 || targetIndex >= safeItems.length) {
@@ -37,25 +51,16 @@ export function ObjectivesEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">Objectives</p>
+    <div className="space-y-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-0)] p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-lg font-medium text-[var(--text-1)]">Objectives</p>
         <div className="flex items-center gap-2">
           <Button
             type="button"
-            onClick={() =>
-              onChange([
-                ...safeItems,
-                {
-                  id: crypto.randomUUID(),
-                  title: "",
-                  description: "",
-                  icon: "",
-                },
-              ])
-            }
+            onClick={() => onChange([...safeItems, createObjective()])}
             variant="secondary"
-            size="xs"
+            size="sm"
+            className="whitespace-nowrap"
             leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
           >
             Add objective
@@ -70,19 +75,17 @@ export function ObjectivesEditor({
                 if (snippet) {
                   onChange([
                     ...safeItems,
-                    {
-                      id: crypto.randomUUID(),
+                    createObjective({
                       title: snippet.title,
                       description: snippet.description,
-                      icon: "",
-                    },
+                    }),
                   ]);
                 }
               }
 
               event.target.value = "";
             }}
-            className="h-8 rounded-md border border-[var(--border-1)] bg-white px-2 text-xs"
+            className="proposal-field-compact min-w-[220px] text-sm"
           >
             <option value="">Use snippet...</option>
             {snippets.map((snippet, index) => (
@@ -95,10 +98,13 @@ export function ObjectivesEditor({
       </div>
 
       {safeItems.length ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {safeItems.map((item, index) => (
-            <article key={item.id ?? `${item.title}-${index}`} className="rounded-md border border-[var(--border-1)] bg-white p-3">
-              <div className="grid gap-2 md:grid-cols-[1fr_1fr_120px_auto]">
+            <article
+              key={item.id ?? `${item.title}-${index}`}
+              className="rounded-2xl border border-[var(--border-1)] bg-white p-4"
+            >
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_auto]">
                 <label className="space-y-1">
                   <span className="text-xs text-[var(--text-3)]">Title</span>
                   <input
@@ -131,20 +137,19 @@ export function ObjectivesEditor({
 
                 <label className="space-y-1">
                   <span className="text-xs text-[var(--text-3)]">Icon</span>
-                  <input
-                    value={item.icon ?? ""}
-                    onChange={(event) =>
+                  <IconSelect
+                    value={item.icon}
+                    onChange={(icon) =>
                       onChange(
                         safeItems.map((entry, entryIndex) =>
-                          entryIndex === index ? { ...entry, icon: event.target.value } : entry,
+                          entryIndex === index ? { ...entry, icon } : entry,
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
                   />
                 </label>
 
-                <div className="flex items-end justify-end gap-1">
+                <div className="flex items-end justify-end gap-1.5">
                   <Button
                     type="button"
                     onClick={() => move(index, -1)}
@@ -173,6 +178,14 @@ export function ObjectivesEditor({
                     <TrashIcon className="h-4 w-4" />
                   </Button>
                 </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 text-sm text-[var(--text-3)]">
+                {(() => {
+                  const SelectedIcon = getObjectiveIcon(item.icon);
+                  return <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />;
+                })()}
+                Preview icon: <span className="font-medium text-[var(--text-2)]">{item.icon || "sparkles"}</span>
               </div>
             </article>
           ))}

@@ -11,6 +11,21 @@ const assetTypes: AssetInput["type"][] = [
   "LOGO",
   "SCREENSHOT",
 ];
+const placementOptions = [
+  { value: "cover", label: "Cover" },
+  { value: "cover-client-logo", label: "Cover client logo" },
+  { value: "introduction", label: "Introduction" },
+  { value: "product_overview", label: "Product overview" },
+  { value: "objectives", label: "Objectives" },
+  { value: "touchpoints", label: "Scope / touchpoints" },
+  { value: "timeline", label: "Timeline" },
+  { value: "costing", label: "Cost breakdown" },
+  { value: "cta_next_steps", label: "CTA / next steps" },
+  { value: "supporting_links_assets", label: "Supporting links & assets" },
+  { value: "assumptions", label: "Assumptions" },
+  { value: "out_of_scope", label: "Out of scope" },
+  { value: "signoff_footer", label: "Sign-off / footer" },
+] as const;
 
 const sizeOptions: AssetInput["size"][] = ["SMALL", "MEDIUM", "LARGE", "FULL"];
 const alignmentOptions: AssetInput["alignment"][] = ["LEFT", "CENTER", "RIGHT", "FULL"];
@@ -98,7 +113,7 @@ export function AssetPicker({
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs text-[var(--text-3)]">URL</span>
+                <span className="text-xs text-[var(--text-3)]">Asset source</span>
                 <input
                   value={asset.url}
                   onChange={(event) =>
@@ -130,7 +145,7 @@ export function AssetPicker({
 
                 <label className="space-y-1">
                   <span className="text-xs text-[var(--text-3)]">Placement</span>
-                  <input
+                  <select
                     value={asset.placement}
                     onChange={(event) =>
                       onChange(
@@ -140,8 +155,13 @@ export function AssetPicker({
                       )
                     }
                     className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
-                    placeholder="cover, introduction..."
-                  />
+                  >
+                    {placementOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label className="space-y-1">

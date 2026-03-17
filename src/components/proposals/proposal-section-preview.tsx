@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { ArrowRightIcon } from "@heroicons/react/24/outline";
+import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { formatCurrency } from "@/lib/format";
 import type { CostingSectionData, ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -35,6 +38,10 @@ export function ProposalSectionPreview({
 
   if (!section.isVisible) {
     return null;
+  }
+
+  if (section.key === "cover") {
+    return <CoverPagePreview section={section} proposal={proposal} sectionId={sectionId} />;
   }
 
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
@@ -122,10 +129,6 @@ function SectionBody({
         <div className="space-y-3 text-sm leading-6 text-[var(--text-2)]">
           <p>{data.statement}</p>
           <p>{data.summary}</p>
-          {data.graphic ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.graphic} alt="Introduction graphic" className="h-40 w-full rounded-lg object-cover" />
-          ) : null}
         </div>
       );
     }
@@ -145,16 +148,6 @@ function SectionBody({
           <InfoCard title="Audience" content={data.audience} />
           <InfoCard title="Value" content={data.valueProposition} />
           <InfoCard title="Supported Platforms" content={data.platformsSupported} />
-          {data.workflowGraphic ? (
-            <div className="md:col-span-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data.workflowGraphic}
-                alt="Workflow diagram"
-                className="h-48 w-full rounded-lg object-cover"
-              />
-            </div>
-          ) : null}
         </div>
       );
     }
@@ -168,8 +161,18 @@ function SectionBody({
         <div className="grid gap-3 md:grid-cols-2">
           {data.items.map((item) => (
             <article key={item.id} className="rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-4">
-              <p className="text-sm font-semibold">{item.title}</p>
-              <p className="mt-1 text-sm text-[var(--text-2)]">{item.description}</p>
+              <div className="flex items-start gap-3">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--surface-brand)] text-[var(--brand-700)]">
+                  {(() => {
+                    const Icon = getObjectiveIcon(item.icon);
+                    return <Icon className="h-5 w-5" />;
+                  })()}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{item.title}</p>
+                  <p className="mt-1 text-sm text-[var(--text-2)]">{item.description}</p>
+                </div>
+              </div>
             </article>
           ))}
         </div>
@@ -506,6 +509,171 @@ function SectionBody({
     default:
       return <p className="text-sm text-[var(--text-2)]">Unsupported section type.</p>;
   }
+}
+
+function CoverPagePreview({
+  section,
+  proposal,
+  sectionId,
+}: {
+  section: ProposalSection;
+  proposal: ProposalDocument;
+  sectionId: string;
+}) {
+  const data = section.data as {
+    proposalTitle: string;
+    productName: string;
+    clientName: string;
+    subtitle: string;
+    date: string;
+    confidentiality: string;
+    brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
+  };
+  const introduction = proposal.sections.find((entry) => entry.key === "introduction")?.data as
+    | {
+        statement?: string;
+      }
+    | undefined;
+  const signoff = proposal.sections.find((entry) => entry.key === "signoff_footer")?.data as
+    | {
+        preparedBy?: string;
+        team?: string;
+      }
+    | undefined;
+  const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY" && cta.label.trim().length > 0);
+  const clientLogo = proposal.assets.find(
+    (asset) => asset.type === "LOGO" && asset.placement === "cover-client-logo" && asset.url.trim().length > 0,
+  );
+  const clientName = data.clientName || proposal.clientName || proposal.metadata.client || "Client";
+  const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
+
+  return (
+    <section
+      id={sectionId}
+      className="relative isolate overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-white px-8 py-10 sm:px-16 sm:py-14"
+    >
+      <CoverAccent position="top" />
+      <CoverAccent position="bottom" />
+
+      <div className="relative z-10 mx-auto flex min-h-[1080px] max-w-4xl flex-col items-center justify-between text-center">
+        <div className="w-full pt-10">
+          <div className="flex justify-center">
+            {data.brandLockup === "CLIENT_X_GITWORK" ? (
+              <ClientGitworkLockup clientName={clientName} clientLogoUrl={clientLogo?.url} />
+            ) : (
+              <GitworkLockup />
+            )}
+          </div>
+
+          <div className="mt-24 space-y-5">
+            <h1 className="text-5xl font-semibold tracking-[-0.04em] text-[var(--text-1)] sm:text-6xl">
+              {data.proposalTitle || proposal.title || "Untitled proposal"}
+            </h1>
+            <p className="text-3xl tracking-[-0.03em] text-[var(--text-1)]">
+              {data.subtitle || proposal.version || "Subtitle or version"}
+            </p>
+            <p className="text-2xl tracking-[-0.02em] text-[var(--text-2)]">{authorLine || "Author / Department"}</p>
+            <p className="text-xl font-semibold tracking-[-0.02em] text-[var(--text-2)]">
+              {data.date || "Date Created"} / {proposal.updatedAt.slice(0, 10)}
+            </p>
+            <p className="text-2xl italic tracking-[-0.02em] text-[var(--text-3)]">
+              {data.confidentiality || "Confidentiality Statement"}
+            </p>
+          </div>
+        </div>
+
+        <div className="w-full max-w-[920px]">
+          <div className="mx-auto h-px w-full bg-[var(--border-1)]" />
+          <p className="mx-auto mt-16 max-w-5xl text-2xl leading-[1.55] tracking-[-0.02em] text-[var(--text-1)]">
+            {introduction?.statement ||
+              proposal.summary ||
+              "At Gitwork, we build practical, reliable software tailored to your business goals."}
+          </p>
+
+          {primaryCta ? (
+            <div className="mt-14 flex justify-center">
+              <Link
+                href={primaryCta.destination || "#"}
+                className="inline-flex items-center gap-2 rounded-2xl bg-[#1d95f2] px-8 py-4 text-xl font-semibold text-white shadow-[0_10px_24px_rgba(29,149,242,0.28)]"
+              >
+                {primaryCta.label}
+                <ArrowRightIcon className="h-5 w-5" />
+              </Link>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CoverAccent({ position }: { position: "top" | "bottom" }) {
+  if (position === "top") {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-center px-10">
+        <div className="h-4 flex-1 rounded-b-[24px] bg-[#1d95f2]" />
+        <div className="mx-6 h-20 w-[360px] rounded-b-[44px] bg-[#1d95f2]" />
+        <div className="h-4 flex-1 rounded-b-[24px] bg-[#1d95f2]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center px-10">
+      <div className="h-4 flex-1 rounded-t-[24px] bg-[#1d95f2]" />
+      <div className="mx-6 h-20 w-[360px] rounded-t-[44px] bg-[#1d95f2]" />
+      <div className="h-4 flex-1 rounded-t-[24px] bg-[#1d95f2]" />
+    </div>
+  );
+}
+
+function GitworkLockup() {
+  return (
+    <div className="flex flex-col items-center gap-5">
+      <GitworkMark className="h-24 w-24" />
+      <span className="text-2xl font-medium tracking-[-0.02em] text-[var(--text-2)]">Gitwork</span>
+    </div>
+  );
+}
+
+function ClientGitworkLockup({
+  clientName,
+  clientLogoUrl,
+}: {
+  clientName: string;
+  clientLogoUrl?: string;
+}) {
+  return (
+    <div className="flex items-center gap-8">
+      {clientLogoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={clientLogoUrl} alt={clientName} className="max-h-24 max-w-[260px] object-contain" />
+      ) : (
+        <span className="max-w-[320px] text-5xl font-semibold tracking-[-0.05em] text-[#1d4ed8]">{clientName}</span>
+      )}
+      <span className="text-5xl font-light text-[var(--text-1)]">×</span>
+      <GitworkMark className="h-24 w-24" />
+    </div>
+  );
+}
+
+function GitworkMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 96 96" fill="none" className={className} aria-label="Gitwork logo">
+      <path
+        d="M34 18c-8.837 0-16 7.163-16 16v28c0 8.837 7.163 16 16 16h6v-10h-6c-3.314 0-6-2.686-6-6V34c0-3.314 2.686-6 6-6h6V18h-6Z"
+        fill="#1d95f2"
+      />
+      <path
+        d="M62 18h-6v10h6c3.314 0 6 2.686 6 6v4h-12v10h12v14c0 3.314-2.686 6-6 6h-6v10h6c8.837 0 16-7.163 16-16V34c0-8.837-7.163-16-16-16Z"
+        fill="#111827"
+      />
+      <path d="M48 28h8v10h-8z" fill="#111827" />
+      <path d="M48 58h8v10h-8z" fill="#111827" />
+      <path d="M40 18h8v10h-8z" fill="#1d95f2" />
+      <path d="M40 68h8v10h-8z" fill="#1d95f2" />
+    </svg>
+  );
 }
 
 function InfoCard({ title, content }: { title: string; content: string }) {

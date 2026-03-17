@@ -31,6 +31,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       date: new Date().toISOString().slice(0, 10),
       confidentiality: "Confidential: For internal stakeholder review only.",
       heroImage: "",
+      brandLockup: "GITWORK",
     },
   },
   {
@@ -439,6 +440,7 @@ function getBlankProposalSectionData(key: SectionKey): ProposalSectionData {
         date: "",
         confidentiality: "",
         heroImage: "",
+        brandLockup: "GITWORK",
       };
     case "introduction":
       return {

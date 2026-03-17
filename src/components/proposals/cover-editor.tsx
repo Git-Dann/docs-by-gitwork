@@ -38,12 +38,22 @@ export function CoverEditor({
           onChange={(date) => onChange({ ...value, date })}
           type="date"
         />
-        <Input
-          label="Hero graphic URL"
-          value={value.heroImage ?? ""}
-          onChange={(heroImage) => onChange({ ...value, heroImage })}
-          placeholder="https://..."
-        />
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Cover lockup</span>
+          <select
+            value={value.brandLockup ?? "GITWORK"}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                brandLockup: event.target.value as CoverSectionData["brandLockup"],
+              })
+            }
+            className="w-full"
+          >
+            <option value="GITWORK">Gitwork only</option>
+            <option value="CLIENT_X_GITWORK">Client x Gitwork</option>
+          </select>
+        </label>
       </div>
 
       <label className="block space-y-1.5">
@@ -59,6 +69,9 @@ export function CoverEditor({
       <p className="text-xs text-[var(--text-3)]">
         Display format: <span className="font-medium">{value.productName || "Product"} by Gitwork</span>
       </p>
+      <p className="text-xs text-[var(--text-3)]">
+        Cover logos and graphics are handled in Supporting Links & Assets. Use a `Logo` asset with placement `Cover client logo` if you want the client x Gitwork lockup.
+      </p>
     </div>
   );
 }
@@ -68,13 +81,11 @@ function Input({
   value,
   onChange,
   type,
-  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
-  placeholder?: string;
 }) {
   return (
     <label className="space-y-1.5">
@@ -83,7 +94,6 @@ function Input({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type={type ?? "text"}
-        placeholder={placeholder}
         className="w-full"
       />
     </label>

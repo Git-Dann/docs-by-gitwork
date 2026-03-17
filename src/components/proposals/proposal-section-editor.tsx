@@ -69,11 +69,7 @@ export function ProposalSectionEditor({
             value={data.summary}
             onChange={(summary) => updateSectionData({ ...data, summary })}
           />
-          <Input
-            label="Section graphic URL"
-            value={data.graphic ?? ""}
-            onChange={(graphic) => updateSectionData({ ...data, graphic })}
-          />
+          <EditorHint message="Section graphics are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
@@ -109,11 +105,7 @@ export function ProposalSectionEditor({
             value={data.platformsSupported}
             onChange={(platformsSupported) => updateSectionData({ ...data, platformsSupported })}
           />
-          <Input
-            label="Architecture / workflow graphic URL"
-            value={data.workflowGraphic ?? ""}
-            onChange={(workflowGraphic) => updateSectionData({ ...data, workflowGraphic })}
-          />
+          <EditorHint message="Architecture and workflow visuals are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
@@ -420,4 +412,8 @@ function TextArea({
       />
     </label>
   );
+}
+
+function EditorHint({ message }: { message: string }) {
+  return <p className="text-sm text-[var(--text-3)]">{message}</p>;
 }

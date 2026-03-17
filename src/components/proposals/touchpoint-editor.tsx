@@ -66,7 +66,6 @@ export function TouchpointEditor({
                   summary: "",
                   features: [],
                   notes: "",
-                  graphic: "",
                   callout: "",
                 },
               ])
@@ -91,7 +90,6 @@ export function TouchpointEditor({
                     summary: "",
                     features: [],
                     notes: "",
-                    graphic: "",
                     callout: "",
                   },
                 ]);
@@ -200,15 +198,6 @@ export function TouchpointEditor({
                   />
                 </label>
               </div>
-
-              <label className="block space-y-1">
-                <span className="text-xs text-[var(--text-3)]">Graphic URL</span>
-                <input
-                  value={touchpoint.graphic ?? ""}
-                  onChange={(event) => patch(index, { graphic: event.target.value })}
-                  className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
-                />
-              </label>
             </article>
           ))}
         </div>
