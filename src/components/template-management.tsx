@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchTemplates } from "@/lib/api";
+import { useLocalSettings } from "@/lib/local-settings";
 
 export function TemplateManagement() {
+  const { settings, updateSettings } = useLocalSettings();
   const { data, isPending, error } = useQuery({
     queryKey: ["templates"],
     queryFn: fetchTemplates,
@@ -12,10 +14,43 @@ export function TemplateManagement() {
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Template management foundation</h2>
+        <h2 className="text-base font-semibold">Template-owned branding</h2>
         <p className="mt-1 text-sm text-[var(--text-3)]">
-          Proposal templates are live. SLA and additional document templates can be added next.
+          Reusable cover branding lives here so proposals only carry client-specific content.
         </p>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-3">
+          <Input
+            label="Cover brand logo URL"
+            value={settings.templateBranding.coverBrandLogoUrl}
+            onChange={(coverBrandLogoUrl) =>
+              updateSettings((current) => ({
+                ...current,
+                templateBranding: { ...current.templateBranding, coverBrandLogoUrl },
+              }))
+            }
+          />
+          <Input
+            label="Cover top accent URL"
+            value={settings.templateBranding.coverTopAccentUrl}
+            onChange={(coverTopAccentUrl) =>
+              updateSettings((current) => ({
+                ...current,
+                templateBranding: { ...current.templateBranding, coverTopAccentUrl },
+              }))
+            }
+          />
+          <Input
+            label="Cover bottom accent URL"
+            value={settings.templateBranding.coverBottomAccentUrl}
+            onChange={(coverBottomAccentUrl) =>
+              updateSettings((current) => ({
+                ...current,
+                templateBranding: { ...current.templateBranding, coverBottomAccentUrl },
+              }))
+            }
+          />
+        </div>
       </section>
 
       <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
@@ -45,5 +80,26 @@ export function TemplateManagement() {
         )}
       </section>
     </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-[var(--border-1)] px-3 text-sm"
+      />
+    </label>
   );
 }

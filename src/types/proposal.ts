@@ -52,6 +52,7 @@ export interface CoverSectionData {
   subtitle: string;
   date: string;
   confidentiality: string;
+  confidentialityMode?: "INTERNAL" | "EXTERNAL";
   heroImage?: string;
   brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
 }

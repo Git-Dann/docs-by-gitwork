@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
 import type { CoverSectionData } from "@/types/proposal";
 
 export function CoverEditor({
@@ -9,6 +10,10 @@ export function CoverEditor({
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
 }) {
+  const { settings } = useLocalSettings();
+  const confidentialityMode = value.confidentialityMode ?? "INTERNAL";
+  const confidentialityText = resolveConfidentialityText(confidentialityMode, settings, value.confidentiality);
+
   return (
     <div className="space-y-5 rounded-2xl border border-[var(--border-1)] bg-white p-6">
       <div className="grid gap-5 md:grid-cols-2">
@@ -56,21 +61,36 @@ export function CoverEditor({
         </label>
       </div>
 
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium text-[var(--text-2)]">Confidentiality statement</span>
-        <textarea
-          value={value.confidentiality}
-          onChange={(event) => onChange({ ...value, confidentiality: event.target.value })}
-          rows={3}
-          className="w-full"
-        />
-      </label>
+      <div className="space-y-3">
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Confidentiality audience</span>
+          <select
+            value={confidentialityMode}
+            onChange={(event) => {
+              const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
+              onChange({
+                ...value,
+                confidentialityMode: nextMode,
+                confidentiality: resolveConfidentialityText(nextMode, settings, value.confidentiality),
+              });
+            }}
+            className="app-select w-full"
+          >
+            <option value="INTERNAL">Internal</option>
+            <option value="EXTERNAL">External</option>
+          </select>
+        </label>
+
+        <div className="rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3">
+          <p className="text-sm text-[var(--text-2)]">{confidentialityText}</p>
+        </div>
+      </div>
 
       <p className="text-xs text-[var(--text-3)]">
         Display format: <span className="font-medium">{value.productName || "Product"} by Gitwork</span>
       </p>
       <p className="text-xs text-[var(--text-3)]">
-        Public preview branding is handled in Supporting Links & Assets. Use placements `Cover brand logo`, `Cover client logo`, `Cover top accent`, and `Cover bottom accent` to update the shareable cover without code changes.
+        Template-owned branding is handled in Templates. Cover confidentiality copy is managed in Settings.
       </p>
     </div>
   );

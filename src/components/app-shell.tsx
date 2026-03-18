@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
+import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
 
 const clientAccentClasses = [
   "bg-indigo-600",
@@ -43,6 +44,7 @@ export function AppShell({
   mainClassName?: string;
 }) {
   const pathname = usePathname();
+  const { settings } = useLocalSettings();
   const { data: proposalListData } = useProposalList({
     status: "ALL",
     sort: "updatedAt:desc",
@@ -117,9 +119,16 @@ export function AppShell({
               onExpand={toggleCollapsed}
               canExpand={!forceCollapsedSidebar}
               primaryNav={primaryNav}
+              account={settings.account}
             />
           ) : (
-            <ExpandedRail pathname={pathname} onCollapse={toggleCollapsed} primaryNav={primaryNav} clientRows={clientRows} />
+            <ExpandedRail
+              pathname={pathname}
+              onCollapse={toggleCollapsed}
+              primaryNav={primaryNav}
+              clientRows={clientRows}
+              account={settings.account}
+            />
           )}
         </aside>
 
@@ -143,6 +152,7 @@ function CollapsedRail({
   onExpand,
   canExpand,
   primaryNav,
+  account,
 }: {
   pathname: string | null;
   onExpand: () => void;
@@ -153,6 +163,7 @@ function CollapsedRail({
     icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
     badge?: string;
   }>;
+  account: AccountSettings;
 }) {
   return (
     <>
@@ -236,8 +247,8 @@ function CollapsedRail({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&q=80"
-              alt="Olivia Rhye"
+              src={account.avatarUrl}
+              alt={account.name}
               className="h-8 w-8 rounded-full object-cover"
             />
           </button>
@@ -245,8 +256,8 @@ function CollapsedRail({
           <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-1)] bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&q=80"
-              alt="Olivia Rhye"
+              src={account.avatarUrl}
+              alt={account.name}
               className="h-8 w-8 rounded-full object-cover"
             />
           </div>
@@ -261,6 +272,7 @@ function ExpandedRail({
   onCollapse,
   primaryNav,
   clientRows,
+  account,
 }: {
   pathname: string | null;
   onCollapse: () => void;
@@ -276,6 +288,7 @@ function ExpandedRail({
     logoClass: string;
     logoText: string;
   }>;
+  account: AccountSettings;
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col rounded-[20px] bg-white p-4">
@@ -375,7 +388,7 @@ function ExpandedRail({
           </Link>
         </div>
 
-        <ProfileMenu />
+        <ProfileMenu account={account} />
       </div>
     </div>
   );
@@ -419,8 +432,11 @@ function SidebarLink({
   );
 }
 
-function ProfileMenu() {
+function ProfileMenu({ account }: { account: AccountSettings }) {
+  const { settings, updateSettings } = useLocalSettings();
   const [open, setOpen] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -454,76 +470,139 @@ function ProfileMenu() {
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
-            alt="Olivia Rhye"
+            src={account.avatarUrl}
+            alt={account.name}
             className="h-11 w-11 rounded-full object-cover"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-semibold text-[var(--text-1)]">Olivia Rhye</p>
-            <p className="truncate text-sm text-[var(--text-3)]">olivia@untitledui.com</p>
+            <p className="truncate text-base font-semibold text-[var(--text-1)]">{account.name}</p>
+            <p className="truncate text-sm text-[var(--text-3)]">{account.email}</p>
           </div>
         </div>
       </button>
 
       {open ? (
         <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[380px] rounded-[20px] border border-[var(--border-1)] bg-white p-2 shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
-          <button
-            type="button"
-            className={buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+          <Link
+            href="/app/settings"
+            className={buttonStyles({
+              variant: "tertiary",
+              size: "sm",
+              className: "w-full justify-end gap-3 px-4 text-sm text-[var(--text-2)]",
+            })}
           >
-            <span className="flex items-center gap-2">
-              <UserCircleIcon className="h-5 w-5" />
-              View profile
-            </span>
-            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘K→P</span>
-          </button>
+            <UserCircleIcon className="h-5 w-5" />
+            <span>View profile</span>
+          </Link>
 
-          <button
-            type="button"
-            className={buttonStyles({ variant: "tertiary", size: "sm", className: "mt-1 w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+          <Link
+            href="/app/settings"
+            className={buttonStyles({
+              variant: "tertiary",
+              size: "sm",
+              className: "mt-1 w-full justify-end gap-3 px-4 text-sm text-[var(--text-2)]",
+            })}
           >
-            <span className="flex items-center gap-2">
-              <Cog8ToothIcon className="h-5 w-5" />
-              Account settings
-            </span>
-            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌘S</span>
-          </button>
+            <Cog8ToothIcon className="h-5 w-5" />
+            <span>Account settings</span>
+          </Link>
 
           <div className="my-2 border-t border-[var(--border-1)]" />
 
-          <div className="rounded-xl border border-[var(--border-1)] p-2">
-            <div className="flex items-center gap-3 rounded-lg px-2 py-1.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80"
-                alt="Olivia Rhye"
-                className="h-11 w-11 rounded-full object-cover"
-              />
-              <div className="relative">
-                <p className="text-sm font-semibold text-[var(--text-1)]">Olivia Rhye</p>
-                <p className="text-xs text-[var(--text-3)]">olivia@untitledui.com</p>
-                <span className="absolute -bottom-0.5 -left-2 h-2.5 w-2.5 rounded-full border border-white bg-emerald-500" />
+          <Button
+            className="w-full justify-center"
+            variant="secondary"
+            size="sm"
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setShowInviteModal(true);
+            }}
+          >
+            + Add User
+          </Button>
+
+          {settings.workspace.invitedUsers.length ? (
+            <div className="mt-2 rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2">
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-3)]">Pending invites</p>
+              <div className="mt-2 space-y-1">
+                {settings.workspace.invitedUsers.slice(0, 3).map((email) => (
+                  <p key={email} className="truncate text-sm text-[var(--text-2)]">
+                    {email}
+                  </p>
+                ))}
               </div>
             </div>
-
-            <Button className="mt-2 w-full" variant="secondary" size="sm" type="button">
-              +
-              Add User
-            </Button>
-          </div>
+          ) : null}
 
           <div className="my-2 border-t border-[var(--border-1)]" />
 
           <button
             type="button"
-            className={buttonStyles({ variant: "tertiary", size: "sm", className: "w-full justify-between px-3 text-sm text-[var(--text-2)]" })}
+            className={buttonStyles({
+              variant: "tertiary",
+              size: "sm",
+              className: "w-full justify-start px-4 text-sm text-[var(--text-2)]",
+            })}
           >
             <span className="flex items-center gap-2">
               <ArrowRightOnRectangleIcon className="h-5 w-5" />
               Sign out
             </span>
-            <span className="rounded-md border border-[var(--border-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">⌥⇧Q</span>
           </button>
+        </div>
+      ) : null}
+
+      {showInviteModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/30 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border-1)] bg-white p-5 shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text-1)]">Add user</h3>
+              <p className="mt-1 text-sm text-[var(--text-3)]">Add an email address to the invited users list.</p>
+            </div>
+
+            <label className="mt-4 block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">Email address</span>
+              <input
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                type="email"
+                className="w-full"
+                placeholder="name@company.com"
+              />
+            </label>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setShowInviteModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const nextEmail = inviteEmail.trim().toLowerCase();
+                  if (!nextEmail) {
+                    return;
+                  }
+
+                  updateSettings((current) => ({
+                    ...current,
+                    workspace: {
+                      ...current.workspace,
+                      invitedUsers: current.workspace.invitedUsers.includes(nextEmail)
+                        ? current.workspace.invitedUsers
+                        : [...current.workspace.invitedUsers, nextEmail],
+                    },
+                  }));
+                  setInviteEmail("");
+                  setShowInviteModal(false);
+                }}
+              >
+                Add user
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

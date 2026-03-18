@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { formatCurrency } from "@/lib/format";
+import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
 import type { CostingSectionData, ProposalDocument, ProposalSection } from "@/types/proposal";
 
 function Graphic({
@@ -527,8 +530,10 @@ function CoverPagePreview({
     subtitle: string;
     date: string;
     confidentiality: string;
+    confidentialityMode?: "INTERNAL" | "EXTERNAL";
     brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
   };
+  const { settings } = useLocalSettings();
   const introduction = proposal.sections.find((entry) => entry.key === "introduction")?.data as
     | {
         statement?: string;
@@ -541,17 +546,16 @@ function CoverPagePreview({
       }
     | undefined;
   const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY" && cta.label.trim().length > 0);
-  const brandLogo = proposal.assets.find(
-    (asset) => asset.placement === "cover-brand-logo" && asset.url.trim().length > 0,
-  );
   const clientLogo = proposal.assets.find(
     (asset) => asset.type === "LOGO" && asset.placement === "cover-client-logo" && asset.url.trim().length > 0,
   );
-  const topAccent = proposal.assets.find(
-    (asset) => asset.placement === "cover-top-accent" && asset.url.trim().length > 0,
-  );
-  const bottomAccent = proposal.assets.find(
-    (asset) => asset.placement === "cover-bottom-accent" && asset.url.trim().length > 0,
+  const brandLogoUrl = settings.templateBranding.coverBrandLogoUrl.trim() || undefined;
+  const topAccentUrl = settings.templateBranding.coverTopAccentUrl.trim() || undefined;
+  const bottomAccentUrl = settings.templateBranding.coverBottomAccentUrl.trim() || undefined;
+  const confidentialityText = resolveConfidentialityText(
+    data.confidentialityMode ?? "INTERNAL",
+    settings,
+    data.confidentiality,
   );
   const clientName = data.clientName || proposal.clientName || proposal.metadata.client || "Client";
   const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
@@ -561,11 +565,11 @@ function CoverPagePreview({
       id={sectionId}
       className="relative isolate overflow-hidden rounded-[28px] border border-[var(--border-1)] bg-white px-8 py-10 sm:px-16 sm:py-14"
     >
-      <CoverAccent position="top" assetUrl={topAccent?.url} altText={topAccent?.altText || "Top cover accent"} />
+      <CoverAccent position="top" assetUrl={topAccentUrl} altText="Top cover accent" />
       <CoverAccent
         position="bottom"
-        assetUrl={bottomAccent?.url}
-        altText={bottomAccent?.altText || "Bottom cover accent"}
+        assetUrl={bottomAccentUrl}
+        altText="Bottom cover accent"
       />
 
       <div className="relative z-10 mx-auto flex min-h-[1080px] max-w-4xl flex-col items-center justify-between text-center">
@@ -575,10 +579,10 @@ function CoverPagePreview({
               <ClientGitworkLockup
                 clientName={clientName}
                 clientLogoUrl={clientLogo?.url}
-                brandLogoUrl={brandLogo?.url}
+                brandLogoUrl={brandLogoUrl}
               />
             ) : (
-              <GitworkLockup brandLogoUrl={brandLogo?.url} />
+              <GitworkLockup brandLogoUrl={brandLogoUrl} />
             )}
           </div>
 
@@ -594,7 +598,7 @@ function CoverPagePreview({
               {data.date || "Date Created"} / {proposal.updatedAt.slice(0, 10)}
             </p>
             <p className="text-2xl italic tracking-[-0.02em] text-[var(--text-3)]">
-              {data.confidentiality || "Confidentiality Statement"}
+              {confidentialityText || "Confidentiality Statement"}
             </p>
           </div>
         </div>

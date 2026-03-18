@@ -13,10 +13,7 @@ const assetTypes: AssetInput["type"][] = [
 ];
 const placementOptions = [
   { value: "cover", label: "Cover" },
-  { value: "cover-brand-logo", label: "Cover brand logo" },
   { value: "cover-client-logo", label: "Cover client logo" },
-  { value: "cover-top-accent", label: "Cover top accent" },
-  { value: "cover-bottom-accent", label: "Cover bottom accent" },
   { value: "introduction", label: "Introduction" },
   { value: "product_overview", label: "Product overview" },
   { value: "objectives", label: "Objectives" },
@@ -45,7 +42,12 @@ export function AssetPicker({
   return (
     <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Assets & graphics</p>
+        <div>
+          <p className="text-sm font-medium">Proposal assets</p>
+          <p className="text-xs text-[var(--text-3)]">
+            Template-owned branding lives in Templates. Use this area for proposal-specific imagery and client logos.
+          </p>
+        </div>
         <Button
           type="button"
           onClick={() =>
@@ -116,7 +118,7 @@ export function AssetPicker({
               </div>
 
               <label className="block space-y-1">
-                <span className="text-xs text-[var(--text-3)]">Asset source</span>
+                  <span className="text-xs text-[var(--text-3)]">Asset source</span>
                 <input
                   value={asset.url}
                   onChange={(event) =>

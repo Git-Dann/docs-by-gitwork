@@ -1,163 +1,220 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-
-interface CompanyProfile {
-  preparedBy: string;
-  team: string;
-  contactDetails: string;
-}
-
-const defaultProfile: CompanyProfile = {
-  preparedBy: "Gitwork Delivery Team",
-  team: "Product & Delivery",
-  contactDetails: "hello@gitwork.io",
-};
-
-const defaultSnippets = [
-  "Stakeholder feedback SLA: 2 business days.",
-  "Client to provide legal copy prior to implementation phase.",
-];
-
-function loadProfile(): CompanyProfile {
-  if (typeof window === "undefined") {
-    return defaultProfile;
-  }
-
-  try {
-    const raw = localStorage.getItem("gitwork.companyProfile");
-    if (!raw) {
-      return defaultProfile;
-    }
-
-    return {
-      ...defaultProfile,
-      ...(JSON.parse(raw) as Partial<CompanyProfile>),
-    };
-  } catch {
-    return defaultProfile;
-  }
-}
-
-function loadSnippets(): string[] {
-  if (typeof window === "undefined") {
-    return defaultSnippets;
-  }
-
-  try {
-    const raw = localStorage.getItem("gitwork.snippets");
-    if (!raw) {
-      return defaultSnippets;
-    }
-
-    const parsed = JSON.parse(raw) as string[];
-    return parsed.length ? parsed : defaultSnippets;
-  } catch {
-    return defaultSnippets;
-  }
-}
+import { useLocalSettings } from "@/lib/local-settings";
 
 export function SettingsPanel() {
-  const [profile, setProfile] = useState<CompanyProfile>(loadProfile);
-  const [snippets, setSnippets] = useState<string[]>(loadSnippets);
-  const [saved, setSaved] = useState(false);
-
-  function persist() {
-    localStorage.setItem("gitwork.companyProfile", JSON.stringify(profile));
-    localStorage.setItem("gitwork.snippets", JSON.stringify(snippets));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1400);
-  }
+  const { settings, updateSettings } = useLocalSettings();
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 xl:grid-cols-2">
       <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Default company profile</h2>
+        <h2 className="text-base font-semibold">Account profile</h2>
         <p className="mt-1 text-sm text-[var(--text-3)]">
-          Applied to sign-off blocks and proposal defaults.
+          Update your avatar, name, email address, and password placeholder for this POC.
         </p>
 
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-3">
           <Input
-            label="Prepared by"
-            value={profile.preparedBy}
-            onChange={(preparedBy) => setProfile((previous) => ({ ...previous, preparedBy }))}
+            label="Profile image URL"
+            value={settings.account.avatarUrl}
+            onChange={(avatarUrl) =>
+              updateSettings((current) => ({
+                ...current,
+                account: { ...current.account, avatarUrl },
+              }))
+            }
           />
           <Input
-            label="Team / department"
-            value={profile.team}
-            onChange={(team) => setProfile((previous) => ({ ...previous, team }))}
+            label="Name"
+            value={settings.account.name}
+            onChange={(name) =>
+              updateSettings((current) => ({
+                ...current,
+                account: { ...current.account, name },
+              }))
+            }
           />
           <Input
-            label="Contact details"
-            value={profile.contactDetails}
-            onChange={(contactDetails) =>
-              setProfile((previous) => ({ ...previous, contactDetails }))
+            label="Email"
+            value={settings.account.email}
+            onChange={(email) =>
+              updateSettings((current) => ({
+                ...current,
+                account: { ...current.account, email },
+              }))
+            }
+          />
+          <Input
+            label="Password"
+            value={settings.account.password}
+            type="password"
+            onChange={(password) =>
+              updateSettings((current) => ({
+                ...current,
+                account: { ...current.account, password },
+              }))
             }
           />
         </div>
       </section>
 
       <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Reusable snippets</h2>
+        <h2 className="text-base font-semibold">Workspace defaults</h2>
         <p className="mt-1 text-sm text-[var(--text-3)]">
-          Fast-insert content snippets for assumptions and other sections.
+          Used for sign-off blocks and shared proposal defaults.
         </p>
 
-        <div className="mt-4 space-y-2">
-          {snippets.map((snippet, index) => (
-            <div key={`${snippet}-${index}`} className="flex items-center gap-2">
-              <input
-                value={snippet}
-                onChange={(event) =>
-                  setSnippets((previous) =>
-                    previous.map((entry, entryIndex) =>
-                      entryIndex === index ? event.target.value : entry,
-                    ),
-                  )
-                }
-                className="h-9 flex-1 rounded-md border border-[var(--border-1)] px-2 text-sm"
-              />
-              <Button
-                type="button"
-                onClick={() =>
-                  setSnippets((previous) => previous.filter((_, entryIndex) => entryIndex !== index))
-                }
-                variant="danger"
-                size="sm"
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-
-          <Button
-            type="button"
-            onClick={() => setSnippets((previous) => [...previous, ""])}
-            variant="secondary"
-            size="sm"
-          >
-            Add snippet
-          </Button>
+        <div className="mt-4 space-y-3">
+          <Input
+            label="Prepared by"
+            value={settings.workspace.preparedBy}
+            onChange={(preparedBy) =>
+              updateSettings((current) => ({
+                ...current,
+                workspace: { ...current.workspace, preparedBy },
+              }))
+            }
+          />
+          <Input
+            label="Team / department"
+            value={settings.workspace.team}
+            onChange={(team) =>
+              updateSettings((current) => ({
+                ...current,
+                workspace: { ...current.workspace, team },
+              }))
+            }
+          />
+          <Input
+            label="Contact details"
+            value={settings.workspace.contactDetails}
+            onChange={(contactDetails) =>
+              updateSettings((current) => ({
+                ...current,
+                workspace: { ...current.workspace, contactDetails },
+              }))
+            }
+          />
         </div>
       </section>
 
-      <div className="lg:col-span-2">
-        <Button
-          type="button"
-          onClick={persist}
-          variant="primary"
-          size="md"
-        >
-          {saved ? "Saved" : "Save settings"}
-        </Button>
-      </div>
+      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4 xl:col-span-2">
+        <h2 className="text-base font-semibold">Confidentiality defaults</h2>
+        <p className="mt-1 text-sm text-[var(--text-3)]">
+          The proposal builder now uses an internal/external toggle and resolves the final copy from these defaults.
+        </p>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          <TextArea
+            label="Internal statement"
+            value={settings.workspace.internalConfidentialityText}
+            onChange={(internalConfidentialityText) =>
+              updateSettings((current) => ({
+                ...current,
+                workspace: { ...current.workspace, internalConfidentialityText },
+              }))
+            }
+          />
+          <TextArea
+            label="External statement"
+            value={settings.workspace.externalConfidentialityText}
+            onChange={(externalConfidentialityText) =>
+              updateSettings((current) => ({
+                ...current,
+                workspace: { ...current.workspace, externalConfidentialityText },
+              }))
+            }
+          />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4 xl:col-span-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Invited users</h2>
+            <p className="mt-1 text-sm text-[var(--text-3)]">
+              Added from the profile pop-out.
+            </p>
+          </div>
+
+          {settings.workspace.invitedUsers.length ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                updateSettings((current) => ({
+                  ...current,
+                  workspace: { ...current.workspace, invitedUsers: [] },
+                }))
+              }
+            >
+              Clear invites
+            </Button>
+          ) : null}
+        </div>
+
+        {settings.workspace.invitedUsers.length ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {settings.workspace.invitedUsers.map((email) => (
+              <div
+                key={email}
+                className="flex items-center justify-between rounded-xl border border-[var(--border-1)] px-3 py-2"
+              >
+                <span className="text-sm text-[var(--text-2)]">{email}</span>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="xs"
+                  onClick={() =>
+                    updateSettings((current) => ({
+                      ...current,
+                      workspace: {
+                        ...current.workspace,
+                        invitedUsers: current.workspace.invitedUsers.filter((entry) => entry !== email),
+                      },
+                    }))
+                  }
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[var(--text-3)]">No invited users yet.</p>
+        )}
+      </section>
     </div>
   );
 }
 
 function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        type={type}
+        className="h-11 w-full rounded-xl border border-[var(--border-1)] px-3 text-sm"
+      />
+    </label>
+  );
+}
+
+function TextArea({
   label,
   value,
   onChange,
@@ -167,12 +224,13 @@ function Input({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-xs text-[var(--text-3)]">{label}</span>
-      <input
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+        rows={4}
+        className="w-full rounded-xl border border-[var(--border-1)] px-3 py-3 text-sm"
       />
     </label>
   );

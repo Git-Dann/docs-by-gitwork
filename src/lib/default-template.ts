@@ -30,6 +30,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       subtitle: "Version 1.0",
       date: new Date().toISOString().slice(0, 10),
       confidentiality: "Confidential: For internal stakeholder review only.",
+      confidentialityMode: "INTERNAL",
       heroImage: "",
       brandLockup: "GITWORK",
     },
@@ -443,6 +444,7 @@ function getBlankProposalSectionData(key: SectionKey): ProposalSectionData {
         subtitle: "",
         date: "",
         confidentiality: "",
+        confidentialityMode: "INTERNAL",
         heroImage: "",
         brandLockup: "GITWORK",
       };
