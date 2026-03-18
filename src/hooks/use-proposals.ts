@@ -15,6 +15,7 @@ import {
   saveCosting,
   saveEngagement,
   saveTimeline,
+  updateClient,
   updateProposal,
 } from "@/lib/api";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
@@ -75,6 +76,20 @@ export function useClientDetail(slug: string) {
     queryKey: ["client", slug],
     queryFn: () => getClientDetail(slug),
     enabled: Boolean(slug),
+  });
+}
+
+export function useUpdateClient(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { logoUrl?: string }) => updateClient(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+      queryClient.invalidateQueries({ queryKey: ["proposal"] });
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    },
   });
 }
 

@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { buttonStyles } from "@/components/ui/button";
-import { useClientDetail } from "@/hooks/use-proposals";
+import { ImagePicker } from "@/components/ui/image-picker";
+import { useClientDetail, useUpdateClient } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
 import { StatusBadge } from "@/components/status-badge";
 
 export function ClientDetail({ slug }: { slug: string }) {
   const { data, isPending, error } = useClientDetail(slug);
+  const updateClientMutation = useUpdateClient(slug);
 
   if (isPending) {
     return <p className="text-sm text-[var(--text-3)]">Loading client...</p>;
@@ -24,11 +26,24 @@ export function ClientDetail({ slug }: { slug: string }) {
       <section className="rounded-2xl border border-[var(--border-1)] bg-white p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">Client</p>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-4">
+            <div className="inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)]">
+              {client.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={client.logoUrl} alt={`${client.name} logo`} className="h-full w-full object-contain p-2" />
+              ) : (
+                <span className="text-2xl font-semibold text-[var(--text-2)]">
+                  {client.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            <div>
             <h2 className="text-4xl font-semibold tracking-tight text-[var(--text-1)]">{client.name}</h2>
             <p className="mt-2 text-sm text-[var(--text-3)]">
               {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
             </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -45,6 +60,24 @@ export function ClientDetail({ slug }: { slug: string }) {
               New proposal
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className="proposal-form-theme rounded-2xl border border-[var(--border-1)] bg-white p-6">
+        <h3 className="text-lg font-semibold tracking-tight text-[var(--text-1)]">Client branding</h3>
+        <p className="mt-1 text-sm text-[var(--text-3)]">
+          This logo is the source of truth used for the proposal cover lockup when this client is selected.
+        </p>
+
+        <div className="mt-4 max-w-md space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
+          <ImagePicker
+            value={client.logoUrl ?? ""}
+            onChange={(logoUrl) => {
+              void updateClientMutation.mutateAsync({ logoUrl });
+            }}
+            previewClassName="h-40 w-full"
+          />
         </div>
       </section>
 

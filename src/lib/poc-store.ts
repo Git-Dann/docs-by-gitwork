@@ -88,6 +88,7 @@ function ensureClientInState(state: PocState, clientName?: string | null) {
     id: createId("client"),
     name,
     slug: slugify(name),
+    logoUrl: "",
     createdAt: timestamp,
     updatedAt: timestamp,
   });
@@ -632,7 +633,7 @@ export function getPocClientDetail(slug: string) {
   };
 }
 
-export function createPocClient(input: { name: string }) {
+export function createPocClient(input: { name: string; logoUrl?: string }) {
   const state = readState();
   const name = input.name.trim();
   if (!name) {
@@ -649,6 +650,7 @@ export function createPocClient(input: { name: string }) {
     id: createId("client"),
     name,
     slug: slugify(name),
+    logoUrl: input.logoUrl?.trim() || "",
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -656,6 +658,34 @@ export function createPocClient(input: { name: string }) {
   state.clients.unshift(client);
   writeState(state);
   return { client };
+}
+
+export function updatePocClient(
+  slug: string,
+  input: {
+    logoUrl?: string;
+  },
+) {
+  const state = readState();
+  const index = state.clients.findIndex((client) => client.slug === slug);
+
+  if (index < 0) {
+    throw new Error("Client not found.");
+  }
+
+  const existing = state.clients[index];
+  const updated: ClientRecord = {
+    ...existing,
+    logoUrl: input.logoUrl ?? existing.logoUrl ?? "",
+    updatedAt: nowIso(),
+  };
+
+  state.clients[index] = updated;
+  writeState(state);
+
+  return {
+    client: toClientListItem(updated, state.proposals),
+  };
 }
 
 export function savePocCosting(

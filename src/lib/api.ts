@@ -26,6 +26,7 @@ import {
   savePocCosting,
   savePocEngagement,
   savePocTimeline,
+  updatePocClient,
   updatePocProofDocument,
   updatePocProposal,
 } from "@/lib/poc-store";
@@ -88,8 +89,12 @@ export async function listClients(params?: { search?: string }) {
   return listPocClients(params);
 }
 
-export async function createClient(input: { name: string }) {
+export async function createClient(input: { name: string; logoUrl?: string }) {
   return createPocClient(input);
+}
+
+export async function updateClient(slug: string, input: { logoUrl?: string }) {
+  return updatePocClient(slug, input);
 }
 
 export async function getClientDetail(slug: string) {

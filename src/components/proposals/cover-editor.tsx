@@ -92,6 +92,9 @@ export function CoverEditor({
       <p className="text-xs text-[var(--text-3)]">
         Proposal defaults, template-owned branding, and confidentiality copy are managed in Settings.
       </p>
+      <p className="text-xs text-[var(--text-3)]">
+        Client logos are managed on each client record and are pulled into the cover automatically when you use the client x Gitwork lockup.
+      </p>
     </div>
   );
 }

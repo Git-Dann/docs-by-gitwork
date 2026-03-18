@@ -4,6 +4,7 @@ import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
+import { ImagePicker } from "@/components/ui/image-picker";
 import { useClientList, useCreateClient } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
 
@@ -11,14 +12,16 @@ export function ClientManagement() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [clientName, setClientName] = useState("");
+  const [clientLogoUrl, setClientLogoUrl] = useState("");
   const { data, isPending, error } = useClientList({ search });
   const createMutation = useCreateClient();
 
   const clients = data?.clients ?? [];
 
   async function handleCreate() {
-    await createMutation.mutateAsync({ name: clientName });
+    await createMutation.mutateAsync({ name: clientName, logoUrl: clientLogoUrl });
     setClientName("");
+    setClientLogoUrl("");
     setShowCreate(false);
   }
 
@@ -75,7 +78,23 @@ export function ClientManagement() {
               ) : clients.length ? (
                 clients.map((client) => (
                   <tr key={client.id}>
-                    <td className="px-5 py-4 font-medium text-[var(--text-1)]">{client.name}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        {client.logoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={client.logoUrl}
+                            alt={`${client.name} logo`}
+                            className="h-10 w-10 rounded-lg border border-[var(--border-1)] object-contain p-1"
+                          />
+                        ) : (
+                          <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border-1)] bg-[var(--surface-1)] text-sm font-semibold text-[var(--text-2)]">
+                            {client.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="font-medium text-[var(--text-1)]">{client.name}</span>
+                      </div>
+                    </td>
                     <td className="px-5 py-4 text-[var(--text-2)]">{client.proposalCount}</td>
                     <td className="px-5 py-4 text-[var(--text-2)]">{formatDate(client.createdAt)}</td>
                     <td className="px-5 py-4">
@@ -133,6 +152,15 @@ export function ClientManagement() {
                   className="proposal-field-compact w-full"
                 />
               </label>
+
+              <div className="mt-4 space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
+                <ImagePicker
+                  value={clientLogoUrl}
+                  onChange={setClientLogoUrl}
+                  previewClassName="h-36 w-full"
+                />
+              </div>
 
               <div className="mt-5 flex justify-end gap-2">
                 <Button type="button" variant="secondary" size="md" onClick={() => setShowCreate(false)}>

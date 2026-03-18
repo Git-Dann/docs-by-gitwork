@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
+import { useClientList } from "@/hooks/use-proposals";
 import { formatCurrency } from "@/lib/format";
 import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
 import type { CostingSectionData, ProposalDocument, ProposalSection } from "@/types/proposal";
@@ -546,9 +547,7 @@ function CoverPagePreview({
       }
     | undefined;
   const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY" && cta.label.trim().length > 0);
-  const clientLogo = proposal.assets.find(
-    (asset) => asset.type === "LOGO" && asset.placement === "cover-client-logo" && asset.url.trim().length > 0,
-  );
+  const { data: clientListData } = useClientList();
   const brandLogoUrl = settings.templateBranding.coverBrandLogoUrl.trim() || undefined;
   const topAccentUrl = settings.templateBranding.coverTopAccentUrl.trim() || undefined;
   const bottomAccentUrl = settings.templateBranding.coverBottomAccentUrl.trim() || undefined;
@@ -558,6 +557,10 @@ function CoverPagePreview({
     data.confidentiality,
   );
   const clientName = data.clientName || proposal.clientName || proposal.metadata.client || "Client";
+  const matchedClient = (clientListData?.clients ?? []).find(
+    (client) => client.name.trim().toLowerCase() === clientName.trim().toLowerCase(),
+  );
+  const clientLogoUrl = matchedClient?.logoUrl?.trim() || undefined;
   const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
 
   return (
@@ -578,7 +581,7 @@ function CoverPagePreview({
             {data.brandLockup === "CLIENT_X_GITWORK" ? (
               <ClientGitworkLockup
                 clientName={clientName}
-                clientLogoUrl={clientLogo?.url}
+                clientLogoUrl={clientLogoUrl}
                 brandLogoUrl={brandLogoUrl}
               />
             ) : (

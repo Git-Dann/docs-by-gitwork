@@ -14,7 +14,6 @@ const assetTypes: AssetInput["type"][] = [
 ];
 const placementOptions = [
   { value: "cover", label: "Cover" },
-  { value: "cover-client-logo", label: "Cover client logo" },
   { value: "introduction", label: "Introduction" },
   { value: "product_overview", label: "Product overview" },
   { value: "objectives", label: "Objectives" },
@@ -46,7 +45,7 @@ export function AssetPicker({
         <div>
           <p className="text-sm font-medium">Proposal assets</p>
           <p className="text-xs text-[var(--text-3)]">
-            Template-owned branding lives in Templates. Use this area for proposal-specific imagery and client logos.
+            Use this area for proposal-specific decks, documentation visuals, diagrams, screenshots, and supporting brand assets.
           </p>
         </div>
         <Button
