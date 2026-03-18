@@ -5,7 +5,7 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      subtitle="Profile, proposal defaults, branding, confidentiality, and invited users."
+      subtitle="Proposal defaults, branding, confidentiality, and reusable snippets."
     >
       <SettingsPanel />
     </AppShell>

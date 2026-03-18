@@ -9,7 +9,6 @@ import {
   LifebuoyIcon,
   Squares2X2Icon,
   StarIcon,
-  UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -484,23 +483,11 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       {open ? (
         <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[380px] rounded-[20px] border border-[var(--border-1)] bg-white p-2 shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
           <Link
-            href="/app/settings"
+            href="/app/account-settings"
             className={buttonStyles({
               variant: "tertiary",
               size: "sm",
               className: "w-full justify-start gap-3 px-4 text-sm text-[var(--text-2)]",
-            })}
-          >
-            <UserCircleIcon className="h-5 w-5" />
-            <span>View profile</span>
-          </Link>
-
-          <Link
-            href="/app/settings"
-            className={buttonStyles({
-              variant: "tertiary",
-              size: "sm",
-              className: "mt-1 w-full justify-start gap-3 px-4 text-sm text-[var(--text-2)]",
             })}
           >
             <Cog8ToothIcon className="h-5 w-5" />
