@@ -66,6 +66,14 @@ const ProposalBuilderPanel = dynamic(
   },
 );
 
+function slugifyClientName(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function getSectionEntryId(section: ProposalSection) {
   return section.id ?? section.key;
 }
@@ -391,7 +399,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 Proposals
               </Link>
               <ChevronRightIcon className="h-4 w-4" />
-              <span>{draft.clientName || "Client"}</span>
+              {draft.clientName ? (
+                <Link
+                  href={`/app/clients/${slugifyClientName(draft.clientName)}`}
+                  className="hover:text-[var(--text-1)]"
+                >
+                  {draft.clientName}
+                </Link>
+              ) : (
+                <span>Client</span>
+              )}
               <ChevronRightIcon className="h-4 w-4" />
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
@@ -523,23 +540,22 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         </div>
 
         <div className="mt-5 border-t border-[var(--border-1)] pt-4">
-          <div className="inline-flex h-11 items-center rounded-xl border border-[var(--border-1)] bg-white p-1">
+          <div className="inline-flex items-center rounded-[18px] border border-[var(--border-1)] bg-white p-1">
             {tabs.map((tab) => (
-              <Button
+              <button
                 key={tab.id}
                 type="button"
-                variant={activeTab === tab.id ? "secondary" : "tertiary"}
-                size="sm"
                 className={cn(
-                  "px-4",
+                  "inline-flex h-[44px] min-w-[132px] items-center justify-center rounded-[14px] px-6 text-sm font-medium transition outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   activeTab === tab.id
-                    ? "border-[var(--border-1)] bg-white text-[var(--text-1)]"
-                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                    ? "border border-[var(--border-1)] bg-white text-[var(--text-1)] shadow-[0_1px_2px_rgba(16,24,40,0.06)]"
+                    : "border border-transparent bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
                 )}
                 onClick={() => setActiveTab(tab.id)}
               >
                 {tab.label}
-              </Button>
+              </button>
             ))}
           </div>
         </div>
