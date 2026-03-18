@@ -5,7 +5,7 @@ export default function TemplatesPage() {
   return (
     <AppShell
       title="Templates"
-      subtitle="Template-driven architecture foundation for proposals, SLAs, and future document types."
+      subtitle="Document structure foundation for proposals, SLAs, and future document types."
     >
       <TemplateManagement />
     </AppShell>

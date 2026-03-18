@@ -90,7 +90,7 @@ export function CoverEditor({
         Display format: <span className="font-medium">{value.productName || "Product"} by Gitwork</span>
       </p>
       <p className="text-xs text-[var(--text-3)]">
-        Template-owned branding is handled in Templates. Cover confidentiality copy is managed in Settings.
+        Proposal defaults, template-owned branding, and confidentiality copy are managed in Settings.
       </p>
     </div>
   );

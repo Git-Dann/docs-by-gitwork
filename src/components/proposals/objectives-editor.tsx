@@ -3,18 +3,8 @@
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
+import { useLocalSettings } from "@/lib/local-settings";
 import type { ObjectiveItem } from "@/types/proposal";
-
-const snippets = [
-  {
-    title: "Reduce proposal cycle time",
-    description: "Decrease proposal drafting and review timeline by at least 40%.",
-  },
-  {
-    title: "Increase consistency",
-    description: "Standardize structure and language across all proposal outputs.",
-  },
-];
 
 export function ObjectivesEditor({
   items,
@@ -24,6 +14,8 @@ export function ObjectivesEditor({
   onChange: (items: ObjectiveItem[]) => void;
 }) {
   const safeItems = items ?? [];
+  const { settings } = useLocalSettings();
+  const snippets = settings.proposalDefaults.objectiveSnippets;
 
   function createObjective(overrides?: Partial<ObjectiveItem>) {
     return {

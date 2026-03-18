@@ -29,10 +29,18 @@ export interface TemplateBrandingSettings {
   coverBottomAccentUrl: string;
 }
 
+export interface ObjectiveSnippet {
+  title: string;
+  description: string;
+}
+
 export interface LocalSettingsState {
   account: AccountSettings;
   workspace: WorkspaceSettings;
   templateBranding: TemplateBrandingSettings;
+  proposalDefaults: {
+    objectiveSnippets: ObjectiveSnippet[];
+  };
 }
 
 export const defaultLocalSettings: LocalSettingsState = {
@@ -54,6 +62,18 @@ export const defaultLocalSettings: LocalSettingsState = {
     coverBrandLogoUrl: "",
     coverTopAccentUrl: "",
     coverBottomAccentUrl: "",
+  },
+  proposalDefaults: {
+    objectiveSnippets: [
+      {
+        title: "Reduce proposal cycle time",
+        description: "Decrease proposal drafting and review timeline by at least 40%.",
+      },
+      {
+        title: "Increase consistency",
+        description: "Standardize structure and language across all proposal outputs.",
+      },
+    ],
   },
 };
 
@@ -84,6 +104,13 @@ export function readLocalSettings(): LocalSettingsState {
       templateBranding: {
         ...defaultLocalSettings.templateBranding,
         ...(parsed.templateBranding ?? {}),
+      },
+      proposalDefaults: {
+        ...defaultLocalSettings.proposalDefaults,
+        ...(parsed.proposalDefaults ?? {}),
+        objectiveSnippets: Array.isArray(parsed.proposalDefaults?.objectiveSnippets)
+          ? parsed.proposalDefaults.objectiveSnippets
+          : defaultLocalSettings.proposalDefaults.objectiveSnippets,
       },
     };
   } catch {

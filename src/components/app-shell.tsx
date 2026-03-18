@@ -488,7 +488,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
             className={buttonStyles({
               variant: "tertiary",
               size: "sm",
-              className: "w-full justify-end gap-3 px-4 text-sm text-[var(--text-2)]",
+              className: "w-full justify-start gap-3 px-4 text-sm text-[var(--text-2)]",
             })}
           >
             <UserCircleIcon className="h-5 w-5" />
@@ -500,7 +500,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
             className={buttonStyles({
               variant: "tertiary",
               size: "sm",
-              className: "mt-1 w-full justify-end gap-3 px-4 text-sm text-[var(--text-2)]",
+              className: "mt-1 w-full justify-start gap-3 px-4 text-sm text-[var(--text-2)]",
             })}
           >
             <Cog8ToothIcon className="h-5 w-5" />

@@ -2,6 +2,7 @@
 
 import { PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { ImagePicker } from "@/components/ui/image-picker";
 import type { AssetInput } from "@/types/proposal";
 
 const assetTypes: AssetInput["type"][] = [
@@ -117,20 +118,20 @@ export function AssetPicker({
                 </label>
               </div>
 
-              <label className="block space-y-1">
-                  <span className="text-xs text-[var(--text-3)]">Asset source</span>
-                <input
+              <div className="space-y-1">
+                <span className="text-xs text-[var(--text-3)]">Asset image</span>
+                <ImagePicker
                   value={asset.url}
-                  onChange={(event) =>
+                  onChange={(url) =>
                     onChange(
                       safeAssets.map((entry, entryIndex) =>
-                        entryIndex === index ? { ...entry, url: event.target.value } : entry,
+                        entryIndex === index ? { ...entry, url } : entry,
                       ),
                     )
                   }
-                  className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                  previewClassName="h-36 w-full"
                 />
-              </label>
+              </div>
 
               <div className="grid gap-2 md:grid-cols-3">
                 <label className="space-y-1">
