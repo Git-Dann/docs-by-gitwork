@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { buttonStyles } from "@/components/ui/button";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { useProposal } from "@/hooks/use-proposals";
@@ -26,30 +26,23 @@ export default function ProposalPreviewPage() {
 
   return (
     <main className="min-h-screen bg-[#f6f8fc] px-4 py-6 sm:px-8">
-      <div className="mx-auto max-w-[1040px] space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">Proposal preview</h1>
-            <p className="mt-1 text-sm text-[var(--text-3)]">
-              Client-facing output preview without the app chrome.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/preview/${id}`}
-              target="_blank"
-              rel="noreferrer"
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              Open shared preview
-            </Link>
+      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-30 flex justify-center sm:inset-x-auto sm:right-8 sm:bottom-8">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-[rgba(16,24,40,0.08)] bg-white/92 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-md">
           <Link
             href={`/app/proposals/${id}`}
             className={buttonStyles({ variant: "secondary", size: "md" })}
           >
+            <ArrowLeftIcon className="h-4 w-4" />
             Back to editor
+          </Link>
+          <Link
+            href={`/preview/${id}`}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonStyles({ variant: "secondary", size: "md" })}
+          >
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            Shared preview
           </Link>
           <Link
             href={`/app/proposals/${id}/print`}
@@ -58,15 +51,14 @@ export default function ProposalPreviewPage() {
             Open print view
           </Link>
         </div>
-        </div>
-
-        <ProposalPreview
-          proposal={data.proposal}
-          showTableOfContents={false}
-          frame={false}
-          className="mx-auto max-w-[1040px]"
-        />
       </div>
+
+      <ProposalPreview
+        proposal={data.proposal}
+        showTableOfContents={false}
+        frame={false}
+        className="mx-auto max-w-[1040px]"
+      />
     </main>
   );
 }
