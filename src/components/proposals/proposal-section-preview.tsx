@@ -671,14 +671,18 @@ function CoverAccent({
   assetUrl?: string;
   altText: string;
 }) {
-  const placementClass =
+  const assetPlacementClass =
+    position === "top"
+      ? "pointer-events-none absolute inset-x-0 top-3 sm:top-4"
+      : "pointer-events-none absolute inset-x-0 bottom-3 sm:bottom-4";
+  const fallbackPlacementClass =
     position === "top"
       ? "pointer-events-none absolute left-6 right-6 top-6 sm:left-8 sm:right-8 sm:top-8"
       : "pointer-events-none absolute left-6 right-6 bottom-6 sm:left-8 sm:right-8 sm:bottom-8";
 
   if (assetUrl) {
     return (
-      <div className={placementClass}>
+      <div className={assetPlacementClass}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={assetUrl}
@@ -691,7 +695,7 @@ function CoverAccent({
 
   if (position === "top") {
     return (
-      <div className={`${placementClass} flex items-start justify-center`}>
+      <div className={`${fallbackPlacementClass} flex items-start justify-center`}>
         <div className="h-4 flex-1 rounded-b-[24px] bg-[var(--brand-600)]" />
         <div className="mx-6 h-20 w-[360px] rounded-b-[44px] bg-[var(--brand-600)]" />
         <div className="h-4 flex-1 rounded-b-[24px] bg-[var(--brand-600)]" />
@@ -700,7 +704,7 @@ function CoverAccent({
   }
 
   return (
-    <div className={`${placementClass} flex items-end justify-center`}>
+    <div className={`${fallbackPlacementClass} flex items-end justify-center`}>
       <div className="h-4 flex-1 rounded-t-[24px] bg-[var(--brand-600)]" />
       <div className="mx-6 h-20 w-[360px] rounded-t-[44px] bg-[var(--brand-600)]" />
       <div className="h-4 flex-1 rounded-t-[24px] bg-[var(--brand-600)]" />
