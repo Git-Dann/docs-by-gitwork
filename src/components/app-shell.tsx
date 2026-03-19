@@ -119,7 +119,7 @@ export function AppShell({
         className={cn(
           "mx-auto grid h-full w-full max-w-[1800px] grid-cols-1 overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_24px_64px_rgba(15,23,42,0.08)] backdrop-blur-sm",
           isCollapsed
-            ? "lg:grid-cols-[76px_minmax(0,1fr)]"
+            ? "lg:grid-cols-[88px_minmax(0,1fr)]"
             : "lg:grid-cols-[296px_minmax(0,1fr)]",
         )}
       >
@@ -127,7 +127,7 @@ export function AppShell({
           className={cn(
             "hidden min-h-0 shrink-0 overflow-hidden lg:flex",
             isCollapsed
-              ? "w-[76px] min-w-[76px] max-w-[76px] border-r border-[var(--border-2)] bg-[var(--surface-canvas)]/35 p-1.5"
+              ? "w-[88px] min-w-[88px] max-w-[88px] border-r border-[var(--border-2)] bg-white p-3"
               : "w-[296px] min-w-[296px] max-w-[296px] border-r border-[var(--border-2)] bg-white",
           )}
         >
@@ -197,8 +197,8 @@ function CollapsedRail({
   account: AccountSettings;
 }) {
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-[16px] border border-[var(--border-2)] bg-white px-2 py-4 shadow-[var(--shadow-xs)]">
-      <div className="space-y-5">
+    <div className="flex h-full w-full flex-col justify-between rounded-[24px] border border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,#fcfcfd_100%)] px-2.5 py-4 shadow-[var(--shadow-sm)]">
+      <div className="space-y-6">
         <div className="flex justify-center">
           {canExpand ? (
             <button
@@ -208,19 +208,20 @@ function CollapsedRail({
               className={buttonStyles({
                 variant: "secondary",
                 size: "icon-md",
-                className: "h-10 w-10 rounded-[12px]",
+                className:
+                  "h-14 w-14 rounded-[20px] border-[var(--border-2)] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_18px_rgba(16,24,40,0.08)]",
               })}
             >
-              <BrandGlyph className="h-8 w-8" />
+              <BrandGlyph className="h-11 w-11" />
             </button>
           ) : (
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
-              <BrandGlyph className="h-8 w-8" />
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-[20px] border border-[var(--border-2)] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_18px_rgba(16,24,40,0.08)]">
+              <BrandGlyph className="h-11 w-11" />
             </div>
           )}
         </div>
 
-        <nav className="flex flex-col items-center gap-1.5">
+        <nav className="flex flex-col items-center gap-3">
           {primaryNav.map((item) => {
             const Icon = item.icon;
             const active =
@@ -233,15 +234,15 @@ function CollapsedRail({
                 href={item.href}
                 title={item.label}
                 className={cn(
-                  "relative inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-3)] transition",
+                  "relative inline-flex items-center justify-center text-[var(--text-3)] transition",
                   active
-                    ? "bg-[var(--surface-1)] text-[var(--text-1)]"
-                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+                    ? "h-14 w-14 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-1)] shadow-[var(--shadow-xs)]"
+                    : "h-11 w-11 rounded-[14px] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
                 )}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className={cn("h-5 w-5", active ? "text-[var(--text-1)]" : "text-[var(--text-2)]")} />
                 {item.badge ? (
-                  <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-white px-1 text-[10px] font-semibold text-[var(--text-4)]">
+                  <span className="absolute -right-1 -top-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--border-2)] bg-white px-1.5 text-[11px] font-semibold text-[var(--text-4)] shadow-[var(--shadow-xs)]">
                     {item.badge}
                   </span>
                 ) : null}
@@ -251,12 +252,13 @@ function CollapsedRail({
         </nav>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <button
           className={buttonStyles({
             variant: "tertiary",
             size: "icon-md",
-            className: "h-10 w-10 rounded-[10px] text-[var(--text-3)]",
+            className:
+              "h-11 w-11 rounded-[14px] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
           })}
           title="Support"
           type="button"
@@ -268,7 +270,8 @@ function CollapsedRail({
           className={buttonStyles({
             variant: "tertiary",
             size: "icon-md",
-            className: "h-10 w-10 rounded-[10px] text-[var(--text-3)]",
+            className:
+              "h-11 w-11 rounded-[14px] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
           })}
           title="Settings"
         >
@@ -278,23 +281,23 @@ function CollapsedRail({
           <button
             type="button"
             onClick={onExpand}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white shadow-[var(--shadow-xs)]"
             title="Expand sidebar"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={account.avatarUrl}
               alt={account.name}
-              className="h-9 w-9 rounded-full object-cover"
+              className="h-10 w-10 rounded-full object-cover"
             />
           </button>
         ) : (
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white">
+          <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white shadow-[var(--shadow-xs)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={account.avatarUrl}
               alt={account.name}
-              className="h-9 w-9 rounded-full object-cover"
+              className="h-10 w-10 rounded-full object-cover"
             />
           </div>
         )}
