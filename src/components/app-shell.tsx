@@ -114,14 +114,21 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--surface-canvas)] p-3 text-[var(--text-1)] sm:p-4">
-      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] grid-cols-1 overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_24px_64px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:grid-cols-[auto_minmax(0,1fr)]">
+    <div className="h-[100dvh] overflow-hidden bg-[var(--surface-canvas)] p-3 text-[var(--text-1)] sm:p-4">
+      <div
+        className={cn(
+          "mx-auto grid h-full w-full max-w-[1800px] grid-cols-1 overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_24px_64px_rgba(15,23,42,0.08)] backdrop-blur-sm",
+          isCollapsed
+            ? "lg:grid-cols-[76px_minmax(0,1fr)]"
+            : "lg:grid-cols-[296px_minmax(0,1fr)]",
+        )}
+      >
         <aside
           className={cn(
-            "hidden min-h-0 lg:flex",
+            "hidden min-h-0 shrink-0 overflow-hidden lg:flex",
             isCollapsed
-              ? "w-[76px] border-r border-[var(--border-2)] bg-[var(--surface-canvas)]/35 p-1.5"
-              : "w-[296px] border-r border-[var(--border-2)] bg-white",
+              ? "w-[76px] min-w-[76px] max-w-[76px] border-r border-[var(--border-2)] bg-[var(--surface-canvas)]/35 p-1.5"
+              : "w-[296px] min-w-[296px] max-w-[296px] border-r border-[var(--border-2)] bg-white",
           )}
         >
           {isCollapsed ? (
