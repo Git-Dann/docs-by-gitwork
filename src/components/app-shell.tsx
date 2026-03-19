@@ -7,12 +7,13 @@ import {
   Cog8ToothIcon,
   DocumentTextIcon,
   LifebuoyIcon,
+  MagnifyingGlassIcon,
   Squares2X2Icon,
   StarIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
@@ -26,6 +27,13 @@ const clientAccentClasses = [
   "bg-amber-500",
   "bg-rose-600",
 ] as const;
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
+  badge?: string;
+};
 
 export function AppShell({
   children,
@@ -57,16 +65,6 @@ export function AppShell({
     return window.localStorage.getItem("gitwork.sidebar.collapsed") === "1";
   });
 
-  function toggleCollapsed() {
-    if (forceCollapsedSidebar) {
-      return;
-    }
-
-    const next = !collapsed;
-    setCollapsed(next);
-    window.localStorage.setItem("gitwork.sidebar.collapsed", next ? "1" : "0");
-  }
-
   const isCollapsed = forceCollapsedSidebar ? true : collapsed;
   const proposals = proposalListData?.proposals ?? [];
   const proposalCount = proposals.length;
@@ -78,38 +76,52 @@ export function AppShell({
       logoText: client.name.charAt(0).toUpperCase(),
     }));
   }, [clientListData?.clients]);
+  const primaryNav = useMemo<NavItem[]>(
+    () => [
+      {
+        href: "/app",
+        label: "Dashboard",
+        icon: Squares2X2Icon,
+      },
+      {
+        href: "/app/proposals",
+        label: "Proposals",
+        icon: ChartBarSquareIcon,
+        badge: proposalCount ? String(proposalCount) : undefined,
+      },
+      {
+        href: "/app/proof",
+        label: "Proof",
+        icon: DocumentTextIcon,
+      },
+      {
+        href: "/app/templates",
+        label: "Saved Docs",
+        icon: StarIcon,
+      },
+    ],
+    [proposalCount],
+  );
 
-  const primaryNav = [
-    {
-      href: "/app",
-      label: "Dashboard",
-      icon: Squares2X2Icon,
-    },
-    {
-      href: "/app/proposals",
-      label: "Proposals",
-      icon: ChartBarSquareIcon,
-      badge: proposalCount ? String(proposalCount) : undefined,
-    },
-    {
-      href: "/app/proof",
-      label: "Proof",
-      icon: DocumentTextIcon,
-    },
-    {
-      href: "/app/templates",
-      label: "Saved Docs",
-      icon: StarIcon,
-    },
-  ] as const;
+  function toggleCollapsed() {
+    if (forceCollapsedSidebar) {
+      return;
+    }
+
+    const next = !collapsed;
+    setCollapsed(next);
+    window.localStorage.setItem("gitwork.sidebar.collapsed", next ? "1" : "0");
+  }
 
   return (
-    <div className="h-screen bg-[var(--surface-0)] p-4 text-[var(--text-1)]">
-      <div className="mx-auto grid h-[calc(100vh-2rem)] max-w-[1800px] grid-cols-1 gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
+    <div className="min-h-screen bg-[var(--surface-canvas)] p-3 text-[var(--text-1)] sm:p-4">
+      <div className="mx-auto grid min-h-[calc(100vh-1.5rem)] max-w-[1800px] grid-cols-1 overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_24px_64px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:grid-cols-[auto_minmax(0,1fr)]">
         <aside
           className={cn(
-            "hidden h-full flex-col rounded-[24px] border border-[var(--border-1)] bg-white p-3 lg:flex",
-            isCollapsed ? "w-[96px]" : "w-[332px]",
+            "hidden min-h-0 lg:flex",
+            isCollapsed
+              ? "w-[76px] border-r border-[var(--border-2)] bg-[var(--surface-canvas)]/35 p-1.5"
+              : "w-[296px] border-r border-[var(--border-2)] bg-white",
           )}
         >
           {isCollapsed ? (
@@ -126,20 +138,38 @@ export function AppShell({
               onCollapse={toggleCollapsed}
               primaryNav={primaryNav}
               clientRows={clientRows}
+              proposalCount={proposalCount}
               account={settings.account}
             />
           )}
         </aside>
 
-        <div className="flex min-h-0 flex-col rounded-[24px] bg-transparent">
+        <div className="flex min-h-0 flex-col bg-[linear-gradient(180deg,#ffffff_0%,#fcfcfd_100%)]">
           {hideContentHeader ? null : (
-            <header className="border-b border-[var(--border-1)] px-5 py-4 sm:px-7">
-              <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-              {subtitle ? <p className="mt-1 text-sm text-[var(--text-3)]">{subtitle}</p> : null}
+            <header className="px-6 pt-8 sm:px-8">
+              <div className="max-w-3xl">
+                <p className="app-eyebrow">Workspace</p>
+                <h1 className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                  {title}
+                </h1>
+                {subtitle ? (
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
+                ) : null}
+              </div>
             </header>
           )}
 
-          <main className={mainClassName ?? "min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-7 sm:py-6"}>{children}</main>
+          <main
+            className={
+              mainClassName ??
+              cn(
+                "min-h-0 flex-1 overflow-auto px-6 pb-8 sm:px-8",
+                hideContentHeader ? "pt-6" : "pt-8",
+              )
+            }
+          >
+            {children}
+          </main>
         </div>
       </div>
     </div>
@@ -156,40 +186,39 @@ function CollapsedRail({
   pathname: string | null;
   onExpand: () => void;
   canExpand: boolean;
-  primaryNav: ReadonlyArray<{
-    href: string;
-    label: string;
-    icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
-    badge?: string;
-  }>;
+  primaryNav: ReadonlyArray<NavItem>;
   account: AccountSettings;
 }) {
   return (
-    <>
-      <div className="flex flex-1 flex-col items-center gap-4">
-        {canExpand ? (
-          <button
-            type="button"
-            onClick={onExpand}
-            aria-label="Expand sidebar"
-            className={buttonStyles({
-              variant: "secondary",
-              size: "icon-md",
-              className: "mt-1 h-16 w-16 rounded-2xl",
-            })}
-          >
-            <BrandGlyph className="h-10 w-10" />
-          </button>
-        ) : (
-          <div className="mt-1 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--border-1)] bg-white">
-            <BrandGlyph className="h-10 w-10" />
-          </div>
-        )}
+    <div className="flex h-full w-full flex-col justify-between rounded-[16px] border border-[var(--border-2)] bg-white px-2 py-4 shadow-[var(--shadow-xs)]">
+      <div className="space-y-5">
+        <div className="flex justify-center">
+          {canExpand ? (
+            <button
+              type="button"
+              onClick={onExpand}
+              aria-label="Expand sidebar"
+              className={buttonStyles({
+                variant: "secondary",
+                size: "icon-md",
+                className: "h-10 w-10 rounded-[12px]",
+              })}
+            >
+              <BrandGlyph className="h-8 w-8" />
+            </button>
+          ) : (
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+              <BrandGlyph className="h-8 w-8" />
+            </div>
+          )}
+        </div>
 
-        <nav className="mt-14 flex flex-col items-center gap-2">
+        <nav className="flex flex-col items-center gap-1.5">
           {primaryNav.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href || (item.href !== "/app" && Boolean(pathname?.startsWith(item.href)));
+            const active =
+              pathname === item.href ||
+              (item.href !== "/app" && Boolean(pathname?.startsWith(item.href)));
 
             return (
               <Link
@@ -197,25 +226,30 @@ function CollapsedRail({
                 href={item.href}
                 title={item.label}
                 className={cn(
-                  "inline-flex h-12 w-12 items-center justify-center rounded-xl border transition",
+                  "relative inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-3)] transition",
                   active
-                    ? "border-[var(--border-1)] bg-[var(--surface-1)] text-[var(--text-2)]"
-                    : "border-transparent text-[var(--text-3)] hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
+                    ? "bg-[var(--surface-1)] text-[var(--text-1)]"
+                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
                 )}
               >
-                <Icon className="h-6 w-6" />
+                <Icon className="h-5 w-5" />
+                {item.badge ? (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-white px-1 text-[10px] font-semibold text-[var(--text-4)]">
+                    {item.badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
         </nav>
       </div>
 
-      <div className="mt-auto space-y-2">
+      <div className="space-y-1.5">
         <button
           className={buttonStyles({
             variant: "tertiary",
             size: "icon-md",
-            className: "h-11 w-11 text-[var(--text-3)]",
+            className: "h-10 w-10 rounded-[10px] text-[var(--text-3)]",
           })}
           title="Support"
           type="button"
@@ -227,7 +261,7 @@ function CollapsedRail({
           className={buttonStyles({
             variant: "tertiary",
             size: "icon-md",
-            className: "h-11 w-11 text-[var(--text-3)]",
+            className: "h-10 w-10 rounded-[10px] text-[var(--text-3)]",
           })}
           title="Settings"
         >
@@ -237,32 +271,28 @@ function CollapsedRail({
           <button
             type="button"
             onClick={onExpand}
-            className={buttonStyles({
-              variant: "secondary",
-              size: "icon-md",
-              className: "h-11 w-11",
-            })}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white"
             title="Expand sidebar"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={account.avatarUrl}
               alt={account.name}
-              className="h-8 w-8 rounded-full object-cover"
+              className="h-9 w-9 rounded-full object-cover"
             />
           </button>
         ) : (
-          <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border-1)] bg-white">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[rgba(0,0,0,0.08)] bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={account.avatarUrl}
               alt={account.name}
-              className="h-8 w-8 rounded-full object-cover"
+              className="h-9 w-9 rounded-full object-cover"
             />
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -271,118 +301,144 @@ function ExpandedRail({
   onCollapse,
   primaryNav,
   clientRows,
+  proposalCount,
   account,
 }: {
   pathname: string | null;
   onCollapse: () => void;
-  primaryNav: ReadonlyArray<{
-    href: string;
-    label: string;
-    icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
-    badge?: string;
-  }>;
+  primaryNav: ReadonlyArray<NavItem>;
   clientRows: Array<{
     name: string;
     href: string;
     logoClass: string;
     logoText: string;
   }>;
+  proposalCount: number;
   account: AccountSettings;
 }) {
-  return (
-    <div className="flex h-full min-h-0 flex-col rounded-[20px] bg-white p-4">
-      <button
-        type="button"
-        onClick={onCollapse}
-        aria-label="Collapse sidebar"
-        className={buttonStyles({
-          variant: "tertiary",
-          size: "sm",
-          className: "h-auto w-fit gap-3 p-2",
-        })}
-      >
-        <BrandGlyph className="h-12 w-12" />
-        <p className="whitespace-nowrap text-[24px] leading-none tracking-[-0.02em] text-[var(--text-1)]">
-          <span className="font-semibold">Docs</span>
-          <span className="font-normal"> by Gitwork</span>
-        </p>
-      </button>
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
 
-      <div className="mt-7 flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+  const filteredPrimaryNav = useMemo(() => {
+    const value = deferredQuery.trim().toLowerCase();
+
+    if (!value) {
+      return primaryNav;
+    }
+
+    return primaryNav.filter((item) => item.label.toLowerCase().includes(value));
+  }, [deferredQuery, primaryNav]);
+
+  const filteredClients = useMemo(() => {
+    const value = deferredQuery.trim().toLowerCase();
+
+    if (!value) {
+      return clientRows;
+    }
+
+    return clientRows.filter((client) => client.name.toLowerCase().includes(value));
+  }, [clientRows, deferredQuery]);
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-white">
+      <div className="border-b border-[var(--border-2)] px-5 pb-5 pt-6">
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Collapse sidebar"
+          className="flex items-center gap-3 rounded-[12px] p-1 text-left transition hover:bg-[var(--surface-1)]"
+        >
+          <BrandGlyph className="h-10 w-10" />
+          <div>
+            <p className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+              Docs by Gitwork
+            </p>
+            <p className="text-sm text-[var(--text-4)]">Workspace control centre</p>
+          </div>
+        </button>
+
+        <label className="relative mt-5 block">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search navigation or clients"
+            className="app-input pl-10"
+          />
+        </label>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-6">
+        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto pr-1">
           <section>
-            <p className="mb-2 text-[12px] font-semibold tracking-[0.08em] text-[var(--text-3)] uppercase">General</p>
-            <ul className="space-y-1.5">
-              {primaryNav.map((item) => (
-                <SidebarLink
+            <div className="mb-3 flex items-center justify-between">
+              <p className="app-eyebrow">Workspace</p>
+              {proposalCount ? (
+                <span className="app-chip">{proposalCount} active docs</span>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              {filteredPrimaryNav.map((item) => (
+                <SidebarPrimaryLink
                   key={item.href}
                   href={item.href}
                   label={item.label}
                   icon={item.icon}
-                  badge={"badge" in item ? item.badge : undefined}
-                  active={pathname === item.href || (item.href !== "/app" && Boolean(pathname?.startsWith(item.href)))}
+                  badge={item.badge}
+                  active={
+                    pathname === item.href ||
+                    (item.href !== "/app" && Boolean(pathname?.startsWith(item.href)))
+                  }
                 />
               ))}
-            </ul>
+              {!filteredPrimaryNav.length ? (
+                <p className="px-3 py-2 text-sm text-[var(--text-4)]">No navigation matches.</p>
+              ) : null}
+            </div>
           </section>
 
-          <section className="mt-8">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[12px] font-semibold tracking-[0.08em] text-[var(--text-3)] uppercase">Clients</p>
-              <Link href="/app/clients" className="text-xs font-medium text-[var(--text-3)] hover:text-[var(--text-1)]">
+          <WorkspaceSnapshotCard
+            proposalCount={proposalCount}
+            clientCount={clientRows.length}
+          />
+
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="app-eyebrow">Clients</p>
+              <Link
+                href="/app/clients"
+                className="text-sm font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+              >
                 Manage
               </Link>
             </div>
-            <ul className="space-y-1.5">
-              {clientRows.map((client) => (
-                <li key={client.name}>
-                  <Link
-                    href={client.href}
-                    className={buttonStyles({
-                      variant: "tertiary",
-                      size: "sm",
-                      className: "w-full justify-start gap-2.5 px-3 text-[18px] font-semibold tracking-[-0.02em]",
-                    })}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <span
-                        className={cn(
-                          "inline-flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold text-white",
-                          client.logoClass,
-                        )}
-                      >
-                        {client.logoText}
-                      </span>
-                      {client.name}
-                    </span>
-                    <ChevronRightIcon className="ml-auto h-5 w-5 text-[var(--text-3)]" />
-                  </Link>
-                </li>
+            <div className="space-y-1.5">
+              {filteredClients.slice(0, 8).map((client) => (
+                <SidebarClientLink key={client.name} {...client} />
               ))}
-            </ul>
-            {!clientRows.length ? (
-              <p className="px-3 pt-1 text-sm text-[var(--text-3)]">
-                Add clients in the Clients area, or create a proposal with a client name.
-              </p>
-            ) : null}
+              {!filteredClients.length ? (
+                <p className="rounded-[12px] border border-dashed border-[var(--border-2)] px-3 py-3 text-sm text-[var(--text-4)]">
+                  Add clients in the Clients area to keep proposal work tied to accounts.
+                </p>
+              ) : null}
+            </div>
           </section>
         </div>
 
         <div className="mt-6 space-y-1.5">
-          <Button type="button" variant="tertiary" size="sm" className="w-full justify-start gap-2.5 px-3 text-[18px] font-semibold tracking-[-0.02em]">
-            <LifebuoyIcon className="h-5 w-5 text-[var(--text-3)]" />
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+          >
+            <LifebuoyIcon className="h-5 w-5 text-[var(--text-4)]" />
             Support
-          </Button>
+          </button>
 
           <Link
             href="/app/settings"
-            className={buttonStyles({
-              variant: "tertiary",
-              size: "sm",
-              className: "w-full justify-start gap-2.5 px-3 text-[18px] font-semibold tracking-[-0.02em]",
-            })}
+            className="flex items-center gap-3 rounded-[12px] px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
-            <Cog8ToothIcon className="h-5 w-5 text-[var(--text-3)]" />
+            <Cog8ToothIcon className="h-5 w-5 text-[var(--text-4)]" />
             Settings
           </Link>
         </div>
@@ -393,7 +449,7 @@ function ExpandedRail({
   );
 }
 
-function SidebarLink({
+function SidebarPrimaryLink({
   href,
   label,
   icon: Icon,
@@ -407,27 +463,89 @@ function SidebarLink({
   badge?: string;
 }) {
   return (
-    <li>
-      <Link
-        href={href}
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center justify-between rounded-[12px] px-3 py-2 text-sm font-semibold transition",
+        active
+          ? "bg-[var(--surface-1)] text-[var(--text-1)]"
+          : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      <span className="flex items-center gap-3">
+        <Icon className="h-5 w-5 text-[var(--text-4)]" />
+        {label}
+      </span>
+      {badge ? (
+        <span className="app-chip border-[var(--border-1)] bg-white px-2 text-[11px] font-semibold text-[var(--text-4)]">
+          {badge}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function SidebarClientLink({
+  name,
+  href,
+  logoClass,
+  logoText,
+}: {
+  name: string;
+  href: string;
+  logoClass: string;
+  logoText: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-[12px] px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+    >
+      <span
         className={cn(
-          "flex items-center justify-between rounded-xl border px-3 py-2 text-[18px] font-semibold tracking-[-0.02em] transition",
-          active
-            ? "border-[var(--border-1)] bg-white text-[var(--text-1)] shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
-            : "border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+          "inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white",
+          logoClass,
         )}
       >
-        <span className="flex items-center gap-2.5">
-          <Icon className="h-5 w-5" />
-          {label}
-        </span>
-        {badge ? (
-          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-[var(--border-1)] px-2 text-xs font-medium text-[var(--text-3)]">
-            {badge}
-          </span>
-        ) : null}
-      </Link>
-    </li>
+        {logoText}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+      <ChevronRightIcon className="h-4 w-4 text-[var(--text-4)]" />
+    </Link>
+  );
+}
+
+function WorkspaceSnapshotCard({
+  proposalCount,
+  clientCount,
+}: {
+  proposalCount: number;
+  clientCount: number;
+}) {
+  return (
+    <div className="app-muted-card p-4">
+      <p className="app-eyebrow">Snapshot</p>
+      <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Platform-wide document work
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+        The new UI foundation keeps proposals, Proof drafts, templates, and client records under one system.
+      </p>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">Proposals</p>
+          <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            {proposalCount}
+          </p>
+        </div>
+        <div className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-3">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">Clients</p>
+          <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            {clientCount}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -464,37 +582,31 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={buttonStyles({ variant: "secondary", size: "md", className: "h-auto w-full justify-start p-3 text-left" })}
+        className="flex w-full items-center gap-3 rounded-[16px] border border-[var(--border-2)] bg-white px-3 py-3 text-left shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
       >
-        <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={account.avatarUrl}
-            alt={account.name}
-            className="h-11 w-11 rounded-full object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-semibold text-[var(--text-1)]">{account.name}</p>
-            <p className="truncate text-sm text-[var(--text-3)]">{account.email}</p>
-          </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={account.avatarUrl}
+          alt={account.name}
+          className="h-10 w-10 rounded-full object-cover"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
+          <p className="truncate text-sm text-[var(--text-4)]">{account.email}</p>
         </div>
       </button>
 
       {open ? (
-        <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[380px] rounded-[20px] border border-[var(--border-1)] bg-white p-2 shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
+        <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-[360px] rounded-[20px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
           <Link
             href="/app/account-settings"
-            className={buttonStyles({
-              variant: "tertiary",
-              size: "sm",
-              className: "w-full justify-start gap-3 px-4 text-sm text-[var(--text-2)]",
-            })}
+            className="flex items-center gap-3 rounded-[12px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
-            <Cog8ToothIcon className="h-5 w-5" />
+            <Cog8ToothIcon className="h-5 w-5 text-[var(--text-4)]" />
             <span>Account settings</span>
           </Link>
 
-          <div className="my-2 border-t border-[var(--border-1)]" />
+          <div className="my-2 border-t border-[var(--border-2)]" />
 
           <Button
             className="w-full justify-center"
@@ -506,12 +618,12 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
               setShowInviteModal(true);
             }}
           >
-            + Add User
+            + Add user
           </Button>
 
           {settings.workspace.invitedUsers.length ? (
-            <div className="mt-2 rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2">
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-3)]">Pending invites</p>
+            <div className="mt-2 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
+              <p className="app-eyebrow">Pending invites</p>
               <div className="mt-2 space-y-1">
                 {settings.workspace.invitedUsers.slice(0, 3).map((email) => (
                   <p key={email} className="truncate text-sm text-[var(--text-2)]">
@@ -522,44 +634,41 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
             </div>
           ) : null}
 
-          <div className="my-2 border-t border-[var(--border-1)]" />
+          <div className="my-2 border-t border-[var(--border-2)]" />
 
           <button
             type="button"
-            className={buttonStyles({
-              variant: "tertiary",
-              size: "sm",
-              className: "w-full justify-start px-4 text-sm text-[var(--text-2)]",
-            })}
+            className="flex w-full items-center gap-3 rounded-[12px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
-            <span className="flex items-center gap-2">
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
-              Sign out
-            </span>
+            <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />
+            Sign out
           </button>
         </div>
       ) : null}
 
       {showInviteModal ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/30 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border-1)] bg-white p-5 shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div className="app-dialog-backdrop absolute inset-0" />
+          <div className="app-dialog-panel relative z-10 w-full max-w-md p-6">
             <div>
-              <h3 className="text-lg font-semibold text-[var(--text-1)]">Add user</h3>
-              <p className="mt-1 text-sm text-[var(--text-3)]">Add an email address to the invited users list.</p>
+              <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Add user</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                Add an email address to the invited users list.
+              </p>
             </div>
 
-            <label className="mt-4 block space-y-1.5">
-              <span className="text-sm font-medium text-[var(--text-2)]">Email address</span>
+            <label className="mt-5 block space-y-1.5">
+              <span className="app-field-label">Email address</span>
               <input
                 value={inviteEmail}
                 onChange={(event) => setInviteEmail(event.target.value)}
                 type="email"
-                className="w-full"
+                className="app-input"
                 placeholder="name@company.com"
               />
             </label>
 
-            <div className="mt-5 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={() => setShowInviteModal(false)}>
                 Cancel
               </Button>
@@ -598,8 +707,13 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
 
 function BrandGlyph({ className }: { className?: string }) {
   return (
-    <div className={cn("relative rounded-[14px] border border-[var(--border-1)] bg-white shadow-[0_4px_10px_rgba(15,23,42,0.08)]", className)}>
-      <span className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_45%_30%,#a78bfa_0%,#7c3aed_45%,#4c1d95_100%)]" />
+    <div
+      className={cn(
+        "relative rounded-[12px] border border-[rgba(10,13,18,0.12)] bg-white shadow-[0_1px_1px_rgba(10,13,18,0.08),0_4px_10px_rgba(10,13,18,0.08)]",
+        className,
+      )}
+    >
+      <span className="absolute inset-1/4 rounded-full bg-[linear-gradient(135deg,#53389e_0%,#7f56d9_52%,#9e77ed_100%)]" />
     </div>
   );
 }

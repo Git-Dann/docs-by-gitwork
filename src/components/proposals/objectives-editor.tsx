@@ -43,9 +43,12 @@ export function ObjectivesEditor({
   }
 
   return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-0)] p-5">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-lg font-medium text-[var(--text-1)]">Objectives</p>
+        <div>
+          <p className="app-eyebrow">Objectives</p>
+          <p className="mt-2 text-lg font-semibold text-[var(--text-1)]">Outcome statements</p>
+        </div>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -77,7 +80,7 @@ export function ObjectivesEditor({
 
               event.target.value = "";
             }}
-            className="proposal-field-compact app-select-compact min-w-[220px] text-sm"
+            className="app-select-compact min-w-[220px] text-sm"
           >
             <option value="">Use snippet...</option>
             {snippets.map((snippet, index) => (
@@ -94,10 +97,10 @@ export function ObjectivesEditor({
           {safeItems.map((item, index) => (
             <article
               key={item.id ?? `${item.title}-${index}`}
-              className="rounded-2xl border border-[var(--border-1)] bg-white p-4"
+              className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
             >
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_auto]">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Title</span>
                   <input
                     value={item.title}
@@ -108,11 +111,11 @@ export function ObjectivesEditor({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Description</span>
                   <input
                     value={item.description}
@@ -123,11 +126,11 @@ export function ObjectivesEditor({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Icon</span>
                   <IconSelect
                     value={item.icon}
@@ -183,7 +186,9 @@ export function ObjectivesEditor({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-3)]">No objectives yet.</p>
+        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No objectives yet.
+        </p>
       )}
     </div>
   );

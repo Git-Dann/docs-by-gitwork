@@ -5,9 +5,9 @@ import { Button, buttonStyles } from "@/components/ui/button";
 
 export function PrintToolbar({ proposalId }: { proposalId: string }) {
   return (
-    <header className="flex items-center justify-between rounded-lg border border-[var(--border-1)] bg-white p-3 print:hidden">
+    <header className="app-card flex items-center justify-between p-4 print:hidden">
       <div>
-        <p className="text-xs font-semibold tracking-wide text-[var(--text-3)] uppercase">Print view</p>
+        <p className="app-eyebrow">Print View</p>
       </div>
       <div className="flex items-center gap-2">
         <Button

@@ -27,9 +27,12 @@ export function ListItemsEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">{title}</p>
+        <div>
+          <p className="app-eyebrow">List</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">{title}</p>
+        </div>
         <Button
           type="button"
           onClick={() => onChange([...safeItems, ""])}
@@ -44,17 +47,20 @@ export function ListItemsEditor({
       {safeItems.length ? (
         <div className="space-y-2">
           {safeItems.map((item, index) => (
-            <div key={`${item}-${index}`} className="flex items-center gap-2 rounded-md border border-[var(--border-1)] bg-white p-2">
+            <div
+              key={`${item}-${index}`}
+              className="flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white p-3"
+            >
               <input
                 value={item}
                 onChange={(event) =>
                   onChange(
                     safeItems.map((entry, entryIndex) =>
-                      entryIndex === index ? event.target.value : entry,
+                        entryIndex === index ? event.target.value : entry,
                     ),
                   )
                 }
-                className="h-9 flex-1 rounded-md border border-[var(--border-1)] px-2 text-sm"
+                className="app-input-compact flex-1"
               />
 
               <Button
@@ -90,7 +96,9 @@ export function ListItemsEditor({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-3)]">No items yet.</p>
+        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No items yet.
+        </p>
       )}
     </div>
   );

@@ -43,8 +43,11 @@ export function CTAEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
-      <p className="text-sm font-medium">Call to actions</p>
+    <div className="app-subtle-panel space-y-4 p-5">
+      <div>
+        <p className="app-eyebrow">Actions</p>
+        <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Call to actions</p>
+      </div>
 
       <RoleCard
         title="Primary CTA"
@@ -71,25 +74,25 @@ function RoleCard({
   onChange: (patch: Partial<CTAInput>) => void;
 }) {
   return (
-    <section className="space-y-2 rounded-md border border-[var(--border-1)] bg-white p-3">
+    <section className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-3)]">{title}</h4>
       <div className="grid gap-2 md:grid-cols-2">
-        <label className="space-y-1">
+        <label className="space-y-1.5">
           <span className="text-xs text-[var(--text-3)]">Label</span>
           <input
             value={value.label}
             onChange={(event) => onChange({ label: event.target.value })}
-            className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+            className="app-input-compact"
             placeholder="Book a call"
           />
         </label>
 
-        <label className="space-y-1">
+        <label className="space-y-1.5">
           <span className="text-xs text-[var(--text-3)]">Destination type</span>
           <select
             value={value.destinationType}
             onChange={(event) => onChange({ destinationType: event.target.value as CTAInput["destinationType"] })}
-            className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+            className="app-select-compact w-full text-sm"
           >
             {destinationTypes.map((type) => (
               <option key={type} value={type}>
@@ -100,12 +103,12 @@ function RoleCard({
         </label>
       </div>
 
-      <label className="block space-y-1">
+      <label className="block space-y-1.5">
         <span className="text-xs text-[var(--text-3)]">Destination</span>
         <input
           value={value.destination}
           onChange={(event) => onChange({ destination: event.target.value })}
-          className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+          className="app-input-compact"
           placeholder="mailto:hello@gitwork.io"
         />
       </label>

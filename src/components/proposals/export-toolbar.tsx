@@ -24,10 +24,12 @@ export function ExportToolbar({ proposalId }: { proposalId: string }) {
   }
 
   return (
-    <section className="rounded-2xl border border-[var(--border-1)] bg-white p-4">
+    <section className="app-card p-4">
       <header>
-        <p className="text-[11px] font-semibold tracking-[0.14em] text-[var(--text-3)] uppercase">Export & Share</p>
-        <p className="mt-1 text-xs text-[var(--text-3)]">Print-ready output with PDF/share-link foundation.</p>
+        <p className="app-eyebrow">Export & Share</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+          Print-ready output with PDF and share-link foundation.
+        </p>
       </header>
 
       <div className="mt-3 grid grid-cols-1 gap-2">
@@ -36,7 +38,7 @@ export function ExportToolbar({ proposalId }: { proposalId: string }) {
           className={buttonStyles({
             variant: "secondary",
             size: "sm",
-            className: "w-full justify-center text-xs font-semibold tracking-wide uppercase",
+            className: "w-full justify-center",
           })}
         >
           <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
@@ -47,7 +49,7 @@ export function ExportToolbar({ proposalId }: { proposalId: string }) {
           className={buttonStyles({
             variant: "secondary",
             size: "sm",
-            className: "w-full justify-center text-xs font-semibold tracking-wide uppercase",
+            className: "w-full justify-center",
           })}
         >
           <PrinterIcon className="h-3.5 w-3.5" />
@@ -59,7 +61,7 @@ export function ExportToolbar({ proposalId }: { proposalId: string }) {
           loading={exportMutation.isPending}
           variant="primary"
           size="sm"
-          className="w-full justify-center text-xs font-semibold tracking-wide uppercase"
+          className="w-full justify-center"
           leadingIcon={<ClipboardDocumentIcon className="h-3.5 w-3.5" />}
         >
           {copied ? "Link copied" : "Copy share link"}
@@ -70,7 +72,7 @@ export function ExportToolbar({ proposalId }: { proposalId: string }) {
           loading={exportMutation.isPending}
           variant="secondary"
           size="sm"
-          className="w-full justify-center text-xs font-semibold tracking-wide uppercase"
+          className="w-full justify-center"
           leadingIcon={<DocumentArrowDownIcon className="h-3.5 w-3.5" />}
         >
           PDF foundation

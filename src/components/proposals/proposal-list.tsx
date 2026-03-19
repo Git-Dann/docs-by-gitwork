@@ -85,16 +85,38 @@ export function ProposalList() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-xl border border-[rgba(16,24,40,0.08)] bg-white p-4">
-        <div className="flex flex-wrap items-center gap-3">
+    <div className="space-y-5">
+      <section className="app-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="app-eyebrow">Library</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+              Proposal documents
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+              Search, sort, duplicate, archive, and reopen delivery documents from one table.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            onClick={() => setShowCreate(true)}
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
+          >
+            New proposal
+          </Button>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <label className="relative min-w-[220px] flex-1">
-            <MagnifyingGlassIcon className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-[var(--text-3)]" />
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search proposals"
-              className="h-10 w-full rounded-md border border-[var(--border-1)] bg-white pl-9 pr-3 text-sm outline-none transition focus:border-[var(--brand-500)]"
+              className="app-input pl-9"
             />
           </label>
 
@@ -116,7 +138,7 @@ export function ProposalList() {
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as (typeof statusOptions)[number])}
-              className="proposal-field-compact app-select-compact min-w-[150px]"
+              className="app-select-compact min-w-[170px]"
             >
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
@@ -130,7 +152,7 @@ export function ProposalList() {
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as (typeof sortOptions)[number]["value"])}
-              className="proposal-field-compact app-select-compact min-w-[160px]"
+              className="app-select-compact min-w-[180px]"
             >
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -140,57 +162,55 @@ export function ProposalList() {
             </select>
           </label>
 
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={() => setShowCreate(true)}
-            className="ml-auto"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            New proposal
-          </Button>
+          <span className="app-chip ml-auto">
+            {data?.proposals.length ?? 0} result{(data?.proposals.length ?? 0) === 1 ? "" : "s"}
+          </span>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-[rgba(16,24,40,0.08)] bg-white">
+      <section className="app-table-shell">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[rgba(16,24,40,0.08)] text-sm">
-            <thead className="bg-white">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Proposal</th>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Last updated</th>
-                <th className="px-4 py-3 text-left font-medium text-[var(--text-3)]">Actions</th>
+                <th className="text-left">Proposal</th>
+                <th className="text-left">Status</th>
+                <th className="text-left">Last updated</th>
+                <th className="text-left">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgba(16,24,40,0.08)]">
+            <tbody>
               {isPending ? (
                 <tr>
-                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={4}>
+                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                     Loading proposals...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td className="px-4 py-6 text-red-600" colSpan={4}>
+                  <td className="text-sm text-rose-700" colSpan={4}>
                     {(error as Error).message}
                   </td>
                 </tr>
               ) : data?.proposals.length ? (
                 data.proposals.map((proposal) => (
-                  <tr key={proposal.id} className="hover:bg-[var(--surface-0)]">
-                    <td className="px-4 py-3">
-                      <Link href={`/app/proposals/${proposal.id}`} className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">
+                  <tr key={proposal.id}>
+                    <td>
+                      <Link
+                        href={`/app/proposals/${proposal.id}`}
+                        className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
+                      >
                         {proposal.title}
                       </Link>
-                      <p className="mt-0.5 text-xs text-[var(--text-3)]">{proposal.clientName || "No client"}</p>
+                      <p className="mt-1 text-sm text-[var(--text-3)]">
+                        {proposal.clientName || "No client assigned"}
+                      </p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <StatusBadge status={proposal.status} />
                     </td>
-                    <td className="px-4 py-3 text-[var(--text-2)]">{formatDate(proposal.updatedAt)}</td>
-                    <td className="px-4 py-3">
+                    <td className="text-[var(--text-3)]">{formatDate(proposal.updatedAt)}</td>
+                    <td>
                       <div className="flex flex-wrap gap-2">
                         <Link
                           href={`/app/proposals/${proposal.id}`}
@@ -232,7 +252,7 @@ export function ProposalList() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-6 text-[var(--text-3)]" colSpan={4}>
+                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                     No proposals found.
                   </td>
                 </tr>
@@ -247,32 +267,35 @@ export function ProposalList() {
           <button
             type="button"
             aria-label="Close create proposal modal"
-            className="absolute inset-0 bg-zinc-900/40"
+            className="app-dialog-backdrop absolute inset-0"
             onClick={() => setShowCreate(false)}
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="w-full max-w-lg rounded-xl border border-[var(--border-1)] bg-white p-5 shadow-lg">
-              <h2 className="text-lg font-semibold">Create proposal</h2>
-              <p className="mt-1 text-sm text-[var(--text-3)]">
+            <div className="app-dialog-panel w-full max-w-lg p-6">
+              <p className="app-eyebrow">Create</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                Create proposal
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
                 Start with a title and optional client. The proposal will open blank in the builder.
               </p>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-5 space-y-4">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                     Proposal title
                   </span>
                   <input
                     value={form.title}
                     onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))}
-                    className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
+                    className="app-input"
                     placeholder="Project proposal"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                     Client
                   </span>
                   <input
@@ -280,13 +303,13 @@ export function ProposalList() {
                     onChange={(event) =>
                       setForm((previous) => ({ ...previous, clientName: event.target.value }))
                     }
-                    className="h-10 w-full rounded-md border border-[var(--border-1)] px-3 text-sm outline-none focus:border-[var(--brand-500)]"
+                    className="app-input"
                     placeholder="Dan's Garden"
                   />
                 </label>
               </div>
 
-              <div className="mt-5 flex justify-end gap-2">
+              <div className="mt-6 flex justify-end gap-2">
                 <Button
                   type="button"
                   onClick={() => setShowCreate(false)}

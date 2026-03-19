@@ -37,9 +37,11 @@ export default function ProposalPrintPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[210mm] space-y-3 bg-white px-[12mm] py-[12mm] print:max-w-none print:px-0 print:py-0">
-      <PrintToolbar proposalId={id} />
-      <ProposalPreview proposal={data.proposal} showTableOfContents={false} frame={false} />
+    <main className="min-h-screen bg-[var(--surface-canvas)] px-4 py-6 print:bg-white print:px-0 print:py-0">
+      <div className="mx-auto w-full max-w-[210mm] space-y-3 bg-transparent print:max-w-none">
+        <PrintToolbar proposalId={id} />
+        <ProposalPreview proposal={data.proposal} showTableOfContents={false} frame />
+      </div>
     </main>
   );
 }

@@ -32,6 +32,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { proposalSectionBlueprints } from "@/lib/default-template";
@@ -59,7 +60,7 @@ const ProposalBuilderPanel = dynamic(
     })),
   {
     loading: () => (
-      <article className="rounded-2xl border border-[var(--border-1)] bg-white p-6">
+      <article className="app-card p-6">
         <p className="text-sm text-[var(--text-3)]">Loading builder...</p>
       </article>
     ),
@@ -371,11 +372,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
 
   if (isPending) {
-    return <p className="text-sm text-[var(--text-3)]">Loading proposal...</p>;
+    return (
+      <section className="app-card p-6">
+        <p className="text-sm text-[var(--text-3)]">Loading proposal...</p>
+      </section>
+    );
   }
 
   if (error || !draft) {
-    return <p className="text-sm text-rose-700">{(error as Error)?.message ?? "Proposal unavailable"}</p>;
+    return (
+      <section className="app-card p-6">
+        <p className="text-sm text-rose-700">{(error as Error)?.message ?? "Proposal unavailable"}</p>
+      </section>
+    );
   }
 
   const saveTone =
@@ -389,9 +398,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-[var(--border-1)] bg-white px-6 py-5">
+      <section className="app-surface overflow-hidden px-6 py-6 sm:px-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-3)]">
               <HomeIcon className="h-4 w-4" />
               <ChevronRightIcon className="h-4 w-4" />
@@ -413,17 +422,25 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
 
-            <h1 className="mt-3 text-5xl font-semibold tracking-tight text-[var(--text-1)]">{draft.title}</h1>
+            <p className="app-eyebrow mt-5">Proposal Editor</p>
+            <h1 className="mt-3 text-[38px] font-semibold tracking-[-0.045em] text-[var(--text-1)] sm:text-[42px]">
+              {draft.title}
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+              Build the live proposal structure, keep approvals current, and shape the client-facing document from one controlled workspace.
+            </p>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-3)]">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <StatusBadge status={draft.status} />
-              <span className={cn("inline-flex items-center gap-1", saveTone)}>
+              {draft.version ? <span className="app-chip">Version {draft.version}</span> : null}
+              {draft.clientName ? <span className="app-chip">{draft.clientName}</span> : null}
+              <span className={cn("app-chip", saveTone)}>
                 {saveState === "saved" ? (
                   <CheckCircleIcon className="h-3.5 w-3.5" />
                 ) : saveState === "error" ? (
                   <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                 ) : null}
-                Last Saved: {lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : "Not yet"}
+                Last saved {lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : "Not yet"}
               </span>
             </div>
           </div>
@@ -456,17 +473,20 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 <ChevronDownIcon className="h-4 w-4 opacity-80 transition group-open:rotate-180" />
               </summary>
 
-              <div className="absolute right-0 z-30 mt-2 w-[360px] rounded-2xl border border-[var(--border-1)] bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+              <div className="absolute right-0 z-30 mt-2 w-[360px] rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--text-1)]">Approve, share & export</p>
-                  <p className="mt-1 text-sm text-[var(--text-3)]">
+                  <p className="app-eyebrow">Approval Flow</p>
+                  <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+                    Approve, share & export
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
                     Manage internal sign-off, copy the public link, and export the client-facing A4 PDF from one place.
                   </p>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">Approvals</p>
-                  <p className="mt-1 text-sm text-[var(--text-3)]">
+                <div className="app-subtle-panel mt-4 p-4">
+                  <p className="app-eyebrow">Approvals</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
                     Product and tech sign-off can both be selected. CEO approval is the final state.
                   </p>
                   <div className="mt-3 space-y-2">
@@ -475,13 +495,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       return (
                         <label
                           key={option.key}
-                          className="flex items-start gap-3 rounded-xl border border-[var(--border-1)] bg-white px-3 py-2.5 text-sm text-[var(--text-2)]"
+                          className="flex items-start gap-3 rounded-[16px] border border-[var(--border-2)] bg-white px-3 py-3 text-sm text-[var(--text-2)]"
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
-                            className="mt-0.5 h-4 w-4 rounded border-[var(--border-1)] text-[var(--brand-600)]"
+                            className="app-checkbox mt-0.5 rounded"
                           />
                           <span className="space-y-0.5">
                             <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
@@ -493,26 +513,24 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">
-                    Public link
-                  </p>
+                <div className="app-subtle-panel mt-4 p-4">
+                  <p className="app-eyebrow">Public Link</p>
                   <input
                     readOnly
                     value={publicShareUrl}
-                    className="mt-2 h-[42px] w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-2)]"
+                    className="app-input mt-3"
                   />
                   <Link
                     href={publicSharePath}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex text-sm font-medium text-[var(--brand-700)] hover:underline"
+                    className="mt-3 inline-flex text-sm font-medium text-[var(--brand-700)] hover:underline"
                   >
                     Open shared preview
                   </Link>
                 </div>
 
-                <div className="mt-4 flex items-center gap-2 border-t border-[var(--border-1)] pt-4">
+                <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
                   <Button
                     type="button"
                     variant="secondary"
@@ -539,17 +557,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
         </div>
 
-        <div className="mt-5 border-t border-[var(--border-1)] pt-4">
-          <div className="inline-flex items-center rounded-[18px] border border-[var(--border-1)] bg-white p-1">
+        <div className="mt-6 border-t border-[var(--border-2)] pt-5">
+          <div className="inline-flex items-center rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 className={cn(
-                  "inline-flex h-[44px] min-w-[132px] items-center justify-center rounded-[14px] px-6 text-sm font-medium transition outline-none",
+                  "inline-flex h-[42px] min-w-[128px] items-center justify-center rounded-[14px] px-5 text-sm font-medium transition outline-none",
                   "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   activeTab === tab.id
-                    ? "border border-[var(--border-1)] bg-white text-[var(--text-1)] shadow-[0_1px_2px_rgba(16,24,40,0.06)]"
+                    ? "border border-[var(--border-2)] bg-white text-[var(--text-1)] shadow-[var(--shadow-xs)]"
                     : "border border-transparent bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
                 )}
                 onClick={() => setActiveTab(tab.id)}
@@ -562,9 +580,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       </section>
 
       {activeTab === "overview" ? (
-        <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
+        <div className="space-y-5">
+          <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
+          <ProposalProofPanel proposalId={proposalId} proposalTitle={draft.title} />
+        </div>
       ) : (
-        <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]">
           <TableOfContentsCard
             sections={sectionEntries}
             activeId={activeEntry?.id ?? null}
@@ -624,9 +645,17 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="rounded-2xl border border-[var(--border-1)] bg-white p-5">
-      <div className="flex items-center justify-between border-b border-[var(--border-1)] pb-4">
-        <h2 className="text-3xl font-semibold tracking-tight text-[var(--text-1)]">Table of Contents</h2>
+    <aside className="app-card p-5 xl:sticky xl:top-6">
+      <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] pb-4">
+        <div>
+          <p className="app-eyebrow">Structure</p>
+          <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            Table of contents
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+            Reorder modules, switch the active section, and keep the proposal structure intentional.
+          </p>
+        </div>
         {editable ? (
           <details className="group relative">
             <summary
@@ -641,7 +670,7 @@ function TableOfContentsCard({
               Add
             </summary>
 
-            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-[var(--border-1)] bg-white py-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-white py-2 shadow-[var(--shadow-lg)]">
               {proposalSectionBlueprints.map((module) => (
                 <button
                   key={module.key}
@@ -650,7 +679,7 @@ function TableOfContentsCard({
                     onAddSection?.(module.key);
                     event.currentTarget.closest("details")?.removeAttribute("open");
                   }}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-lg font-medium tracking-[-0.01em] text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-base font-medium tracking-[-0.01em] text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                 >
                   <span>{module.title}</span>
                 </button>
@@ -685,7 +714,7 @@ function TableOfContentsCard({
                   type="button"
                   onClick={() => onSelect(entry.id)}
                   className={cn(
-                    "w-full rounded-xl px-3 py-2.5 text-left text-lg tracking-[-0.01em] transition",
+                    "w-full rounded-[14px] px-3 py-3 text-left text-base tracking-[-0.01em] transition",
                     entry.id === activeId
                       ? "bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
                       : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
@@ -698,7 +727,9 @@ function TableOfContentsCard({
           </ol>
         )
       ) : (
-        <p className="mt-4 text-sm text-[var(--text-3)]">No modules yet. Use Add to start building the proposal.</p>
+        <p className="mt-4 rounded-[16px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No modules yet. Use Add to start building the proposal.
+        </p>
       )}
     </aside>
   );
@@ -730,17 +761,17 @@ function SortableTableOfContentsItem({
     >
       <div
         className={cn(
-          "flex items-center gap-2 rounded-xl border px-3 py-2.5 transition",
+          "flex items-center gap-2 rounded-[16px] border px-3 py-3 transition",
           isActive
-            ? "border-[var(--border-1)] bg-[var(--surface-1)]"
+            ? "border-[var(--border-2)] bg-[var(--surface-1)]"
             : "border-transparent hover:bg-[var(--surface-1)]",
-          isDragging ? "border-[var(--border-1)] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.12)]" : "",
+          isDragging ? "border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]" : "",
         )}
       >
         <button
           type="button"
           aria-label={`Reorder ${entry.section.title}`}
-          className="flex h-7 w-7 cursor-grab items-center justify-center rounded-lg text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
+          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[10px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
@@ -751,7 +782,7 @@ function SortableTableOfContentsItem({
           type="button"
           onClick={() => onSelect(entry.id)}
           className={cn(
-            "min-w-0 flex-1 text-left text-lg tracking-[-0.01em]",
+            "min-w-0 flex-1 text-left text-base tracking-[-0.01em]",
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
           )}
         >
@@ -765,7 +796,7 @@ function SortableTableOfContentsItem({
             event.stopPropagation();
             onDelete?.(entry.id);
           }}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
+          className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
         >
           <MinusIcon className="h-4 w-4" />
         </button>
@@ -927,18 +958,23 @@ function OverviewCanvas({
     !ctaCount;
 
   return (
-    <article className="space-y-7 rounded-2xl border border-[var(--border-1)] bg-white p-6">
+    <article className="app-card space-y-7 p-6 sm:p-7">
       <header>
-        <h3 className="text-4xl font-semibold tracking-tight text-[var(--text-1)]">Proposal overview</h3>
-        <p className="mt-1 text-lg text-[var(--text-3)]">
+        <p className="app-eyebrow">Overview</p>
+        <h3 className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+          Proposal overview
+        </h3>
+        <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
           A light snapshot of the proposal setup, delivery shape, and commercial status.
         </p>
       </header>
 
       {isEmptyProposal ? (
-        <section className="rounded-2xl bg-[var(--surface-0)] p-6 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
-          <h4 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">Nothing to summarise yet</h4>
-          <p className="mt-2 max-w-2xl text-base leading-7 text-[var(--text-3)]">
+        <section className="app-subtle-panel p-6">
+          <h4 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            Nothing to summarise yet
+          </h4>
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
             New proposals now start blank. Use Builder to add client details, scope, timeline, and pricing. The overview will stay empty until there is something real to summarise.
           </p>
         </section>
@@ -1000,10 +1036,10 @@ function OverviewMetricCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-[var(--surface-0)] p-5 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-3)]">{eyebrow}</p>
-      <h4 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text-1)]">{title}</h4>
-      <p className="mt-1 text-sm text-[var(--text-3)]">{subtitle}</p>
+    <section className="app-subtle-panel p-5">
+      <p className="app-eyebrow">{eyebrow}</p>
+      <h4 className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">{title}</h4>
+      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
       <div className="mt-4 space-y-2.5">{children}</div>
     </section>
   );

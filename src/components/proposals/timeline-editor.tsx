@@ -63,11 +63,12 @@ export function TimelineEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium">Timeline phases</p>
-          <p className="text-xs text-[var(--text-3)]">Drag to reorder phases.</p>
+          <p className="app-eyebrow">Timeline</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Timeline phases</p>
+          <p className="mt-1 text-sm text-[var(--text-3)]">Drag to reorder phases.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -79,7 +80,7 @@ export function TimelineEditor({
                 viewMode: event.target.value as "LIST" | "MILESTONE",
               })
             }
-            className="app-select-compact h-9 rounded-md border border-[var(--border-1)] bg-white text-xs"
+            className="app-select-compact"
           >
             <option value="LIST">Simple list</option>
             <option value="MILESTONE">Milestone timeline</option>
@@ -175,7 +176,7 @@ function PhaseItem({
     <article
       ref={setNodeRef}
       style={style}
-      className="grid gap-2 rounded-md border border-[var(--border-1)] bg-white p-3 md:grid-cols-[auto_1fr_1fr_1fr_auto]"
+      className="grid gap-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4 md:grid-cols-[auto_1fr_1fr_1fr_auto]"
     >
       <Button
         type="button"
@@ -189,30 +190,30 @@ function PhaseItem({
         <Bars3Icon className="h-4 w-4" />
       </Button>
 
-      <label className="space-y-1">
+      <label className="space-y-1.5">
         <span className="text-xs text-[var(--text-3)]">Phase name</span>
         <input
           value={phase.name}
           onChange={(event) => onChange({ name: event.target.value })}
-          className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+          className="app-input-compact"
         />
       </label>
 
-      <label className="space-y-1">
+      <label className="space-y-1.5">
         <span className="text-xs text-[var(--text-3)]">Duration</span>
         <input
           value={phase.duration}
           onChange={(event) => onChange({ duration: event.target.value })}
-          className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+          className="app-input-compact"
         />
       </label>
 
-      <label className="space-y-1">
+      <label className="space-y-1.5">
         <span className="text-xs text-[var(--text-3)]">Summary</span>
         <input
           value={phase.summary}
           onChange={(event) => onChange({ summary: event.target.value })}
-          className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+          className="app-input-compact"
         />
       </label>
 
@@ -227,7 +228,7 @@ function PhaseItem({
         <TrashIcon className="h-4 w-4" />
       </Button>
 
-      <label className="space-y-1 md:col-start-2 md:col-end-6">
+      <label className="space-y-1.5 md:col-start-2 md:col-end-6">
         <span className="text-xs text-[var(--text-3)]">Deliverables (comma separated)</span>
         <input
           value={phase.deliverables.join(", ")}
@@ -239,7 +240,7 @@ function PhaseItem({
                 .filter(Boolean),
             })
           }
-          className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+          className="app-input-compact"
         />
       </label>
     </article>

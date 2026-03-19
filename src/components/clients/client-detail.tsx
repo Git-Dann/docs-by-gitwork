@@ -23,8 +23,8 @@ export function ClientDetail({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-[var(--border-1)] bg-white p-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">Client</p>
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Client</p>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)]">
@@ -39,10 +39,12 @@ export function ClientDetail({ slug }: { slug: string }) {
             </div>
 
             <div>
-            <h2 className="text-4xl font-semibold tracking-tight text-[var(--text-1)]">{client.name}</h2>
-            <p className="mt-2 text-sm text-[var(--text-3)]">
-              {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
-            </p>
+              <h2 className="text-4xl font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                {client.name}
+              </h2>
+              <p className="mt-2 text-sm text-[var(--text-3)]">
+                {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
+              </p>
             </div>
           </div>
 
@@ -63,9 +65,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      <section className="proposal-form-theme rounded-2xl border border-[var(--border-1)] bg-white p-6">
-        <h3 className="text-lg font-semibold tracking-tight text-[var(--text-1)]">Client branding</h3>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+      <section className="proposal-form-theme app-card p-6">
+        <p className="app-eyebrow">Branding</p>
+        <h3 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Client branding
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           This logo is the source of truth used for the proposal cover lockup when this client is selected.
         </p>
 
@@ -87,33 +92,33 @@ export function ClientDetail({ slug }: { slug: string }) {
         <SummaryCard label="Last updated" value={formatDate(proposals[0]?.updatedAt ?? client.updatedAt)} />
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-[rgba(16,24,40,0.08)] bg-white">
-        <div className="border-b border-[rgba(16,24,40,0.08)] px-5 py-4">
-          <h3 className="text-lg font-semibold tracking-tight text-[var(--text-1)]">Proposals</h3>
+      <section className="app-table-shell">
+        <div className="border-b border-[var(--border-3)] px-5 py-4">
+          <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Proposals</h3>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[rgba(16,24,40,0.08)] text-sm">
-            <thead className="bg-white">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Proposal</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Status</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Updated</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Actions</th>
+                <th className="text-left">Proposal</th>
+                <th className="text-left">Status</th>
+                <th className="text-left">Updated</th>
+                <th className="text-left">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgba(16,24,40,0.08)]">
+            <tbody>
               {proposals.length ? (
                 proposals.map((proposal) => (
                   <tr key={proposal.id}>
-                    <td className="px-5 py-4">
+                    <td>
                       <p className="font-medium text-[var(--text-1)]">{proposal.title}</p>
                     </td>
-                    <td className="px-5 py-4">
+                    <td>
                       <StatusBadge status={proposal.status} />
                     </td>
-                    <td className="px-5 py-4 text-[var(--text-2)]">{formatDate(proposal.updatedAt)}</td>
-                    <td className="px-5 py-4">
+                    <td className="text-[var(--text-3)]">{formatDate(proposal.updatedAt)}</td>
+                    <td>
                       <Link
                         href={`/app/proposals/${proposal.id}`}
                         className={buttonStyles({ variant: "secondary", size: "xs" })}
@@ -125,7 +130,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 ))
               ) : (
                 <tr>
-                  <td className="px-5 py-8 text-[var(--text-3)]" colSpan={4}>
+                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                     No proposals linked to this client yet.
                   </td>
                 </tr>
@@ -135,30 +140,30 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-[rgba(16,24,40,0.08)] bg-white">
-        <div className="border-b border-[rgba(16,24,40,0.08)] px-5 py-4">
-          <h3 className="text-lg font-semibold tracking-tight text-[var(--text-1)]">Documents</h3>
+      <section className="app-table-shell">
+        <div className="border-b border-[var(--border-3)] px-5 py-4">
+          <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Documents</h3>
           <p className="mt-1 text-sm text-[var(--text-3)]">Proof drafts linked through this client’s proposals.</p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[rgba(16,24,40,0.08)] text-sm">
-            <thead className="bg-white">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Document</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Source proposal</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Updated</th>
-                <th className="px-5 py-3 text-left font-medium text-[var(--text-3)]">Actions</th>
+                <th className="text-left">Document</th>
+                <th className="text-left">Source proposal</th>
+                <th className="text-left">Updated</th>
+                <th className="text-left">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgba(16,24,40,0.08)]">
+            <tbody>
               {proofDocuments.length ? (
                 proofDocuments.map((document) => (
                   <tr key={document.id}>
-                    <td className="px-5 py-4 font-medium text-[var(--text-1)]">{document.title}</td>
-                    <td className="px-5 py-4 text-[var(--text-2)]">{document.proposalTitle || "-"}</td>
-                    <td className="px-5 py-4 text-[var(--text-2)]">{formatDate(document.updatedAt)}</td>
-                    <td className="px-5 py-4">
+                    <td className="font-medium text-[var(--text-1)]">{document.title}</td>
+                    <td>{document.proposalTitle || "-"}</td>
+                    <td className="text-[var(--text-3)]">{formatDate(document.updatedAt)}</td>
+                    <td>
                       <a
                         href={document.shareUrl}
                         target="_blank"
@@ -172,7 +177,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 ))
               ) : (
                 <tr>
-                  <td className="px-5 py-8 text-[var(--text-3)]" colSpan={4}>
+                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                     No linked documents yet.
                   </td>
                 </tr>
@@ -187,9 +192,9 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-2xl bg-white p-5 shadow-[0_1px_3px_rgba(16,24,40,0.08)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">{label}</p>
-      <p className="mt-3 text-2xl font-semibold tracking-tight text-[var(--text-1)]">{value}</p>
+    <article className="app-card p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">{label}</p>
+      <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">{value}</p>
     </article>
   );
 }

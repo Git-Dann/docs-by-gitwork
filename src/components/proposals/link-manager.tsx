@@ -22,9 +22,12 @@ export function LinkManager({
   const safeLinks = links ?? [];
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Supporting links</p>
+        <div>
+          <p className="app-eyebrow">Links</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Supporting links</p>
+        </div>
         <Button
           type="button"
           onClick={() =>
@@ -50,9 +53,12 @@ export function LinkManager({
       {safeLinks.length ? (
         <div className="space-y-2">
           {safeLinks.map((link, index) => (
-            <article key={`${link.id ?? "link"}-${index}`} className="rounded-md border border-[var(--border-1)] bg-white p-3">
+            <article
+              key={`${link.id ?? "link"}-${index}`}
+              className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+            >
               <div className="grid gap-2 md:grid-cols-[1fr_1fr_180px_auto]">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Label</span>
                   <input
                     value={link.label}
@@ -63,11 +69,11 @@ export function LinkManager({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">URL</span>
                   <input
                     value={link.url}
@@ -78,11 +84,11 @@ export function LinkManager({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Type</span>
                   <select
                     value={link.type}
@@ -95,7 +101,7 @@ export function LinkManager({
                         ),
                       )
                     }
-                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+                    className="app-select-compact w-full text-sm"
                   >
                     {linkTypeOptions.map((type) => (
                       <option key={type} value={type}>
@@ -118,7 +124,7 @@ export function LinkManager({
                 </div>
               </div>
 
-              <label className="mt-2 block space-y-1">
+              <label className="mt-3 block space-y-1.5">
                 <span className="text-xs text-[var(--text-3)]">Notes</span>
                 <input
                   value={link.notes ?? ""}
@@ -129,14 +135,16 @@ export function LinkManager({
                       ),
                     )
                   }
-                  className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                  className="app-input-compact"
                 />
               </label>
             </article>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-3)]">No links added yet.</p>
+        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No links added yet.
+        </p>
       )}
     </div>
   );

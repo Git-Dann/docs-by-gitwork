@@ -46,7 +46,7 @@ export function IconSelect({
 
   return (
     <details className="group relative">
-      <summary className="proposal-field-compact flex list-none items-center justify-between gap-3 cursor-pointer">
+      <summary className="app-input-compact flex list-none items-center justify-between gap-3 cursor-pointer">
         <span className="flex items-center gap-2 text-sm text-[var(--text-1)]">
           <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />
           {selected.label}
@@ -54,7 +54,7 @@ export function IconSelect({
         <span className="text-xs text-[var(--text-3)]">Select</span>
       </summary>
 
-      <div className="absolute right-0 z-20 mt-2 grid w-[280px] grid-cols-3 gap-2 rounded-2xl border border-[var(--border-1)] bg-white p-3 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+      <div className="absolute right-0 z-20 mt-2 grid w-[280px] grid-cols-3 gap-2 rounded-[20px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-lg)]">
         {objectiveIconOptions.map((option) => {
           const OptionIcon = option.icon;
 

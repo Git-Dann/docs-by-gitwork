@@ -10,9 +10,12 @@ export function SettingsPanel() {
 
   return (
     <div className="proposal-form-theme grid gap-4">
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Proposal defaults</h2>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Defaults</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Proposal defaults
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           Shared defaults used across proposals and sign-off sections.
         </p>
 
@@ -50,9 +53,12 @@ export function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Proposal branding</h2>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Branding</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Proposal branding
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           Template-owned cover branding lives here. Proposal-specific client logos still belong in the builder.
         </p>
 
@@ -99,9 +105,12 @@ export function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Confidentiality defaults</h2>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Cover copy</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Confidentiality defaults
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           The cover editor uses an internal/external toggle and resolves the final copy from these defaults.
         </p>
 
@@ -129,11 +138,14 @@ export function SettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
+      <section className="app-card p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">Objective snippets</h2>
-            <p className="mt-1 text-sm text-[var(--text-3)]">
+            <p className="app-eyebrow">Reusable content</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              Objective snippets
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
               Reusable objectives available inside the proposal builder.
             </p>
           </div>
@@ -165,7 +177,7 @@ export function SettingsPanel() {
             {settings.proposalDefaults.objectiveSnippets.map((snippet, index) => (
               <article
                 key={`${snippet.title}-${index}`}
-                className="grid gap-3 rounded-xl border border-[var(--border-1)] p-3 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
+                className="grid gap-3 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
               >
                 <Input
                   label="Title"

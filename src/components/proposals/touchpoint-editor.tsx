@@ -51,9 +51,12 @@ export function TouchpointEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">Scope / touchpoints</p>
+        <div>
+          <p className="app-eyebrow">Scope</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Scope / touchpoints</p>
+        </div>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -97,7 +100,7 @@ export function TouchpointEditor({
 
               event.target.value = "";
             }}
-            className="app-select-compact h-8 rounded-md border border-[var(--border-1)] bg-white text-xs"
+            className="app-select-compact text-xs"
           >
             <option value="">Add snippet...</option>
             {touchpointSnippets.map((snippet) => (
@@ -112,23 +115,26 @@ export function TouchpointEditor({
       {safeItems.length ? (
         <div className="space-y-3">
           {safeItems.map((touchpoint, index) => (
-            <article key={touchpoint.id ?? `${touchpoint.title}-${index}`} className="space-y-2 rounded-md border border-[var(--border-1)] bg-white p-3">
+            <article
+              key={touchpoint.id ?? `${touchpoint.title}-${index}`}
+              className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+            >
               <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Title</span>
                   <input
                     value={touchpoint.title}
                     onChange={(event) => patch(index, { title: event.target.value })}
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Summary</span>
                   <input
                     value={touchpoint.summary}
                     onChange={(event) => patch(index, { summary: event.target.value })}
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
@@ -163,7 +169,7 @@ export function TouchpointEditor({
                 </div>
               </div>
 
-              <label className="block space-y-1">
+              <label className="block space-y-1.5">
                 <span className="text-xs text-[var(--text-3)]">Features (comma separated)</span>
                 <input
                   value={touchpoint.features.join(", ")}
@@ -175,26 +181,26 @@ export function TouchpointEditor({
                         .filter(Boolean),
                     })
                   }
-                  className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                  className="app-input-compact"
                 />
               </label>
 
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Notes</span>
                   <input
                     value={touchpoint.notes ?? ""}
                     onChange={(event) => patch(index, { notes: event.target.value })}
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Callout</span>
                   <input
                     value={touchpoint.callout ?? ""}
                     onChange={(event) => patch(index, { callout: event.target.value })}
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
               </div>
@@ -202,7 +208,9 @@ export function TouchpointEditor({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-3)]">No touchpoints yet.</p>
+        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No touchpoints yet.
+        </p>
       )}
     </div>
   );

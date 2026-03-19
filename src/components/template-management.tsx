@@ -12,14 +12,17 @@ export function TemplateManagement() {
   });
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Template library</h2>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+    <div className="space-y-5">
+      <section className="app-card p-5">
+        <p className="app-eyebrow">Templates</p>
+        <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+          Template library
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           Proposal branding, confidentiality defaults, and reusable snippets are managed in Settings. Templates stay focused on document structure.
         </p>
 
-        <div className="mt-4">
+        <div className="mt-5">
           <Link href="/app/settings">
             <Button type="button" variant="secondary" size="sm">
               Open settings
@@ -28,7 +31,7 @@ export function TemplateManagement() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
+      <section className="app-card p-5">
         {isPending ? (
           <p className="text-sm text-[var(--text-3)]">Loading templates...</p>
         ) : error ? (
@@ -36,17 +39,20 @@ export function TemplateManagement() {
         ) : (
           <div className="space-y-3">
             {data?.templates.map((template) => (
-              <article key={template.id} className="rounded-md border border-[var(--border-1)] p-3">
+              <article
+                key={template.id}
+                className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold">{template.name}</h3>
+                  <h3 className="text-base font-semibold text-[var(--text-1)]">{template.name}</h3>
                   {template.isDefault ? (
-                    <span className="rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]">
+                    <span className="app-chip border-transparent bg-[var(--surface-brand)] text-[var(--brand-700)]">
                       Default
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-1 text-xs text-[var(--text-3)]">{template.description}</p>
-                <p className="mt-2 text-xs text-[var(--text-2)]">
+                <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{template.description}</p>
+                <p className="mt-3 text-sm text-[var(--text-2)]">
                   Document type: {template.documentType} · Sections: {template.sections.length}
                 </p>
               </article>

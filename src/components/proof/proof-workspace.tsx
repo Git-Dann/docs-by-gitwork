@@ -34,7 +34,7 @@ export function ProofWorkspace() {
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [frameLoaded, setFrameLoaded] = useState(false);
 
-  const recentDocuments = documentsQuery.data?.documents ?? [];
+  const recentDocuments = useMemo(() => documentsQuery.data?.documents ?? [], [documentsQuery.data?.documents]);
 
   const activeDocument = useMemo(() => {
     if (!recentDocuments.length) {
@@ -100,10 +100,10 @@ export function ProofWorkspace() {
   return (
     <div className="grid min-h-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <aside className="space-y-6">
-        <section className="rounded-[24px] border border-[var(--border-1)] bg-white p-5 shadow-[0_1px_0_rgba(15,23,34,0.02)]">
+        <section className="app-card p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Proof</p>
+              <p className="app-eyebrow">Proof</p>
               <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">Collaborative writing</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
                 Proof is now baked into the Gitwork workspace for drafting, comments, provenance, and review.
@@ -122,15 +122,15 @@ export function ProofWorkspace() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
-            <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]" htmlFor="proof-title">
+          <div className="mt-5 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+            <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]" htmlFor="proof-title">
               New Proof document
             </label>
             <input
               id="proof-title"
               value={draftTitle}
               onChange={(event) => setDraftTitle(event.target.value)}
-              className="mt-3 h-11 w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+              className="app-input mt-3"
               placeholder="Proof draft title"
             />
             <Button
@@ -151,14 +151,14 @@ export function ProofWorkspace() {
           </div>
 
           {serviceReady ? (
-            <div className="mt-4 flex items-center justify-between rounded-2xl border border-[var(--border-1)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
+            <div className="mt-4 flex items-center justify-between rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
               <span className="truncate">{serviceBaseUrl}</span>
               <a href={serviceBaseUrl} target="_blank" rel="noreferrer" className="text-[var(--brand-700)] hover:underline">
                 Open service
               </a>
             </div>
           ) : (
-            <div className="mt-4 rounded-2xl border border-dashed border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+            <div className="mt-4 rounded-[18px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
               <div className="flex items-start gap-3">
                 <CommandLineIcon className="mt-0.5 h-5 w-5 text-[var(--text-3)]" />
                 <div>
@@ -168,7 +168,7 @@ export function ProofWorkspace() {
                   </p>
                 </div>
               </div>
-              <code className="mt-3 block rounded-xl border border-[var(--border-1)] bg-white px-3 py-2 text-xs text-[var(--text-2)]">
+              <code className="mt-3 block rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-2)]">
                 {DEFAULT_PROOF_START_COMMAND}
               </code>
               <Button
@@ -187,7 +187,7 @@ export function ProofWorkspace() {
           )}
         </section>
 
-        <section className="rounded-[24px] border border-[var(--border-1)] bg-white p-5 shadow-[0_1px_0_rgba(15,23,34,0.02)]">
+        <section className="app-card p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Recent Proof sessions</h3>
@@ -200,7 +200,7 @@ export function ProofWorkspace() {
 
           <div className="mt-4 space-y-2">
             {loadingDocuments ? (
-              <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
+              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
                 Loading Proof sessions...
               </div>
             ) : recentDocuments.length ? (
@@ -211,10 +211,10 @@ export function ProofWorkspace() {
                   <div
                     key={record.id}
                     className={cn(
-                      "rounded-2xl border px-4 py-3 transition",
+                      "rounded-[18px] border px-4 py-3 transition",
                       active
                         ? "border-[var(--brand-500)] bg-[var(--surface-brand)]"
-                        : "border-[var(--border-1)] bg-white hover:border-[var(--brand-500)]/40",
+                        : "border-[var(--border-2)] bg-white hover:border-[var(--brand-500)]/40",
                     )}
                   >
                     <button type="button" className="w-full text-left" onClick={() => void handleOpenDocument(record)}>
@@ -241,7 +241,7 @@ export function ProofWorkspace() {
                 );
               })
             ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
+              <div className="rounded-[18px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
                 Create your first Proof document and we’ll keep it here for quick re-entry.
               </div>
             )}
@@ -249,10 +249,10 @@ export function ProofWorkspace() {
         </section>
       </aside>
 
-      <section className="flex min-h-[760px] flex-col rounded-[24px] border border-[var(--border-1)] bg-white p-5 shadow-[0_1px_0_rgba(15,23,34,0.02)]">
+      <section className="app-card flex min-h-[760px] flex-col p-5">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-1)] pb-4">
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">Proof workspace</p>
+            <p className="app-eyebrow">Proof workspace</p>
             <h3 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
               {activeDocument?.title || "Open a Proof document"}
             </h3>
@@ -292,7 +292,7 @@ export function ProofWorkspace() {
         </div>
 
         {serviceReady && activeDocument ? (
-          <div className="relative mt-5 min-h-0 flex-1 overflow-hidden rounded-[20px] border border-[var(--border-1)] bg-[var(--surface-1)]">
+          <div className="relative mt-5 min-h-0 flex-1 overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)]">
             {!frameLoaded ? (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-1)]/95 text-sm text-[var(--text-3)]">
                 Loading Proof session...
@@ -308,9 +308,9 @@ export function ProofWorkspace() {
             />
           </div>
         ) : (
-          <div className="mt-5 flex min-h-[720px] items-center justify-center rounded-[20px] border border-dashed border-[var(--border-1)] bg-[var(--surface-1)] p-8">
+          <div className="mt-5 flex min-h-[720px] items-center justify-center rounded-[20px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-8">
             <div className="max-w-lg text-center">
-              <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border-1)] bg-white">
+              <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border-2)] bg-white">
                 <DocumentPlusIcon className="h-7 w-7 text-[var(--brand-700)]" />
               </div>
               <h4 className="mt-5 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">

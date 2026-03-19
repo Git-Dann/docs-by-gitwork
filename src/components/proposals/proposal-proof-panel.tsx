@@ -72,28 +72,30 @@ export function ProposalProofPanel({
   }
 
   return (
-    <section className="rounded-2xl border border-[var(--border-1)] bg-white p-5">
+    <section className="app-card p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-3)]">Proof workspace</p>
-          <h4 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--text-1)]">Linked working drafts</h4>
-          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+          <p className="app-eyebrow">Proof Workspace</p>
+          <h4 className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            Linked working drafts
+          </h4>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
             Launch collaborative Proof drafts directly from this proposal and keep active writing attached to the deal.
           </p>
         </div>
-        <span className="rounded-full border border-[var(--border-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-3)]">
+        <span className="app-chip">
           {linkedDocuments.length} linked
         </span>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]">
-        <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+        <div className="app-subtle-panel p-4">
           <p className="text-sm font-semibold text-[var(--text-1)]">Create a new Proof draft</p>
           <p className="mt-1 text-sm text-[var(--text-3)]">Start a fresh collaborative writing space for this proposal.</p>
           <input
             value={draftTitle}
             onChange={(event) => setDraftTitle(event.target.value)}
-            className="mt-3 h-11 w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+            className="app-input mt-3"
             placeholder="Draft title"
           />
           <Button
@@ -111,13 +113,13 @@ export function ProposalProofPanel({
           </Button>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border-1)] bg-white p-4">
+        <div className="app-subtle-panel p-4">
           <p className="text-sm font-semibold text-[var(--text-1)]">Attach an existing draft</p>
           <p className="mt-1 text-sm text-[var(--text-3)]">Reuse an unlinked Proof document and connect it to this proposal.</p>
           <select
             value={selectedExistingId}
             onChange={(event) => setSelectedExistingId(event.target.value)}
-            className="app-select mt-3 h-11 w-full rounded-xl border border-[var(--border-1)] bg-white px-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+            className="app-select mt-3"
           >
             <option value="">Select a Proof draft</option>
             {attachCandidates.map((document) => (
@@ -144,7 +146,7 @@ export function ProposalProofPanel({
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="rounded-2xl border border-[var(--border-1)] bg-white p-4">
+        <div className="app-subtle-panel p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-[var(--text-1)]">Active Proof drafts</p>
@@ -168,7 +170,10 @@ export function ProposalProofPanel({
           <div className="mt-4 space-y-2">
             {linkedDocuments.length ? (
               linkedDocuments.map((document) => (
-                <div key={document.id} className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3">
+                <div
+                  key={document.id}
+                  className="rounded-[18px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-[var(--text-1)]">{document.title}</p>
@@ -202,15 +207,15 @@ export function ProposalProofPanel({
                 </div>
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
+              <div className="rounded-[18px] border border-dashed border-[var(--border-2)] bg-white px-4 py-8 text-center text-sm text-[var(--text-3)]">
                 No Proof drafts are linked to this proposal yet.
               </div>
             )}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-3)]">Snapshot</p>
+        <div className="app-subtle-panel p-4">
+          <p className="app-eyebrow">Snapshot</p>
           <div className="mt-4 space-y-3 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="text-[var(--text-3)]">Linked drafts</span>

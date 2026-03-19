@@ -9,9 +9,12 @@ export function AccountSettingsPanel() {
 
   return (
     <div className="proposal-form-theme grid gap-4 xl:grid-cols-2">
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
-        <h2 className="text-base font-semibold">Account settings</h2>
-        <p className="mt-1 text-sm text-[var(--text-3)]">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Profile</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Account settings
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
           Manage the account details shown in the sidebar and account menu.
         </p>
 
@@ -64,11 +67,14 @@ export function AccountSettingsPanel() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--border-1)] bg-white p-4">
+      <section className="app-card p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">Invited users</h2>
-            <p className="mt-1 text-sm text-[var(--text-3)]">
+            <p className="app-eyebrow">Workspace</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              Invited users
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
               Added from the account menu.
             </p>
           </div>
@@ -95,7 +101,7 @@ export function AccountSettingsPanel() {
             {settings.workspace.invitedUsers.map((email) => (
               <div
                 key={email}
-                className="flex items-center justify-between rounded-xl border border-[var(--border-1)] px-3 py-2"
+                className="flex items-center justify-between rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3"
               >
                 <span className="text-sm text-[var(--text-2)]">{email}</span>
                 <Button

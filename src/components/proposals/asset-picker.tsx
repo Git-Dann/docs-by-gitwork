@@ -40,11 +40,12 @@ export function AssetPicker({
   const safeAssets = assets ?? [];
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
+    <div className="app-subtle-panel space-y-4 p-5">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">Proposal assets</p>
-          <p className="text-xs text-[var(--text-3)]">
+          <p className="app-eyebrow">Assets</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Proposal assets</p>
+          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
             Use this area for proposal-specific decks, documentation visuals, diagrams, screenshots, and supporting brand assets.
           </p>
         </div>
@@ -77,9 +78,12 @@ export function AssetPicker({
       {safeAssets.length ? (
         <div className="space-y-2">
           {safeAssets.map((asset, index) => (
-            <article key={`${asset.id ?? "asset"}-${index}`} className="space-y-2 rounded-md border border-[var(--border-1)] bg-white p-3">
+            <article
+              key={`${asset.id ?? "asset"}-${index}`}
+              className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+            >
               <div className="grid gap-2 md:grid-cols-2">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Title</span>
                   <input
                     value={asset.title}
@@ -90,10 +94,10 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Type</span>
                   <select
                     value={asset.type}
@@ -106,7 +110,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+                    className="app-select-compact w-full text-sm"
                   >
                     {assetTypes.map((type) => (
                       <option key={type} value={type}>
@@ -133,7 +137,7 @@ export function AssetPicker({
               </div>
 
               <div className="grid gap-2 md:grid-cols-3">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Alt text</span>
                   <input
                     value={asset.altText}
@@ -144,11 +148,11 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Placement</span>
                   <select
                     value={asset.placement}
@@ -159,7 +163,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+                    className="app-select-compact w-full text-sm"
                   >
                     {placementOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -169,7 +173,7 @@ export function AssetPicker({
                   </select>
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Caption</span>
                   <input
                     value={asset.caption ?? ""}
@@ -180,13 +184,13 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[var(--border-1)] px-2 text-sm"
+                    className="app-input-compact"
                   />
                 </label>
               </div>
 
               <div className="grid gap-2 md:grid-cols-3">
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Size</span>
                   <select
                     value={asset.size}
@@ -199,7 +203,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+                    className="app-select-compact w-full text-sm"
                   >
                     {sizeOptions.map((size) => (
                       <option key={size} value={size}>
@@ -209,7 +213,7 @@ export function AssetPicker({
                   </select>
                 </label>
 
-                <label className="space-y-1">
+                <label className="space-y-1.5">
                   <span className="text-xs text-[var(--text-3)]">Alignment</span>
                   <select
                     value={asset.alignment}
@@ -222,7 +226,7 @@ export function AssetPicker({
                         ),
                       )
                     }
-                    className="app-select-compact h-9 w-full rounded-md border border-[var(--border-1)] bg-white text-sm"
+                    className="app-select-compact w-full text-sm"
                   >
                     {alignmentOptions.map((alignment) => (
                       <option key={alignment} value={alignment}>
@@ -248,7 +252,9 @@ export function AssetPicker({
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[var(--text-3)]">No assets added yet.</p>
+        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No assets added yet.
+        </p>
       )}
     </div>
   );

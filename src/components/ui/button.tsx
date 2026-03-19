@@ -15,29 +15,22 @@ export type ButtonVariant =
 export type ButtonSize = "xs" | "sm" | "md" | "lg" | "icon-sm" | "icon-md";
 
 const variantStyles: Record<ButtonVariant, string> = {
-  primary:
-    "border-transparent bg-[var(--brand-600)] text-white shadow-[0_1px_0_rgba(15,23,42,0.08)] hover:bg-[var(--brand-700)] active:bg-[var(--brand-700)]",
-  secondary:
-    "border-[var(--border-1)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)] active:bg-[var(--surface-1)]",
-  tertiary:
-    "border-transparent bg-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)] active:bg-[var(--surface-1)]",
-  link:
-    "border-transparent bg-transparent px-0 text-[var(--brand-700)] underline-offset-2 hover:underline",
-  hyperlink:
-    "border-transparent bg-transparent px-0 text-[var(--brand-700)] underline-offset-2 hover:underline",
-  danger:
-    "border-rose-200 bg-white text-rose-700 hover:bg-rose-50 active:bg-rose-50",
-  utility:
-    "border-[var(--border-1)] bg-white text-[var(--text-3)] hover:border-[var(--brand-500)] hover:text-[var(--brand-700)]",
+  primary: "app-button-primary",
+  secondary: "app-button-secondary",
+  tertiary: "app-button-tertiary",
+  link: "app-button-link",
+  hyperlink: "app-button-hyperlink",
+  danger: "app-button-danger",
+  utility: "app-button-utility",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  xs: "h-[42px] rounded-xl px-3 text-sm font-medium",
-  sm: "h-[42px] rounded-xl px-3.5 text-sm font-medium",
-  md: "h-[42px] rounded-xl px-4 text-sm font-medium",
-  lg: "h-11 rounded-xl px-4 text-base font-medium",
-  "icon-sm": "h-10 w-10 rounded-xl p-0",
-  "icon-md": "h-[42px] w-[42px] rounded-xl p-0",
+  xs: "app-button-xs",
+  sm: "app-button-sm",
+  md: "app-button-md",
+  lg: "app-button-lg",
+  "icon-sm": "app-button-icon-sm",
+  "icon-md": "app-button-icon-md",
 };
 
 export function buttonStyles({
@@ -49,12 +42,12 @@ export function buttonStyles({
   size?: ButtonSize;
   className?: string;
 }) {
+  const isTextButton = variant === "link" || variant === "hyperlink";
+
   return cn(
-    "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border text-center leading-none transition outline-none [&_svg]:shrink-0",
-    "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
-    "disabled:pointer-events-none disabled:opacity-45",
+    "app-button shrink-0 [&_svg]:shrink-0",
     variantStyles[variant],
-    sizeStyles[size],
+    isTextButton ? null : sizeStyles[size],
     className,
   );
 }

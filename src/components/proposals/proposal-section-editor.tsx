@@ -328,25 +328,25 @@ export function ProposalSectionEditor({
           />
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-1)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
+            <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
               <input
                 type="checkbox"
                 checked={data.showBrandingBlock}
                 onChange={(event) =>
                   updateSectionData({ ...data, showBrandingBlock: event.target.checked })
                 }
-                className="h-4 w-4"
+                className="app-checkbox"
               />
               Show Gitwork branding block
             </label>
-            <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-1)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[0_1px_2px_rgba(16,24,40,0.05)]">
+            <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
               <input
                 type="checkbox"
                 checked={data.signaturePlaceholder}
                 onChange={(event) =>
                   updateSectionData({ ...data, signaturePlaceholder: event.target.checked })
                 }
-                className="h-4 w-4"
+                className="app-checkbox"
               />
               Signature placeholder
             </label>
@@ -357,7 +357,7 @@ export function ProposalSectionEditor({
 
     default:
       return (
-        <div className="rounded-2xl border border-[var(--border-1)] bg-white p-6 text-sm text-[var(--text-2)]">
+        <div className="app-subtle-panel p-6 text-sm text-[var(--text-2)]">
           This section type is not configured yet.
         </div>
       );
@@ -365,7 +365,7 @@ export function ProposalSectionEditor({
 }
 
 function SimpleForm({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-5 rounded-2xl border border-[var(--border-1)] bg-white p-6">{children}</div>;
+  return <div className="app-subtle-panel space-y-5 p-5">{children}</div>;
 }
 
 function Input({
@@ -386,7 +386,7 @@ function Input({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full"
+        className="app-input"
       />
     </label>
   );
@@ -408,12 +408,16 @@ function TextArea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={4}
-        className="w-full"
+        className="app-textarea"
       />
     </label>
   );
 }
 
 function EditorHint({ message }: { message: string }) {
-  return <p className="text-sm text-[var(--text-3)]">{message}</p>;
+  return (
+    <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-3 text-sm leading-6 text-[var(--text-3)]">
+      {message}
+    </p>
+  );
 }

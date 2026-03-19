@@ -207,22 +207,22 @@ export function CostBreakdownTable({
         title="Budget breakdown"
         description="Repurpose this as your people-based delivery budget. Each row represents a person or role allocation."
       >
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-1)] bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="bg-[var(--surface-1)] text-[var(--text-3)]">
+        <div className="app-table-shell overflow-x-auto">
+          <table className="app-table min-w-full text-sm">
+            <thead>
               <tr>
-                <th className="px-2 py-2 text-left font-medium">People</th>
-                <th className="px-2 py-2 text-left font-medium">Tech Stack</th>
-                <th className="px-2 py-2 text-right font-medium">Qty</th>
-                <th className="px-2 py-2 text-right font-medium">Unit cost</th>
-                <th className="px-2 py-2 text-right font-medium">Subtotal</th>
-                <th className="px-2 py-2 text-right font-medium" />
+                <th className="text-left">People</th>
+                <th className="text-left">Tech Stack</th>
+                <th className="text-right">Qty</th>
+                <th className="text-right">Unit cost</th>
+                <th className="text-right">Subtotal</th>
+                <th className="text-right" />
               </tr>
             </thead>
             <tbody>
               {value.items.map((item, index) => (
-                <tr key={item.id ?? `cost-${index}`} className="border-t border-[var(--border-1)]">
-                  <td className="px-2 py-2 align-top">
+                <tr key={item.id ?? `cost-${index}`}>
+                  <td className="align-top">
                     <input
                       value={item.category}
                       onChange={(event) => updateItem(index, { category: event.target.value })}
@@ -230,7 +230,7 @@ export function CostBreakdownTable({
                       placeholder="Engineer, PM, QA..."
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="align-top">
                     <TechStackMultiSelect
                       value={parseTechStackValue(item.description)}
                       onChange={(nextStacks) =>
@@ -240,24 +240,24 @@ export function CostBreakdownTable({
                       }
                     />
                   </td>
-                  <td className="px-2 py-2 align-top text-right">
+                  <td className="align-top text-right">
                     <input
                       value={item.quantity}
                       onChange={(event) => updateItem(index, { quantity: parseNumber(event.target.value, 0) })}
                       className={cn(tableInputClasses, "w-14 min-w-0 text-right")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top text-right">
+                  <td className="align-top text-right">
                     <input
                       value={item.unitCost}
                       onChange={(event) => updateItem(index, { unitCost: parseNumber(event.target.value, 0) })}
                       className={cn(tableInputClasses, "w-28 min-w-0 text-right")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top text-right text-xs font-medium text-[var(--text-1)]">
+                  <td className="align-top text-right text-xs font-medium text-[var(--text-1)]">
                     {formatCurrency(item.subtotal, value.currency)}
                   </td>
-                  <td className="px-2 py-2 align-top text-right">
+                  <td className="align-top text-right">
                     <Button
                       type="button"
                       onClick={() => removeItem(index)}
@@ -285,7 +285,7 @@ export function CostBreakdownTable({
             Add person
           </Button>
 
-          <div className="w-full max-w-xs space-y-1 rounded-xl border border-[var(--border-1)] bg-white p-3 text-sm">
+          <div className="w-full max-w-xs space-y-1 rounded-[18px] border border-[var(--border-2)] bg-white p-4 text-sm shadow-[var(--shadow-xs)]">
             <SummaryRow label="Subtotal" value={formatCurrency(subtotal, value.currency)} />
             <SummaryRow
               label={`Discount (${value.discount}%)`}
@@ -330,35 +330,35 @@ export function CostBreakdownTable({
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-1)] bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="bg-[var(--surface-1)] text-[var(--text-3)]">
+        <div className="app-table-shell overflow-x-auto">
+          <table className="app-table min-w-full text-sm">
+            <thead>
               <tr>
-                <th className="px-2 py-2 text-left font-medium">Action</th>
-                <th className="px-2 py-2 text-left font-medium">Period covered</th>
-                <th className="px-2 py-2 text-left font-medium">Included work</th>
-                <th className="px-2 py-2 text-right font-medium">Amount (ex VAT)</th>
-                <th className="px-2 py-2 text-right font-medium" />
+                <th className="text-left">Action</th>
+                <th className="text-left">Period covered</th>
+                <th className="text-left">Included work</th>
+                <th className="text-right">Amount (ex VAT)</th>
+                <th className="text-right" />
               </tr>
             </thead>
             <tbody>
               {value.paymentSchedule.map((row, index) => (
-                <tr key={row.id} className="border-t border-[var(--border-1)]">
-                  <td className="px-2 py-2 align-top">
+                <tr key={row.id}>
+                  <td className="align-top">
                     <input
                       value={row.action}
                       onChange={(event) => updatePaymentRow(index, { action: event.target.value })}
                       className={cn(tableInputClasses, "min-w-[150px]")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="align-top">
                     <input
                       value={row.periodCovered}
                       onChange={(event) => updatePaymentRow(index, { periodCovered: event.target.value })}
                       className={cn(tableInputClasses, "min-w-[130px]")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
+                  <td className="align-top">
                     <textarea
                       value={row.includedWork}
                       onChange={(event) => updatePaymentRow(index, { includedWork: event.target.value })}
@@ -366,7 +366,7 @@ export function CostBreakdownTable({
                       className={cn(tableTextAreaClasses, "min-w-[280px]")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top text-right">
+                  <td className="align-top text-right">
                     <input
                       value={row.amount ?? ""}
                       onChange={(event) =>
@@ -375,7 +375,7 @@ export function CostBreakdownTable({
                       className={cn(tableInputClasses, "w-28 min-w-0 text-right")}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top text-right">
+                  <td className="align-top text-right">
                     <Button
                       type="button"
                       onClick={() => removePaymentRow(index)}
@@ -445,13 +445,13 @@ function TechStackMultiSelect({
 
   return (
     <details className="relative">
-      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-lg border border-[var(--border-1)] bg-white px-3 pr-4 py-2 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 pr-4 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
         <span className="flex flex-wrap gap-1.5">
           {value.length ? (
             value.map((entry) => (
               <span
                 key={entry}
-                className="rounded-full border border-[var(--border-1)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]"
+                className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]"
               >
                 {entry}
               </span>
@@ -463,7 +463,7 @@ function TechStackMultiSelect({
         <ChevronDownIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
       </summary>
 
-      <div className="absolute left-0 z-20 mt-2 max-h-80 w-[320px] overflow-y-auto rounded-2xl border border-[var(--border-1)] bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+      <div className="absolute left-0 z-20 mt-2 max-h-80 w-[320px] overflow-y-auto rounded-[20px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
         {techStackOptions.map((option) => {
           const selected = value.includes(option);
           return (
@@ -495,10 +495,11 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-[var(--border-1)] bg-[var(--surface-0)] p-4">
+    <section className="app-subtle-panel space-y-4 p-4">
       <div>
-        <h4 className="text-base font-semibold tracking-tight text-[var(--text-1)]">{title}</h4>
-        <p className="mt-1 text-sm text-[var(--text-3)]">{description}</p>
+        <p className="app-eyebrow">Section</p>
+        <h4 className="mt-2 text-base font-semibold tracking-tight text-[var(--text-1)]">{title}</h4>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">{description}</p>
       </div>
       {children}
     </section>
@@ -513,7 +514,7 @@ function MiniMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border-1)] bg-white px-4 py-3">
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">{label}</p>
       <p className="mt-2 text-lg font-semibold tracking-tight text-[var(--text-1)]">{value}</p>
     </div>
@@ -535,7 +536,7 @@ function NumberField({
       <input
         value={value}
         onChange={(event) => onChange(parseNumber(event.target.value, 0))}
-        className="proposal-field-compact w-full"
+        className="app-input-compact w-full"
       />
     </label>
   );
@@ -597,6 +598,6 @@ function parseTechStackValue(value?: string) {
     .filter(Boolean);
 }
 
-const tableInputClasses = "proposal-field-compact min-w-[120px] text-[var(--text-1)]";
+const tableInputClasses = "app-input-compact min-w-[120px] text-[var(--text-1)]";
 
 const tableTextAreaClasses = "proposal-field-compact w-full text-[var(--text-1)]";

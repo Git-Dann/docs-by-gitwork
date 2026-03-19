@@ -47,7 +47,7 @@ export function ImagePicker({
 
       <div
         className={cn(
-          "flex items-center justify-center overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--surface-1)]",
+          "flex items-center justify-center overflow-hidden rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)]",
           previewClassName ?? "h-40 w-full",
         )}
       >
@@ -57,7 +57,7 @@ export function ImagePicker({
         ) : (
           <div className="flex flex-col items-center gap-2 text-[var(--text-3)]">
             <PhotoIcon className="h-7 w-7" />
-            <p className="text-sm">No image selected</p>
+            <p className="text-sm font-medium">No image selected</p>
           </div>
         )}
       </div>

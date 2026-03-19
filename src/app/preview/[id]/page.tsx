@@ -22,11 +22,11 @@ export default function PublicPreviewPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc] px-4 py-6 sm:px-8">
+    <main className="min-h-screen bg-[var(--surface-canvas)] px-4 py-6 sm:px-8">
       <ProposalPreview
         proposal={data.proposal}
         showTableOfContents={false}
-        frame={false}
+        frame
         className="mx-auto max-w-[1040px]"
       />
     </main>
