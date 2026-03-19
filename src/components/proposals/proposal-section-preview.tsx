@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { buttonStyles } from "@/components/ui/button";
 import { useClientList } from "@/hooks/use-proposals";
@@ -589,18 +587,12 @@ function CoverPagePreview({
     brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
   };
   const { settings } = useLocalSettings();
-  const introduction = proposal.sections.find((entry) => entry.key === "introduction")?.data as
-    | {
-        statement?: string;
-      }
-    | undefined;
   const signoff = proposal.sections.find((entry) => entry.key === "signoff_footer")?.data as
     | {
         preparedBy?: string;
         team?: string;
       }
     | undefined;
-  const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY" && cta.label.trim().length > 0);
   const { data: clientListData } = useClientList();
   const brandLogoUrl = settings.templateBranding.coverBrandLogoUrl.trim() || undefined;
   const topAccentUrl = settings.templateBranding.coverTopAccentUrl.trim() || undefined;
@@ -616,13 +608,17 @@ function CoverPagePreview({
   );
   const clientLogoUrl = matchedClient?.logoUrl?.trim() || undefined;
   const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
+  const titleLine = data.proposalTitle || proposal.title || "Untitled document";
+  const subtitleLine = data.subtitle || proposal.version || "Version not set";
+  const createdLine = data.date || proposal.createdAt.slice(0, 10);
+  const updatedLine = proposal.updatedAt.slice(0, 10);
 
   return (
     <section
       id={sectionId}
       className="proposal-cover relative isolate overflow-hidden rounded-[32px] border border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,#fcfbff_100%)] px-8 py-10 sm:px-12 sm:py-12 print:rounded-none print:border-0"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(158,119,237,0.12),transparent_28%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(158,119,237,0.08),transparent_26%)]" />
       <CoverAccent position="top" assetUrl={topAccentUrl} altText="Top cover accent" />
       <CoverAccent
         position="bottom"
@@ -630,83 +626,37 @@ function CoverPagePreview({
         altText="Bottom cover accent"
       />
 
-      <div className="relative z-10 mx-auto grid min-h-[1080px] max-w-5xl gap-10 md:grid-cols-[minmax(0,1.2fr)_300px]">
-        <div className="flex flex-col justify-between gap-12 pt-8">
-          <div className="space-y-10">
-            <div className="flex justify-start">
-              {data.brandLockup === "CLIENT_X_GITWORK" ? (
-                <ClientGitworkLockup
-                  clientName={clientName}
-                  clientLogoUrl={clientLogoUrl}
-                  brandLogoUrl={brandLogoUrl}
-                />
-              ) : (
-                <GitworkLockup brandLogoUrl={brandLogoUrl} />
-              )}
-            </div>
-
-            <div className="max-w-3xl space-y-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="app-chip border-transparent bg-[var(--surface-brand)] text-[var(--brand-700)]">
-                  Proposal
-                </span>
-                <span className="app-chip">{data.date || "Date not set"}</span>
-                <span className="app-chip">{proposal.updatedAt.slice(0, 10)}</span>
-              </div>
-              <h1 className="text-5xl font-semibold tracking-[-0.05em] text-[var(--text-1)] sm:text-6xl">
-                {data.proposalTitle || proposal.title || "Untitled proposal"}
-              </h1>
-              <p className="text-[28px] tracking-[-0.03em] text-[var(--text-2)]">
-                {data.subtitle || proposal.version || "Version not set"}
-              </p>
-              <p className="max-w-2xl text-lg leading-8 text-[var(--text-2)]">
-                {data.productName || proposal.productName || "Product or project name not set"}
-              </p>
-              <div className="rounded-[18px] border border-[var(--border-2)] bg-white/80 px-5 py-4 backdrop-blur-sm">
-                <p className="app-eyebrow">Confidentiality</p>
-                <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">
-                  {confidentialityText || "Confidentiality statement not set"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-3xl space-y-8">
-            <div className="h-px w-full bg-[var(--border-2)]" />
-            <p className="text-[22px] leading-[1.7] tracking-[-0.02em] text-[var(--text-1)]">
-              {introduction?.statement || proposal.summary || "Proposal summary not yet set."}
-            </p>
-
-            {primaryCta ? (
-              <div className="flex justify-start">
-                <Link
-                  href={primaryCta.destination || "#"}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-[var(--brand-600)] px-7 py-4 text-base font-semibold text-white shadow-[0_12px_24px_rgba(127,86,217,0.24)]"
-                >
-                  {primaryCta.label}
-                  <ArrowRightIcon className="h-5 w-5" />
-                </Link>
-              </div>
-            ) : null}
-          </div>
+      <div className="relative z-10 mx-auto flex min-h-[1080px] max-w-4xl flex-col items-center px-4 pt-24 text-center sm:px-8 sm:pt-28">
+        <div className="flex justify-center">
+          {data.brandLockup === "CLIENT_X_GITWORK" ? (
+            <ClientGitworkLockup
+              clientName={clientName}
+              clientLogoUrl={clientLogoUrl}
+              brandLogoUrl={brandLogoUrl}
+              compact
+            />
+          ) : (
+            <GitworkLockup brandLogoUrl={brandLogoUrl} showLabel={false} compact />
+          )}
         </div>
 
-        <aside className="proposal-block-avoid self-end rounded-[24px] border border-[var(--border-2)] bg-white/85 p-6 shadow-[var(--shadow-lg)] backdrop-blur-sm">
-          <p className="app-eyebrow">Snapshot</p>
-          <div className="mt-4 space-y-4">
-            <CoverDataRow label="Client" value={clientName} />
-            <CoverDataRow
-              label="Prepared by"
-              value={authorLine || "Author / department not set"}
-            />
-            <CoverDataRow
-              label="Project"
-              value={data.productName || proposal.productName || "Not set"}
-            />
-            <CoverDataRow label="Created" value={data.date || "Not set"} />
-            <CoverDataRow label="Last updated" value={proposal.updatedAt.slice(0, 10)} />
-          </div>
-        </aside>
+        <div className="mt-24 max-w-3xl space-y-5">
+          <h1 className="text-5xl font-semibold tracking-[-0.05em] text-[var(--text-1)] sm:text-6xl">
+            {titleLine}
+          </h1>
+          <p className="text-[28px] tracking-[-0.03em] text-[var(--text-2)]">
+            {subtitleLine}
+          </p>
+          <p className="text-[24px] tracking-[-0.03em] text-[var(--text-2)]">
+            {authorLine || "Author / Department"}
+          </p>
+          <p className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--text-3)]">
+            {createdLine} / {updatedLine}
+          </p>
+          <p className="pt-3 text-[18px] italic leading-8 text-[var(--text-3)]">
+            {confidentialityText || "Confidential: Internal use only."}
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -755,16 +705,30 @@ function CoverAccent({
   );
 }
 
-function GitworkLockup({ brandLogoUrl }: { brandLogoUrl?: string }) {
+function GitworkLockup({
+  brandLogoUrl,
+  showLabel = true,
+  compact = false,
+}: {
+  brandLogoUrl?: string;
+  showLabel?: boolean;
+  compact?: boolean;
+}) {
   return (
-    <div className="flex flex-col items-center gap-5">
+    <div className={compact ? "flex flex-col items-center gap-4" : "flex flex-col items-center gap-5"}>
       {brandLogoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={brandLogoUrl} alt="Gitwork logo" className="h-24 w-auto object-contain" />
+        <img
+          src={brandLogoUrl}
+          alt="Gitwork logo"
+          className={compact ? "h-20 w-auto object-contain" : "h-24 w-auto object-contain"}
+        />
       ) : (
-        <GitworkMark className="h-24 w-24" />
+        <GitworkMark className={compact ? "h-20 w-20" : "h-24 w-24"} />
       )}
-      <span className="text-2xl font-medium tracking-[-0.02em] text-[var(--text-2)]">Gitwork</span>
+      {showLabel ? (
+        <span className="text-2xl font-medium tracking-[-0.02em] text-[var(--text-2)]">Gitwork</span>
+      ) : null}
     </div>
   );
 }
@@ -773,25 +737,43 @@ function ClientGitworkLockup({
   clientName,
   clientLogoUrl,
   brandLogoUrl,
+  compact = false,
 }: {
   clientName: string;
   clientLogoUrl?: string;
   brandLogoUrl?: string;
+  compact?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-8">
+    <div className={compact ? "flex items-center justify-center gap-4" : "flex items-center gap-8"}>
       {clientLogoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={clientLogoUrl} alt={clientName} className="max-h-24 max-w-[260px] object-contain" />
+        <img
+          src={clientLogoUrl}
+          alt={clientName}
+          className={compact ? "max-h-16 max-w-[180px] object-contain" : "max-h-24 max-w-[260px] object-contain"}
+        />
       ) : (
-        <span className="max-w-[320px] text-5xl font-semibold tracking-[-0.05em] text-[var(--brand-700)]">{clientName}</span>
+        <span
+          className={
+            compact
+              ? "max-w-[220px] text-3xl font-semibold tracking-[-0.04em] text-[var(--brand-700)]"
+              : "max-w-[320px] text-5xl font-semibold tracking-[-0.05em] text-[var(--brand-700)]"
+          }
+        >
+          {clientName}
+        </span>
       )}
-      <span className="text-5xl font-light text-[var(--text-1)]">×</span>
+      <span className={compact ? "text-3xl font-light text-[var(--text-1)]" : "text-5xl font-light text-[var(--text-1)]"}>×</span>
       {brandLogoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={brandLogoUrl} alt="Gitwork logo" className="h-24 w-auto object-contain" />
+        <img
+          src={brandLogoUrl}
+          alt="Gitwork logo"
+          className={compact ? "h-16 w-auto object-contain" : "h-24 w-auto object-contain"}
+        />
       ) : (
-        <GitworkMark className="h-24 w-24" />
+        <GitworkMark className={compact ? "h-16 w-16" : "h-24 w-24"} />
       )}
     </div>
   );
@@ -813,15 +795,6 @@ function GitworkMark({ className }: { className?: string }) {
       <path d="M40 18h8v10h-8z" fill="var(--brand-600)" />
       <path d="M40 68h8v10h-8z" fill="var(--brand-600)" />
     </svg>
-  );
-}
-
-function CoverDataRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">{label}</p>
-      <p className="text-sm leading-6 text-[var(--text-1)]">{value}</p>
-    </div>
   );
 }
 
