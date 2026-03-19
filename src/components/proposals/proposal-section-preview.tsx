@@ -673,8 +673,8 @@ function CoverAccent({
 }) {
   const assetPlacementClass =
     position === "top"
-      ? "pointer-events-none absolute inset-x-0 top-3 sm:top-4"
-      : "pointer-events-none absolute inset-x-0 bottom-3 sm:bottom-4";
+      ? "pointer-events-none absolute left-6 right-6 top-0 sm:left-8 sm:right-8"
+      : "pointer-events-none absolute left-6 right-6 bottom-0 sm:left-8 sm:right-8";
   const fallbackPlacementClass =
     position === "top"
       ? "pointer-events-none absolute left-6 right-6 top-6 sm:left-8 sm:right-8 sm:top-8"
