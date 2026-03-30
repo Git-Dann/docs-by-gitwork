@@ -2,34 +2,15 @@ import type {
   CostingSectionData,
   ProposalDocument,
   ProposalListItem,
+  TemplateSummary,
 } from "@/types/proposal";
-import type { ClientListItem } from "@/types/client";
+import type { ClientDetailRecord, ClientListItem } from "@/types/client";
 import type {
   ProofCreateDocumentInput,
+  ProofDocumentRecord,
   ProofDocumentUpdateInput,
   ProofHealthResponse,
 } from "@/lib/proof";
-import {
-  archivePocProposal,
-  createPocClient,
-  createPocProofDocument,
-  createPocProposal,
-  deletePocProposal,
-  duplicatePocProposal,
-  getPocClientDetail,
-  getPocProposal,
-  listPocClients,
-  listPocProofDocuments,
-  listPocProposals,
-  listPocTemplates,
-  requestPocExport,
-  savePocCosting,
-  savePocEngagement,
-  savePocTimeline,
-  updatePocClient,
-  updatePocProofDocument,
-  updatePocProposal,
-} from "@/lib/poc-store";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -39,12 +20,39 @@ export interface ClientListResponse {
   clients: ClientListItem[];
 }
 
+function authHeaders(): Record<string, string> {
+  const key = process.env.NEXT_PUBLIC_API_KEY;
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      ...authHeaders(),
+      ...(options?.headers as Record<string, string> | undefined),
+    },
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const message =
+      typeof data?.error === "string" ? data.error : `Request failed: ${res.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
 export async function listProposals(params: {
   search?: string;
   status?: string;
   sort?: string;
-}) {
-  return listPocProposals(params);
+}): Promise<ProposalListResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.status) query.set("status", params.status);
+  if (params.sort) query.set("sort", params.sort);
+  const qs = query.toString();
+  return apiFetch<ProposalListResponse>(`/api/proposals${qs ? `?${qs}` : ""}`);
 }
 
 export async function createProposal(input: {
@@ -52,58 +60,52 @@ export async function createProposal(input: {
   clientName?: string;
   productName?: string;
   templateId?: string;
-}) {
-  return createPocProposal(input);
+}): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>("/api/proposals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
-export async function getProposal(id: string) {
-  const proposal = getPocProposal(id);
-  if (!proposal) {
-    throw new Error("Proposal not found.");
-  }
-
-  return { proposal };
+export async function getProposal(id: string): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}`);
 }
 
-export async function updateProposal(id: string, input: Partial<ProposalDocument>) {
-  return updatePocProposal(id, input);
+export async function updateProposal(
+  id: string,
+  input: Partial<ProposalDocument>,
+): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
-export async function duplicateProposal(id: string) {
-  return duplicatePocProposal(id);
+export async function duplicateProposal(id: string): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}/duplicate`, {
+    method: "POST",
+  });
 }
 
-export async function archiveProposal(id: string) {
-  return archivePocProposal(id);
+export async function archiveProposal(
+  id: string,
+): Promise<{ proposal: { id: string; status: string } }> {
+  return apiFetch<{ proposal: { id: string; status: string } }>(
+    `/api/proposals/${id}/archive`,
+    { method: "POST" },
+  );
 }
 
-export async function deleteProposal(id: string) {
-  return deletePocProposal(id);
+export async function deleteProposal(id: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/proposals/${id}/delete`, {
+    method: "DELETE",
+  });
 }
 
-export async function fetchTemplates() {
-  return listPocTemplates();
-}
-
-export async function listClients(params?: { search?: string }) {
-  return listPocClients(params);
-}
-
-export async function createClient(input: { name: string; logoUrl?: string }) {
-  return createPocClient(input);
-}
-
-export async function updateClient(slug: string, input: { logoUrl?: string }) {
-  return updatePocClient(slug, input);
-}
-
-export async function getClientDetail(slug: string) {
-  const clientDetail = getPocClientDetail(slug);
-  if (!clientDetail) {
-    throw new Error("Client not found.");
-  }
-
-  return clientDetail;
+export async function fetchTemplates(): Promise<{ templates: TemplateSummary[] }> {
+  return apiFetch<{ templates: TemplateSummary[] }>("/api/templates");
 }
 
 export async function saveCosting(
@@ -125,8 +127,12 @@ export async function saveCosting(
     paymentSchedule?: CostingSectionData["paymentSchedule"];
     additionalNotes?: string[];
   },
-) {
-  return savePocCosting(id, input);
+): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}/costing`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function saveTimeline(
@@ -135,8 +141,12 @@ export async function saveTimeline(
     timelinePhases: ProposalDocument["timelinePhases"];
     viewMode?: "LIST" | "MILESTONE";
   },
-) {
-  return savePocTimeline(id, input);
+): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}/timeline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function saveEngagement(
@@ -145,8 +155,12 @@ export async function saveEngagement(
     ctas: ProposalDocument["ctas"];
     links: ProposalDocument["links"];
   },
-) {
-  return savePocEngagement(id, input);
+): Promise<{ proposal: ProposalDocument }> {
+  return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}/engagement`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function requestExport(
@@ -155,22 +169,74 @@ export async function requestExport(
     format: "PRINT" | "PDF" | "SHARE_LINK";
     settings?: Record<string, unknown>;
   },
-) {
-  return requestPocExport(id, input);
+): Promise<{ export: { id: string; format: string; status: string; url: string; requestedAt: string } }> {
+  return apiFetch(`/api/proposals/${id}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
+// Client functions — no database-backed routes exist yet; returns empty data safely.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function listClients(params?: { search?: string }): Promise<ClientListResponse> {
+  return { clients: [] };
+}
+
+export async function createClient(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  input: { name: string; logoUrl?: string },
+): Promise<{ client: ClientListItem }> {
+  throw new Error("Client management is not yet available.");
+}
+
+export async function updateClient(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  slug: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  input: { logoUrl?: string },
+): Promise<{ client: ClientListItem }> {
+  throw new Error("Client management is not yet available.");
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function getClientDetail(slug: string): Promise<ClientDetailRecord> {
+  throw new Error("Client not found.");
+}
+
+// Proof API routes
 export async function getProofHealth(): Promise<ProofHealthResponse> {
-  throw new Error("Proof service is disabled in POC mode.");
+  return apiFetch<ProofHealthResponse>("/api/proof/health");
 }
 
-export async function listProofDocuments(params?: { proposalId?: string | null }) {
-  return listPocProofDocuments(params);
+export async function listProofDocuments(
+  params?: { proposalId?: string | null },
+): Promise<{ documents: ProofDocumentRecord[] }> {
+  const query = new URLSearchParams();
+  if (params?.proposalId) query.set("proposalId", params.proposalId);
+  const qs = query.toString();
+  return apiFetch<{ documents: ProofDocumentRecord[] }>(
+    `/api/proof/documents${qs ? `?${qs}` : ""}`,
+  );
 }
 
-export async function createProofDocument(input: ProofCreateDocumentInput) {
-  return createPocProofDocument(input);
+export async function createProofDocument(
+  input: ProofCreateDocumentInput,
+): Promise<{ document: ProofDocumentRecord }> {
+  return apiFetch<{ document: ProofDocumentRecord }>("/api/proof/documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
-export async function updateProofDocument(id: string, input: ProofDocumentUpdateInput) {
-  return updatePocProofDocument(id, input);
+export async function updateProofDocument(
+  id: string,
+  input: ProofDocumentUpdateInput,
+): Promise<{ document: ProofDocumentRecord }> {
+  return apiFetch<{ document: ProofDocumentRecord }>(`/api/proof/documents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }

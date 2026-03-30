@@ -5,6 +5,12 @@ import {
   DEFAULT_TEMPLATE_SLUG,
   DEFAULT_USER_EMAIL,
   DEFAULT_WORKSPACE_SLUG,
+  getDefaultAssetPayload,
+  getDefaultCostsPayload,
+  getDefaultCtaPayload,
+  getDefaultLinkPayload,
+  getDefaultSectionPayload,
+  getDefaultTimelinePayload,
 } from "@/server/proposals";
 
 export async function ensureBaseRecords() {
@@ -66,9 +72,55 @@ export async function ensureBaseRecords() {
     },
   });
 
+  await ensureSampleProposal({ workspace, user, template });
+
   return {
     user,
     workspace,
     template,
   };
+}
+
+async function ensureSampleProposal({
+  workspace,
+  user,
+  template,
+}: {
+  workspace: { id: string };
+  user: { id: string; name: string | null };
+  template: { id: string };
+}) {
+  const count = await prisma.document.count({
+    where: { workspaceId: workspace.id, documentType: "PROPOSAL" },
+  });
+
+  if (count > 0) {
+    return;
+  }
+
+  await prisma.document.create({
+    data: {
+      workspaceId: workspace.id,
+      ownerId: user.id,
+      templateId: template.id,
+      documentType: "PROPOSAL",
+      status: "DRAFT",
+      title: "Docs by Gitwork — Sample Proposal",
+      productName: "Proposal Builder",
+      clientName: "Acme Health",
+      summary: "",
+      version: "v1.0",
+      metadata: {
+        ...DEFAULT_PROPOSAL_METADATA,
+        client: "Acme Health",
+        owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+      } as unknown as Prisma.InputJsonValue,
+      sections: { create: getDefaultSectionPayload() },
+      costLineItems: { create: getDefaultCostsPayload() },
+      timelinePhases: { create: getDefaultTimelinePayload() },
+      links: { create: getDefaultLinkPayload() },
+      ctas: { create: getDefaultCtaPayload() },
+      assets: { create: getDefaultAssetPayload() },
+    },
+  });
 }

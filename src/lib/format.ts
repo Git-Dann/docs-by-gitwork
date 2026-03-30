@@ -46,12 +46,6 @@ export function statusLabel(status: DocumentStatus): string {
       return "Sent";
     case "ARCHIVED":
       return "Archived";
-    default:
-      return status
-        .toLowerCase()
-        .split("_")
-        .map((chunk) => chunk[0]?.toUpperCase() + chunk.slice(1))
-        .join(" ");
   }
 }
 

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
     return apiOk({ ok: true });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Record to delete does not exist")) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
       return apiError("Proposal not found", 404);
     }
 

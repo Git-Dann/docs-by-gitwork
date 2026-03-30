@@ -28,7 +28,9 @@ export const objectiveIconOptions = [
   { value: "cog", label: "Cog", icon: Cog6ToothIcon },
 ] as const;
 
-const iconMap = new Map(objectiveIconOptions.map((entry) => [entry.value, entry]));
+const iconMap = new Map<string, { value: string; label: string; icon: IconComponent }>(
+  objectiveIconOptions.map((entry) => [entry.value, entry]),
+);
 
 export function getObjectiveIcon(icon?: string): IconComponent {
   return iconMap.get(icon ?? "")?.icon ?? SparklesIcon;
