@@ -1,6 +1,7 @@
 "use client";
 
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentIcon, EyeIcon, EyeSlashIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { useLocalSettings } from "@/lib/local-settings";
@@ -172,7 +173,7 @@ export function SettingsPanel() {
           </Button>
         </div>
 
-        {settings.proposalDefaults.objectiveSnippets.length ? (
+        {settings.proposalDefaults.objectiveSnippets.length > 0 ? (
           <div className="mt-4 space-y-3">
             {settings.proposalDefaults.objectiveSnippets.map((snippet, index) => (
               <article
@@ -236,7 +237,129 @@ export function SettingsPanel() {
           <p className="mt-4 text-sm text-[var(--text-3)]">No snippets configured yet.</p>
         )}
       </section>
+      <ApiSection />
     </div>
+  );
+}
+
+function ApiSection() {
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY ?? "";
+  const baseUrl =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "https://docs-by-gitwork.vercel.app";
+
+  const [revealed, setRevealed] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  function copy(text: string, setCopied: (v: boolean) => void) {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const maskedKey = apiKey ? `${"•".repeat(Math.min(apiKey.length - 6, 24))}${apiKey.slice(-6)}` : "";
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Developer</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        API access
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+        Use these to connect external clients — iOS app, Postman, scripts — to this workspace. Send the key as{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
+          Authorization: Bearer &lt;key&gt;
+        </code>
+        {" "}on every request.
+      </p>
+
+      <div className="mt-5 space-y-4">
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Base URL</span>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
+              {baseUrl}
+            </code>
+            <button
+              type="button"
+              onClick={() => copy(baseUrl, setCopiedUrl)}
+              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
+            >
+              <ClipboardDocumentIcon className="h-4 w-4" />
+              {copiedUrl ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">API key</span>
+          {apiKey ? (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
+                {revealed ? apiKey : maskedKey}
+              </code>
+              <button
+                type="button"
+                onClick={() => setRevealed((v) => !v)}
+                aria-label={revealed ? "Hide API key" : "Reveal API key"}
+                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
+              >
+                {revealed ? (
+                  <EyeSlashIcon className="h-4 w-4" />
+                ) : (
+                  <EyeIcon className="h-4 w-4" />
+                )}
+                {revealed ? "Hide" : "Reveal"}
+              </button>
+              <button
+                type="button"
+                onClick={() => copy(apiKey, setCopiedKey)}
+                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
+              >
+                <ClipboardDocumentIcon className="h-4 w-4" />
+                {copiedKey ? "Copied" : "Copy"}
+              </button>
+            </div>
+          ) : (
+            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
+              No API key configured. Set <code className="font-mono">NEXT_PUBLIC_API_KEY</code> in your environment variables.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">Endpoints</p>
+          <div className="mt-2 space-y-1 font-mono text-xs text-[var(--text-3)]">
+            {[
+              ["GET", "/api/health", "Health check (no auth)"],
+              ["GET", "/api/proposals", "List proposals"],
+              ["POST", "/api/proposals", "Create proposal"],
+              ["GET", "/api/proposals/:id", "Get proposal"],
+              ["PATCH", "/api/proposals/:id", "Update proposal"],
+              ["POST", "/api/proposals/:id/duplicate", "Duplicate"],
+              ["POST", "/api/proposals/:id/archive", "Archive"],
+              ["DELETE", "/api/proposals/:id/delete", "Delete"],
+              ["POST", "/api/proposals/:id/costing", "Save costing"],
+              ["POST", "/api/proposals/:id/timeline", "Save timeline"],
+              ["POST", "/api/proposals/:id/engagement", "Save engagement"],
+              ["POST", "/api/proposals/:id/export", "Request export"],
+              ["GET", "/api/templates", "List templates"],
+            ].map(([method, path, label]) => (
+              <div key={path} className="flex items-baseline gap-2">
+                <span className={`w-10 shrink-0 font-semibold ${method === "GET" ? "text-emerald-600" : method === "DELETE" ? "text-rose-600" : "text-sky-600"}`}>
+                  {method}
+                </span>
+                <span className="text-[var(--text-2)]">{path}</span>
+                <span className="text-[var(--text-4)]">— {label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
