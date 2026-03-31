@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
@@ -607,6 +608,11 @@ function TechStackMultiSelect({
   value: string[];
   onChange: (value: string[]) => void;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
   function toggle(option: string) {
     onChange(
       value.includes(option)
@@ -615,9 +621,65 @@ function TechStackMultiSelect({
     );
   }
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function updatePosition() {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+
+      setMenuStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: Math.max(rect.width, 320),
+      });
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (
+        triggerRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setIsOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
   return (
-    <details className="relative">
-      <summary className="flex min-h-9 min-w-[260px] list-none items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 pr-4 text-left text-sm text-[var(--text-1)] [&::-webkit-details-marker]:hidden">
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="flex min-h-9 min-w-[260px] w-full list-none items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 pr-4 text-left text-sm text-[var(--text-1)]"
+        aria-expanded={isOpen}
+      >
         <span className="flex flex-wrap gap-1.5">
           {value.length ? (
             value.map((entry) => (
@@ -632,28 +694,46 @@ function TechStackMultiSelect({
             <span className="text-[var(--text-3)]">Select tech stack</span>
           )}
         </span>
-        <ChevronDownIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
-      </summary>
+        <ChevronDownIcon
+          className={cn(
+            "h-4 w-4 shrink-0 text-[var(--text-3)] transition-transform",
+            isOpen ? "rotate-180" : null,
+          )}
+        />
+      </button>
 
-      <div className="absolute left-0 z-20 mt-2 max-h-80 w-[320px] overflow-y-auto rounded-[20px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
-        {techStackOptions.map((option) => {
-          const selected = value.includes(option);
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() => toggle(option)}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-1)]"
+      {isOpen && menuStyle
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="fixed z-[80] max-h-80 overflow-y-auto rounded-[20px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]"
+              style={{
+                top: menuStyle.top,
+                left: menuStyle.left,
+                width: menuStyle.width,
+              }}
             >
-              <span className={selected ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}>
-                {option}
-              </span>
-              {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
-            </button>
-          );
-        })}
-      </div>
-    </details>
+              {techStackOptions.map((option) => {
+                const selected = value.includes(option);
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => toggle(option)}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-1)]"
+                  >
+                    <span className={selected ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}>
+                      {option}
+                    </span>
+                    {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
