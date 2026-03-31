@@ -212,11 +212,11 @@ function CollapsedRail({
                   "h-14 w-14 rounded-[20px] border-[var(--border-2)] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_18px_rgba(16,24,40,0.08)]",
               })}
             >
-              <BrandGlyph className="h-11 w-11" />
+              <BrandGlyph className="h-11 w-11 border-0 shadow-none" />
             </button>
           ) : (
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-[20px] border border-[var(--border-2)] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_10px_18px_rgba(16,24,40,0.08)]">
-              <BrandGlyph className="h-11 w-11" />
+              <BrandGlyph className="h-11 w-11 border-0 shadow-none" />
             </div>
           )}
         </div>
