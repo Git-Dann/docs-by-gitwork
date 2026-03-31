@@ -473,7 +473,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 <ChevronDownIcon className="h-4 w-4 opacity-80 transition group-open:rotate-180" />
               </summary>
 
-              <div className="absolute right-0 z-30 mt-2 w-[360px] rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]">
+              <div className="absolute right-0 z-30 mt-2 w-[360px] max-h-[min(560px,calc(100vh-140px))] overflow-y-auto rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]">
                 <div>
                   <p className="app-eyebrow">Approval Flow</p>
                   <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
