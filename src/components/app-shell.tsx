@@ -407,11 +407,6 @@ function ExpandedRail({
             </div>
           </section>
 
-          <WorkspaceSnapshotCard
-            proposalCount={proposalCount}
-            clientCount={clientRows.length}
-          />
-
           <section>
             <div className="mb-3 flex items-center justify-between">
               <p className="app-eyebrow">Clients</p>
@@ -525,39 +520,6 @@ function SidebarClientLink({
   );
 }
 
-function WorkspaceSnapshotCard({
-  proposalCount,
-  clientCount,
-}: {
-  proposalCount: number;
-  clientCount: number;
-}) {
-  return (
-    <div className="app-muted-card p-4">
-      <p className="app-eyebrow">Snapshot</p>
-      <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Platform-wide document work
-      </h3>
-      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-        The new UI foundation keeps proposals, Proof drafts, templates, and client records under one system.
-      </p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <div className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-3">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">Proposals</p>
-          <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-            {proposalCount}
-          </p>
-        </div>
-        <div className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-3">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">Clients</p>
-          <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-            {clientCount}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();

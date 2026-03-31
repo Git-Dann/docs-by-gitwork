@@ -1,27 +1,78 @@
 "use client";
 
-import { ClipboardDocumentIcon, EyeIcon, EyeSlashIcon, PlusIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowTopRightOnSquareIcon,
+  ClipboardDocumentIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  PlusIcon,
+} from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { useLocalSettings } from "@/lib/local-settings";
+import { cn } from "@/lib/format";
+
+type TabId = "general" | "branding" | "content" | "developer";
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "branding", label: "Branding" },
+  { id: "content", label: "Content" },
+  { id: "developer", label: "Developer" },
+];
 
 export function SettingsPanel() {
+  const [activeTab, setActiveTab] = useState<TabId>("general");
+
+  return (
+    <div className="space-y-6">
+      {/* Tab nav — Untitled UI underline style */}
+      <div className="border-b border-[var(--border-2)]">
+        <nav className="-mb-px flex gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "px-4 pb-3 pt-1 text-sm font-semibold transition",
+                activeTab === tab.id
+                  ? "border-b-2 border-[var(--brand-600)] text-[var(--brand-700)]"
+                  : "border-b-2 border-transparent text-[var(--text-3)] hover:text-[var(--text-2)]",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {activeTab === "general" && <GeneralTab />}
+      {activeTab === "branding" && <BrandingTab />}
+      {activeTab === "content" && <ContentTab />}
+      {activeTab === "developer" && <DeveloperTab />}
+    </div>
+  );
+}
+
+function GeneralTab() {
   const { settings, updateSettings } = useLocalSettings();
 
   return (
-    <div className="proposal-form-theme grid gap-4">
+    <div className="space-y-6">
       <section className="app-card p-6">
-        <p className="app-eyebrow">Defaults</p>
+        <p className="app-eyebrow">Workspace</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
           Proposal defaults
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Shared defaults used across proposals and sign-off sections.
+          Shared defaults pre-filled across proposals and sign-off sections.
         </p>
 
-        <div className="mt-4 grid gap-3 xl:grid-cols-3">
-          <Input
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <FieldInput
             label="Prepared by"
             value={settings.workspace.preparedBy}
             onChange={(preparedBy) =>
@@ -31,7 +82,7 @@ export function SettingsPanel() {
               }))
             }
           />
-          <Input
+          <FieldInput
             label="Team / department"
             value={settings.workspace.team}
             onChange={(team) =>
@@ -41,7 +92,7 @@ export function SettingsPanel() {
               }))
             }
           />
-          <Input
+          <FieldInput
             label="Contact details"
             value={settings.workspace.contactDetails}
             onChange={(contactDetails) =>
@@ -53,19 +104,27 @@ export function SettingsPanel() {
           />
         </div>
       </section>
+    </div>
+  );
+}
 
+function BrandingTab() {
+  const { settings, updateSettings } = useLocalSettings();
+
+  return (
+    <div className="space-y-6">
       <section className="app-card p-6">
-        <p className="app-eyebrow">Branding</p>
+        <p className="app-eyebrow">Template assets</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
           Proposal branding
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Template-owned cover branding lives here. Proposal-specific client logos still belong in the builder.
+          Template-owned cover assets. Proposal-specific client logos belong in the proposal builder.
         </p>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-3">
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Gitwork cover logo</span>
+        <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-2">
+            <FieldLabel>Gitwork cover logo</FieldLabel>
             <ImagePicker
               value={settings.templateBranding.coverBrandLogoUrl}
               onChange={(coverBrandLogoUrl) =>
@@ -77,8 +136,8 @@ export function SettingsPanel() {
               previewClassName="h-36 w-full"
             />
           </div>
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Cover top accent</span>
+          <div className="space-y-2">
+            <FieldLabel>Cover top accent</FieldLabel>
             <ImagePicker
               value={settings.templateBranding.coverTopAccentUrl}
               onChange={(coverTopAccentUrl) =>
@@ -90,8 +149,8 @@ export function SettingsPanel() {
               previewClassName="h-36 w-full"
             />
           </div>
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Cover bottom accent</span>
+          <div className="space-y-2">
+            <FieldLabel>Cover bottom accent</FieldLabel>
             <ImagePicker
               value={settings.templateBranding.coverBottomAccentUrl}
               onChange={(coverBottomAccentUrl) =>
@@ -105,7 +164,15 @@ export function SettingsPanel() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
 
+function ContentTab() {
+  const { settings, updateSettings } = useLocalSettings();
+
+  return (
+    <div className="space-y-6">
       <section className="app-card p-6">
         <p className="app-eyebrow">Cover copy</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
@@ -115,8 +182,8 @@ export function SettingsPanel() {
           The cover editor uses an internal/external toggle and resolves the final copy from these defaults.
         </p>
 
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-          <TextArea
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          <FieldTextArea
             label="Internal statement"
             value={settings.workspace.internalConfidentialityText}
             onChange={(internalConfidentialityText) =>
@@ -126,7 +193,7 @@ export function SettingsPanel() {
               }))
             }
           />
-          <TextArea
+          <FieldTextArea
             label="External statement"
             value={settings.workspace.externalConfidentialityText}
             onChange={(externalConfidentialityText) =>
@@ -140,7 +207,7 @@ export function SettingsPanel() {
       </section>
 
       <section className="app-card p-6">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="app-eyebrow">Reusable content</p>
             <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
@@ -174,13 +241,13 @@ export function SettingsPanel() {
         </div>
 
         {settings.proposalDefaults.objectiveSnippets.length > 0 ? (
-          <div className="mt-4 space-y-3">
+          <div className="mt-6 space-y-3">
             {settings.proposalDefaults.objectiveSnippets.map((snippet, index) => (
               <article
                 key={`${snippet.title}-${index}`}
                 className="grid gap-3 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
               >
-                <Input
+                <FieldInput
                   label="Title"
                   value={snippet.title}
                   onChange={(title) =>
@@ -188,14 +255,15 @@ export function SettingsPanel() {
                       ...current,
                       proposalDefaults: {
                         ...current.proposalDefaults,
-                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map((entry, entryIndex) =>
-                          entryIndex === index ? { ...entry, title } : entry,
+                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map(
+                          (entry, entryIndex) =>
+                            entryIndex === index ? { ...entry, title } : entry,
                         ),
                       },
                     }))
                   }
                 />
-                <Input
+                <FieldInput
                   label="Description"
                   value={snippet.description}
                   onChange={(description) =>
@@ -203,8 +271,9 @@ export function SettingsPanel() {
                       ...current,
                       proposalDefaults: {
                         ...current.proposalDefaults,
-                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map((entry, entryIndex) =>
-                          entryIndex === index ? { ...entry, description } : entry,
+                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map(
+                          (entry, entryIndex) =>
+                            entryIndex === index ? { ...entry, description } : entry,
                         ),
                       },
                     }))
@@ -237,12 +306,11 @@ export function SettingsPanel() {
           <p className="mt-4 text-sm text-[var(--text-3)]">No snippets configured yet.</p>
         )}
       </section>
-      <ApiSection />
     </div>
   );
 }
 
-function ApiSection() {
+function DeveloperTab() {
   const apiKey = process.env.NEXT_PUBLIC_API_KEY ?? "";
   const baseUrl =
     typeof window !== "undefined"
@@ -260,80 +328,99 @@ function ApiSection() {
     });
   }
 
-  const maskedKey = apiKey ? `${"•".repeat(Math.min(apiKey.length - 6, 24))}${apiKey.slice(-6)}` : "";
+  const maskedKey = apiKey
+    ? `${"•".repeat(Math.min(apiKey.length - 6, 24))}${apiKey.slice(-6)}`
+    : "";
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Developer</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        API access
-      </h2>
-      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-        Use these to connect external clients — iOS app, Postman, scripts — to this workspace. Send the key as{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
-          Authorization: Bearer &lt;key&gt;
-        </code>
-        {" "}on every request.
-      </p>
+    <div className="space-y-6">
+      {/* API credentials */}
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Credentials</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          API access
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+          Connect external clients — iOS app, Postman, scripts — to this workspace. Send the key as{" "}
+          <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-2)]">
+            Authorization: Bearer &lt;key&gt;
+          </code>{" "}
+          on every request.
+        </p>
 
-      <div className="mt-5 space-y-4">
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">Base URL</span>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
-              {baseUrl}
-            </code>
-            <button
-              type="button"
-              onClick={() => copy(baseUrl, setCopiedUrl)}
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
-            >
-              <ClipboardDocumentIcon className="h-4 w-4" />
-              {copiedUrl ? "Copied" : "Copy"}
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">API key</span>
-          {apiKey ? (
+        <div className="mt-6 space-y-4">
+          <div className="space-y-1.5">
+            <FieldLabel>Base URL</FieldLabel>
             <div className="flex items-center gap-2">
               <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
-                {revealed ? apiKey : maskedKey}
+                {baseUrl}
               </code>
-              <button
-                type="button"
-                onClick={() => setRevealed((v) => !v)}
-                aria-label={revealed ? "Hide API key" : "Reveal API key"}
-                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
-              >
-                {revealed ? (
-                  <EyeSlashIcon className="h-4 w-4" />
-                ) : (
-                  <EyeIcon className="h-4 w-4" />
-                )}
-                {revealed ? "Hide" : "Reveal"}
-              </button>
-              <button
-                type="button"
-                onClick={() => copy(apiKey, setCopiedKey)}
-                className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
-              >
-                <ClipboardDocumentIcon className="h-4 w-4" />
-                {copiedKey ? "Copied" : "Copy"}
-              </button>
+              <CopyButton copied={copiedUrl} onClick={() => copy(baseUrl, setCopiedUrl)} />
             </div>
-          ) : (
-            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
-              No API key configured. Set <code className="font-mono">NEXT_PUBLIC_API_KEY</code> in your environment variables.
+          </div>
+
+          <div className="space-y-1.5">
+            <FieldLabel>API key</FieldLabel>
+            {apiKey ? (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
+                  {revealed ? apiKey : maskedKey}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => setRevealed((v) => !v)}
+                  aria-label={revealed ? "Hide API key" : "Reveal API key"}
+                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
+                >
+                  {revealed ? (
+                    <EyeSlashIcon className="h-4 w-4" />
+                  ) : (
+                    <EyeIcon className="h-4 w-4" />
+                  )}
+                  {revealed ? "Hide" : "Reveal"}
+                </button>
+                <CopyButton copied={copiedKey} onClick={() => copy(apiKey, setCopiedKey)} />
+              </div>
+            ) : (
+              <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
+                No API key configured. Set{" "}
+                <code className="font-mono">NEXT_PUBLIC_API_KEY</code> in your environment variables.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* API docs link */}
+      <section className="app-card p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="app-eyebrow">Reference</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              API documentation
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+              Full endpoint reference with request/response shapes, auth details, and error codes.
             </p>
-          )}
+          </div>
+          <Link
+            href="/api-docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2 text-sm font-semibold text-[var(--text-1)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
+          >
+            View API docs
+            <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
+          </Link>
         </div>
 
-        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">Endpoints</p>
-          <div className="mt-2 space-y-1 font-mono text-xs text-[var(--text-3)]">
-            {[
+        {/* Quick endpoint list */}
+        <div className="mt-6 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            Endpoints
+          </p>
+          <div className="mt-3 space-y-1.5 font-mono text-xs text-[var(--text-3)]">
+            {([
               ["GET", "/api/health", "Health check (no auth)"],
               ["GET", "/api/proposals", "List proposals"],
               ["POST", "/api/proposals", "Create proposal"],
@@ -342,14 +429,25 @@ function ApiSection() {
               ["POST", "/api/proposals/:id/duplicate", "Duplicate"],
               ["POST", "/api/proposals/:id/archive", "Archive"],
               ["DELETE", "/api/proposals/:id/delete", "Delete"],
-              ["POST", "/api/proposals/:id/costing", "Save costing"],
-              ["POST", "/api/proposals/:id/timeline", "Save timeline"],
-              ["POST", "/api/proposals/:id/engagement", "Save engagement"],
-              ["POST", "/api/proposals/:id/export", "Request export"],
+              ["PATCH", "/api/proposals/:id/costing", "Save costing"],
+              ["PATCH", "/api/proposals/:id/timeline", "Save timeline"],
+              ["PATCH", "/api/proposals/:id/engagement", "Save engagement"],
+              ["GET", "/api/proposals/:id/export", "Export as PDF"],
               ["GET", "/api/templates", "List templates"],
-            ].map(([method, path, label]) => (
+            ] as const).map(([method, path, label]) => (
               <div key={path} className="flex items-baseline gap-2">
-                <span className={`w-10 shrink-0 font-semibold ${method === "GET" ? "text-emerald-600" : method === "DELETE" ? "text-rose-600" : "text-sky-600"}`}>
+                <span
+                  className={cn(
+                    "w-12 shrink-0 font-semibold",
+                    method === "GET"
+                      ? "text-emerald-600"
+                      : method === "DELETE"
+                        ? "text-rose-600"
+                        : method === "PATCH"
+                          ? "text-amber-600"
+                          : "text-sky-600",
+                  )}
+                >
                   {method}
                 </span>
                 <span className="text-[var(--text-2)]">{path}</span>
@@ -358,12 +456,37 @@ function ApiSection() {
             ))}
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
-function Input({
+function CopyButton({
+  copied,
+  onClick,
+}: {
+  copied: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
+    >
+      <ClipboardDocumentIcon className="h-4 w-4" />
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="block text-sm font-medium text-[var(--text-2)]">{children}</span>
+  );
+}
+
+function FieldInput({
   label,
   value,
   onChange,
@@ -376,7 +499,7 @@ function Input({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <FieldLabel>{label}</FieldLabel>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -387,7 +510,7 @@ function Input({
   );
 }
 
-function TextArea({
+function FieldTextArea({
   label,
   value,
   onChange,
@@ -398,7 +521,7 @@ function TextArea({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <FieldLabel>{label}</FieldLabel>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
