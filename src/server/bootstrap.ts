@@ -12,6 +12,7 @@ import {
   getDefaultSectionPayload,
   getDefaultTimelinePayload,
 } from "@/server/proposals";
+import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 
 export async function ensureBaseRecords() {
   const user = await prisma.user.upsert({
@@ -70,6 +71,11 @@ export async function ensureBaseRecords() {
       metadata: DEFAULT_PROPOSAL_METADATA as unknown as Prisma.InputJsonValue,
       isDefault: true,
     },
+  });
+
+  await prisma.rateCardPerson.createMany({
+    data: getDefaultRateCardPeoplePayload(workspace.id),
+    skipDuplicates: true,
   });
 
   await ensureSampleProposal({ workspace, user, template });

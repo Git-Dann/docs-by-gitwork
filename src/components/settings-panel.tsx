@@ -3,16 +3,14 @@
 import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
-  EyeIcon,
-  EyeSlashIcon,
   PlusIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
-import { useLocalSettings } from "@/lib/local-settings";
 import { cn } from "@/lib/format";
+import { useLocalSettings } from "@/lib/local-settings";
 
 type TabId = "general" | "branding" | "content" | "developer";
 
@@ -23,12 +21,15 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "developer", label: "Developer" },
 ];
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  apiKeyConfigured,
+}: {
+  apiKeyConfigured: boolean;
+}) {
   const [activeTab, setActiveTab] = useState<TabId>("general");
 
   return (
     <div className="space-y-6">
-      {/* Tab nav — Untitled UI underline style */}
       <div className="border-b border-[var(--border-2)]">
         <nav className="-mb-px flex gap-0">
           {TABS.map((tab) => (
@@ -52,7 +53,7 @@ export function SettingsPanel() {
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "content" && <ContentTab />}
-      {activeTab === "developer" && <DeveloperTab />}
+      {activeTab === "developer" && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
 }
@@ -310,45 +311,68 @@ function ContentTab() {
   );
 }
 
-function DeveloperTab() {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY ?? "";
+function DeveloperTab({
+  apiKeyConfigured,
+}: {
+  apiKeyConfigured: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      <ApiSection apiKeyConfigured={apiKeyConfigured} />
+    </div>
+  );
+}
+
+function ApiSection({
+  apiKeyConfigured,
+}: {
+  apiKeyConfigured: boolean;
+}) {
   const baseUrl =
     typeof window !== "undefined"
       ? window.location.origin
       : "https://docs-by-gitwork.vercel.app";
 
-  const [revealed, setRevealed] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  function copy(text: string, setCopied: (v: boolean) => void) {
+  function copy(text: string, setCopied: (value: boolean) => void) {
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   }
 
-  const maskedKey = apiKey
-    ? `${"•".repeat(Math.min(apiKey.length - 6, 24))}${apiKey.slice(-6)}`
-    : "";
-
   return (
-    <div className="space-y-6">
-      {/* API credentials */}
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Credentials</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          API access
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Connect external clients — iOS app, Postman, scripts — to this workspace. Send the key as{" "}
-          <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-2)]">
-            Authorization: Bearer &lt;key&gt;
-          </code>{" "}
-          on every request.
-        </p>
+    <section className="app-card p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="app-eyebrow">Developer</p>
+          <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            API access
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
+            Use these endpoints to connect Axis and other external clients to Docs by Gitwork. The
+            web app uses a secure server-set session cookie, while external clients authenticate with{" "}
+            <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
+              Authorization: Bearer &lt;key&gt;
+            </code>
+            .
+          </p>
+        </div>
 
-        <div className="mt-6 space-y-4">
+        <Link
+          href="/api-docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2 text-sm font-semibold text-[var(--text-1)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
+        >
+          View API docs
+          <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
+        </Link>
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+        <div className="space-y-4">
           <div className="space-y-1.5">
             <FieldLabel>Base URL</FieldLabel>
             <div className="flex items-center gap-2">
@@ -360,70 +384,29 @@ function DeveloperTab() {
           </div>
 
           <div className="space-y-1.5">
-            <FieldLabel>API key</FieldLabel>
-            {apiKey ? (
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
-                  {revealed ? apiKey : maskedKey}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => setRevealed((v) => !v)}
-                  aria-label={revealed ? "Hide API key" : "Reveal API key"}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)]"
-                >
-                  {revealed ? (
-                    <EyeSlashIcon className="h-4 w-4" />
-                  ) : (
-                    <EyeIcon className="h-4 w-4" />
-                  )}
-                  {revealed ? "Hide" : "Reveal"}
-                </button>
-                <CopyButton copied={copiedKey} onClick={() => copy(apiKey, setCopiedKey)} />
-              </div>
+            <FieldLabel>API authentication</FieldLabel>
+            {apiKeyConfigured ? (
+              <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 text-sm text-[var(--text-2)]">
+                Server key configured. Manage the bearer token from Vercel project settings instead
+                of exposing it in the browser.
+              </p>
             ) : (
               <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
-                No API key configured. Set{" "}
-                <code className="font-mono">NEXT_PUBLIC_API_KEY</code> in your environment variables.
+                No API key configured. Set <code className="font-mono">API_KEY</code> in your
+                environment variables. For backward compatibility, the app will also read{" "}
+                <code className="font-mono">NEXT_PUBLIC_API_KEY</code> until you migrate.
               </p>
             )}
           </div>
         </div>
-      </section>
 
-      {/* API docs link */}
-      <section className="app-card p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="app-eyebrow">Reference</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              API documentation
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Full endpoint reference with request/response shapes, auth details, and error codes.
-            </p>
-          </div>
-          <Link
-            href="/api-docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2 text-sm font-semibold text-[var(--text-1)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
-          >
-            View API docs
-            <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
-          </Link>
-        </div>
-
-        {/* Quick endpoint list */}
-        <div className="mt-6 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
             Endpoints
           </p>
           <div className="mt-3 space-y-1.5 font-mono text-xs text-[var(--text-3)]">
             {([
-              ["GET", "/api/health", "Health check (no auth)"],
-              ["GET", "/api/clients", "List suggested clients"],
-              ["GET", "/api/clients/:slug", "Get client detail"],
+              ["GET", "/api/health", "Health check"],
               ["GET", "/api/proposals", "List proposals"],
               ["POST", "/api/proposals", "Create proposal"],
               ["GET", "/api/proposals/:id", "Get proposal"],
@@ -434,10 +417,15 @@ function DeveloperTab() {
               ["POST", "/api/proposals/:id/costing", "Save costing"],
               ["POST", "/api/proposals/:id/timeline", "Save timeline"],
               ["POST", "/api/proposals/:id/engagement", "Save engagement"],
-              ["POST", "/api/proposals/:id/export", "Create export"],
+              ["POST", "/api/proposals/:id/export", "Request export"],
+              ["GET", "/api/rate-card/people", "List people and rates"],
+              ["POST", "/api/rate-card/people", "Create rate-card person"],
+              ["GET", "/api/rate-card/people/:id", "Get rate-card person"],
+              ["PATCH", "/api/rate-card/people/:id", "Update rate-card person"],
+              ["DELETE", "/api/rate-card/people/:id", "Archive rate-card person"],
               ["GET", "/api/templates", "List templates"],
             ] as const).map(([method, path, label]) => (
-              <div key={path} className="flex items-baseline gap-2">
+              <div key={`${method}-${path}`} className="flex items-baseline gap-2">
                 <span
                   className={cn(
                     "w-12 shrink-0 font-semibold",
@@ -458,8 +446,8 @@ function DeveloperTab() {
             ))}
           </div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -483,9 +471,7 @@ function CopyButton({
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="block text-sm font-medium text-[var(--text-2)]">{children}</span>
-  );
+  return <span className="block text-sm font-medium text-[var(--text-2)]">{children}</span>;
 }
 
 function FieldInput({

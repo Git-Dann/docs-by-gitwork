@@ -80,6 +80,12 @@ enum ExportStatus {
   FAILED
 }
 
+enum RateBillingPeriod {
+  DAY
+  WEEK
+  MONTH
+}
+
 model User {
   id          String            @id @default(cuid())
   email       String            @unique
@@ -100,6 +106,7 @@ model Workspace {
   members     WorkspaceMember[]
   documents   Document[]
   templates   DocumentTemplate[]
+  rateCardPeople RateCardPerson[]
   proofDocuments ProofDocument[]
 }
 
@@ -302,4 +309,23 @@ model Export {
   document    Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId, requestedAt])
+}
+
+model RateCardPerson {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  seedIdentifier     String?
+  name               String
+  area               String
+  sourceRate         Decimal           @db.Decimal(12, 2)
+  sourceCurrencyCode String
+  billingPeriod      RateBillingPeriod @default(MONTH)
+  archivedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, seedIdentifier])
+  @@index([workspaceId, updatedAt])
+  @@index([workspaceId, archivedAt])
 }

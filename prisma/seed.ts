@@ -8,6 +8,7 @@ import {
   defaultTimelinePhases,
   getDefaultProposalSections,
 } from "../src/lib/default-template";
+import { getDefaultRateCardPeoplePayload } from "../src/server/rate-card";
 
 const prisma = new PrismaClient();
 
@@ -47,6 +48,11 @@ async function main() {
       userId: user.id,
       role: "OWNER",
     },
+  });
+
+  await prisma.rateCardPerson.createMany({
+    data: getDefaultRateCardPeoplePayload(workspace.id),
+    skipDuplicates: true,
   });
 
   const template = await prisma.documentTemplate.upsert({

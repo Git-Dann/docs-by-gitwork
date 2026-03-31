@@ -124,6 +124,35 @@ export const metadataSchema = z.object({
   approvalChecked: z.boolean(),
 });
 
+const requiredTrimmedString = z.string().trim().min(1);
+const currencyCodeSchema = z
+  .string()
+  .trim()
+  .length(3)
+  .transform((value) => value.toUpperCase());
+
+export const rateBillingPeriodSchema = z.enum(["DAY", "WEEK", "MONTH"]);
+
+export const rateCardPersonCreateSchema = z.object({
+  name: requiredTrimmedString,
+  area: requiredTrimmedString,
+  sourceRate: z.coerce.number().positive(),
+  sourceCurrencyCode: currencyCodeSchema,
+  billingPeriod: rateBillingPeriodSchema.default("MONTH"),
+});
+
+export const rateCardPersonUpdateSchema = z
+  .object({
+    name: requiredTrimmedString.optional(),
+    area: requiredTrimmedString.optional(),
+    sourceRate: z.coerce.number().positive().optional(),
+    sourceCurrencyCode: currencyCodeSchema.optional(),
+    billingPeriod: rateBillingPeriodSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one rate card field is required.",
+  });
+
 export const proposalCreateSchema = z.object({
   title: z.string().min(1).default("Untitled Proposal"),
   clientName: z.string().optional(),

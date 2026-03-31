@@ -23,6 +23,7 @@ Frontend-first SaaS MVP for structured proposal building.
 - Print-friendly view and export/share endpoint foundation
 - Template-driven architecture with default Gitwork template
 - Settings foundation for reusable snippets and company profile defaults
+- Workspace-scoped People & Rates roster API for Axis and other clients
 
 ## Routes
 - Landing: `/`
@@ -36,6 +37,7 @@ Frontend-first SaaS MVP for structured proposal building.
 - Templates foundation: `/app/templates`
 
 ## API Routes
+- `GET /api/health` (public health check)
 - `GET /api/proposals`
 - `POST /api/proposals`
 - `GET /api/proposals/[id]`
@@ -48,6 +50,22 @@ Frontend-first SaaS MVP for structured proposal building.
 - `POST /api/proposals/[id]/timeline`
 - `POST /api/proposals/[id]/engagement` (CTA + links)
 - `POST /api/proposals/[id]/export` (print/PDF/share-link foundation)
+- `GET /api/rate-card/people` (supports `search` and `includeArchived=true`)
+- `POST /api/rate-card/people`
+- `GET /api/rate-card/people/[id]`
+- `PATCH /api/rate-card/people/[id]`
+- `DELETE /api/rate-card/people/[id]` (soft archive)
+
+## API Authentication
+- `GET /api/health` is public.
+- All other `/api/*` routes require either `Authorization: Bearer <API_KEY>` or the internal `gitwork_api_session` HttpOnly cookie used by the app shell.
+- Configure `API_KEY` in the environment. `NEXT_PUBLIC_API_KEY` is still read as a compatibility fallback, but should be treated as legacy.
+
+## Rate Card Contract
+- Docs by Gitwork is the source of truth for shared People & Rates.
+- Each `RateCardPerson` stores `name`, `area`, `sourceRate`, `sourceCurrencyCode`, and `billingPeriod` (`DAY`, `WEEK`, `MONTH`).
+- Axis mirrors that roster locally, then converts it to a GBP day rate on-device for proposal pricing.
+- The default Gitwork roster is seeded automatically into the default workspace.
 
 ## Data Model (Prisma)
 `prisma/schema.prisma` includes:
@@ -63,6 +81,7 @@ Frontend-first SaaS MVP for structured proposal building.
 - `Link`
 - `CTA`
 - `Export`
+- `RateCardPerson`
 
 ## Setup
 1. Install dependencies:

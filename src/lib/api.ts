@@ -1,9 +1,3 @@
-import type {
-  CostingSectionData,
-  ProposalDocument,
-  ProposalListItem,
-  TemplateSummary,
-} from "@/types/proposal";
 import type { ClientDetailRecord, ClientListItem } from "@/types/client";
 import type {
   ProofCreateDocumentInput,
@@ -11,6 +5,17 @@ import type {
   ProofDocumentUpdateInput,
   ProofHealthResponse,
 } from "@/lib/proof";
+import type {
+  CostingSectionData,
+  ProposalDocument,
+  ProposalListItem,
+  TemplateSummary,
+} from "@/types/proposal";
+import type {
+  RateBillingPeriod,
+  RateCardPeopleResponse,
+  RateCardPersonRecord,
+} from "@/types/rate-card";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -20,16 +25,10 @@ export interface ClientListResponse {
   clients: ClientListItem[];
 }
 
-function authHeaders(): Record<string, string> {
-  const key = process.env.NEXT_PUBLIC_API_KEY;
-  return key ? { Authorization: `Bearer ${key}` } : {};
-}
-
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...options,
     headers: {
-      ...authHeaders(),
       ...(options?.headers as Record<string, string> | undefined),
     },
   });
@@ -177,6 +176,56 @@ export async function requestExport(
   });
 }
 
+export async function listRateCardPeople(params?: {
+  search?: string;
+  includeArchived?: boolean;
+}): Promise<RateCardPeopleResponse> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.includeArchived) query.set("includeArchived", "true");
+  const qs = query.toString();
+  return apiFetch<RateCardPeopleResponse>(`/api/rate-card/people${qs ? `?${qs}` : ""}`);
+}
+
+export async function createRateCardPerson(input: {
+  name: string;
+  area: string;
+  sourceRate: number;
+  sourceCurrencyCode: string;
+  billingPeriod: RateBillingPeriod;
+}): Promise<{ person: RateCardPersonRecord }> {
+  return apiFetch<{ person: RateCardPersonRecord }>("/api/rate-card/people", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateRateCardPerson(
+  id: string,
+  input: Partial<{
+    name: string;
+    area: string;
+    sourceRate: number;
+    sourceCurrencyCode: string;
+    billingPeriod: RateBillingPeriod;
+  }>,
+): Promise<{ person: RateCardPersonRecord }> {
+  return apiFetch<{ person: RateCardPersonRecord }>(`/api/rate-card/people/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteRateCardPerson(
+  id: string,
+): Promise<{ person: RateCardPersonRecord }> {
+  return apiFetch<{ person: RateCardPersonRecord }>(`/api/rate-card/people/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function listClients(params?: { search?: string }): Promise<ClientListResponse> {
   const query = new URLSearchParams();
   if (params?.search) query.set("search", params.search);
@@ -185,20 +234,20 @@ export async function listClients(params?: { search?: string }): Promise<ClientL
 }
 
 export async function createClient(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   input: { name: string; logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
+  void input;
   throw new Error(
     "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
   );
 }
 
 export async function updateClient(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   slug: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   input: { logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
+  void slug;
+  void input;
   throw new Error(
     "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
   );
@@ -208,7 +257,6 @@ export async function getClientDetail(slug: string): Promise<ClientDetailRecord>
   return apiFetch<ClientDetailRecord>(`/api/clients/${slug}`);
 }
 
-// Proof API routes
 export async function getProofHealth(): Promise<ProofHealthResponse> {
   return apiFetch<ProofHealthResponse>("/api/proof/health");
 }
