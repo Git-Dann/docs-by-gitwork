@@ -20,6 +20,7 @@ import type {
 
 const defaultCostingData = proposalSectionBlueprints.find((entry) => entry.key === "costing")
   ?.data as CostingSectionData;
+const platformOptions = ["iOS", "Android", "Web", "Cross Platform"] as const;
 
 export function ProposalSectionEditor({
   proposal,
@@ -69,7 +70,6 @@ export function ProposalSectionEditor({
             value={data.summary}
             onChange={(summary) => updateSectionData({ ...data, summary })}
           />
-          <EditorHint message="Section graphics are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
@@ -100,12 +100,11 @@ export function ProposalSectionEditor({
             value={data.valueProposition}
             onChange={(valueProposition) => updateSectionData({ ...data, valueProposition })}
           />
-          <Input
+          <PlatformSupportField
             label="Platforms supported"
             value={data.platformsSupported}
             onChange={(platformsSupported) => updateSectionData({ ...data, platformsSupported })}
           />
-          <EditorHint message="Architecture and workflow visuals are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
@@ -414,10 +413,55 @@ function TextArea({
   );
 }
 
-function EditorHint({ message }: { message: string }) {
+function PlatformSupportField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selectedValues = new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+
+  function toggle(option: (typeof platformOptions)[number]) {
+    const next = new Set(selectedValues);
+    if (next.has(option)) {
+      next.delete(option);
+    } else {
+      next.add(option);
+    }
+
+    onChange(Array.from(next).join(", "));
+  }
+
   return (
-    <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-3 text-sm leading-6 text-[var(--text-3)]">
-      {message}
-    </p>
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <div className="flex flex-wrap gap-2">
+        {platformOptions.map((option) => {
+          const selected = selectedValues.has(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => toggle(option)}
+              className={
+                selected
+                  ? "inline-flex items-center rounded-full border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] px-3 py-2 text-sm font-medium text-[var(--brand-700)]"
+                  : "inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
+              }
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+    </label>
   );
 }

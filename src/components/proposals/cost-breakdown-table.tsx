@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
-import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { Button } from "@/components/ui/button";
 import { listRateCardPeople } from "@/lib/api";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
@@ -142,6 +141,7 @@ export function CostBreakdownTable({
   const paymentMatchesBudget = Math.abs(paymentScheduleTotal - discountedSubtotal) < 0.01;
   const billablePeopleCount = value.items.filter((item) => item.category.trim().length > 0 && item.unitCost > 0).length;
   const monthlyRunRate = value.items.reduce((sum, item) => sum + (item.unitCost > 0 ? item.unitCost : 0), 0);
+  const suggestedDurationMonths = inferProjectDurationMonths(value.durationSummary, value.items);
 
   function updateItem(index: number, patch: Partial<CostLineItemInput>) {
     const nextItems = value.items.map((item, itemIndex) => {
@@ -175,7 +175,7 @@ export function CostBreakdownTable({
           category: "",
           itemName: `${CUSTOM_ROLE_PREFIX}new-person`,
           description: "",
-          quantity: 1,
+          quantity: suggestedDurationMonths,
           unitCost: 0,
           subtotal: 0,
           costKind: "ONE_OFF",
@@ -235,16 +235,23 @@ export function CostBreakdownTable({
     <div className="space-y-4">
       <SectionCard
         title="Commercial settings"
-        description="Choose the proposal currency once, then build the delivery budget below using saved People & Rates entries or custom anonymous roles."
+        description="Set the commercial frame for this proposal, then build the delivery budget below using saved People & Rates entries or flexible roles."
       >
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className="space-y-1">
-            <span className="text-xs text-[var(--text-3)]">Currency</span>
+        <div className="grid gap-3 lg:grid-cols-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-[var(--text-2)]">Currency</span>
             <CurrencyField
               value={value.currency}
               onChange={(currency) => onChange({ ...value, currency })}
             />
           </label>
+
+          <FieldInput
+            label="Project duration"
+            value={value.durationSummary}
+            onChange={(durationSummary) => onChange({ ...value, durationSummary })}
+            placeholder="16 weeks ≈ 4 months"
+          />
 
           <NumberField
             label="Discount (%)"
@@ -264,27 +271,28 @@ export function CostBreakdownTable({
             label="Budget rows"
             value={`${billablePeopleCount} ${billablePeopleCount === 1 ? "role" : "roles"}`}
           />
+          <MiniMetric label="Default duration" value={formatDurationSummary(value.durationSummary)} />
           <MiniMetric label="Monthly run rate" value={formatCurrency(monthlyRunRate, value.currency)} />
-          <MiniMetric
-            label={`Discount (${value.discount}%)`}
-            value={`-${formatCurrency(discountAmount, value.currency)}`}
-          />
           <MiniMetric label="Grand total" value={formatCurrency(grandTotal, value.currency)} />
         </div>
       </SectionCard>
 
       <SectionCard
         title="Budget breakdown"
-        description="Pick a saved person from People & Rates or keep the row custom when you want an unnamed delivery role."
+        description="Build the delivery budget row by row. Start from a saved person or use a flexible role when you only want the commercial shape without naming anyone."
       >
+        <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
+          New rows default to the project duration above. Override any row when a role joins later, finishes earlier, or runs longer than the core delivery.
+        </div>
+
         <div className="app-table-shell overflow-x-auto">
           <table className="app-table min-w-full text-sm">
             <thead>
               <tr>
                 <th className="text-left">Assignment</th>
-                <th className="text-left">Tech Stack</th>
-                <th className="text-right">Qty</th>
-                <th className="text-right">Rate</th>
+                <th className="text-left">Delivery focus</th>
+                <th className="text-right">Duration</th>
+                <th className="text-right">Monthly rate</th>
                 <th className="text-right">Subtotal</th>
                 <th className="text-right" />
               </tr>
@@ -325,7 +333,7 @@ export function CostBreakdownTable({
                         }}
                         className="app-select-compact w-full text-sm"
                       >
-                        <option value={CUSTOM_ROLE_VALUE}>Custom role (unnamed)</option>
+                        <option value={CUSTOM_ROLE_VALUE}>Flexible role</option>
                         {rateCardPeople.length > 0 ? (
                           <optgroup label="People & Rates">
                             {rateCardPeople.map((person) => (
@@ -366,7 +374,7 @@ export function CostBreakdownTable({
                             })
                           }
                           className={cn(tableInputClasses, "min-w-[220px]")}
-                          placeholder="Delivery team, Engineer, QA..."
+                          placeholder="Delivery team, QA, Product oversight..."
                         />
                       )}
                     </div>
@@ -382,10 +390,9 @@ export function CostBreakdownTable({
                     />
                   </td>
                   <td className="align-top text-right">
-                    <input
+                    <DurationInput
                       value={item.quantity}
-                      onChange={(event) => updateItem(index, { quantity: parseNumber(event.target.value, 0) })}
-                      className={cn(tableInputClasses, "w-20 min-w-0 text-right")}
+                      onChange={(quantity) => updateItem(index, { quantity })}
                     />
                   </td>
                   <td className="align-top text-right">
@@ -424,14 +431,14 @@ export function CostBreakdownTable({
               size="xs"
               leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
             >
-              Add person
+              Add budget row
             </Button>
             <p className="text-xs text-[var(--text-3)]">
               {rateCardLoading
                 ? "Loading People & Rates…"
                 : rateCardError
-                  ? "People & Rates are unavailable right now. You can still use custom roles."
-                  : "Saved people auto-fill when the proposal currency matches the stored roster currency."}
+                  ? "People & Rates are unavailable right now. You can still use flexible roles."
+                  : "Saved people auto-fill when the proposal currency matches the stored roster currency. Flexible roles keep the budget anonymous when needed."}
             </p>
           </div>
 
@@ -449,98 +456,114 @@ export function CostBreakdownTable({
 
       <SectionCard
         title="Payment schedule"
-        description="Milestone-based billing, structured in the same table system as the budget breakdown."
+        description="Describe how the project is invoiced over time, with one card per milestone or billing step."
       >
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <TextAreaField
-            label="Payment schedule intro"
+            label="Intro shown above the milestones"
             value={value.paymentScheduleIntro}
             onChange={(paymentScheduleIntro) => onChange({ ...value, paymentScheduleIntro })}
             rows={3}
+            placeholder="Explain how the project is invoiced and how the milestones map to delivery."
           />
-          <div className="space-y-3">
-            <TextAreaField
-              label="Payment terms"
-              value={value.paymentTerms}
-              onChange={(paymentTerms) => onChange({ ...value, paymentTerms })}
-              rows={2}
-            />
-            <TextAreaField
-              label="VAT notice"
-              value={value.vatNotice}
-              onChange={(vatNotice) => onChange({ ...value, vatNotice })}
-              rows={2}
-            />
-            <TextAreaField
-              label="IP transfer notice"
-              value={value.ipTransferNotice}
-              onChange={(ipTransferNotice) => onChange({ ...value, ipTransferNotice })}
-              rows={2}
-            />
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <NoticeCard>
+              <TextAreaField
+                label="Payment terms"
+                value={value.paymentTerms}
+                onChange={(paymentTerms) => onChange({ ...value, paymentTerms })}
+                rows={2}
+                placeholder="Invoices are issued with a 7-day payment term."
+              />
+            </NoticeCard>
+            <NoticeCard>
+              <TextAreaField
+                label="VAT note"
+                value={value.vatNotice}
+                onChange={(vatNotice) => onChange({ ...value, vatNotice })}
+                rows={2}
+                placeholder="All prices are exclusive of VAT."
+              />
+            </NoticeCard>
+            <NoticeCard>
+              <TextAreaField
+                label="IP transfer note"
+                value={value.ipTransferNotice}
+                onChange={(ipTransferNotice) => onChange({ ...value, ipTransferNotice })}
+                rows={2}
+                placeholder="IP transfers on receipt of the relevant payment."
+              />
+            </NoticeCard>
           </div>
         </div>
 
-        <div className="app-table-shell overflow-x-auto">
-          <table className="app-table min-w-full text-sm">
-            <thead>
-              <tr>
-                <th className="text-left">Action</th>
-                <th className="text-left">Period covered</th>
-                <th className="text-left">Included work</th>
-                <th className="text-right">Amount (ex VAT)</th>
-                <th className="text-right" />
-              </tr>
-            </thead>
-            <tbody>
-              {value.paymentSchedule.map((row, index) => (
-                <tr key={row.id}>
-                  <td className="align-top">
-                    <input
-                      value={row.action}
-                      onChange={(event) => updatePaymentRow(index, { action: event.target.value })}
-                      className={cn(tableInputClasses, "min-w-[150px]")}
+        {value.paymentSchedule.length ? (
+          <div className="space-y-3">
+            {value.paymentSchedule.map((row, index) => (
+              <article
+                key={row.id}
+                className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+                      Milestone {index + 1}
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--text-3)]">
+                      What gets invoiced, when it lands, and what delivery it covers.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => removePaymentRow(index)}
+                    variant="danger"
+                    size="icon-sm"
+                    aria-label="Remove payment milestone"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_160px]">
+                  <FieldInput
+                    label="Milestone name"
+                    value={row.action}
+                    onChange={(action) => updatePaymentRow(index, { action })}
+                    placeholder="Kickoff invoice"
+                  />
+                  <FieldInput
+                    label="Timing"
+                    value={row.periodCovered}
+                    onChange={(periodCovered) => updatePaymentRow(index, { periodCovered })}
+                    placeholder="Week 1"
+                  />
+                  <div className="space-y-1.5">
+                    <span className="text-sm font-medium text-[var(--text-2)]">Amount (ex VAT)</span>
+                    <MoneyInput
+                      currency={value.currency}
+                      value={row.amount ?? 0}
+                      onChange={(amount) => updatePaymentRow(index, { amount })}
                     />
-                  </td>
-                  <td className="align-top">
-                    <input
-                      value={row.periodCovered}
-                      onChange={(event) => updatePaymentRow(index, { periodCovered: event.target.value })}
-                      className={cn(tableInputClasses, "min-w-[130px]")}
-                    />
-                  </td>
-                  <td className="align-top">
-                    <textarea
-                      value={row.includedWork}
-                      onChange={(event) => updatePaymentRow(index, { includedWork: event.target.value })}
-                      rows={2}
-                      className={cn(tableTextAreaClasses, "min-w-[280px]")}
-                    />
-                  </td>
-                  <td className="align-top text-right">
-                    <input
-                      value={row.amount ?? ""}
-                      onChange={(event) =>
-                        updatePaymentRow(index, { amount: parseNullableNumber(event.target.value) })
-                      }
-                      className={cn(tableInputClasses, "w-28 min-w-0 text-right")}
-                    />
-                  </td>
-                  <td className="align-top text-right">
-                    <Button
-                      type="button"
-                      onClick={() => removePaymentRow(index)}
-                      variant="danger"
-                      size="icon-sm"
-                      aria-label="Remove payment milestone"
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <TextAreaField
+                    label="What this milestone covers"
+                    value={row.includedWork}
+                    onChange={(includedWork) => updatePaymentRow(index, { includedWork })}
+                    rows={3}
+                    placeholder="What the client receives or what delivery checkpoint this invoice unlocks"
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+            No milestones yet. Add a billing step to explain how the delivery is invoiced.
+          </div>
+        )}
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <Button
@@ -569,11 +592,15 @@ export function CostBreakdownTable({
         </div>
       </SectionCard>
 
-      <ListItemsEditor
-        title="Additional notes"
-        items={value.additionalNotes}
-        onChange={(additionalNotes) => onChange({ ...value, additionalNotes })}
-      />
+      <SectionCard
+        title="Commercial notes"
+        description="Add the small print and delivery assumptions in short notes that are easy to scan in the final proposal."
+      >
+        <NotesEditor
+          items={value.additionalNotes}
+          onChange={(additionalNotes) => onChange({ ...value, additionalNotes })}
+        />
+      </SectionCard>
     </div>
   );
 }
@@ -597,6 +624,39 @@ function MoneyInput({
         onChange={(event) => onChange(parseNumber(event.target.value, 0))}
         className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
       />
+    </div>
+  );
+}
+
+function DurationInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex min-h-9 w-[124px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
+      <input
+        value={value}
+        onChange={(event) => onChange(parseNumber(event.target.value, 0))}
+        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
+      />
+      <span className="inline-flex min-w-[46px] items-center justify-center border-l border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+        mos
+      </span>
+    </div>
+  );
+}
+
+function NoticeCard({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
+      {children}
     </div>
   );
 }
@@ -691,7 +751,7 @@ function TechStackMultiSelect({
               </span>
             ))
           ) : (
-            <span className="text-[var(--text-3)]">Select tech stack</span>
+            <span className="text-[var(--text-3)]">Select delivery focus</span>
           )}
         </span>
         <ChevronDownIcon
@@ -794,16 +854,42 @@ function NumberField({
   );
 }
 
+function FieldInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="app-input-compact w-full"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
 function TextAreaField({
   label,
   value,
   onChange,
   rows,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
+  placeholder?: string;
 }) {
   return (
     <label className="block space-y-1.5">
@@ -813,8 +899,65 @@ function TextAreaField({
         onChange={(event) => onChange(event.target.value)}
         rows={rows ?? 4}
         className="proposal-field-compact w-full"
+        placeholder={placeholder}
       />
     </label>
+  );
+}
+
+function NotesEditor({
+  items,
+  onChange,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {items.length ? (
+        items.map((item, index) => (
+          <div
+            key={`${index}-${item}`}
+            className="flex items-start gap-3 rounded-[16px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
+          >
+            <div className="rounded-full bg-[var(--surface-brand-soft)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
+              Note {index + 1}
+            </div>
+            <input
+              value={item}
+              onChange={(event) =>
+                onChange(items.map((entry, entryIndex) => (entryIndex === index ? event.target.value : entry)))
+              }
+              className="app-input-compact flex-1"
+              placeholder="Add a commercial note or delivery assumption"
+            />
+            <Button
+              type="button"
+              onClick={() => onChange(items.filter((_, entryIndex) => entryIndex !== index))}
+              variant="danger"
+              size="icon-sm"
+              aria-label="Remove note"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))
+      ) : (
+        <div className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          No commercial notes yet. Add anything the client should know around billing, support, or handover.
+        </div>
+      )}
+
+      <Button
+        type="button"
+        onClick={() => onChange([...items, ""])}
+        variant="secondary"
+        size="xs"
+        leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+      >
+        Add commercial note
+      </Button>
+    </div>
   );
 }
 
@@ -835,14 +978,6 @@ function SummaryRow({
   );
 }
 
-function parseNullableNumber(value: string) {
-  if (!value.trim()) {
-    return null;
-  }
-
-  return parseNumber(value, 0);
-}
-
 function parseTechStackValue(value?: string) {
   return (value ?? "")
     .split(",")
@@ -856,6 +991,26 @@ function normalizeCostItem(item: CostLineItemInput, index: number): CostLineItem
     itemName: item.itemName.trim() || buildCustomRoleReference(item.category || `role-${index + 1}`),
     subtotal: Number((item.quantity * item.unitCost).toFixed(2)),
   };
+}
+
+function inferProjectDurationMonths(durationSummary: string, items: CostLineItemInput[]) {
+  const monthsMatch = durationSummary.match(/(\d+(?:\.\d+)?)\s*month/i);
+  if (monthsMatch) {
+    return Math.max(1, Number(monthsMatch[1]));
+  }
+
+  const weekMatch = durationSummary.match(/(\d+(?:\.\d+)?)\s*week/i);
+  if (weekMatch) {
+    return Math.max(1, Math.ceil(Number(weekMatch[1]) / 4));
+  }
+
+  const existingMax = items.reduce((max, item) => Math.max(max, Number(item.quantity) || 0), 0);
+  return existingMax > 0 ? existingMax : 1;
+}
+
+function formatDurationSummary(value: string) {
+  const trimmed = value.trim();
+  return trimmed || "Not set";
 }
 
 function getSelectedRateCardPerson(
@@ -947,5 +1102,3 @@ function rateBillingLabel(period: RateBillingPeriod) {
 }
 
 const tableInputClasses = "app-input-compact min-w-[120px] text-[var(--text-1)]";
-
-const tableTextAreaClasses = "proposal-field-compact w-full text-[var(--text-1)]";

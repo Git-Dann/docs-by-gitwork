@@ -90,23 +90,12 @@ export function CoverEditor({
           </select>
         </label>
 
-        <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-4">
-          <p className="app-eyebrow">Resolved Copy</p>
-          <p className="text-sm text-[var(--text-2)]">{confidentialityText}</p>
+        <div className="pt-2">
+          <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-4">
+            <p className="app-eyebrow">Resolved Copy</p>
+            <p className="text-sm text-[var(--text-2)]">{confidentialityText}</p>
+          </div>
         </div>
-      </div>
-
-      <div className="app-subtle-panel space-y-2 p-5 text-sm leading-6 text-[var(--text-3)]">
-        <p>
-          Display format:{" "}
-          <span className="font-medium text-[var(--text-2)]">
-            {value.productName || "Product"} by Gitwork
-          </span>
-        </p>
-        <p>Proposal defaults, template-owned branding, and confidentiality copy are managed in Settings.</p>
-        <p>
-          The client name becomes a suggested client across the Clients area and API once this proposal is saved, including drafts.
-        </p>
       </div>
     </div>
   );

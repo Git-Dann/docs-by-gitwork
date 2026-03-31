@@ -17,7 +17,7 @@ export function CurrencyField({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value as "GBP" | "USD" | "EUR")}
-      className="proposal-field-compact app-select-compact w-full"
+      className="app-select-compact w-full"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>

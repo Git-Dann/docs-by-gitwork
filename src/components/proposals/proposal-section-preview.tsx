@@ -320,10 +320,10 @@ function SectionBody({
               <table className="app-table min-w-full text-sm">
                 <thead>
                   <tr>
-                    <th className="text-left">People</th>
-                    <th className="text-left">Tech Stack</th>
-                    <th className="text-right">Qty</th>
-                    <th className="text-right">Unit cost</th>
+                    <th className="text-left">Assignment</th>
+                    <th className="text-left">Delivery focus</th>
+                    <th className="text-right">Duration</th>
+                    <th className="text-right">Monthly rate</th>
                     <th className="text-right">Subtotal</th>
                   </tr>
                 </thead>
@@ -384,49 +384,41 @@ function SectionBody({
                 {data.paymentScheduleIntro ? (
                   <p className="font-medium text-[var(--text-1)]">{data.paymentScheduleIntro}</p>
                 ) : null}
-                {data.paymentTerms ? (
-                  <p>
-                    <strong className="font-semibold text-[var(--text-1)]">{data.paymentTerms}</strong>
-                  </p>
-                ) : null}
-                {data.vatNotice ? (
-                  <p>
-                    <strong className="font-semibold text-[var(--text-1)]">{data.vatNotice}</strong>
-                  </p>
-                ) : null}
-                {data.ipTransferNotice ? <p>{data.ipTransferNotice}</p> : null}
+                <div className="grid gap-3 md:grid-cols-3">
+                  {data.paymentTerms ? <InfoCard title="Payment terms" content={data.paymentTerms} /> : null}
+                  {data.vatNotice ? <InfoCard title="VAT note" content={data.vatNotice} /> : null}
+                  {data.ipTransferNotice ? <InfoCard title="IP transfer" content={data.ipTransferNotice} /> : null}
+                </div>
               </div>
 
               {paymentSchedule.length ? (
-                <div className="app-table-shell overflow-x-auto">
-                  <table className="app-table min-w-full text-left text-sm">
-                    <thead>
-                      <tr>
-                        <th className="text-left">Action</th>
-                        <th className="text-left">Period Covered</th>
-                        <th className="text-left">Included Work</th>
-                        <th className="text-right">Amount (ex VAT)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentSchedule.map((row) => (
-                        <tr key={row.id}>
-                          <td className="align-top text-[var(--text-2)]">
-                            {row.action || "-"}
-                          </td>
-                          <td className="align-top text-[var(--text-2)]">
-                            {row.periodCovered || "-"}
-                          </td>
-                          <td className="align-top text-[var(--text-2)]">
-                            {row.includedWork || "-"}
-                          </td>
-                          <td className="align-top text-right font-medium text-[var(--text-1)]">
-                            {formatMilestoneAmount(row.amount, data.currency, data.taxRate)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="grid gap-3">
+                  {paymentSchedule.map((row, index) => (
+                    <article
+                      key={row.id}
+                      className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                            Milestone {index + 1}
+                          </p>
+                          <p className="mt-1 text-base font-semibold text-[var(--text-1)]">
+                            {row.action || "Milestone"}
+                          </p>
+                          {row.periodCovered ? (
+                            <p className="mt-1 text-sm text-[var(--text-3)]">{row.periodCovered}</p>
+                          ) : null}
+                        </div>
+                        <p className="text-sm font-semibold text-[var(--text-1)]">
+                          {formatMilestoneAmount(row.amount, data.currency, data.taxRate)}
+                        </p>
+                      </div>
+                      {row.includedWork ? (
+                        <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{row.includedWork}</p>
+                      ) : null}
+                    </article>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -435,11 +427,16 @@ function SectionBody({
           {additionalNotes.length ? (
             <div className="space-y-4">
               <h3 className="text-[26px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                Additional notes
+                Commercial notes
               </h3>
-              <ul className="list-disc space-y-2 pl-8 text-[16px] leading-8 text-[var(--text-2)] marker:text-[var(--brand-600)]">
+              <ul className="space-y-3">
                 {additionalNotes.map((item, index) => (
-                  <li key={`${item}-${index}`}>{item}</li>
+                  <li
+                    key={`${item}-${index}`}
+                    className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-[16px] leading-8 text-[var(--text-2)]"
+                  >
+                    {item}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -496,8 +493,8 @@ function SectionBody({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-[var(--text-1)]">{link.label}</p>
-                  <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">
-                    {link.type.replace(/_/g, " ")}
+                  <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-4)]">
+                    {formatLinkTypeLabel(link.type)}
                   </span>
                 </div>
                 <a
@@ -849,4 +846,24 @@ function parseTechStackValue(value?: string) {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function formatLinkTypeLabel(value: string) {
+  switch (value) {
+    case "WEBSITE":
+      return "Website link";
+    case "DECK":
+      return "Deck link";
+    case "DOCUMENT":
+      return "Document link";
+    case "EMAIL_LINK":
+      return "Email link";
+    case "INTERNAL_ROUTE":
+      return "Internal page";
+    default:
+      return value
+        .replace(/_/g, " ")
+        .toLowerCase()
+        .replace(/^\w/, (letter) => letter.toUpperCase());
+  }
 }

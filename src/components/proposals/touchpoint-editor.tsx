@@ -4,17 +4,13 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/reac
 import { Button } from "@/components/ui/button";
 import type { TouchpointItem } from "@/types/proposal";
 
-const touchpointSnippets = [
-  "Authentication and profiles",
-  "Onboarding and consent",
-  "Submission engine",
-  "Therapist / operator dashboard",
-  "Response delivery",
-  "Admin dashboard",
-  "Payments and discounts",
-  "Re-engagement system",
-  "Partner SDK / integrations",
-];
+const touchpointStarters = [
+  "Discovery and planning",
+  "Product and UX design",
+  "Core app delivery",
+  "Backend and integrations",
+  "QA and launch readiness",
+] as const;
 
 export function TouchpointEditor({
   items,
@@ -24,6 +20,20 @@ export function TouchpointEditor({
   onChange: (items: TouchpointItem[]) => void;
 }) {
   const safeItems = items ?? [];
+
+  function createWorkstream(title = ""): TouchpointItem {
+    return {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2, 10),
+      title,
+      summary: "",
+      features: [],
+      notes: "",
+      callout: "",
+    };
+  }
 
   function move(index: number, delta: -1 | 1) {
     const nextIndex = index + delta;
@@ -52,32 +62,24 @@ export function TouchpointEditor({
 
   return (
     <div className="app-subtle-panel space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="app-eyebrow">Scope</p>
-          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Scope / touchpoints</p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Scope & delivery</p>
+          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+            Use one card per workstream. This is the clearest match to Axis scope, deliverables, and delivery approach.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            onClick={() =>
-              onChange([
-                ...safeItems,
-                {
-                  id: crypto.randomUUID(),
-                  title: "",
-                  summary: "",
-                  features: [],
-                  notes: "",
-                  callout: "",
-                },
-              ])
-            }
+            onClick={() => onChange([...safeItems, createWorkstream()])}
             variant="secondary"
             size="xs"
             leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
           >
-            Add touchpoint
+            Add workstream
           </Button>
 
           <select
@@ -85,27 +87,16 @@ export function TouchpointEditor({
             onChange={(event) => {
               const title = event.target.value;
               if (title) {
-                onChange([
-                  ...safeItems,
-                  {
-                    id: crypto.randomUUID(),
-                    title,
-                    summary: "",
-                    features: [],
-                    notes: "",
-                    callout: "",
-                  },
-                ]);
+                onChange([...safeItems, createWorkstream(title)]);
               }
-
               event.target.value = "";
             }}
-            className="app-select-compact text-xs"
+            className="app-select-compact min-w-[220px] text-sm"
           >
-            <option value="">Add snippet...</option>
-            {touchpointSnippets.map((snippet) => (
-              <option key={snippet} value={snippet}>
-                {snippet}
+            <option value="">Use starter...</option>
+            {touchpointStarters.map((starter) => (
+              <option key={starter} value={starter}>
+                {starter}
               </option>
             ))}
           </select>
@@ -117,34 +108,22 @@ export function TouchpointEditor({
           {safeItems.map((touchpoint, index) => (
             <article
               key={touchpoint.id ?? `${touchpoint.title}-${index}`}
-              className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+              className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
             >
-              <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-                <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Title</span>
-                  <input
-                    value={touchpoint.title}
-                    onChange={(event) => patch(index, { title: event.target.value })}
-                    className="app-input-compact"
-                  />
-                </label>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+                    Workstream {index + 1}
+                  </p>
+                </div>
 
-                <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Summary</span>
-                  <input
-                    value={touchpoint.summary}
-                    onChange={(event) => patch(index, { summary: event.target.value })}
-                    className="app-input-compact"
-                  />
-                </label>
-
-                <div className="flex items-end justify-end gap-1">
+                <div className="flex items-center gap-1">
                   <Button
                     type="button"
                     onClick={() => move(index, -1)}
                     variant="secondary"
                     size="icon-md"
-                    aria-label="Move touchpoint up"
+                    aria-label="Move workstream up"
                   >
                     <ArrowUpIcon className="h-4 w-4" />
                   </Button>
@@ -153,7 +132,7 @@ export function TouchpointEditor({
                     onClick={() => move(index, 1)}
                     variant="secondary"
                     size="icon-md"
-                    aria-label="Move touchpoint down"
+                    aria-label="Move workstream down"
                   >
                     <ArrowDownIcon className="h-4 w-4" />
                   </Button>
@@ -162,56 +141,118 @@ export function TouchpointEditor({
                     onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
                     variant="danger"
                     size="icon-md"
-                    aria-label="Delete touchpoint"
+                    aria-label="Delete workstream"
                   >
                     <TrashIcon className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
 
-              <label className="block space-y-1.5">
-                <span className="text-xs text-[var(--text-3)]">Features (comma separated)</span>
-                <input
-                  value={touchpoint.features.join(", ")}
-                  onChange={(event) =>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <FieldInput
+                  label="Workstream title"
+                  value={touchpoint.title}
+                  onChange={(title) => patch(index, { title })}
+                  placeholder="Core app delivery"
+                />
+                <FieldInput
+                  label="Included scope"
+                  value={touchpoint.summary}
+                  onChange={(summary) => patch(index, { summary })}
+                  placeholder="What this workstream covers"
+                />
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <FieldTextArea
+                  label="Key deliverables"
+                  value={touchpoint.features.join("\n")}
+                  onChange={(next) =>
                     patch(index, {
-                      features: event.target.value
-                        .split(",")
+                      features: next
+                        .split("\n")
                         .map((entry) => entry.trim())
                         .filter(Boolean),
                     })
                   }
-                  className="app-input-compact"
+                  placeholder={"Wireframes\nAcceptance criteria\nQA-ready build"}
+                  rows={5}
                 />
-              </label>
-
-              <div className="grid gap-2 md:grid-cols-2">
-                <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Notes</span>
-                  <input
+                <div className="space-y-3">
+                  <FieldTextArea
+                    label="Delivery notes"
                     value={touchpoint.notes ?? ""}
-                    onChange={(event) => patch(index, { notes: event.target.value })}
-                    className="app-input-compact"
+                    onChange={(notes) => patch(index, { notes })}
+                    placeholder="Dependencies, handoffs, or implementation notes"
+                    rows={3}
                   />
-                </label>
-
-                <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Callout</span>
-                  <input
+                  <FieldInput
+                    label="Optional callout"
                     value={touchpoint.callout ?? ""}
-                    onChange={(event) => patch(index, { callout: event.target.value })}
-                    className="app-input-compact"
+                    onChange={(callout) => patch(index, { callout })}
+                    placeholder="Anything worth highlighting in the proposal"
                   />
-                </label>
+                </div>
               </div>
             </article>
           ))}
         </div>
       ) : (
         <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-          No touchpoints yet.
+          No workstreams yet. Add a workstream to define in-scope delivery, outputs, and delivery notes.
         </p>
       )}
     </div>
+  );
+}
+
+function FieldInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-xs text-[var(--text-3)]">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="app-input-compact"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function FieldTextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows: number;
+}) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-xs text-[var(--text-3)]">{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        className="proposal-field-compact w-full"
+        placeholder={placeholder}
+      />
+    </label>
   );
 }

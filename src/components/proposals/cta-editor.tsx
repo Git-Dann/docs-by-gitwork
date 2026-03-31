@@ -1,22 +1,24 @@
 "use client";
 
+import { ArrowTopRightOnSquareIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
+import { Button } from "@/components/ui/button";
 import type { CTAInput, LinkType } from "@/types/proposal";
 
-const destinationTypes: LinkType[] = [
-  "INTERNAL_ROUTE",
-  "EXTERNAL_URL",
-  "DECK_LINK",
-  "DOCUMENT_LINK",
-  "EMAIL_LINK",
+const destinationOptions: Array<{ value: LinkType; label: string; placeholder: string }> = [
+  { value: "EXTERNAL_URL", label: "Website link", placeholder: "https://gitwork.io" },
+  { value: "DOCUMENT_LINK", label: "Document link", placeholder: "https://docs.google.com/..." },
+  { value: "DECK_LINK", label: "Deck link", placeholder: "https://pitch.com/..." },
+  { value: "EMAIL_LINK", label: "Email action", placeholder: "hello@gitwork.io" },
+  { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/proposals/123" },
 ];
 
 function ensureRole(ctas: CTAInput[], role: CTAInput["role"]): CTAInput {
   return (
     ctas.find((cta) => cta.role === role) ?? {
       role,
-      label: role === "PRIMARY" ? "Book a call" : "View deck",
+      label: role === "PRIMARY" ? "Book a call" : "Review the full proposal",
       destination: "",
-      destinationType: role === "PRIMARY" ? "EMAIL_LINK" : "DECK_LINK",
+      destinationType: role === "PRIMARY" ? "EMAIL_LINK" : "DOCUMENT_LINK",
       sortOrder: role === "PRIMARY" ? 0 : 1,
     }
   );
@@ -46,57 +48,90 @@ export function CTAEditor({
     <div className="app-subtle-panel space-y-4 p-5">
       <div>
         <p className="app-eyebrow">Actions</p>
-        <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Call to actions</p>
+        <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Calls to action</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+          Shape the next step the client should take once they reach the close of the proposal.
+        </p>
       </div>
 
-      <RoleCard
-        title="Primary CTA"
-        value={primary}
-        onChange={(patch) => updateRole("PRIMARY", patch)}
-      />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <RoleCard
+          title="Primary action"
+          description="The most important next step."
+          value={primary}
+          accent="primary"
+          onChange={(patch) => updateRole("PRIMARY", patch)}
+        />
 
-      <RoleCard
-        title="Secondary CTA"
-        value={secondary}
-        onChange={(patch) => updateRole("SECONDARY", patch)}
-      />
+        <RoleCard
+          title="Secondary action"
+          description="A softer fallback if the client is not ready for the main action."
+          value={secondary}
+          accent="secondary"
+          onChange={(patch) => updateRole("SECONDARY", patch)}
+        />
+      </div>
     </div>
   );
 }
 
 function RoleCard({
   title,
+  description,
   value,
+  accent,
   onChange,
 }: {
   title: string;
+  description: string;
   value: CTAInput;
+  accent: "primary" | "secondary";
   onChange: (patch: Partial<CTAInput>) => void;
 }) {
+  const selectedOption = destinationOptions.find((option) => option.value === value.destinationType) ?? destinationOptions[0];
+
   return (
-    <section className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-3)]">{title}</h4>
-      <div className="grid gap-2 md:grid-cols-2">
+    <section className="space-y-4 rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-[var(--text-1)]">{title}</h4>
+          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">{description}</p>
+        </div>
+
+        {accent === "primary" ? (
+          <Button type="button" variant="primary" size="sm">
+            {value.label || "Primary action"}
+          </Button>
+        ) : (
+          <Button type="button" variant="secondary" size="sm">
+            {value.label || "Secondary action"}
+          </Button>
+        )}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
         <label className="space-y-1.5">
-          <span className="text-xs text-[var(--text-3)]">Label</span>
+          <span className="text-xs text-[var(--text-3)]">Button label</span>
           <input
             value={value.label}
             onChange={(event) => onChange({ label: event.target.value })}
             className="app-input-compact"
-            placeholder="Book a call"
+            placeholder="Book a discovery call"
           />
         </label>
 
         <label className="space-y-1.5">
-          <span className="text-xs text-[var(--text-3)]">Destination type</span>
+          <span className="text-xs text-[var(--text-3)]">Destination</span>
           <select
             value={value.destinationType}
-            onChange={(event) => onChange({ destinationType: event.target.value as CTAInput["destinationType"] })}
+            onChange={(event) =>
+              onChange({ destinationType: event.target.value as CTAInput["destinationType"] })
+            }
             className="app-select-compact w-full text-sm"
           >
-            {destinationTypes.map((type) => (
-              <option key={type} value={type}>
-                {type.replace(/_/g, " ")}
+            {destinationOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -104,14 +139,49 @@ function RoleCard({
       </div>
 
       <label className="block space-y-1.5">
-        <span className="text-xs text-[var(--text-3)]">Destination</span>
+        <span className="text-xs text-[var(--text-3)]">Link, route, or email</span>
         <input
           value={value.destination}
           onChange={(event) => onChange({ destination: event.target.value })}
+          onBlur={(event) => onChange({ destination: normalizeDestination(event.target.value, value.destinationType) })}
           className="app-input-compact"
-          placeholder="mailto:hello@gitwork.io"
+          placeholder={selectedOption.placeholder}
         />
       </label>
+
+      <div className="flex items-center gap-2 text-sm text-[var(--text-3)]">
+        {value.destinationType === "EMAIL_LINK" ? (
+          <EnvelopeIcon className="h-4 w-4 text-[var(--brand-600)]" />
+        ) : (
+          <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--brand-600)]" />
+        )}
+        <span>{selectedOption.label}</span>
+      </div>
     </section>
   );
+}
+
+function normalizeDestination(value: string, type: LinkType) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (type === "EMAIL_LINK") {
+    if (trimmed.startsWith("mailto:")) {
+      return trimmed;
+    }
+
+    return trimmed.includes("@") ? `mailto:${trimmed}` : trimmed;
+  }
+
+  if (type === "INTERNAL_ROUTE") {
+    return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  }
+
+  if (/^[a-z]+:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
 }

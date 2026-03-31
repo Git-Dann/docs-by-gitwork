@@ -2,7 +2,7 @@
 
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
+import { IconSelect } from "@/components/proposals/icon-select";
 import { useLocalSettings } from "@/lib/local-settings";
 import type { ObjectiveItem } from "@/types/proposal";
 
@@ -173,14 +173,6 @@ export function ObjectivesEditor({
                     <TrashIcon className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
-
-              <div className="mt-3 flex items-center gap-2 text-sm text-[var(--text-3)]">
-                {(() => {
-                  const SelectedIcon = getObjectiveIcon(item.icon);
-                  return <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />;
-                })()}
-                Preview icon: <span className="font-medium text-[var(--text-2)]">{item.icon || "sparkles"}</span>
               </div>
             </article>
           ))}
