@@ -338,7 +338,6 @@ function RateCardTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [archivingPersonId, setArchivingPersonId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusIsError, setStatusIsError] = useState(false);
   const selectedPersonIdRef = useRef<string | null>(null);
@@ -476,7 +475,6 @@ function RateCardTab() {
       return;
     }
 
-    setArchivingPersonId(personId);
     setArchiving(true);
     setStatusMessage(null);
 
@@ -493,7 +491,6 @@ function RateCardTab() {
       );
     } finally {
       setArchiving(false);
-      setArchivingPersonId(null);
     }
   }
 
@@ -541,23 +538,25 @@ function RateCardTab() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,380px)]">
-          <section className="app-table-shell overflow-hidden">
-            <div className="flex flex-col gap-4 border-b border-[var(--border-2)] px-5 py-5 sm:px-6">
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,400px)]">
+          <section className="overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-[var(--shadow-xs)]">
+            <div className="border-b border-[var(--border-2)] px-5 py-5 sm:px-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base font-semibold text-[var(--text-1)]">Roster</h3>
                     <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                      {people.length} saved
+                      {people.length} people
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
-                    Select a row to edit the details used across connected proposal builders.
+                    Shared people and source rates for every connected proposal builder.
                   </p>
                 </div>
+              </div>
 
-                <label className="relative min-w-[240px] flex-1 sm:max-w-sm">
+              <div className="mt-4">
+                <label className="relative block">
                   <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
                   <input
                     value={searchQuery}
@@ -569,112 +568,83 @@ function RateCardTab() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="app-table min-w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left">Person</th>
-                    <th className="text-left">Rate</th>
-                    <th className="text-left">Updated</th>
-                    <th className="text-right"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td className="text-sm text-[var(--text-4)]" colSpan={4}>
-                        Loading People & Rates…
-                      </td>
-                    </tr>
-                  ) : filteredPeople.length > 0 ? (
-                    filteredPeople.map((person) => {
-                      const selected = person.id === selectedPersonId;
+            <div className="max-h-[640px] overflow-y-auto p-3">
+              {loading ? (
+                <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                  Loading People & Rates…
+                </div>
+              ) : filteredPeople.length > 0 ? (
+                <div className="space-y-2">
+                  {filteredPeople.map((person) => {
+                    const selected = person.id === selectedPersonId;
 
-                      return (
-                        <tr
-                          key={person.id}
-                          onClick={() => selectPerson(person)}
+                    return (
+                      <button
+                        key={person.id}
+                        type="button"
+                        onClick={() => selectPerson(person)}
+                        className={cn(
+                          "group relative w-full overflow-hidden rounded-[18px] border px-4 py-4 text-left transition",
+                          selected
+                            ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)] shadow-[var(--shadow-xs)]"
+                            : "border-transparent hover:border-[var(--border-2)] hover:bg-[var(--surface-1)]",
+                        )}
+                        aria-pressed={selected}
+                      >
+                        <span
                           className={cn(
-                            "group cursor-pointer [&>td]:align-top",
-                            selected
-                              ? "bg-[var(--surface-1)] [&>td:first-child]:shadow-[-3px_0_0_0_var(--brand-500)_inset]"
-                              : null,
+                            "absolute inset-y-3 left-0 w-1 rounded-full transition",
+                            selected ? "bg-[var(--brand-500)]" : "bg-transparent",
                           )}
-                          aria-selected={selected}
-                        >
-                          <td className="min-w-[320px]">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="truncate font-semibold text-[var(--text-1)]">
-                                  {person.name}
+                        />
+
+                        <div className="flex items-start gap-4 pl-2">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--border-2)] bg-white text-sm font-semibold text-[var(--text-2)]">
+                            {initialsForPerson(person.name)}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate text-sm font-semibold text-[var(--text-1)]">
+                                {person.name}
+                              </span>
+                              {person.seedIdentifier ? (
+                                <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                                  Default
                                 </span>
-                                {person.seedIdentifier ? (
-                                  <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                                    Default
-                                  </span>
-                                ) : null}
-                              </div>
-                              <p className="mt-1 max-w-[36rem] text-sm leading-6 text-[var(--text-3)]">
-                                {person.area}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="whitespace-nowrap">
-                            <span className="text-sm font-semibold text-[var(--text-1)]">
-                              {formatCurrencyValue(person.sourceRate, person.sourceCurrencyCode)}
-                            </span>
-                            <span className="mt-2 inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
-                              {billingPeriodLabel(person.billingPeriod)}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium text-[var(--text-2)]">
-                                {formatDate(person.updatedAt)}
-                              </p>
-                              {selected ? (
-                                <p className="text-xs font-medium text-[var(--brand-700)]">
-                                  Editing
-                                </p>
                               ) : null}
                             </div>
-                          </td>
-                          <td>
-                            <div className="flex justify-end">
-                              <Button
-                                type="button"
-                                variant="utility"
-                                size="icon-sm"
-                                leadingIcon={<TrashIcon className="h-4 w-4" />}
-                                className={cn(
-                                  "transition-opacity",
-                                  selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                                )}
-                                aria-label={`Archive ${person.name}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setSelectedPersonId(person.id);
-                                  setDraft(draftFromPerson(person));
-                                  void archiveSelectedPerson(person.id);
-                                }}
-                                loading={archiving && archivingPersonId === person.id}
-                              />
+
+                            <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+                              {person.area}
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-[var(--text-1)]">
+                                {formatCurrencyValue(person.sourceRate, person.sourceCurrencyCode)}
+                              </span>
+                              <span className="text-sm text-[var(--text-4)]">•</span>
+                              <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                                {billingPeriodLabel(person.billingPeriod)}
+                              </span>
+                              <span className="text-sm text-[var(--text-4)]">•</span>
+                              <span className="text-sm text-[var(--text-3)]">
+                                Updated {formatDate(person.updatedAt)}
+                              </span>
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td className="text-sm text-[var(--text-4)]" colSpan={4}>
-                        {people.length === 0
-                          ? "No people saved yet. Add your first team member to start building the shared roster."
-                          : "No roster entries match that search."}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                  {people.length === 0
+                    ? "No people saved yet. Add your first team member to start building the shared roster."
+                    : "No roster entries match that search."}
+                </div>
+              )}
             </div>
           </section>
 
@@ -1085,4 +1055,13 @@ function formatCurrencyValue(value: number, currencyCode: string) {
   } catch {
     return `${currencyCode.toUpperCase()} ${value.toFixed(2)}`;
   }
+}
+
+function initialsForPerson(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 }
