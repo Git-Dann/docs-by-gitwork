@@ -7,7 +7,7 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      subtitle="Proposal defaults, branding, confidentiality, and reusable snippets."
+      subtitle="Proposal defaults, branding, people and rates, confidentiality, and API access."
     >
       <SettingsPanel apiKeyConfigured={apiKeyConfigured} />
     </AppShell>

@@ -1,25 +1,42 @@
 "use client";
 
 import {
+  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
+  MagnifyingGlassIcon,
   PlusIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ImagePicker } from "@/components/ui/image-picker";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson } from "@/lib/api";
 import { cn } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
+import { Button } from "@/components/ui/button";
+import { ImagePicker } from "@/components/ui/image-picker";
+import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 
-type TabId = "general" | "branding" | "content" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "developer";
+
+interface RateCardDraft {
+  name: string;
+  area: string;
+  sourceRate: string;
+  sourceCurrencyCode: string;
+  billingPeriod: RateBillingPeriod;
+}
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "general", label: "General" },
   { id: "branding", label: "Branding" },
   { id: "content", label: "Content" },
+  { id: "people", label: "People & Rates" },
   { id: "developer", label: "Developer" },
 ];
+
+const COMMON_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "CAD", "AUD"] as const;
+const RATE_BILLING_PERIOD_OPTIONS: RateBillingPeriod[] = ["DAY", "WEEK", "MONTH"];
 
 export function SettingsPanel({
   apiKeyConfigured,
@@ -31,7 +48,7 @@ export function SettingsPanel({
   return (
     <div className="space-y-6">
       <div className="border-b border-[var(--border-2)]">
-        <nav className="-mb-px flex gap-0">
+        <nav className="-mb-px flex flex-wrap gap-0">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -53,6 +70,7 @@ export function SettingsPanel({
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "content" && <ContentTab />}
+      {activeTab === "people" && <RateCardTab />}
       {activeTab === "developer" && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
@@ -311,6 +329,417 @@ function ContentTab() {
   );
 }
 
+function RateCardTab() {
+  const [people, setPeople] = useState<RateCardPersonRecord[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<RateCardDraft>(makeEmptyRateCardDraft());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusIsError, setStatusIsError] = useState(false);
+  const selectedPersonIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedPersonIdRef.current = selectedPersonId;
+  }, [selectedPersonId]);
+
+  const loadPeople = useCallback(async (options?: {
+    preferredId?: string | null;
+    announce?: string | null;
+    refreshing?: boolean;
+  }) => {
+    if (options?.refreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const response = await listRateCardPeople();
+      setPeople(response.people);
+
+      const preferredId = options?.preferredId ?? selectedPersonIdRef.current;
+      const preferredPerson = preferredId
+        ? response.people.find((person) => person.id === preferredId) ?? null
+        : null;
+
+      if (preferredPerson) {
+        selectPerson(preferredPerson);
+      } else if (response.people.length > 0) {
+        selectPerson(response.people[0]);
+      } else {
+        startNew();
+      }
+
+      if (options?.announce) {
+        setStatusIsError(false);
+        setStatusMessage(options.announce);
+      }
+    } catch (error) {
+      setStatusIsError(true);
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load People & Rates right now.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPeople();
+  }, [loadPeople]);
+
+  const filteredPeople = people.filter((person) => {
+    const search = searchQuery.trim().toLowerCase();
+    if (!search) return true;
+    return (
+      person.name.toLowerCase().includes(search) ||
+      person.area.toLowerCase().includes(search) ||
+      person.sourceCurrencyCode.toLowerCase().includes(search)
+    );
+  });
+
+  const isEditingExisting = selectedPersonId !== null;
+
+  function selectPerson(person: RateCardPersonRecord) {
+    setSelectedPersonId(person.id);
+    setDraft(draftFromPerson(person));
+  }
+
+  function startNew() {
+    setSelectedPersonId(null);
+    setDraft(makeEmptyRateCardDraft());
+  }
+
+  async function saveDraft() {
+    const normalizedName = draft.name.trim();
+    const normalizedArea = draft.area.trim();
+    const normalizedCurrency = draft.sourceCurrencyCode.trim().toUpperCase();
+    const sourceRate = Number(draft.sourceRate);
+
+    if (!normalizedName || !normalizedArea || !normalizedCurrency || Number.isNaN(sourceRate) || sourceRate <= 0) {
+      setStatusIsError(true);
+      setStatusMessage("Add a name, area, 3-letter currency, and a positive source rate before saving.");
+      return;
+    }
+
+    setSaving(true);
+    setStatusMessage(null);
+
+    try {
+      if (selectedPersonId) {
+        await updateRateCardPerson(selectedPersonId, {
+          name: normalizedName,
+          area: normalizedArea,
+          sourceRate,
+          sourceCurrencyCode: normalizedCurrency,
+          billingPeriod: draft.billingPeriod,
+        });
+
+        await loadPeople({
+          preferredId: selectedPersonId,
+          announce: "Person updated.",
+        });
+      } else {
+        const response = await createRateCardPerson({
+          name: normalizedName,
+          area: normalizedArea,
+          sourceRate,
+          sourceCurrencyCode: normalizedCurrency,
+          billingPeriod: draft.billingPeriod,
+        });
+
+        await loadPeople({
+          preferredId: response.person.id,
+          announce: "Person added.",
+        });
+      }
+    } catch (error) {
+      setStatusIsError(true);
+      setStatusMessage(
+        error instanceof Error ? error.message : "Unable to save this person right now.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function archiveSelectedPerson() {
+    if (!selectedPersonId) {
+      return;
+    }
+
+    setArchiving(true);
+    setStatusMessage(null);
+
+    try {
+      await deleteRateCardPerson(selectedPersonId);
+      await loadPeople({
+        preferredId: null,
+        announce: "Person archived.",
+      });
+    } catch (error) {
+      setStatusIsError(true);
+      setStatusMessage(
+        error instanceof Error ? error.message : "Unable to archive this person right now.",
+      );
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="app-card p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="app-eyebrow">Shared roster</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              People & Rates
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
+              This is the shared roster Axis mirrors for proposal pricing. Store source currency and
+              billing period here, then let Axis convert everything to a GBP day rate on-device.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
+              onClick={() =>
+                void loadPeople({
+                  preferredId: selectedPersonId,
+                  refreshing: true,
+                  announce: "Roster refreshed.",
+                })
+              }
+              loading={refreshing}
+            >
+              Refresh
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={startNew}
+            >
+              New person
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,380px)]">
+          <div className="space-y-4">
+            <label className="block space-y-1.5">
+              <FieldLabel>Search roster</FieldLabel>
+              <div className="relative">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by name, area, or currency"
+                  className="w-full pl-10"
+                />
+              </div>
+            </label>
+
+            {loading ? (
+              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                Loading People & Rates…
+              </div>
+            ) : filteredPeople.length > 0 ? (
+              <div className="space-y-3">
+                {filteredPeople.map((person) => {
+                  const selected = person.id === selectedPersonId;
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => selectPerson(person)}
+                      className={cn(
+                        "w-full rounded-[18px] border p-4 text-left transition",
+                        selected
+                          ? "border-[var(--brand-300)] bg-[var(--surface-brand)]"
+                          : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+                            {person.name}
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--text-3)]">{person.area}</p>
+                        </div>
+                        <span className="rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                          {billingPeriodLabel(person.billingPeriod)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-medium text-[var(--text-2)]">
+                        {formatSourceRate(person.sourceRate, person.sourceCurrencyCode, person.billingPeriod)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                {people.length == 0
+                  ? "No people saved yet. Add your first team member to start building the shared roster."
+                  : "No roster entries match that search."}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="app-eyebrow">{isEditingExisting ? "Edit person" : "New person"}</p>
+                <h3 className="mt-2 text-base font-semibold text-[var(--text-1)]">
+                  {isEditingExisting ? "Update roster entry" : "Add roster entry"}
+                </h3>
+              </div>
+
+              {isEditingExisting ? (
+                <button
+                  type="button"
+                  onClick={startNew}
+                  className="text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                >
+                  New
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <FieldInput
+                label="Name"
+                value={draft.name}
+                onChange={(name) => setDraft((current) => ({ ...current, name }))}
+              />
+              <FieldInput
+                label="Area"
+                value={draft.area}
+                onChange={(area) => setDraft((current) => ({ ...current, area }))}
+              />
+              <FieldInput
+                label="Source rate"
+                value={draft.sourceRate}
+                type="number"
+                onChange={(sourceRate) => setDraft((current) => ({ ...current, sourceRate }))}
+              />
+
+              <label className="block space-y-1.5">
+                <FieldLabel>Source currency</FieldLabel>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(120px,140px)]">
+                  <select
+                    value={COMMON_CURRENCIES.includes(draft.sourceCurrencyCode as (typeof COMMON_CURRENCIES)[number]) ? draft.sourceCurrencyCode : "CUSTOM"}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      if (nextValue !== "CUSTOM") {
+                        setDraft((current) => ({
+                          ...current,
+                          sourceCurrencyCode: nextValue,
+                        }));
+                      }
+                    }}
+                  >
+                    {COMMON_CURRENCIES.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                    <option value="CUSTOM">Custom</option>
+                  </select>
+                  <input
+                    value={draft.sourceCurrencyCode}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        sourceCurrencyCode: event.target.value.toUpperCase().slice(0, 3),
+                      }))
+                    }
+                    maxLength={3}
+                    placeholder="USD"
+                  />
+                </div>
+              </label>
+
+              <label className="block space-y-1.5">
+                <FieldLabel>Billing period</FieldLabel>
+                <select
+                  value={draft.billingPeriod}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      billingPeriod: event.target.value as RateBillingPeriod,
+                    }))
+                  }
+                >
+                  {RATE_BILLING_PERIOD_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {billingPeriodLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
+              Axis preview: {formatDraftRate(draft)}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => void saveDraft()}
+                loading={saving}
+              >
+                {isEditingExisting ? "Save changes" : "Add person"}
+              </Button>
+
+              {isEditingExisting ? (
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  leadingIcon={<TrashIcon className="h-4 w-4" />}
+                  onClick={() => void archiveSelectedPerson()}
+                  loading={archiving}
+                >
+                  Archive
+                </Button>
+              ) : null}
+            </div>
+
+            {statusMessage ? (
+              <p
+                className={cn(
+                  "mt-4 text-sm",
+                  statusIsError ? "text-[#b42318]" : "text-[var(--text-3)]",
+                )}
+              >
+                {statusMessage}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DeveloperTab({
   apiKeyConfigured,
 }: {
@@ -518,4 +947,64 @@ function FieldTextArea({
       />
     </label>
   );
+}
+
+function makeEmptyRateCardDraft(): RateCardDraft {
+  return {
+    name: "",
+    area: "",
+    sourceRate: "",
+    sourceCurrencyCode: "USD",
+    billingPeriod: "MONTH",
+  };
+}
+
+function draftFromPerson(person: RateCardPersonRecord): RateCardDraft {
+  return {
+    name: person.name,
+    area: person.area,
+    sourceRate: person.sourceRate.toString(),
+    sourceCurrencyCode: person.sourceCurrencyCode,
+    billingPeriod: person.billingPeriod,
+  };
+}
+
+function billingPeriodLabel(period: RateBillingPeriod) {
+  switch (period) {
+    case "DAY":
+      return "Per day";
+    case "WEEK":
+      return "Per week";
+    case "MONTH":
+      return "Per month";
+  }
+}
+
+function formatSourceRate(
+  sourceRate: number,
+  sourceCurrencyCode: string,
+  billingPeriod: RateBillingPeriod,
+) {
+  return `${formatCurrencyValue(sourceRate, sourceCurrencyCode)} · ${billingPeriodLabel(billingPeriod)}`;
+}
+
+function formatDraftRate(draft: RateCardDraft) {
+  const sourceRate = Number(draft.sourceRate);
+  if (Number.isNaN(sourceRate) || sourceRate <= 0) {
+    return "Add a valid rate to preview the source pricing.";
+  }
+
+  return formatSourceRate(sourceRate, draft.sourceCurrencyCode || "USD", draft.billingPeriod);
+}
+
+function formatCurrencyValue(value: number, currencyCode: string) {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: currencyCode,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currencyCode.toUpperCase()} ${value.toFixed(2)}`;
+  }
 }

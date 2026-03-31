@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "API Reference — Docs by GitWork",
-  description: "REST API documentation for Docs by GitWork",
+  title: "API Reference — Docs by Gitwork",
+  description: "REST API documentation for Docs by Gitwork",
 };
 
 const BASE_URL = "https://docs-by-gitwork.vercel.app";
@@ -159,6 +159,59 @@ const endpoints: Endpoint[] = [
   },
   {
     method: "GET",
+    path: "/api/rate-card/people",
+    description: "List the shared People & Rates roster used by Axis and other connected clients.",
+    auth: true,
+    response: `{ "people": [{ "id": "...", "workspaceId": "...", "seedIdentifier": "gitwork.aashir-awan", "name": "Aashir Awan", "area": "Senior • Flutter, Frontend, Backend, DevOps", "sourceRate": 1900, "sourceCurrencyCode": "USD", "billingPeriod": "MONTH", "archivedAt": null, "createdAt": "...", "updatedAt": "..." }] }`,
+    notes: "Supports optional query params `search` and `includeArchived=true`.",
+  },
+  {
+    method: "POST",
+    path: "/api/rate-card/people",
+    description: "Create a new shared People & Rates roster entry.",
+    auth: true,
+    body: [
+      { name: "name", type: "string", required: true, description: "Display name for the person" },
+      { name: "area", type: "string", required: true, description: "Discipline, specialty, or role summary" },
+      { name: "sourceRate", type: "number", required: true, description: "Stored source rate in the source currency" },
+      { name: "sourceCurrencyCode", type: "string", required: true, description: "3-letter ISO currency code such as USD or GBP" },
+      { name: "billingPeriod", type: "DAY | WEEK | MONTH", required: true, description: "Source billing period used to interpret the stored rate" },
+    ],
+    response: `{ "person": { "id": "...", "name": "New Person", "area": "Design", "sourceRate": 650, "sourceCurrencyCode": "GBP", "billingPeriod": "DAY", "archivedAt": null, "createdAt": "...", "updatedAt": "..." } }`,
+  },
+  {
+    method: "GET",
+    path: "/api/rate-card/people/:id",
+    description: "Fetch a single People & Rates roster entry.",
+    auth: true,
+    params: [{ name: "id", type: "string", required: true, description: "Rate-card person CUID" }],
+    response: `{ "person": { "id": "...", "name": "...", "area": "...", "sourceRate": 650, "sourceCurrencyCode": "GBP", "billingPeriod": "DAY", "archivedAt": null, "createdAt": "...", "updatedAt": "..." } }`,
+  },
+  {
+    method: "PATCH",
+    path: "/api/rate-card/people/:id",
+    description: "Update one or more fields on a People & Rates roster entry.",
+    auth: true,
+    params: [{ name: "id", type: "string", required: true, description: "Rate-card person CUID" }],
+    body: [
+      { name: "name", type: "string", required: false, description: "Updated display name" },
+      { name: "area", type: "string", required: false, description: "Updated discipline or role summary" },
+      { name: "sourceRate", type: "number", required: false, description: "Updated source rate" },
+      { name: "sourceCurrencyCode", type: "string", required: false, description: "Updated 3-letter ISO currency code" },
+      { name: "billingPeriod", type: "DAY | WEEK | MONTH", required: false, description: "Updated source billing period" },
+    ],
+    response: `{ "person": { "id": "...", "name": "...", "area": "...", "sourceRate": 700, "sourceCurrencyCode": "USD", "billingPeriod": "WEEK", "archivedAt": null, "createdAt": "...", "updatedAt": "..." } }`,
+  },
+  {
+    method: "DELETE",
+    path: "/api/rate-card/people/:id",
+    description: "Archive a People & Rates roster entry without removing its history.",
+    auth: true,
+    params: [{ name: "id", type: "string", required: true, description: "Rate-card person CUID" }],
+    response: `{ "person": { "id": "...", "archivedAt": "2026-03-31T15:00:00.000Z", ... } }`,
+  },
+  {
+    method: "GET",
     path: "/api/templates",
     description: "List all proposal templates.",
     auth: true,
@@ -242,7 +295,7 @@ export default function ApiDocsPage() {
       <body>
         <div className="container">
           <div className="header">
-            <div className="logo">Docs by GitWork</div>
+            <div className="logo">Docs by Gitwork</div>
             <h1>API Reference</h1>
             <p className="subtitle">REST API for building iOS and web integrations with your proposal workspace.</p>
           </div>
@@ -255,8 +308,10 @@ export default function ApiDocsPage() {
           <div className="auth-box">
             <h3>Authentication</h3>
             <p>
-              All protected endpoints require an <code>Authorization</code> header with your API key.
-              Retrieve your key from <strong>Settings → API</strong> inside the app.
+              All protected endpoints accept <code>Authorization: Bearer &lt;API_KEY&gt;</code>.
+              Internal app pages also use a secure HttpOnly session cookie, so browser requests do
+              not need to expose the raw key. Manage <code>API_KEY</code> in your Vercel project
+              settings.
             </p>
             <pre style={{ marginTop: 12, color: "#86efac" }}>
               {`Authorization: Bearer your-api-key`}
@@ -359,7 +414,7 @@ SENT             → Delivered to client
 ARCHIVED         → Archived / no longer active`}</pre>
 
           <div className="footer">
-            Docs by GitWork · <a href={BASE_URL}>docs-by-gitwork.vercel.app</a>
+            Docs by Gitwork · <a href={BASE_URL}>docs-by-gitwork.vercel.app</a>
           </div>
         </div>
       </body>

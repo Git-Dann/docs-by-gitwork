@@ -227,6 +227,11 @@ a {
     box-shadow: var(--shadow-skeuomorphic);
   }
 
+  a.app-button-primary,
+  a.app-button-primary:visited {
+    color: #ffffff;
+  }
+
   .app-button-primary:hover:not(:disabled) {
     background: var(--brand-700);
   }

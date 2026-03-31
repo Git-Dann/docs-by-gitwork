@@ -48,6 +48,7 @@ export function buttonStyles({
     "app-button shrink-0 [&_svg]:shrink-0",
     variantStyles[variant],
     isTextButton ? null : sizeStyles[size],
+    variant === "primary" ? "text-white hover:text-white visited:text-white" : null,
     className,
   );
 }
