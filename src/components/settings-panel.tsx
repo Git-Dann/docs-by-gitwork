@@ -5,7 +5,6 @@ import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
-  PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -554,7 +553,7 @@ function RateCardTab() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-[var(--text-3)]">
-                    Search, compare, and maintain the shared pricing roster in one place.
+                    Select a row to edit the details used across connected proposal builders.
                   </p>
                 </div>
 
@@ -575,17 +574,15 @@ function RateCardTab() {
                 <thead>
                   <tr>
                     <th className="text-left">Person</th>
-                    <th className="text-left">Area</th>
-                    <th className="text-left">Source rate</th>
-                    <th className="text-left">Billing</th>
+                    <th className="text-left">Rate</th>
                     <th className="text-left">Updated</th>
-                    <th className="text-right">Actions</th>
+                    <th className="text-right"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td className="text-sm text-[var(--text-4)]" colSpan={6}>
+                      <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                         Loading People & Rates…
                       </td>
                     </tr>
@@ -598,12 +595,14 @@ function RateCardTab() {
                           key={person.id}
                           onClick={() => selectPerson(person)}
                           className={cn(
-                            "cursor-pointer",
-                            selected ? "bg-[var(--surface-brand)]" : null,
+                            "group cursor-pointer [&>td]:align-top",
+                            selected
+                              ? "bg-[var(--surface-1)] [&>td:first-child]:shadow-[-3px_0_0_0_var(--brand-500)_inset]"
+                              : null,
                           )}
                           aria-selected={selected}
                         >
-                          <td>
+                          <td className="min-w-[320px]">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="truncate font-semibold text-[var(--text-1)]">
@@ -615,41 +614,43 @@ function RateCardTab() {
                                   </span>
                                 ) : null}
                               </div>
+                              <p className="mt-1 max-w-[36rem] text-sm leading-6 text-[var(--text-3)]">
+                                {person.area}
+                              </p>
                             </div>
                           </td>
-                          <td className="max-w-[280px] text-[var(--text-3)]">
-                            <span className="block leading-6">{person.area}</span>
-                          </td>
-                          <td>
-                            <span className="font-medium text-[var(--text-2)]">
+                          <td className="whitespace-nowrap">
+                            <span className="text-sm font-semibold text-[var(--text-1)]">
                               {formatCurrencyValue(person.sourceRate, person.sourceCurrencyCode)}
                             </span>
-                          </td>
-                          <td>
-                            <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                            <span className="mt-2 inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
                               {billingPeriodLabel(person.billingPeriod)}
                             </span>
                           </td>
-                          <td className="text-[var(--text-3)]">{formatDate(person.updatedAt)}</td>
                           <td>
-                            <div className="flex justify-end gap-2">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium text-[var(--text-2)]">
+                                {formatDate(person.updatedAt)}
+                              </p>
+                              {selected ? (
+                                <p className="text-xs font-medium text-[var(--brand-700)]">
+                                  Editing
+                                </p>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex justify-end">
                               <Button
                                 type="button"
-                                variant="tertiary"
-                                size="xs"
-                                leadingIcon={<PencilSquareIcon className="h-4 w-4" />}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  selectPerson(person);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="danger"
-                                size="xs"
+                                variant="utility"
+                                size="icon-sm"
                                 leadingIcon={<TrashIcon className="h-4 w-4" />}
+                                className={cn(
+                                  "transition-opacity",
+                                  selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                                )}
+                                aria-label={`Archive ${person.name}`}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setSelectedPersonId(person.id);
@@ -657,9 +658,7 @@ function RateCardTab() {
                                   void archiveSelectedPerson(person.id);
                                 }}
                                 loading={archiving && archivingPersonId === person.id}
-                              >
-                                Archive
-                              </Button>
+                              />
                             </div>
                           </td>
                         </tr>
@@ -667,7 +666,7 @@ function RateCardTab() {
                     })
                   ) : (
                     <tr>
-                      <td className="text-sm text-[var(--text-4)]" colSpan={6}>
+                      <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                         {people.length === 0
                           ? "No people saved yet. Add your first team member to start building the shared roster."
                           : "No roster entries match that search."}
