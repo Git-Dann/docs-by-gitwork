@@ -120,6 +120,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
+  const approvalButtonRef = useRef<HTMLButtonElement>(null);
+  const approvalPanelRef = useRef<HTMLDivElement>(null);
 
   const baselineRef = useRef("");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,6 +172,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
     baselineRef.current = JSON.stringify(draft);
   }, [draft]);
+
+  useEffect(() => {
+    if (!approvalOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        approvalPanelRef.current?.contains(e.target as Node) ||
+        approvalButtonRef.current?.contains(e.target as Node)
+      ) return;
+      setApprovalOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [approvalOpen]);
 
   const saveDraft = useCallback(
     async (nextDraft: ProposalDocument) => {
@@ -456,24 +473,41 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <ArrowTopRightOnSquareIcon className="h-4 w-4" />
               Preview
             </Link>
-            <details className="group relative">
-              <summary
-                className={buttonStyles({
-                  variant: "primary",
-                  size: "md",
-                  className:
-                    "list-none gap-2 pr-2 [&::-webkit-details-marker]:hidden",
-                })}
-              >
-                <CheckCircleIcon className="h-4 w-4" />
-                Approve, Share & Export
-                <span className="rounded-full border border-white/20 bg-white/12 px-2 py-1 text-[11px] font-semibold tracking-[0.01em] text-white/95">
-                  {statusLabel(draft.status)}
-                </span>
-                <ChevronDownIcon className="h-4 w-4 opacity-80 transition group-open:rotate-180" />
-              </summary>
+            <button
+              ref={approvalButtonRef}
+              type="button"
+              onClick={() => {
+                const rect = approvalButtonRef.current?.getBoundingClientRect();
+                if (rect) {
+                  setApprovalPos({
+                    top: rect.bottom + 8,
+                    right: window.innerWidth - rect.right,
+                  });
+                }
+                setApprovalOpen((v) => !v);
+              }}
+              className={buttonStyles({
+                variant: "primary",
+                size: "md",
+                className: "gap-2 pr-2",
+              })}
+            >
+              <CheckCircleIcon className="h-4 w-4" />
+              Approve, Share & Export
+              <span className="rounded-full border border-white/20 bg-white/12 px-2 py-1 text-[11px] font-semibold tracking-[0.01em] text-white/95">
+                {statusLabel(draft.status)}
+              </span>
+              <ChevronDownIcon
+                className={cn("h-4 w-4 opacity-80 transition", approvalOpen && "rotate-180")}
+              />
+            </button>
 
-              <div className="absolute right-0 z-30 mt-2 w-[360px] max-h-[min(560px,calc(100vh-140px))] overflow-y-auto rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]">
+            {approvalOpen && (
+              <div
+                ref={approvalPanelRef}
+                style={{ top: approvalPos.top, right: approvalPos.right }}
+                className="fixed z-[100] w-[360px] rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]"
+              >
                 <div>
                   <p className="app-eyebrow">Approval Flow</p>
                   <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
@@ -553,7 +587,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   </Button>
                 </div>
               </div>
-            </details>
+            )}
           </div>
         </div>
 
