@@ -5,13 +5,14 @@ import {
   ArrowTopRightOnSquareIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
+  PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson } from "@/lib/api";
-import { cn } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
@@ -338,6 +339,7 @@ function RateCardTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [archivingPersonId, setArchivingPersonId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusIsError, setStatusIsError] = useState(false);
   const selectedPersonIdRef = useRef<string | null>(null);
@@ -470,16 +472,17 @@ function RateCardTab() {
     }
   }
 
-  async function archiveSelectedPerson() {
-    if (!selectedPersonId) {
+  async function archiveSelectedPerson(personId = selectedPersonId) {
+    if (!personId) {
       return;
     }
 
+    setArchivingPersonId(personId);
     setArchiving(true);
     setStatusMessage(null);
 
     try {
-      await deleteRateCardPerson(selectedPersonId);
+      await deleteRateCardPerson(personId);
       await loadPeople({
         preferredId: null,
         announce: "Person archived.",
@@ -491,6 +494,7 @@ function RateCardTab() {
       );
     } finally {
       setArchiving(false);
+      setArchivingPersonId(null);
     }
   }
 
@@ -538,67 +542,142 @@ function RateCardTab() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,380px)]">
-          <div className="space-y-4">
-            <label className="block space-y-1.5">
-              <FieldLabel>Search roster</FieldLabel>
-              <div className="relative">
-                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
-                <input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by name, area, or currency"
-                  className="w-full pl-10"
-                />
-              </div>
-            </label>
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,380px)]">
+          <section className="app-table-shell overflow-hidden">
+            <div className="flex flex-col gap-4 border-b border-[var(--border-2)] px-5 py-5 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold text-[var(--text-1)]">Roster</h3>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                      {people.length} saved
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--text-3)]">
+                    Search, compare, and maintain the shared pricing roster in one place.
+                  </p>
+                </div>
 
-            {loading ? (
-              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
-                Loading People & Rates…
+                <label className="relative min-w-[240px] flex-1 sm:max-w-sm">
+                  <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+                  <input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search by name, area, or currency"
+                    className="w-full pl-10"
+                  />
+                </label>
               </div>
-            ) : filteredPeople.length > 0 ? (
-              <div className="space-y-3">
-                {filteredPeople.map((person) => {
-                  const selected = person.id === selectedPersonId;
-                  return (
-                    <button
-                      key={person.id}
-                      type="button"
-                      onClick={() => selectPerson(person)}
-                      className={cn(
-                        "w-full rounded-[18px] border p-4 text-left transition",
-                        selected
-                          ? "border-[var(--brand-300)] bg-[var(--surface-brand)]"
-                          : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-                            {person.name}
-                          </p>
-                          <p className="mt-1 text-sm text-[var(--text-3)]">{person.area}</p>
-                        </div>
-                        <span className="rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                          {billingPeriodLabel(person.billingPeriod)}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm font-medium text-[var(--text-2)]">
-                        {formatSourceRate(person.sourceRate, person.sourceCurrencyCode, person.billingPeriod)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
-                {people.length == 0
-                  ? "No people saved yet. Add your first team member to start building the shared roster."
-                  : "No roster entries match that search."}
-              </div>
-            )}
-          </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="app-table min-w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Person</th>
+                    <th className="text-left">Area</th>
+                    <th className="text-left">Source rate</th>
+                    <th className="text-left">Billing</th>
+                    <th className="text-left">Updated</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td className="text-sm text-[var(--text-4)]" colSpan={6}>
+                        Loading People & Rates…
+                      </td>
+                    </tr>
+                  ) : filteredPeople.length > 0 ? (
+                    filteredPeople.map((person) => {
+                      const selected = person.id === selectedPersonId;
+
+                      return (
+                        <tr
+                          key={person.id}
+                          onClick={() => selectPerson(person)}
+                          className={cn(
+                            "cursor-pointer",
+                            selected ? "bg-[var(--surface-brand)]" : null,
+                          )}
+                          aria-selected={selected}
+                        >
+                          <td>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="truncate font-semibold text-[var(--text-1)]">
+                                  {person.name}
+                                </span>
+                                {person.seedIdentifier ? (
+                                  <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                                    Default
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="max-w-[280px] text-[var(--text-3)]">
+                            <span className="block leading-6">{person.area}</span>
+                          </td>
+                          <td>
+                            <span className="font-medium text-[var(--text-2)]">
+                              {formatCurrencyValue(person.sourceRate, person.sourceCurrencyCode)}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                              {billingPeriodLabel(person.billingPeriod)}
+                            </span>
+                          </td>
+                          <td className="text-[var(--text-3)]">{formatDate(person.updatedAt)}</td>
+                          <td>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="tertiary"
+                                size="xs"
+                                leadingIcon={<PencilSquareIcon className="h-4 w-4" />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectPerson(person);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="xs"
+                                leadingIcon={<TrashIcon className="h-4 w-4" />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedPersonId(person.id);
+                                  setDraft(draftFromPerson(person));
+                                  void archiveSelectedPerson(person.id);
+                                }}
+                                loading={archiving && archivingPersonId === person.id}
+                              >
+                                Archive
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td className="text-sm text-[var(--text-4)]" colSpan={6}>
+                        {people.length === 0
+                          ? "No people saved yet. Add your first team member to start building the shared roster."
+                          : "No roster entries match that search."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <div className="rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
             <div className="flex items-start justify-between gap-3">
