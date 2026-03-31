@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { Button } from "@/components/ui/button";
+import { listRateCardPeople } from "@/lib/api";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
+import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 import type { CostLineItemInput, CostingSectionData, PaymentScheduleRow } from "@/types/proposal";
 
 export interface CostBreakdownValue extends CostingSectionData {
@@ -47,6 +50,10 @@ const techStackOptions = [
   "Azure",
 ];
 
+const CUSTOM_ROLE_VALUE = "__custom_role__";
+const RATE_CARD_PREFIX = "rate-card:";
+const CUSTOM_ROLE_PREFIX = "custom-role:";
+
 function createRowId(prefix: string) {
   const generated =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -63,6 +70,68 @@ export function CostBreakdownTable({
   value: CostBreakdownValue;
   onChange: (value: CostBreakdownValue) => void;
 }) {
+  const [rateCardPeople, setRateCardPeople] = useState<RateCardPersonRecord[]>([]);
+  const [rateCardLoading, setRateCardLoading] = useState(true);
+  const [rateCardError, setRateCardError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRateCardPeople() {
+      setRateCardLoading(true);
+      setRateCardError(null);
+
+      try {
+        const response = await listRateCardPeople();
+        if (!cancelled) {
+          setRateCardPeople(response.people);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRateCardError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load People & Rates right now.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setRateCardLoading(false);
+        }
+      }
+    }
+
+    void loadRateCardPeople();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const normalizedItems = value.items.map((item, index) => normalizeCostItem(item, index));
+    const changed = normalizedItems.some((item, index) => {
+      const current = value.items[index];
+      return item.itemName !== current?.itemName || item.subtotal !== current?.subtotal;
+    });
+
+    if (changed) {
+      onChange({
+        ...value,
+        items: normalizedItems,
+      });
+    }
+  }, [onChange, value]);
+
+  const rateCardPeopleById = useMemo(
+    () =>
+      rateCardPeople.reduce<Record<string, RateCardPersonRecord>>((result, person) => {
+        result[person.id] = person;
+        return result;
+      }, {}),
+    [rateCardPeople],
+  );
+
   const subtotal = value.items.reduce((total, item) => total + item.subtotal, 0);
   const discountAmount = subtotal * ((value.discount ?? 0) / 100);
   const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
@@ -84,10 +153,10 @@ export function CostBreakdownTable({
         ...patch,
       };
 
-      return {
+      return normalizeCostItem({
         ...next,
         subtotal: Number((next.quantity * next.unitCost).toFixed(2)),
-      };
+      }, itemIndex);
     });
 
     onChange({
@@ -101,16 +170,16 @@ export function CostBreakdownTable({
       ...value,
       items: [
         ...value.items,
-        {
+        normalizeCostItem({
           category: "",
-          itemName: "",
+          itemName: `${CUSTOM_ROLE_PREFIX}new-person`,
           description: "",
           quantity: 1,
           unitCost: 0,
           subtotal: 0,
           costKind: "ONE_OFF",
           sortOrder: value.items.length,
-        },
+        }, value.items.length),
       ],
     });
   }
@@ -165,7 +234,7 @@ export function CostBreakdownTable({
     <div className="space-y-4">
       <SectionCard
         title="Commercial settings"
-        description="Core pricing controls and the commercial totals used across the proposal."
+        description="Choose the proposal currency once, then build the delivery budget below using saved People & Rates entries or custom anonymous roles."
       >
         <div className="grid gap-3 lg:grid-cols-3">
           <label className="space-y-1">
@@ -191,8 +260,8 @@ export function CostBreakdownTable({
 
         <div className="grid gap-3 md:grid-cols-4">
           <MiniMetric
-            label="People"
-            value={`${billablePeopleCount} ${billablePeopleCount === 1 ? "row" : "rows"}`}
+            label="Budget rows"
+            value={`${billablePeopleCount} ${billablePeopleCount === 1 ? "role" : "roles"}`}
           />
           <MiniMetric label="Monthly run rate" value={formatCurrency(monthlyRunRate, value.currency)} />
           <MiniMetric
@@ -205,30 +274,101 @@ export function CostBreakdownTable({
 
       <SectionCard
         title="Budget breakdown"
-        description="Repurpose this as your people-based delivery budget. Each row represents a person or role allocation."
+        description="Pick a saved person from People & Rates or keep the row custom when you want an unnamed delivery role."
       >
         <div className="app-table-shell overflow-x-auto">
           <table className="app-table min-w-full text-sm">
             <thead>
               <tr>
-                <th className="text-left">People</th>
+                <th className="text-left">Assignment</th>
                 <th className="text-left">Tech Stack</th>
                 <th className="text-right">Qty</th>
-                <th className="text-right">Unit cost</th>
+                <th className="text-right">Rate</th>
                 <th className="text-right">Subtotal</th>
                 <th className="text-right" />
               </tr>
             </thead>
             <tbody>
-              {value.items.map((item, index) => (
+              {value.items.map((item, index) => {
+                const selectedRateCardPerson = getSelectedRateCardPerson(item, rateCardPeopleById);
+                const rateGuidance = selectedRateCardPerson
+                  ? buildRateGuidance(selectedRateCardPerson, value.currency)
+                  : null;
+
+                return (
                 <tr key={item.id ?? `cost-${index}`}>
                   <td className="align-top">
-                    <input
-                      value={item.category}
-                      onChange={(event) => updateItem(index, { category: event.target.value })}
-                      className={cn(tableInputClasses, "min-w-[180px]")}
-                      placeholder="Engineer, PM, QA..."
-                    />
+                    <div className="min-w-[280px] space-y-2">
+                      <select
+                        value={selectedRateCardPerson ? `${RATE_CARD_PREFIX}${selectedRateCardPerson.id}` : CUSTOM_ROLE_VALUE}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+
+                          if (nextValue === CUSTOM_ROLE_VALUE) {
+                            updateItem(index, {
+                              itemName: buildCustomRoleReference(item.category),
+                            });
+                            return;
+                          }
+
+                          const person = rateCardPeopleById[nextValue.replace(RATE_CARD_PREFIX, "")];
+                          if (!person) {
+                            return;
+                          }
+
+                          updateItem(index, {
+                            itemName: `${RATE_CARD_PREFIX}${person.id}`,
+                            category: person.name,
+                            unitCost: suggestedUnitCostForPerson(person, value.currency, item.unitCost),
+                          });
+                        }}
+                        className="app-select-compact w-full text-sm"
+                      >
+                        <option value={CUSTOM_ROLE_VALUE}>Custom role (unnamed)</option>
+                        {rateCardPeople.length > 0 ? (
+                          <optgroup label="People & Rates">
+                            {rateCardPeople.map((person) => (
+                              <option key={person.id} value={`${RATE_CARD_PREFIX}${person.id}`}>
+                                {person.name} · {person.area}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                      </select>
+
+                      {selectedRateCardPerson ? (
+                        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
+                          <p className="text-sm font-semibold text-[var(--text-1)]">
+                            {selectedRateCardPerson.name}
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--text-3)]">
+                            {selectedRateCardPerson.area}
+                          </p>
+                          <p
+                            className={cn(
+                              "mt-2 text-xs",
+                              rateGuidance?.tone === "warning"
+                                ? "text-amber-700"
+                                : "text-[var(--text-3)]",
+                            )}
+                          >
+                            {rateGuidance?.message}
+                          </p>
+                        </div>
+                      ) : (
+                        <input
+                          value={item.category}
+                          onChange={(event) =>
+                            updateItem(index, {
+                              category: event.target.value,
+                              itemName: buildCustomRoleReference(event.target.value),
+                            })
+                          }
+                          className={cn(tableInputClasses, "min-w-[220px]")}
+                          placeholder="Delivery team, Engineer, QA..."
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="align-top">
                     <TechStackMultiSelect
@@ -244,14 +384,14 @@ export function CostBreakdownTable({
                     <input
                       value={item.quantity}
                       onChange={(event) => updateItem(index, { quantity: parseNumber(event.target.value, 0) })}
-                      className={cn(tableInputClasses, "w-14 min-w-0 text-right")}
+                      className={cn(tableInputClasses, "w-20 min-w-0 text-right")}
                     />
                   </td>
                   <td className="align-top text-right">
-                    <input
+                    <MoneyInput
+                      currency={value.currency}
                       value={item.unitCost}
-                      onChange={(event) => updateItem(index, { unitCost: parseNumber(event.target.value, 0) })}
-                      className={cn(tableInputClasses, "w-28 min-w-0 text-right")}
+                      onChange={(unitCost) => updateItem(index, { unitCost })}
                     />
                   </td>
                   <td className="align-top text-right text-xs font-medium text-[var(--text-1)]">
@@ -269,21 +409,30 @@ export function CostBreakdownTable({
                     </Button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
 
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <Button
-            type="button"
-            onClick={addItem}
-            variant="secondary"
-            size="xs"
-            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-          >
-            Add person
-          </Button>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              onClick={addItem}
+              variant="secondary"
+              size="xs"
+              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            >
+              Add person
+            </Button>
+            <p className="text-xs text-[var(--text-3)]">
+              {rateCardLoading
+                ? "Loading People & Rates…"
+                : rateCardError
+                  ? "People & Rates are unavailable right now. You can still use custom roles."
+                  : "Saved people auto-fill when the proposal currency matches the stored roster currency."}
+            </p>
+          </div>
 
           <div className="w-full max-w-xs space-y-1 rounded-[18px] border border-[var(--border-2)] bg-white p-4 text-sm shadow-[var(--shadow-xs)]">
             <SummaryRow label="Subtotal" value={formatCurrency(subtotal, value.currency)} />
@@ -423,6 +572,29 @@ export function CostBreakdownTable({
         title="Additional notes"
         items={value.additionalNotes}
         onChange={(additionalNotes) => onChange({ ...value, additionalNotes })}
+      />
+    </div>
+  );
+}
+
+function MoneyInput({
+  currency,
+  value,
+  onChange,
+}: {
+  currency: "GBP" | "USD" | "EUR";
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex min-h-9 w-[144px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
+      <span className="inline-flex min-w-[54px] items-center justify-center border-r border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+        {currency}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(parseNumber(event.target.value, 0))}
+        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
       />
     </div>
   );
@@ -596,6 +768,102 @@ function parseTechStackValue(value?: string) {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function normalizeCostItem(item: CostLineItemInput, index: number): CostLineItemInput {
+  return {
+    ...item,
+    itemName: item.itemName.trim() || buildCustomRoleReference(item.category || `role-${index + 1}`),
+    subtotal: Number((item.quantity * item.unitCost).toFixed(2)),
+  };
+}
+
+function getSelectedRateCardPerson(
+  item: CostLineItemInput,
+  peopleById: Record<string, RateCardPersonRecord>,
+) {
+  if (!item.itemName.startsWith(RATE_CARD_PREFIX)) {
+    return null;
+  }
+
+  const personId = item.itemName.replace(RATE_CARD_PREFIX, "");
+  return peopleById[personId] ?? null;
+}
+
+function buildCustomRoleReference(role: string) {
+  const fallback = role.trim() || "custom-role";
+  return `${CUSTOM_ROLE_PREFIX}${slugify(fallback)}`;
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function suggestedUnitCostForPerson(
+  person: RateCardPersonRecord,
+  proposalCurrency: "GBP" | "USD" | "EUR",
+  currentValue: number,
+) {
+  if (person.sourceCurrencyCode !== proposalCurrency) {
+    return currentValue;
+  }
+
+  switch (person.billingPeriod) {
+    case "DAY":
+      return Number((person.sourceRate * 20).toFixed(2));
+    case "WEEK":
+      return Number((person.sourceRate * 4).toFixed(2));
+    case "MONTH":
+      return person.sourceRate;
+  }
+}
+
+function buildRateGuidance(
+  person: RateCardPersonRecord,
+  proposalCurrency: "GBP" | "USD" | "EUR",
+) {
+  const sourceSummary = `${formatCurrency(person.sourceRate, person.sourceCurrencyCode)} · ${rateBillingLabel(person.billingPeriod)}`;
+
+  if (person.sourceCurrencyCode !== proposalCurrency) {
+    return {
+      tone: "warning" as const,
+      message: `Saved source rate: ${sourceSummary}. Proposal currency is ${proposalCurrency}, so set the converted amount in the rate field.`,
+    };
+  }
+
+  if (person.billingPeriod === "DAY") {
+    return {
+      tone: "neutral" as const,
+      message: `Saved source rate: ${sourceSummary}. The proposal rate field has been pref-filled as a 20-day monthly equivalent.`,
+    };
+  }
+
+  if (person.billingPeriod === "WEEK") {
+    return {
+      tone: "neutral" as const,
+      message: `Saved source rate: ${sourceSummary}. The proposal rate field has been pref-filled as a 4-week monthly equivalent.`,
+    };
+  }
+
+  return {
+    tone: "neutral" as const,
+    message: `Using saved source rate: ${sourceSummary}.`,
+  };
+}
+
+function rateBillingLabel(period: RateBillingPeriod) {
+  switch (period) {
+    case "DAY":
+      return "per day";
+    case "WEEK":
+      return "per week";
+    case "MONTH":
+      return "per month";
+  }
 }
 
 const tableInputClasses = "app-input-compact min-w-[120px] text-[var(--text-1)]";

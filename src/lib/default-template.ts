@@ -308,7 +308,7 @@ export const EMPTY_PROPOSAL_METADATA: ProposalMetadata = {
 export const defaultCostLineItems: CostLineItemInput[] = [
   {
     category: "Mobile Engineer",
-    itemName: "",
+    itemName: "custom-role:mobile-engineer",
     description: "Swift, JavaScript",
     quantity: 4,
     unitCost: 4000,
@@ -318,7 +318,7 @@ export const defaultCostLineItems: CostLineItemInput[] = [
   },
   {
     category: "Full Stack Engineer",
-    itemName: "",
+    itemName: "custom-role:full-stack-engineer",
     description: "React, TypeScript, PostgreSQL, Azure",
     quantity: 4,
     unitCost: 4000,
@@ -328,7 +328,7 @@ export const defaultCostLineItems: CostLineItemInput[] = [
   },
   {
     category: "Product Manager",
-    itemName: "",
+    itemName: "custom-role:product-manager",
     description: "GitHub, AWS",
     quantity: 1,
     unitCost: 0,
@@ -338,7 +338,7 @@ export const defaultCostLineItems: CostLineItemInput[] = [
   },
   {
     category: "Technical Lead",
-    itemName: "",
+    itemName: "custom-role:technical-lead",
     description: "Kubernetes, GCP, Redis",
     quantity: 1,
     unitCost: 0,
