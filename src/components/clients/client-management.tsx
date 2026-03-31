@@ -1,29 +1,17 @@
 "use client";
 
-import { MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, buttonStyles } from "@/components/ui/button";
-import { ImagePicker } from "@/components/ui/image-picker";
-import { useClientList, useCreateClient } from "@/hooks/use-proposals";
+import { buttonStyles } from "@/components/ui/button";
+import { useClientList } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
 
 export function ClientManagement() {
   const [search, setSearch] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [clientName, setClientName] = useState("");
-  const [clientLogoUrl, setClientLogoUrl] = useState("");
   const { data, isPending, error } = useClientList({ search });
-  const createMutation = useCreateClient();
 
   const clients = data?.clients ?? [];
-
-  async function handleCreate() {
-    await createMutation.mutateAsync({ name: clientName, logoUrl: clientLogoUrl });
-    setClientName("");
-    setClientLogoUrl("");
-    setShowCreate(false);
-  }
 
   return (
     <div className="space-y-5">
@@ -32,22 +20,17 @@ export function ClientManagement() {
           <div className="max-w-2xl">
             <p className="app-eyebrow">Clients</p>
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-              Account records
+              Suggested client directory
             </h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Keep logos, naming, and proposal relationships tidy before documents move to delivery.
+              Client entries are inferred from proposal metadata, including drafts, so Docs and iOS stay aligned without a separate save step.
             </p>
           </div>
 
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={() => setShowCreate(true)}
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            Add client
-          </Button>
+          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm font-medium text-[var(--text-2)]">
+            <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+            Suggested from proposals
+          </div>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -73,6 +56,7 @@ export function ClientManagement() {
             <thead>
               <tr>
                 <th className="text-left">Client</th>
+                <th className="text-left">Source</th>
                 <th className="text-left">Proposals</th>
                 <th className="text-left">Added</th>
                 <th className="text-left">Actions</th>
@@ -81,13 +65,13 @@ export function ClientManagement() {
             <tbody>
               {isPending ? (
                 <tr>
-                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
+                  <td className="text-sm text-[var(--text-4)]" colSpan={5}>
                     Loading clients...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td className="text-sm text-rose-700" colSpan={4}>
+                  <td className="text-sm text-rose-700" colSpan={5}>
                     {(error as Error).message}
                   </td>
                 </tr>
@@ -111,6 +95,11 @@ export function ClientManagement() {
                         <span className="font-medium text-[var(--text-1)]">{client.name}</span>
                       </div>
                     </td>
+                    <td>
+                      <span className="inline-flex rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                        {client.source === "SUGGESTED" ? "Suggested" : client.source}
+                      </span>
+                    </td>
                     <td>{client.proposalCount}</td>
                     <td className="text-[var(--text-3)]">{formatDate(client.createdAt)}</td>
                     <td>
@@ -133,8 +122,8 @@ export function ClientManagement() {
                 ))
               ) : (
                 <tr>
-                  <td className="text-sm text-[var(--text-4)]" colSpan={4}>
-                    No clients yet. Add one here or enter a client name while creating a proposal.
+                  <td className="text-sm text-[var(--text-4)]" colSpan={5}>
+                    No suggested clients yet. Add a client name to any proposal draft and it will appear here automatically.
                   </td>
                 </tr>
               )}
@@ -142,63 +131,6 @@ export function ClientManagement() {
           </table>
         </div>
       </section>
-
-      {showCreate ? (
-        <div className="fixed inset-0 z-30">
-          <button
-            type="button"
-            aria-label="Close create client modal"
-            className="app-dialog-backdrop absolute inset-0"
-            onClick={() => setShowCreate(false)}
-          />
-
-          <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="app-dialog-panel w-full max-w-md p-6">
-              <p className="app-eyebrow">Create</p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                Add client
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Create a client once, then link proposals to it from the cover section or create flow.
-              </p>
-
-              <label className="mt-5 block">
-                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Client name</span>
-                <input
-                  value={clientName}
-                  onChange={(event) => setClientName(event.target.value)}
-                  placeholder="Dan's Garden"
-                  className="app-input"
-                />
-              </label>
-
-              <div className="mt-5 space-y-1.5">
-                <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
-                <ImagePicker
-                  value={clientLogoUrl}
-                  onChange={setClientLogoUrl}
-                  previewClassName="h-36 w-full"
-                />
-              </div>
-
-              <div className="mt-6 flex justify-end gap-2">
-                <Button type="button" variant="secondary" size="md" onClick={() => setShowCreate(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="md"
-                  onClick={handleCreate}
-                  loading={createMutation.isPending}
-                >
-                  Add client
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

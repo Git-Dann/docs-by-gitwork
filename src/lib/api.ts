@@ -177,17 +177,20 @@ export async function requestExport(
   });
 }
 
-// Client functions — no database-backed routes exist yet; returns empty data safely.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function listClients(params?: { search?: string }): Promise<ClientListResponse> {
-  return { clients: [] };
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  const qs = query.toString();
+  return apiFetch<ClientListResponse>(`/api/clients${qs ? `?${qs}` : ""}`);
 }
 
 export async function createClient(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   input: { name: string; logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
-  throw new Error("Client management is not yet available.");
+  throw new Error(
+    "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
+  );
 }
 
 export async function updateClient(
@@ -196,12 +199,13 @@ export async function updateClient(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   input: { logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
-  throw new Error("Client management is not yet available.");
+  throw new Error(
+    "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
+  );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function getClientDetail(slug: string): Promise<ClientDetailRecord> {
-  throw new Error("Client not found.");
+  return apiFetch<ClientDetailRecord>(`/api/clients/${slug}`);
 }
 
 // Proof API routes

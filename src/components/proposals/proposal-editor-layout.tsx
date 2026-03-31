@@ -35,6 +35,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
+import { slugifyClientName } from "@/lib/clients";
 import { proposalSectionBlueprints } from "@/lib/default-template";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
@@ -66,14 +67,6 @@ const ProposalBuilderPanel = dynamic(
     ),
   },
 );
-
-function slugifyClientName(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function getSectionEntryId(section: ProposalSection) {
   return section.id ?? section.key;

@@ -1,15 +1,14 @@
 "use client";
 
+import { SparklesIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { buttonStyles } from "@/components/ui/button";
-import { ImagePicker } from "@/components/ui/image-picker";
-import { useClientDetail, useUpdateClient } from "@/hooks/use-proposals";
-import { formatDate } from "@/lib/format";
 import { StatusBadge } from "@/components/status-badge";
+import { useClientDetail } from "@/hooks/use-proposals";
+import { formatDate } from "@/lib/format";
 
 export function ClientDetail({ slug }: { slug: string }) {
   const { data, isPending, error } = useClientDetail(slug);
-  const updateClientMutation = useUpdateClient(slug);
 
   if (isPending) {
     return <p className="text-sm text-[var(--text-3)]">Loading client...</p>;
@@ -42,9 +41,15 @@ export function ClientDetail({ slug }: { slug: string }) {
               <h2 className="text-4xl font-semibold tracking-[-0.04em] text-[var(--text-1)]">
                 {client.name}
               </h2>
-              <p className="mt-2 text-sm text-[var(--text-3)]">
-                {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="text-sm text-[var(--text-3)]">
+                  {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
+                </p>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                  <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
+                  Suggested client
+                </span>
+              </div>
             </div>
           </div>
 
@@ -65,25 +70,14 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      <section className="proposal-form-theme app-card p-6">
-        <p className="app-eyebrow">Branding</p>
+      <section className="app-card p-6">
+        <p className="app-eyebrow">Source</p>
         <h3 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Client branding
+          Suggested from proposal metadata
         </h3>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          This logo is the source of truth used for the proposal cover lockup when this client is selected.
+          This client appears automatically whenever a proposal uses this client name, including drafts. That keeps the Docs workspace and iOS integrations aligned even before a dedicated client record exists.
         </p>
-
-        <div className="mt-4 max-w-md space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
-          <ImagePicker
-            value={client.logoUrl ?? ""}
-            onChange={(logoUrl) => {
-              void updateClientMutation.mutateAsync({ logoUrl });
-            }}
-            previewClassName="h-40 w-full"
-          />
-        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">

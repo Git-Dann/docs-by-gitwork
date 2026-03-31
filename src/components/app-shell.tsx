@@ -423,7 +423,7 @@ function ExpandedRail({
               ))}
               {!filteredClients.length ? (
                 <p className="rounded-[12px] border border-dashed border-[var(--border-2)] px-3 py-3 text-sm text-[var(--text-4)]">
-                  Add clients in the Clients area to keep proposal work tied to accounts.
+                  Clients appear automatically from proposal names, including drafts.
                 </p>
               ) : null}
             </div>

@@ -278,7 +278,7 @@ export function ProposalList() {
                 Create proposal
               </h2>
               <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Start with a title and optional client. The proposal will open blank in the builder.
+                Start with a title and optional client. Any client name you add here will show up as a suggested client across Docs and iOS once the draft is saved.
               </p>
 
               <div className="mt-5 space-y-4">

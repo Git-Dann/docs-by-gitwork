@@ -39,13 +39,29 @@ const endpoints: Endpoint[] = [
     response: `{ "proposals": [{ "id": "...", "title": "...", "status": "DRAFT", "clientName": "...", "updatedAt": "..." }] }`,
   },
   {
+    method: "GET",
+    path: "/api/clients",
+    description: "List suggested clients inferred from proposal metadata, including drafts.",
+    auth: true,
+    response: `{ "clients": [{ "id": "client_acme-health", "name": "Acme Health", "slug": "acme-health", "proposalCount": 3, "source": "SUGGESTED" }] }`,
+  },
+  {
+    method: "GET",
+    path: "/api/clients/:slug",
+    description: "Get a suggested client with linked proposals and proof documents.",
+    auth: true,
+    params: [{ name: "slug", type: "string", required: true, description: "Client slug" }],
+    response: `{ "client": { "id": "...", "name": "...", "slug": "...", "proposalCount": 3, "source": "SUGGESTED" }, "proposals": [{ "id": "...", "title": "...", "status": "DRAFT" }], "proofDocuments": [] }`,
+  },
+  {
     method: "POST",
     path: "/api/proposals",
     description: "Create a new proposal.",
     auth: true,
     body: [
       { name: "title", type: "string", required: true, description: "Proposal title" },
-      { name: "clientId", type: "string", required: false, description: "ID of an existing client" },
+      { name: "clientName", type: "string", required: false, description: "Suggested client name to attach to the proposal" },
+      { name: "productName", type: "string", required: false, description: "Product or project name shown throughout the proposal" },
       { name: "templateId", type: "string", required: false, description: "ID of a template to apply" },
     ],
     response: `{ "proposal": { "id": "...", "title": "...", "status": "DRAFT", ... } }`,
@@ -84,7 +100,7 @@ const endpoints: Endpoint[] = [
     description: "Archive a proposal (sets status to ARCHIVED).",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Proposal CUID" }],
-    response: `{ "ok": true }`,
+    response: `{ "proposal": { "id": "...", "status": "ARCHIVED" } }`,
   },
   {
     method: "DELETE",
@@ -95,48 +111,51 @@ const endpoints: Endpoint[] = [
     response: `{ "ok": true }`,
   },
   {
-    method: "PATCH",
+    method: "POST",
     path: "/api/proposals/:id/engagement",
     description: "Update the engagement section (scope, deliverables, objectives).",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Proposal CUID" }],
     body: [
-      { name: "scope", type: "string", required: false, description: "Project scope description" },
-      { name: "deliverables", type: "string[]", required: false, description: "List of deliverable strings" },
-      { name: "objectives", type: "string[]", required: false, description: "List of objective strings" },
+      { name: "ctas", type: "CTA[]", required: true, description: "Call-to-action buttons for the engagement section" },
+      { name: "links", type: "Link[]", required: true, description: "Supporting links for decks, docs, routes, or email actions" },
     ],
-    response: `{ "engagement": { "id": "...", "scope": "...", "deliverables": [...], "objectives": [...] } }`,
+    response: `{ "proposal": { "id": "...", "links": [...], "ctas": [...], ... } }`,
   },
   {
-    method: "PATCH",
+    method: "POST",
     path: "/api/proposals/:id/timeline",
     description: "Replace the timeline phases for a proposal.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Proposal CUID" }],
     body: [
-      { name: "phases", type: "Phase[]", required: true, description: "Array of { name, duration, description } objects" },
+      { name: "timelinePhases", type: "Phase[]", required: true, description: "Array of { name, duration, summary, deliverables, viewMode } objects" },
+      { name: "viewMode", type: "LIST | MILESTONE", required: false, description: "Preferred timeline presentation mode" },
     ],
-    response: `{ "phases": [{ "id": "...", "name": "...", "duration": "...", "description": "...", "order": 0 }] }`,
+    response: `{ "proposal": { "id": "...", "timelinePhases": [...], ... } }`,
   },
   {
-    method: "PATCH",
+    method: "POST",
     path: "/api/proposals/:id/costing",
     description: "Update costing line items for a proposal.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Proposal CUID" }],
     body: [
-      { name: "items", type: "CostItem[]", required: true, description: "Array of { label, quantity, unitPrice } objects" },
+      { name: "costLineItems", type: "CostItem[]", required: true, description: "Array of costing rows with quantity, rate, and subtotal data" },
     ],
-    response: `{ "costing": { "id": "...", "items": [...], "total": 0 } }`,
+    response: `{ "proposal": { "id": "...", "costLineItems": [...], ... } }`,
   },
   {
-    method: "GET",
+    method: "POST",
     path: "/api/proposals/:id/export",
-    description: "Export a proposal as PDF (returns binary PDF data).",
+    description: "Create an export record for print, PDF, or share-link output.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Proposal CUID" }],
-    response: `Content-Type: application/pdf — binary PDF stream`,
-    notes: "Set Accept: application/pdf. Response is raw PDF bytes, not JSON.",
+    body: [
+      { name: "format", type: "PRINT | PDF | SHARE_LINK", required: true, description: "Export format to prepare" },
+      { name: "settings", type: "object", required: false, description: "Optional export settings persisted on the export record" },
+    ],
+    response: `{ "export": { "id": "...", "format": "PDF", "status": "PENDING", "url": "/app/proposals/:id/print", "requestedAt": "..." } }`,
   },
   {
     method: "GET",
@@ -148,24 +167,18 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/proof/health",
-    description: "Health check for proof-of-concept endpoints.",
+    description: "Proof service status endpoint.",
     auth: false,
-    response: `{ "ok": true }`,
+    response: `{ "error": "Proof service is disabled in POC mode.", "baseUrl": null }`,
+    notes: "Returns 503 until the Proof service is enabled.",
   },
   {
     method: "GET",
     path: "/api/proof/documents",
-    description: "List proof documents.",
+    description: "Proof document API placeholder.",
     auth: true,
-    response: `{ "documents": [{ "id": "...", "title": "...", "status": "...", "updatedAt": "..." }] }`,
-  },
-  {
-    method: "GET",
-    path: "/api/proof/documents/:id",
-    description: "Get a single proof document.",
-    auth: true,
-    params: [{ name: "id", type: "string", required: true, description: "Document CUID" }],
-    response: `{ "document": { "id": "...", "title": "...", "content": "...", ... } }`,
+    response: `{ "error": "Proof API is disabled in POC mode. Use the client-side draft workspace instead." }`,
+    notes: "Current GET and POST requests return 501 until the Proof service is wired back in.",
   },
 ];
 
@@ -246,7 +259,7 @@ export default function ApiDocsPage() {
               Retrieve your key from <strong>Settings → API</strong> inside the app.
             </p>
             <pre style={{ marginTop: 12, color: "#86efac" }}>
-              {`Authorization: Bearer haTLXszFJ5GMYEvMNbzNeRqQQyxzSHEPRrBHowXlaqM=`}
+              {`Authorization: Bearer your-api-key`}
             </pre>
           </div>
 

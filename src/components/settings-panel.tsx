@@ -422,6 +422,8 @@ function DeveloperTab() {
           <div className="mt-3 space-y-1.5 font-mono text-xs text-[var(--text-3)]">
             {([
               ["GET", "/api/health", "Health check (no auth)"],
+              ["GET", "/api/clients", "List suggested clients"],
+              ["GET", "/api/clients/:slug", "Get client detail"],
               ["GET", "/api/proposals", "List proposals"],
               ["POST", "/api/proposals", "Create proposal"],
               ["GET", "/api/proposals/:id", "Get proposal"],
@@ -429,10 +431,10 @@ function DeveloperTab() {
               ["POST", "/api/proposals/:id/duplicate", "Duplicate"],
               ["POST", "/api/proposals/:id/archive", "Archive"],
               ["DELETE", "/api/proposals/:id/delete", "Delete"],
-              ["PATCH", "/api/proposals/:id/costing", "Save costing"],
-              ["PATCH", "/api/proposals/:id/timeline", "Save timeline"],
-              ["PATCH", "/api/proposals/:id/engagement", "Save engagement"],
-              ["GET", "/api/proposals/:id/export", "Export as PDF"],
+              ["POST", "/api/proposals/:id/costing", "Save costing"],
+              ["POST", "/api/proposals/:id/timeline", "Save timeline"],
+              ["POST", "/api/proposals/:id/engagement", "Save engagement"],
+              ["POST", "/api/proposals/:id/export", "Create export"],
               ["GET", "/api/templates", "List templates"],
             ] as const).map(([method, path, label]) => (
               <div key={path} className="flex items-baseline gap-2">

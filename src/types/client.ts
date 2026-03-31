@@ -1,6 +1,8 @@
 import type { ProposalListItem } from "@/types/proposal";
 import type { ProofDocumentRecord } from "@/lib/proof";
 
+export type ClientSource = "SUGGESTED";
+
 export interface ClientRecord {
   id: string;
   name: string;
@@ -8,6 +10,7 @@ export interface ClientRecord {
   logoUrl?: string;
   createdAt: string;
   updatedAt: string;
+  source: ClientSource;
 }
 
 export interface ClientListItem extends ClientRecord {

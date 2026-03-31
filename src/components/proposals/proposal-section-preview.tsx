@@ -3,6 +3,7 @@
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { buttonStyles } from "@/components/ui/button";
 import { useClientList } from "@/hooks/use-proposals";
+import { getClientLookupKey } from "@/lib/clients";
 import { formatCurrency } from "@/lib/format";
 import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
 import type { CostingSectionData, ProposalDocument, ProposalSection } from "@/types/proposal";
@@ -604,7 +605,7 @@ function CoverPagePreview({
   );
   const clientName = data.clientName || proposal.clientName || proposal.metadata.client || "Client";
   const matchedClient = (clientListData?.clients ?? []).find(
-    (client) => client.name.trim().toLowerCase() === clientName.trim().toLowerCase(),
+    (client) => getClientLookupKey(client.name) === getClientLookupKey(clientName),
   );
   const clientLogoUrl = matchedClient?.logoUrl?.trim() || undefined;
   const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
