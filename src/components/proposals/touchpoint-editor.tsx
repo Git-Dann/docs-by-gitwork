@@ -4,14 +4,6 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/reac
 import { Button } from "@/components/ui/button";
 import type { TouchpointItem } from "@/types/proposal";
 
-const touchpointStarters = [
-  "Discovery and planning",
-  "Product and UX design",
-  "Core app delivery",
-  "Backend and integrations",
-  "QA and launch readiness",
-] as const;
-
 export function TouchpointEditor({
   items,
   onChange,
@@ -81,25 +73,6 @@ export function TouchpointEditor({
           >
             Add workstream
           </Button>
-
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const title = event.target.value;
-              if (title) {
-                onChange([...safeItems, createWorkstream(title)]);
-              }
-              event.target.value = "";
-            }}
-            className="app-select-compact min-w-[220px] text-sm"
-          >
-            <option value="">Use starter...</option>
-            {touchpointStarters.map((starter) => (
-              <option key={starter} value={starter}>
-                {starter}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 

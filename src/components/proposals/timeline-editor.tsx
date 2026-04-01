@@ -19,12 +19,6 @@ import { Bars3Icon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import type { PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
 
-const phaseStarters = [
-  { name: "Discovery", duration: "Weeks 1-2", summary: "Align on scope, users, and delivery plan." },
-  { name: "Design and build", duration: "Weeks 3-8", summary: "Deliver the core product experience and supporting services." },
-  { name: "QA and launch", duration: "Weeks 9-10", summary: "Test, refine, and prepare for release." },
-] as const;
-
 export function TimelineEditor({
   phases,
   paymentSchedule,
@@ -46,7 +40,7 @@ export function TimelineEditor({
 
   const sorted = [...phases].sort((left, right) => left.sortOrder - right.sortOrder);
 
-  function createPhase(starter?: Partial<TimelinePhaseInput>): TimelinePhaseInput {
+  function createPhase(initialValues?: Partial<TimelinePhaseInput>): TimelinePhaseInput {
     return {
       id:
         typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -58,7 +52,7 @@ export function TimelineEditor({
       deliverables: [],
       sortOrder: sorted.length,
       viewMode,
-      ...starter,
+      ...initialValues,
     };
   }
 
@@ -112,32 +106,6 @@ export function TimelineEditor({
           >
             Add phase
           </Button>
-
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const index = Number(event.target.value);
-              if (!Number.isNaN(index)) {
-                const starter = phaseStarters[index];
-                if (starter) {
-                  onChange({
-                    viewMode,
-                    phases: [...sorted, createPhase(starter)],
-                  });
-                }
-              }
-
-              event.target.value = "";
-            }}
-            className="app-select-compact min-w-[220px] text-sm"
-          >
-            <option value="">Use starter...</option>
-            {phaseStarters.map((starter, index) => (
-              <option key={starter.name} value={index}>
-                {starter.name}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
