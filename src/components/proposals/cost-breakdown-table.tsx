@@ -123,20 +123,22 @@ export function CostBreakdownTable({
       normalizedTimelineSummary,
       value.items,
     );
+    const currentAssignmentTimelineMode = value.assignmentTimelineMode ?? {};
     const normalizedItems = value.items.map((item, index) =>
       normalizeCostItem(
         item,
         index,
-        normalizedAssignmentTimelineMode,
+        currentAssignmentTimelineMode,
         sortedTimelinePhases.length > 0,
         normalizedTimelineEstimate.months,
       ),
     );
     const normalizedAssignmentTimelineMode = buildAssignmentTimelineMode(
       normalizedItems,
-      value.assignmentTimelineMode ?? {},
+      currentAssignmentTimelineMode,
     );
-    const changed = normalizedItems.some((item, index) => {
+    const changed = normalizedTimelineSummary !== value.durationSummary ||
+      normalizedItems.some((item, index) => {
       const current = value.items[index];
       return (
         item.id !== current?.id ||
@@ -144,9 +146,13 @@ export function CostBreakdownTable({
         item.quantity !== current?.quantity ||
         item.subtotal !== current?.subtotal
       );
-    }) || !assignmentTimelineModeEqual(normalizedAssignmentTimelineMode, value.assignmentTimelineMode ?? {});
+      });
+    const timelineModeChanged = !assignmentTimelineModeEqual(
+      normalizedAssignmentTimelineMode,
+      currentAssignmentTimelineMode,
+    );
 
-    if (changed) {
+    if (changed || timelineModeChanged) {
       onChange({
         ...value,
         durationSummary: normalizedTimelineSummary,
