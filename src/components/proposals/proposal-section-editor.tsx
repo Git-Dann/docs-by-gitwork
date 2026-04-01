@@ -136,6 +136,7 @@ export function ProposalSectionEditor({
           phases={proposal.timelinePhases}
           viewMode={data.viewMode ?? "LIST"}
           onChange={({ phases, viewMode }) => {
+            const timelineDurationSummary = summarizeTimelineDuration(phases);
             onProposalChange({
               ...proposal,
               timelinePhases: phases,
@@ -148,7 +149,15 @@ export function ProposalSectionEditor({
                         viewMode,
                       },
                     }
-                  : entry,
+                  : entry.key === "costing"
+                    ? {
+                        ...entry,
+                        data: {
+                          ...(entry.data as CostingSectionData),
+                          durationSummary: timelineDurationSummary,
+                        },
+                      }
+                    : entry,
               ),
             });
           }}
@@ -177,6 +186,7 @@ export function ProposalSectionEditor({
             paymentSchedule: data.paymentSchedule ?? defaultCostingData.paymentSchedule,
             additionalNotes: data.additionalNotes ?? defaultCostingData.additionalNotes,
             items: proposal.costLineItems,
+            timelinePhases: proposal.timelinePhases,
           }}
           onChange={(next) => {
             onProposalChange({
@@ -361,6 +371,22 @@ export function ProposalSectionEditor({
         </div>
       );
   }
+}
+
+function summarizeTimelineDuration(phases: ProposalDocument["timelinePhases"]) {
+  if (!phases.length) {
+    return "";
+  }
+
+  const durations = phases
+    .map((phase) => phase.duration.trim())
+    .filter(Boolean);
+
+  if (!durations.length) {
+    return "";
+  }
+
+  return durations.join(" • ");
 }
 
 function SimpleForm({ children }: { children: React.ReactNode }) {

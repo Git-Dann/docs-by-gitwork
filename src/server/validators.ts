@@ -46,6 +46,7 @@ export const costTeamAllocationSchema = z.object({
 
 export const paymentScheduleRowSchema = z.object({
   id: z.string(),
+  timelinePhaseId: z.string().optional(),
   action: z.string(),
   periodCovered: z.string(),
   includedWork: z.string(),

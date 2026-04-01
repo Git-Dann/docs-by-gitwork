@@ -190,6 +190,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       paymentSchedule: [
         {
           id: "payment-1",
+          timelinePhaseId: "timeline-discovery",
           action: "Kick Start",
           periodCovered: "Week 1",
           includedWork: "Resource allocation, planning, onboarding, and commencement of MVP development",
@@ -197,6 +198,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: "payment-2",
+          timelinePhaseId: "timeline-build",
           action: "Month 2",
           periodCovered: "Week 5",
           includedWork: "Core platform modules completed, mobile app development, backend services operational",
@@ -204,6 +206,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: "payment-3",
+          timelinePhaseId: "timeline-build",
           action: "Month 3",
           periodCovered: "Week 9",
           includedWork: "Therapist tools, safeguarding workflows, and payments functionality delivered",
@@ -211,6 +214,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: "payment-4",
+          timelinePhaseId: "timeline-launch",
           action: "Delivery",
           periodCovered: "Week 16",
           includedWork: "Final QA, partner embed SDK, testing, and handover",
@@ -350,6 +354,7 @@ export const defaultCostLineItems: CostLineItemInput[] = [
 
 export const defaultTimelinePhases: TimelinePhaseInput[] = [
   {
+    id: "timeline-discovery",
     name: "Discovery",
     duration: "Week 1",
     summary: "Workshop, stakeholder mapping, and acceptance criteria.",
@@ -358,6 +363,7 @@ export const defaultTimelinePhases: TimelinePhaseInput[] = [
     viewMode: "LIST",
   },
   {
+    id: "timeline-build",
     name: "Build",
     duration: "Weeks 2-4",
     summary: "Core editor, data model, and proposal preview implementation.",
@@ -366,6 +372,7 @@ export const defaultTimelinePhases: TimelinePhaseInput[] = [
     viewMode: "LIST",
   },
   {
+    id: "timeline-launch",
     name: "Launch",
     duration: "Week 5",
     summary: "Pilot rollout, export readiness, and team handover.",

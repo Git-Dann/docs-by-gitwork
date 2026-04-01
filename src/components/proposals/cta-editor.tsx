@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowTopRightOnSquareIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import type { CTAInput, LinkType } from "@/types/proposal";
 
@@ -148,15 +147,6 @@ function RoleCard({
           placeholder={selectedOption.placeholder}
         />
       </label>
-
-      <div className="flex items-center gap-2 text-sm text-[var(--text-3)]">
-        {value.destinationType === "EMAIL_LINK" ? (
-          <EnvelopeIcon className="h-4 w-4 text-[var(--brand-600)]" />
-        ) : (
-          <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--brand-600)]" />
-        )}
-        <span>{selectedOption.label}</span>
-      </div>
     </section>
   );
 }

@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { listRateCardPeople } from "@/lib/api";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
-import type { CostLineItemInput, CostingSectionData, PaymentScheduleRow } from "@/types/proposal";
+import type { CostLineItemInput, CostingSectionData, PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
 
 export interface CostBreakdownValue extends CostingSectionData {
   items: CostLineItemInput[];
+  timelinePhases: TimelinePhaseInput[];
 }
 
 const techStackOptions = [
@@ -131,6 +132,20 @@ export function CostBreakdownTable({
       }, {}),
     [rateCardPeople],
   );
+  const timelinePhases = useMemo(
+    () => [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
+    [value.timelinePhases],
+  );
+  const timelinePhaseById = useMemo(
+    () =>
+      timelinePhases.reduce<Record<string, TimelinePhaseInput>>((result, phase) => {
+        if (phase.id) {
+          result[phase.id] = phase;
+        }
+        return result;
+      }, {}),
+    [timelinePhases],
+  );
 
   const subtotal = value.items.reduce((total, item) => total + item.subtotal, 0);
   const discountAmount = subtotal * ((value.discount ?? 0) / 100);
@@ -141,7 +156,8 @@ export function CostBreakdownTable({
   const paymentMatchesBudget = Math.abs(paymentScheduleTotal - discountedSubtotal) < 0.01;
   const billablePeopleCount = value.items.filter((item) => item.category.trim().length > 0 && item.unitCost > 0).length;
   const monthlyRunRate = value.items.reduce((sum, item) => sum + (item.unitCost > 0 ? item.unitCost : 0), 0);
-  const suggestedDurationMonths = inferProjectDurationMonths(value.durationSummary, value.items);
+  const timelineDurationSummary = summarizeTimelineDuration(timelinePhases, value.durationSummary);
+  const suggestedDurationMonths = inferProjectDurationMonths(timelineDurationSummary, value.items);
 
   function updateItem(index: number, patch: Partial<CostLineItemInput>) {
     const nextItems = value.items.map((item, itemIndex) => {
@@ -162,6 +178,7 @@ export function CostBreakdownTable({
 
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       items: nextItems,
     });
   }
@@ -169,6 +186,7 @@ export function CostBreakdownTable({
   function addItem() {
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       items: [
         ...value.items,
         normalizeCostItem({
@@ -188,6 +206,7 @@ export function CostBreakdownTable({
   function removeItem(index: number) {
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       items: value.items
         .filter((_, itemIndex) => itemIndex !== index)
         .map((item, itemIndex) => ({ ...item, sortOrder: itemIndex })),
@@ -197,6 +216,7 @@ export function CostBreakdownTable({
   function updatePaymentRow(index: number, patch: Partial<PaymentScheduleRow>) {
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       paymentSchedule: value.paymentSchedule.map((row, rowIndex) =>
         rowIndex === index
           ? {
@@ -211,10 +231,12 @@ export function CostBreakdownTable({
   function addPaymentRow() {
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       paymentSchedule: [
         ...value.paymentSchedule,
         {
           id: createRowId("payment"),
+          timelinePhaseId: "",
           action: "",
           periodCovered: "",
           includedWork: "",
@@ -227,7 +249,20 @@ export function CostBreakdownTable({
   function removePaymentRow(index: number) {
     onChange({
       ...value,
+      durationSummary: timelineDurationSummary,
       paymentSchedule: value.paymentSchedule.filter((_, rowIndex) => rowIndex !== index),
+    });
+  }
+
+  function buildPaymentScheduleFromTimeline() {
+    if (!timelinePhases.length) {
+      return;
+    }
+
+    onChange({
+      ...value,
+      durationSummary: timelineDurationSummary,
+      paymentSchedule: timelinePhases.map((phase, index) => createPaymentMilestoneFromPhase(phase, index)),
     });
   }
 
@@ -235,9 +270,9 @@ export function CostBreakdownTable({
     <div className="space-y-4">
       <SectionCard
         title="Commercial settings"
-        description="Set the commercial frame for this proposal, then build the delivery budget below using saved People & Rates entries or flexible roles."
+        description="Set the commercial frame for this proposal. The team duration now inherits from the delivery timeline, so commercials stay tied to the actual plan."
       >
-        <div className="grid gap-3 lg:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-3">
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Currency</span>
             <CurrencyField
@@ -245,13 +280,6 @@ export function CostBreakdownTable({
               onChange={(currency) => onChange({ ...value, currency })}
             />
           </label>
-
-          <FieldInput
-            label="Project duration"
-            value={value.durationSummary}
-            onChange={(durationSummary) => onChange({ ...value, durationSummary })}
-            placeholder="16 weeks ≈ 4 months"
-          />
 
           <NumberField
             label="Discount (%)"
@@ -271,7 +299,7 @@ export function CostBreakdownTable({
             label="Budget rows"
             value={`${billablePeopleCount} ${billablePeopleCount === 1 ? "role" : "roles"}`}
           />
-          <MiniMetric label="Default duration" value={formatDurationSummary(value.durationSummary)} />
+          <MiniMetric label="Timeline default" value={formatDurationSummary(timelineDurationSummary)} />
           <MiniMetric label="Monthly run rate" value={formatCurrency(monthlyRunRate, value.currency)} />
           <MiniMetric label="Grand total" value={formatCurrency(grandTotal, value.currency)} />
         </div>
@@ -281,8 +309,43 @@ export function CostBreakdownTable({
         title="Budget breakdown"
         description="Build the delivery budget row by row. Start from a saved person or use a flexible role when you only want the commercial shape without naming anyone."
       >
+        {timelinePhases.length ? (
+          <div className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+                  Timeline default
+                </p>
+                <p className="mt-2 text-sm text-[var(--text-2)]">
+                  Team rows now inherit the delivery timeline by default. Override any role when a
+                  person joins later, finishes earlier, or only covers one phase.
+                </p>
+              </div>
+              <div className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-1 text-sm font-medium text-[var(--text-1)]">
+                {formatDurationSummary(timelineDurationSummary)}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {timelinePhases.map((phase) => (
+                <div
+                  key={phase.id ?? `${phase.name}-${phase.sortOrder}`}
+                  className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2"
+                >
+                  <p className="text-sm font-semibold text-[var(--text-1)]">{phase.name}</p>
+                  <p className="mt-1 text-xs text-[var(--text-3)]">{phase.duration}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[16px] border border-dashed border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
+            Add your delivery timeline above first. Budget rows will then inherit that duration automatically.
+          </div>
+        )}
+
         <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
-          New rows default to the project duration above. Override any row when a role joins later, finishes earlier, or runs longer than the core delivery.
+          Cost breakdown should reflect the people actually working on the project. Use saved People & Rates entries when you want named assignments, or switch to a flexible role when you only want the commercial shape.
         </div>
 
         <div className="app-table-shell overflow-x-auto">
@@ -456,7 +519,7 @@ export function CostBreakdownTable({
 
       <SectionCard
         title="Payment schedule"
-        description="Describe how the project is invoiced over time, with one card per milestone or billing step."
+        description="Describe how the project is invoiced over time. Milestones can link directly to the delivery timeline so commercials and delivery stay in step."
       >
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <TextAreaField
@@ -524,13 +587,59 @@ export function CostBreakdownTable({
                   </Button>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_160px]">
+                <div
+                  className={cn(
+                    "mt-4 grid gap-3",
+                    timelinePhases.length
+                      ? "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_160px]"
+                      : "md:grid-cols-[minmax(0,1fr)_220px_160px]",
+                  )}
+                >
                   <FieldInput
                     label="Milestone name"
                     value={row.action}
                     onChange={(action) => updatePaymentRow(index, { action })}
                     placeholder="Kickoff invoice"
                   />
+                  {timelinePhases.length ? (
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium text-[var(--text-2)]">Linked timeline phase</span>
+                      <select
+                        value={row.timelinePhaseId ?? ""}
+                        onChange={(event) => {
+                          const nextPhaseId = event.target.value;
+                          if (!nextPhaseId) {
+                            updatePaymentRow(index, { timelinePhaseId: "", periodCovered: row.periodCovered });
+                            return;
+                          }
+
+                          const phase = timelinePhaseById[nextPhaseId];
+                          if (!phase) {
+                            return;
+                          }
+
+                          updatePaymentRow(index, {
+                            timelinePhaseId: nextPhaseId,
+                            action: row.action.trim() ? row.action : phase.name,
+                            periodCovered: phase.duration,
+                            includedWork: row.includedWork.trim()
+                              ? row.includedWork
+                              : phase.deliverables.length
+                                ? phase.deliverables.join(", ")
+                                : phase.summary,
+                          });
+                        }}
+                        className="app-select-compact w-full text-sm"
+                      >
+                        <option value="">Not linked</option>
+                        {timelinePhases.map((phase) => (
+                          <option key={phase.id ?? phase.name} value={phase.id ?? ""}>
+                            {phase.name} · {phase.duration}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   <FieldInput
                     label="Timing"
                     value={row.periodCovered}
@@ -566,15 +675,27 @@ export function CostBreakdownTable({
         )}
 
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <Button
-            type="button"
-            onClick={addPaymentRow}
-            variant="secondary"
-            size="xs"
-            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-          >
-            Add milestone
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              onClick={addPaymentRow}
+              variant="secondary"
+              size="xs"
+              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            >
+              Add milestone
+            </Button>
+            {timelinePhases.length ? (
+              <Button
+                type="button"
+                onClick={buildPaymentScheduleFromTimeline}
+                variant="secondary"
+                size="xs"
+              >
+                Use timeline phases
+              </Button>
+            ) : null}
+          </div>
 
           <div className="space-y-1 text-right text-sm">
             <p className="text-[var(--text-3)]">
@@ -993,6 +1114,21 @@ function normalizeCostItem(item: CostLineItemInput, index: number): CostLineItem
   };
 }
 
+function summarizeTimelineDuration(
+  phases: TimelinePhaseInput[],
+  fallback: string,
+) {
+  if (!phases.length) {
+    return fallback;
+  }
+
+  const windows = phases
+    .map((phase) => phase.duration.trim())
+    .filter(Boolean);
+
+  return windows.length ? windows.join(" • ") : fallback;
+}
+
 function inferProjectDurationMonths(durationSummary: string, items: CostLineItemInput[]) {
   const monthsMatch = durationSummary.match(/(\d+(?:\.\d+)?)\s*month/i);
   if (monthsMatch) {
@@ -1011,6 +1147,17 @@ function inferProjectDurationMonths(durationSummary: string, items: CostLineItem
 function formatDurationSummary(value: string) {
   const trimmed = value.trim();
   return trimmed || "Not set";
+}
+
+function createPaymentMilestoneFromPhase(phase: TimelinePhaseInput, index: number): PaymentScheduleRow {
+  return {
+    id: createRowId(`payment-${index + 1}`),
+    timelinePhaseId: phase.id ?? "",
+    action: phase.name,
+    periodCovered: phase.duration,
+    includedWork: phase.deliverables.length ? phase.deliverables.join(", ") : phase.summary,
+    amount: 0,
+  };
 }
 
 function getSelectedRateCardPerson(

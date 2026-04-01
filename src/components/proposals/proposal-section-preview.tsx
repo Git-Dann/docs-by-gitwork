@@ -301,6 +301,16 @@ function SectionBody({
     case "costing": {
       const data = section.data as CostingSectionData;
       const items = [...proposal.costLineItems].sort((a, b) => a.sortOrder - b.sortOrder);
+      const timelinePhases = [...proposal.timelinePhases].sort((a, b) => a.sortOrder - b.sortOrder);
+      const timelinePhaseById = timelinePhases.reduce<Record<string, (typeof timelinePhases)[number]>>(
+        (result, phase) => {
+          if (phase.id) {
+            result[phase.id] = phase;
+          }
+          return result;
+        },
+        {},
+      );
       const subtotal = items.reduce((total, item) => total + item.subtotal, 0);
       const discountPercent = data.discount || 0;
       const discountAmount = subtotal * (discountPercent / 100);
@@ -398,6 +408,11 @@ function SectionBody({
                       key={row.id}
                       className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] bg-white p-4"
                     >
+                      {row.timelinePhaseId && timelinePhaseById[row.timelinePhaseId] ? (
+                        <p className="mb-3 inline-flex rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-4)]">
+                          Linked to {timelinePhaseById[row.timelinePhaseId]?.name}
+                        </p>
+                      ) : null}
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">

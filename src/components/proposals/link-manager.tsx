@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowTopRightOnSquareIcon, LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import type { ProposalLinkInput } from "@/types/proposal";
 
@@ -142,11 +142,6 @@ export function LinkManager({
                     placeholder="What this link helps explain or support"
                   />
                 </label>
-
-                <div className="mt-3 flex items-center gap-2 text-sm text-[var(--text-3)]">
-                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--brand-600)]" />
-                  <span>{selectedType.label}</span>
-                </div>
               </article>
             );
           })}

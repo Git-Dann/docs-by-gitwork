@@ -114,6 +114,7 @@ export interface CostTeamAllocationRow {
 
 export interface PaymentScheduleRow {
   id: string;
+  timelinePhaseId?: string;
   action: string;
   periodCovered: string;
   includedWork: string;

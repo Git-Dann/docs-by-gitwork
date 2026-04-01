@@ -688,26 +688,32 @@ function RateCardTab() {
 
               <label className="block space-y-1.5">
                 <FieldLabel>Source currency</FieldLabel>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(120px,140px)]">
-                  <select
-                    value={COMMON_CURRENCIES.includes(draft.sourceCurrencyCode as (typeof COMMON_CURRENCIES)[number]) ? draft.sourceCurrencyCode : "CUSTOM"}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      if (nextValue !== "CUSTOM") {
-                        setDraft((current) => ({
-                          ...current,
-                          sourceCurrencyCode: nextValue,
-                        }));
-                      }
-                    }}
-                  >
-                    {COMMON_CURRENCIES.map((currency) => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                    <option value="CUSTOM">Custom</option>
-                  </select>
+                <select
+                  value={COMMON_CURRENCIES.includes(draft.sourceCurrencyCode as (typeof COMMON_CURRENCIES)[number]) ? draft.sourceCurrencyCode : "CUSTOM"}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    if (nextValue === "CUSTOM") {
+                      setDraft((current) => ({
+                        ...current,
+                        sourceCurrencyCode: current.sourceCurrencyCode.trim() || "USD",
+                      }));
+                      return;
+                    }
+
+                    setDraft((current) => ({
+                      ...current,
+                      sourceCurrencyCode: nextValue,
+                    }));
+                  }}
+                >
+                  {COMMON_CURRENCIES.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                  <option value="CUSTOM">Custom</option>
+                </select>
+                {!COMMON_CURRENCIES.includes(draft.sourceCurrencyCode as (typeof COMMON_CURRENCIES)[number]) ? (
                   <input
                     value={draft.sourceCurrencyCode}
                     onChange={(event) =>
@@ -719,7 +725,11 @@ function RateCardTab() {
                     maxLength={3}
                     placeholder="USD"
                   />
-                </div>
+                ) : null}
+                <p className="text-xs leading-5 text-[var(--text-3)]">
+                  This is the currency the person is actually priced in. Axis converts it later for
+                  proposal pricing, so you only need a custom code when it is not already in the list.
+                </p>
               </label>
 
               <label className="block space-y-1.5">
@@ -742,8 +752,16 @@ function RateCardTab() {
               </label>
             </div>
 
-            <div className="mt-5 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
-              Axis preview: {formatDraftRate(draft)}
+            <div className="mt-5 space-y-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
+              <p>
+                Stored source pricing: <span className="font-medium text-[var(--text-1)]">{formatDraftRate(draft)}</span>
+              </p>
+              {showAxisConversionNote(draft) ? (
+                <p className="text-xs leading-5 text-[var(--text-3)]">
+                  Axis converts this into a GBP day rate inside the proposal builder, so the roster
+                  keeps the original commercial data and the proposal keeps the client-facing GBP rate.
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -1043,6 +1061,15 @@ function formatDraftRate(draft: RateCardDraft) {
   }
 
   return formatSourceRate(sourceRate, draft.sourceCurrencyCode || "USD", draft.billingPeriod);
+}
+
+function showAxisConversionNote(draft: RateCardDraft) {
+  const sourceRate = Number(draft.sourceRate);
+  if (Number.isNaN(sourceRate) || sourceRate <= 0) {
+    return false;
+  }
+
+  return draft.sourceCurrencyCode.trim().toUpperCase() !== "GBP" || draft.billingPeriod !== "DAY";
 }
 
 function formatCurrencyValue(value: number, currencyCode: string) {
