@@ -141,6 +141,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       vatNotice: "All prices are exclusive of VAT, which will be added at the prevailing rate.",
       ipTransferNotice:
         "Intellectual Property (IP) for the work delivered transfers to the client upon receipt of each corresponding payment.",
+      assignmentTimelineMode: {},
       teamAllocations: [
         {
           id: "team-1",

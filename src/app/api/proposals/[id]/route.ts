@@ -94,6 +94,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         await tx.costLineItem.deleteMany({ where: { documentId: id } });
         await tx.costLineItem.createMany({
           data: payload.costLineItems.map((item, index) => ({
+            id: item.id,
             documentId: id,
             category: item.category,
             itemName: item.itemName,

@@ -216,6 +216,7 @@ export function getDefaultCostsPayload(): Array<
   Prisma.CostLineItemCreateWithoutDocumentInput
 > {
   return defaultCostLineItems.map((item, index) => ({
+    ...(item.id ? { id: item.id } : {}),
     category: item.category,
     itemName: item.itemName,
     description: item.description,

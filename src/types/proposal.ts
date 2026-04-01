@@ -44,6 +44,7 @@ export type AssetSize = "SMALL" | "MEDIUM" | "LARGE" | "FULL";
 export type AssetAlignment = "LEFT" | "CENTER" | "RIGHT" | "FULL";
 
 export type TimelineViewMode = "LIST" | "MILESTONE";
+export type AssignmentTimelineMode = "DEFAULT" | "MANUAL";
 
 export interface CoverSectionData {
   proposalTitle: string;
@@ -136,6 +137,7 @@ export interface CostingSectionData {
   teamAllocations: CostTeamAllocationRow[];
   paymentSchedule: PaymentScheduleRow[];
   additionalNotes: string[];
+  assignmentTimelineMode?: Record<string, AssignmentTimelineMode>;
 }
 
 export interface CtaSectionData {

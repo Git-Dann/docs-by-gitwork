@@ -188,6 +188,7 @@ export function ProposalSectionEditor({
             teamAllocations: data.teamAllocations ?? defaultCostingData.teamAllocations,
             paymentSchedule: data.paymentSchedule ?? defaultCostingData.paymentSchedule,
             additionalNotes: data.additionalNotes ?? defaultCostingData.additionalNotes,
+            assignmentTimelineMode: data.assignmentTimelineMode ?? defaultCostingData.assignmentTimelineMode,
             items: proposal.costLineItems,
             timelinePhases: proposal.timelinePhases,
           }}
@@ -215,6 +216,7 @@ export function ProposalSectionEditor({
                         teamAllocations: next.teamAllocations,
                         paymentSchedule: next.paymentSchedule,
                         additionalNotes: next.additionalNotes,
+                        assignmentTimelineMode: next.assignmentTimelineMode,
                       },
                     }
                   : entry,

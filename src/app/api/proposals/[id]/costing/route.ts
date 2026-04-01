@@ -23,6 +23,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await tx.costLineItem.deleteMany({ where: { documentId: id } });
       await tx.costLineItem.createMany({
         data: payload.costLineItems.map((item, index) => ({
+          id: item.id,
           documentId: id,
           category: item.category,
           itemName: item.itemName,
@@ -76,6 +77,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
               ...(payload.teamAllocations !== undefined ? { teamAllocations: payload.teamAllocations } : {}),
               ...(payload.paymentSchedule !== undefined ? { paymentSchedule: payload.paymentSchedule } : {}),
               ...(payload.additionalNotes !== undefined ? { additionalNotes: payload.additionalNotes } : {}),
+              ...(payload.assignmentTimelineMode !== undefined
+                ? { assignmentTimelineMode: payload.assignmentTimelineMode }
+                : {}),
             },
           },
         });

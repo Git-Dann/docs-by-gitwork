@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { listRateCardPeople } from "@/lib/api";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
-import type { CostLineItemInput, CostingSectionData, PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
+import type {
+  AssignmentTimelineMode,
+  CostLineItemInput,
+  CostingSectionData,
+  PaymentScheduleRow,
+  TimelinePhaseInput,
+} from "@/types/proposal";
 
 export interface CostBreakdownValue extends CostingSectionData {
   items: CostLineItemInput[];
@@ -110,15 +116,41 @@ export function CostBreakdownTable({
   }, []);
 
   useEffect(() => {
-    const normalizedItems = value.items.map((item, index) => normalizeCostItem(item, index));
+    const sortedTimelinePhases = [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder);
+    const normalizedTimelineSummary = summarizeTimelineDuration(sortedTimelinePhases, value.durationSummary);
+    const normalizedTimelineEstimate = inferProjectTimelineEstimate(
+      sortedTimelinePhases,
+      normalizedTimelineSummary,
+      value.items,
+    );
+    const normalizedItems = value.items.map((item, index) =>
+      normalizeCostItem(
+        item,
+        index,
+        normalizedAssignmentTimelineMode,
+        sortedTimelinePhases.length > 0,
+        normalizedTimelineEstimate.months,
+      ),
+    );
+    const normalizedAssignmentTimelineMode = buildAssignmentTimelineMode(
+      normalizedItems,
+      value.assignmentTimelineMode ?? {},
+    );
     const changed = normalizedItems.some((item, index) => {
       const current = value.items[index];
-      return item.itemName !== current?.itemName || item.subtotal !== current?.subtotal;
-    });
+      return (
+        item.id !== current?.id ||
+        item.itemName !== current?.itemName ||
+        item.quantity !== current?.quantity ||
+        item.subtotal !== current?.subtotal
+      );
+    }) || !assignmentTimelineModeEqual(normalizedAssignmentTimelineMode, value.assignmentTimelineMode ?? {});
 
     if (changed) {
       onChange({
         ...value,
+        durationSummary: normalizedTimelineSummary,
+        assignmentTimelineMode: normalizedAssignmentTimelineMode,
         items: normalizedItems,
       });
     }
@@ -157,9 +189,15 @@ export function CostBreakdownTable({
   const billablePeopleCount = value.items.filter((item) => item.category.trim().length > 0 && item.unitCost > 0).length;
   const monthlyRunRate = value.items.reduce((sum, item) => sum + (item.unitCost > 0 ? item.unitCost : 0), 0);
   const timelineDurationSummary = summarizeTimelineDuration(timelinePhases, value.durationSummary);
-  const suggestedDurationMonths = inferProjectDurationMonths(timelineDurationSummary, value.items);
+  const assignmentTimelineMode = value.assignmentTimelineMode ?? {};
+  const timelineEstimate = inferProjectTimelineEstimate(timelinePhases, timelineDurationSummary, value.items);
+  const suggestedDurationMonths = timelineEstimate.months;
 
-  function updateItem(index: number, patch: Partial<CostLineItemInput>) {
+  function updateItem(
+    index: number,
+    patch: Partial<CostLineItemInput>,
+    nextTimelineMode?: AssignmentTimelineMode,
+  ) {
     const nextItems = value.items.map((item, itemIndex) => {
       if (itemIndex !== index) {
         return item;
@@ -173,23 +211,38 @@ export function CostBreakdownTable({
       return normalizeCostItem({
         ...next,
         subtotal: Number((next.quantity * next.unitCost).toFixed(2)),
-      }, itemIndex);
+      }, itemIndex, assignmentTimelineMode, timelinePhases.length > 0, suggestedDurationMonths);
     });
+
+    const itemID = nextItems[index]?.id;
+    const nextAssignmentTimelineMode = itemID
+      ? {
+          ...assignmentTimelineMode,
+          [itemID]: nextTimelineMode ?? assignmentTimelineMode[itemID] ?? "DEFAULT",
+        }
+      : assignmentTimelineMode;
 
     onChange({
       ...value,
       durationSummary: timelineDurationSummary,
+      assignmentTimelineMode: nextAssignmentTimelineMode,
       items: nextItems,
     });
   }
 
   function addItem() {
+    const id = createRowId("cost");
     onChange({
       ...value,
       durationSummary: timelineDurationSummary,
+      assignmentTimelineMode: {
+        ...assignmentTimelineMode,
+        [id]: "DEFAULT",
+      },
       items: [
         ...value.items,
         normalizeCostItem({
+          id,
           category: "",
           itemName: `${CUSTOM_ROLE_PREFIX}new-person`,
           description: "",
@@ -198,15 +251,22 @@ export function CostBreakdownTable({
           subtotal: 0,
           costKind: "ONE_OFF",
           sortOrder: value.items.length,
-        }, value.items.length),
+        }, value.items.length, { ...assignmentTimelineMode, [id]: "DEFAULT" }, timelinePhases.length > 0, suggestedDurationMonths),
       ],
     });
   }
 
   function removeItem(index: number) {
+    const itemID = value.items[index]?.id;
+    const nextAssignmentTimelineMode = { ...assignmentTimelineMode };
+    if (itemID) {
+      delete nextAssignmentTimelineMode[itemID];
+    }
+
     onChange({
       ...value,
       durationSummary: timelineDurationSummary,
+      assignmentTimelineMode: nextAssignmentTimelineMode,
       items: value.items
         .filter((_, itemIndex) => itemIndex !== index)
         .map((item, itemIndex) => ({ ...item, sortOrder: itemIndex })),
@@ -270,7 +330,7 @@ export function CostBreakdownTable({
     <div className="space-y-4">
       <SectionCard
         title="Commercial settings"
-        description="Set the commercial frame for this proposal. The team duration now inherits from the delivery timeline, so commercials stay tied to the actual plan."
+        description="Set the commercial frame for this proposal. Budget rows follow the delivery timeline by default, and short day-based plans are billed as a one-month minimum when you are using monthly rates."
       >
         <div className="grid gap-3 lg:grid-cols-3">
           <label className="block space-y-1.5">
@@ -320,6 +380,9 @@ export function CostBreakdownTable({
                   Team rows now inherit the delivery timeline by default. Override any role when a
                   person joins later, finishes earlier, or only covers one phase.
                 </p>
+                {timelineEstimate.helperText ? (
+                  <p className="mt-2 text-xs text-[var(--text-3)]">{timelineEstimate.helperText}</p>
+                ) : null}
               </div>
               <div className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-1 text-sm font-medium text-[var(--text-1)]">
                 {formatDurationSummary(timelineDurationSummary)}
@@ -354,7 +417,7 @@ export function CostBreakdownTable({
               <tr>
                 <th className="text-left">Assignment</th>
                 <th className="text-left">Delivery focus</th>
-                <th className="text-right">Timeline</th>
+                <th className="text-right">Billed duration</th>
                 <th className="text-right">Monthly rate</th>
                 <th className="text-right">Subtotal</th>
                 <th className="text-right" />
@@ -366,6 +429,8 @@ export function CostBreakdownTable({
                 const rateGuidance = selectedRateCardPerson
                   ? buildRateGuidance(selectedRateCardPerson, value.currency)
                   : null;
+                const itemTimelineMode = item.id ? assignmentTimelineMode[item.id] ?? "DEFAULT" : "DEFAULT";
+                const usesTimelineDefault = timelinePhases.length > 0 && itemTimelineMode !== "MANUAL";
 
                 return (
                 <tr key={item.id ?? `cost-${index}`}>
@@ -456,11 +521,25 @@ export function CostBreakdownTable({
                     <div className="flex flex-col items-end gap-1.5">
                       <DurationInput
                         value={item.quantity}
-                        onChange={(quantity) => updateItem(index, { quantity })}
+                        onChange={(quantity) => updateItem(index, { quantity }, "MANUAL")}
                       />
                       <span className="text-[11px] text-[var(--text-3)]">
-                        {item.quantity === suggestedDurationMonths ? "Uses timeline default" : "Manual override"}
+                        {usesTimelineDefault
+                          ? `Timeline default: ${formatDurationSummary(timelineDurationSummary)}`
+                          : `Manual override · default is ${formatDurationSummary(timelineDurationSummary)}`}
                       </span>
+                      <span className="text-[11px] text-[var(--text-3)]">
+                        {timelineEstimate.billingHelperText}
+                      </span>
+                      {!usesTimelineDefault && item.id ? (
+                        <button
+                          type="button"
+                          onClick={() => updateItem(index, { quantity: suggestedDurationMonths }, "DEFAULT")}
+                          className="text-[11px] font-medium text-[var(--brand-600)] hover:text-[var(--brand-700)]"
+                        >
+                          Use timeline default
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                   <td className="align-top text-right">
@@ -769,7 +848,7 @@ function DurationInput({
         className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
       />
       <span className="inline-flex min-w-[70px] items-center justify-center border-l border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
-        months
+        {value === 1 ? "month" : "months"}
       </span>
     </div>
   );
@@ -1111,11 +1190,25 @@ function parseTechStackValue(value?: string) {
     .filter(Boolean);
 }
 
-function normalizeCostItem(item: CostLineItemInput, index: number): CostLineItemInput {
+function normalizeCostItem(
+  item: CostLineItemInput,
+  index: number,
+  assignmentTimelineMode: Record<string, AssignmentTimelineMode>,
+  hasTimeline: boolean,
+  suggestedDurationMonths: number,
+) {
+  const id = item.id ?? createRowId(`cost-${index + 1}`);
+  const timelineMode = assignmentTimelineMode[id] ?? "DEFAULT";
+  const quantity = hasTimeline && timelineMode !== "MANUAL"
+    ? suggestedDurationMonths
+    : item.quantity;
+
   return {
     ...item,
+    id,
+    quantity,
     itemName: item.itemName.trim() || buildCustomRoleReference(item.category || `role-${index + 1}`),
-    subtotal: Number((item.quantity * item.unitCost).toFixed(2)),
+    subtotal: Number((quantity * item.unitCost).toFixed(2)),
   };
 }
 
@@ -1135,6 +1228,11 @@ function summarizeTimelineDuration(
 }
 
 function inferProjectDurationMonths(durationSummary: string, items: CostLineItemInput[]) {
+  const parsedSummary = parseTimelineWindow(durationSummary);
+  if (parsedSummary) {
+    return Math.max(1, Math.ceil(convertWindowToDays(parsedSummary) / 20));
+  }
+
   const monthsMatch = durationSummary.match(/(\d+(?:\.\d+)?)\s*month/i);
   if (monthsMatch) {
     return Math.max(1, Number(monthsMatch[1]));
@@ -1147,6 +1245,124 @@ function inferProjectDurationMonths(durationSummary: string, items: CostLineItem
 
   const existingMax = items.reduce((max, item) => Math.max(max, Number(item.quantity) || 0), 0);
   return existingMax > 0 ? existingMax : 1;
+}
+
+function buildAssignmentTimelineMode(
+  items: CostLineItemInput[],
+  existing: Record<string, AssignmentTimelineMode>,
+) {
+  return items.reduce<Record<string, AssignmentTimelineMode>>((result, item, index) => {
+    const id = item.id ?? `cost-${index + 1}`;
+    result[id] = existing[id] ?? "DEFAULT";
+    return result;
+  }, {});
+}
+
+function assignmentTimelineModeEqual(
+  left: Record<string, AssignmentTimelineMode>,
+  right: Record<string, AssignmentTimelineMode>,
+) {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
+}
+
+function inferProjectTimelineEstimate(
+  phases: TimelinePhaseInput[],
+  durationSummary: string,
+  items: CostLineItemInput[],
+) {
+  const parsedWindows = phases
+    .map((phase) => parseTimelineWindow(phase.duration))
+    .filter((window): window is TimelineWindow => Boolean(window));
+
+  if (parsedWindows.length === phases.length && parsedWindows.length > 0) {
+    const totalDays = Math.max(...parsedWindows.map((window) => convertWindowToDays(window)));
+    const months = Math.max(1, Math.ceil(totalDays / 20));
+    return {
+      months,
+      helperText:
+        totalDays < 20
+          ? `Current delivery plan: ${formatDurationSummary(durationSummary)}. Monthly pricing floors this to ${formatMonthLabel(months)}.`
+          : `Current delivery plan: ${formatDurationSummary(durationSummary)}.`,
+      billingHelperText: `Billing uses ${formatMonthLabel(months)} at the current monthly rate.`,
+    };
+  }
+
+  const months = inferProjectDurationMonths(durationSummary, items);
+  return {
+    months,
+    helperText: durationSummary.trim() ? `Current delivery plan: ${formatDurationSummary(durationSummary)}.` : "",
+    billingHelperText: `Billing uses ${formatMonthLabel(months)} at the current monthly rate.`,
+  };
+}
+
+type TimelineWindow = {
+  unit: "DAY" | "WEEK" | "MONTH";
+  end: number;
+};
+
+function parseTimelineWindow(value: string): TimelineWindow | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const leadingUnitMatch = trimmed.match(
+    /\b(day|days|week|weeks|month|months)\s*(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?/i,
+  );
+
+  if (leadingUnitMatch) {
+    return {
+      unit: normalizeTimelineUnit(leadingUnitMatch[1]),
+      end: Number(leadingUnitMatch[3] ?? leadingUnitMatch[2]),
+    };
+  }
+
+  const trailingUnitMatch = trimmed.match(
+    /(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(day|days|week|weeks|month|months)\b/i,
+  );
+
+  if (trailingUnitMatch) {
+    return {
+      unit: normalizeTimelineUnit(trailingUnitMatch[3]),
+      end: Number(trailingUnitMatch[2] ?? trailingUnitMatch[1]),
+    };
+  }
+
+  return null;
+}
+
+function normalizeTimelineUnit(value: string): TimelineWindow["unit"] {
+  if (value.toLowerCase().startsWith("day")) {
+    return "DAY";
+  }
+
+  if (value.toLowerCase().startsWith("week")) {
+    return "WEEK";
+  }
+
+  return "MONTH";
+}
+
+function convertWindowToDays(window: TimelineWindow) {
+  switch (window.unit) {
+    case "DAY":
+      return window.end;
+    case "WEEK":
+      return window.end * 5;
+    case "MONTH":
+      return window.end * 20;
+  }
+}
+
+function formatMonthLabel(months: number) {
+  return `${months} ${months === 1 ? "month" : "months"}`;
 }
 
 function formatDurationSummary(value: string) {

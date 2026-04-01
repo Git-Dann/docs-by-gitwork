@@ -125,6 +125,7 @@ export async function saveCosting(
     teamAllocations?: CostingSectionData["teamAllocations"];
     paymentSchedule?: CostingSectionData["paymentSchedule"];
     additionalNotes?: string[];
+    assignmentTimelineMode?: CostingSectionData["assignmentTimelineMode"];
   },
 ): Promise<{ proposal: ProposalDocument }> {
   return apiFetch<{ proposal: ProposalDocument }>(`/api/proposals/${id}/costing`, {

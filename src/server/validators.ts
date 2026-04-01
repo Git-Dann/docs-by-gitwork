@@ -195,6 +195,7 @@ export const proposalCostingSchema = z.object({
   teamAllocations: z.array(costTeamAllocationSchema).optional(),
   paymentSchedule: z.array(paymentScheduleRowSchema).optional(),
   additionalNotes: z.array(z.string()).optional(),
+  assignmentTimelineMode: z.record(z.string(), z.enum(["DEFAULT", "MANUAL"])).optional(),
 });
 
 export const proposalTimelineSchema = z.object({
