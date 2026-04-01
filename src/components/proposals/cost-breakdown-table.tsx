@@ -59,7 +59,80 @@ const techStackOptions = [
 
 const CUSTOM_ROLE_VALUE = "__custom_role__";
 const RATE_CARD_PREFIX = "rate-card:";
+const PROPOSAL_ROLE_PREFIX = "proposal-role:";
 const CUSTOM_ROLE_PREFIX = "custom-role:";
+const ROLE_FX_TO_GBP: Record<"GBP" | "USD" | "EUR", number> = {
+  GBP: 1,
+  USD: 0.7558603274120514,
+  EUR: 0.86803,
+};
+
+type ProposalRoleOption = {
+  id: string;
+  title: string;
+  detail: string;
+  defaultMonthlyRate: number | null;
+  sourceRate: number | null;
+  sourceCurrencyCode: "GBP" | "USD" | "EUR" | null;
+  billingPeriod: RateBillingPeriod | null;
+  isManualRate: boolean;
+};
+
+const proposalRoleBlueprints: Array<{
+  id: string;
+  title: string;
+  description: string;
+  requiresManualRate: boolean;
+  fallbackSourceRate?: number;
+  fallbackSourceCurrencyCode?: "GBP" | "USD" | "EUR";
+  fallbackBillingPeriod?: RateBillingPeriod;
+}> = [
+  {
+    id: "senior",
+    title: "Senior",
+    description: "Senior developer benchmark from People & Rates.",
+    requiresManualRate: false,
+    fallbackSourceRate: 1900,
+    fallbackSourceCurrencyCode: "USD",
+    fallbackBillingPeriod: "MONTH",
+  },
+  {
+    id: "mid-level",
+    title: "Mid Level",
+    description: "Mid-level developer benchmark from People & Rates.",
+    requiresManualRate: false,
+    fallbackSourceRate: 1500,
+    fallbackSourceCurrencyCode: "USD",
+    fallbackBillingPeriod: "MONTH",
+  },
+  {
+    id: "junior",
+    title: "Junior",
+    description: "Junior developer benchmark from People & Rates.",
+    requiresManualRate: false,
+    fallbackSourceRate: 1300,
+    fallbackSourceCurrencyCode: "USD",
+    fallbackBillingPeriod: "MONTH",
+  },
+  {
+    id: "dev-ops",
+    title: "Dev Ops",
+    description: "Manual role. Set the proposal rate yourself.",
+    requiresManualRate: true,
+  },
+  {
+    id: "product-manager",
+    title: "Product Manager",
+    description: "Manual role. Set the proposal rate yourself.",
+    requiresManualRate: true,
+  },
+  {
+    id: "design",
+    title: "Design",
+    description: "Manual role. Set the proposal rate yourself.",
+    requiresManualRate: true,
+  },
+];
 
 function createRowId(prefix: string) {
   const generated =
@@ -170,6 +243,18 @@ export function CostBreakdownTable({
       }, {}),
     [rateCardPeople],
   );
+  const proposalRoleOptions = useMemo(
+    () => buildProposalRoleOptions(rateCardPeople, value.currency),
+    [rateCardPeople, value.currency],
+  );
+  const proposalRoleOptionsById = useMemo(
+    () =>
+      proposalRoleOptions.reduce<Record<string, ProposalRoleOption>>((result, option) => {
+        result[option.id] = option;
+        return result;
+      }, {}),
+    [proposalRoleOptions],
+  );
   const timelinePhases = useMemo(
     () => [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
     [value.timelinePhases],
@@ -184,6 +269,54 @@ export function CostBreakdownTable({
       }, {}),
     [timelinePhases],
   );
+
+  useEffect(() => {
+    if (!value.items.length) {
+      return;
+    }
+
+    let hasChanges = false;
+
+    const migratedItems = value.items.map((item) => {
+      const selectedRole = resolveSelectedProposalRole(item, rateCardPeopleById, proposalRoleOptionsById);
+
+      if (!selectedRole) {
+        return item;
+      }
+
+      const normalizedItemName = `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}`;
+      const normalizedCategory = selectedRole.title;
+      const normalizedUnitCost = item.unitCost > 0
+        ? item.unitCost
+        : suggestedUnitCostForRole(selectedRole, item.unitCost, null);
+
+      if (
+        item.itemName === normalizedItemName &&
+        item.category === normalizedCategory &&
+        item.unitCost === normalizedUnitCost
+      ) {
+        return item;
+      }
+
+      hasChanges = true;
+      return {
+        ...item,
+        itemName: normalizedItemName,
+        category: normalizedCategory,
+        unitCost: normalizedUnitCost,
+        subtotal: Number((item.quantity * normalizedUnitCost).toFixed(2)),
+      };
+    });
+
+    if (!hasChanges) {
+      return;
+    }
+
+    onChange({
+      ...value,
+      items: migratedItems,
+    });
+  }, [onChange, proposalRoleOptionsById, rateCardPeopleById, value]);
 
   const subtotal = value.items.reduce((total, item) => total + item.subtotal, 0);
   const discountAmount = subtotal * ((value.discount ?? 0) / 100);
@@ -373,7 +506,7 @@ export function CostBreakdownTable({
 
       <SectionCard
         title="Budget breakdown"
-        description="Build the delivery budget row by row. Start from a saved person or use a flexible role when you only want the commercial shape without naming anyone."
+        description="Build the delivery budget row by row. Use shared job levels from People & Rates, or choose a manual role when you want to set the commercial rate yourself."
       >
         {timelinePhases.length ? (
           <div className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
@@ -414,14 +547,14 @@ export function CostBreakdownTable({
         )}
 
         <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
-          Cost breakdown should reflect the people actually working on the project. Use saved People & Rates entries when you want named assignments, or switch to a flexible role when you only want the commercial shape.
+          Cost breakdown should reflect the jobs working on the project. Proposal rows use shared role levels from People & Rates, while individual names stay in People & Rates and staffing only.
         </div>
 
         <div className="app-table-shell overflow-x-auto">
           <table className="app-table min-w-full text-sm">
             <thead>
               <tr>
-                <th className="text-left">Assignment</th>
+                <th className="text-left">Role</th>
                 <th className="text-left">Delivery focus</th>
                 <th className="text-right">Billed duration</th>
                 <th className="text-right">Monthly rate</th>
@@ -431,71 +564,86 @@ export function CostBreakdownTable({
             </thead>
             <tbody>
               {value.items.map((item, index) => {
-                const selectedRateCardPerson = getSelectedRateCardPerson(item, rateCardPeopleById);
-                const rateGuidance = selectedRateCardPerson
-                  ? buildRateGuidance(selectedRateCardPerson, value.currency)
+                const selectedRole = resolveSelectedProposalRole(item, rateCardPeopleById, proposalRoleOptionsById);
+                const roleGuidance = selectedRole
+                  ? buildRoleGuidance(selectedRole, value.currency)
                   : null;
                 const itemTimelineMode = item.id ? assignmentTimelineMode[item.id] ?? "DEFAULT" : "DEFAULT";
                 const usesTimelineDefault = timelinePhases.length > 0 && itemTimelineMode !== "MANUAL";
+                const selectedRoleValue = selectedRole ? `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}` : CUSTOM_ROLE_VALUE;
 
                 return (
                 <tr key={item.id ?? `cost-${index}`}>
                   <td className="align-top">
                     <div className="min-w-[280px] space-y-2">
                       <select
-                        value={selectedRateCardPerson ? `${RATE_CARD_PREFIX}${selectedRateCardPerson.id}` : CUSTOM_ROLE_VALUE}
+                        value={selectedRoleValue}
                         onChange={(event) => {
                           const nextValue = event.target.value;
 
                           if (nextValue === CUSTOM_ROLE_VALUE) {
                             updateItem(index, {
+                              category: item.category.trim().length === 0 ? "Flexible role" : item.category,
                               itemName: buildCustomRoleReference(item.category),
                             });
                             return;
                           }
 
-                          const person = rateCardPeopleById[nextValue.replace(RATE_CARD_PREFIX, "")];
-                          if (!person) {
+                          const role = proposalRoleOptionsById[nextValue.replace(PROPOSAL_ROLE_PREFIX, "")];
+                          if (!role) {
                             return;
                           }
 
                           updateItem(index, {
-                            itemName: `${RATE_CARD_PREFIX}${person.id}`,
-                            category: person.name,
-                            unitCost: suggestedUnitCostForPerson(person, value.currency, item.unitCost),
+                            itemName: `${PROPOSAL_ROLE_PREFIX}${role.id}`,
+                            category: role.title,
+                            unitCost: suggestedUnitCostForRole(
+                              role,
+                              item.unitCost,
+                              selectedRole?.id ?? null,
+                            ),
                           });
                         }}
                         className="app-select-compact w-full text-sm"
                       >
                         <option value={CUSTOM_ROLE_VALUE}>Flexible role</option>
-                        {rateCardPeople.length > 0 ? (
-                          <optgroup label="People & Rates">
-                            {rateCardPeople.map((person) => (
-                              <option key={person.id} value={`${RATE_CARD_PREFIX}${person.id}`}>
-                                {person.name} · {person.area}
+                        <optgroup label="Developer levels">
+                          {proposalRoleOptions
+                            .filter((role) => ["senior", "mid-level", "junior"].includes(role.id))
+                            .map((role) => (
+                              <option key={role.id} value={`${PROPOSAL_ROLE_PREFIX}${role.id}`}>
+                                {role.title}
                               </option>
                             ))}
-                          </optgroup>
-                        ) : null}
+                        </optgroup>
+                        <optgroup label="Manual roles">
+                          {proposalRoleOptions
+                            .filter((role) => !["senior", "mid-level", "junior"].includes(role.id))
+                            .map((role) => (
+                              <option key={role.id} value={`${PROPOSAL_ROLE_PREFIX}${role.id}`}>
+                                {role.title}
+                              </option>
+                            ))}
+                        </optgroup>
                       </select>
 
-                      {selectedRateCardPerson ? (
+                      {selectedRole ? (
                         <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
                           <p className="text-sm font-semibold text-[var(--text-1)]">
-                            {selectedRateCardPerson.name}
+                            {selectedRole.title}
                           </p>
                           <p className="mt-1 text-sm text-[var(--text-3)]">
-                            {selectedRateCardPerson.area}
+                            {selectedRole.detail}
                           </p>
                           <p
                             className={cn(
                               "mt-2 text-xs",
-                              rateGuidance?.tone === "warning"
+                              roleGuidance?.tone === "warning"
                                 ? "text-amber-700"
                                 : "text-[var(--text-3)]",
                             )}
                           >
-                            {rateGuidance?.message}
+                            {roleGuidance?.message}
                           </p>
                         </div>
                       ) : (
@@ -577,21 +725,21 @@ export function CostBreakdownTable({
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-2">
-            <Button
+              <Button
               type="button"
               onClick={addItem}
               variant="secondary"
               size="xs"
               leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
             >
-              Add budget row
+              Add role
             </Button>
             <p className="text-xs text-[var(--text-3)]">
               {rateCardLoading
                 ? "Loading People & Rates…"
                 : rateCardError
-                  ? "People & Rates are unavailable right now. You can still use flexible roles."
-                  : "Saved people auto-fill when the proposal currency matches the stored roster currency. Flexible roles keep the budget anonymous when needed."}
+                  ? "People & Rates are unavailable right now. You can still use flexible or manual roles."
+                  : "Proposal rows use shared developer levels from People & Rates. Dev Ops, Product Manager, Design, and flexible roles stay manual."}
             </p>
           </div>
 
@@ -1399,6 +1547,88 @@ function getSelectedRateCardPerson(
   return peopleById[personId] ?? null;
 }
 
+function buildProposalRoleOptions(
+  people: RateCardPersonRecord[],
+  proposalCurrency: "GBP" | "USD" | "EUR",
+): ProposalRoleOption[] {
+  return proposalRoleBlueprints.map((blueprint) => {
+    if (blueprint.requiresManualRate) {
+      return {
+        id: blueprint.id,
+        title: blueprint.title,
+        detail: blueprint.description,
+        defaultMonthlyRate: null,
+        sourceRate: null,
+        sourceCurrencyCode: null,
+        billingPeriod: null,
+        isManualRate: true,
+      };
+    }
+
+    const matchingPeople = people.filter((person) => roleLevelFromArea(person.area) === blueprint.id);
+    const sourceRates = matchingPeople.map((person) => Number(person.sourceRate)).filter((rate) => rate > 0);
+    const convertedRates = matchingPeople
+      .map((person) => convertSourceRateToMonthlyProposalCurrency(person, proposalCurrency))
+      .filter((rate): rate is number => rate !== null && rate > 0);
+
+    const fallbackMonthlyRate = blueprint.fallbackSourceRate && blueprint.fallbackSourceCurrencyCode && blueprint.fallbackBillingPeriod
+      ? convertMonthlyRateBetweenCurrencies(
+          convertSourceRateToMonthlyAmount(
+            blueprint.fallbackSourceRate,
+            blueprint.fallbackBillingPeriod,
+          ),
+          blueprint.fallbackSourceCurrencyCode,
+          proposalCurrency,
+        )
+      : null;
+
+    const defaultMonthlyRate = average(convertedRates) ?? fallbackMonthlyRate;
+    const sourceRate = average(sourceRates) ?? blueprint.fallbackSourceRate ?? null;
+    const sourceCurrencyCode = normalizeSupportedCurrency(matchingPeople[0]?.sourceCurrencyCode ?? "")
+      ?? blueprint.fallbackSourceCurrencyCode
+      ?? null;
+    const billingPeriod = matchingPeople[0]?.billingPeriod ?? blueprint.fallbackBillingPeriod ?? null;
+    const rosterCount = matchingPeople.length;
+
+    return {
+      id: blueprint.id,
+      title: blueprint.title,
+      detail: rosterCount > 0
+        ? `${blueprint.description} Built from ${rosterCount} saved ${rosterCount === 1 ? "person" : "people"}.`
+        : `${blueprint.description} Using the current shared benchmark.`,
+      defaultMonthlyRate: defaultMonthlyRate ? Number(defaultMonthlyRate.toFixed(2)) : null,
+      sourceRate: sourceRate ? Number(sourceRate.toFixed(2)) : null,
+      sourceCurrencyCode,
+      billingPeriod,
+      isManualRate: false,
+    };
+  });
+}
+
+function resolveSelectedProposalRole(
+  item: CostLineItemInput,
+  peopleById: Record<string, RateCardPersonRecord>,
+  roleOptionsById: Record<string, ProposalRoleOption>,
+) {
+  if (item.itemName.startsWith(PROPOSAL_ROLE_PREFIX)) {
+    const roleID = item.itemName.replace(PROPOSAL_ROLE_PREFIX, "");
+    return roleOptionsById[roleID] ?? null;
+  }
+
+  const selectedPerson = getSelectedRateCardPerson(item, peopleById);
+  if (selectedPerson) {
+    const roleID = roleLevelFromArea(selectedPerson.area);
+    return roleID ? roleOptionsById[roleID] ?? null : null;
+  }
+
+  const normalizedCategory = slugify(item.category);
+  if (!normalizedCategory) {
+    return null;
+  }
+
+  return Object.values(roleOptionsById).find((role) => slugify(role.title) === normalizedCategory) ?? null;
+}
+
 function buildCustomRoleReference(role: string) {
   const fallback = role.trim() || "custom-role";
   return `${CUSTOM_ROLE_PREFIX}${slugify(fallback)}`;
@@ -1412,55 +1642,54 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function suggestedUnitCostForPerson(
-  person: RateCardPersonRecord,
-  proposalCurrency: "GBP" | "USD" | "EUR",
+function suggestedUnitCostForRole(
+  role: ProposalRoleOption,
   currentValue: number,
+  currentRoleID: string | null,
 ) {
-  if (person.sourceCurrencyCode !== proposalCurrency) {
+  if (role.defaultMonthlyRate === null) {
+    if (currentRoleID == null || currentRoleID === role.id) {
+      return currentValue;
+    }
+    return 0;
+  }
+
+  if (currentRoleID === role.id && currentValue > 0) {
     return currentValue;
   }
 
-  switch (person.billingPeriod) {
-    case "DAY":
-      return Number((person.sourceRate * 20).toFixed(2));
-    case "WEEK":
-      return Number((person.sourceRate * 4).toFixed(2));
-    case "MONTH":
-      return person.sourceRate;
-  }
+  return Number(role.defaultMonthlyRate.toFixed(2));
 }
 
-function buildRateGuidance(
-  person: RateCardPersonRecord,
+function buildRoleGuidance(
+  role: ProposalRoleOption,
   proposalCurrency: "GBP" | "USD" | "EUR",
 ) {
-  const sourceSummary = `${formatCurrency(person.sourceRate, person.sourceCurrencyCode)} · ${rateBillingLabel(person.billingPeriod)}`;
+  if (role.isManualRate) {
+    return {
+      tone: "neutral" as const,
+      message: `Manual role. Set the ${proposalCurrency} monthly rate for this proposal.`,
+    };
+  }
 
-  if (person.sourceCurrencyCode !== proposalCurrency) {
+  if (
+    role.sourceRate === null ||
+    role.sourceCurrencyCode === null ||
+    role.billingPeriod === null ||
+    role.defaultMonthlyRate === null
+  ) {
     return {
       tone: "warning" as const,
-      message: `Saved source rate: ${sourceSummary}. Proposal currency is ${proposalCurrency}, so set the converted amount in the rate field.`,
+      message: `Benchmark pricing is unavailable right now. Set the ${proposalCurrency} monthly rate manually.`,
     };
   }
 
-  if (person.billingPeriod === "DAY") {
-    return {
-      tone: "neutral" as const,
-      message: `Saved source rate: ${sourceSummary}. The proposal rate field has been pref-filled as a 20-day monthly equivalent.`,
-    };
-  }
-
-  if (person.billingPeriod === "WEEK") {
-    return {
-      tone: "neutral" as const,
-      message: `Saved source rate: ${sourceSummary}. The proposal rate field has been pref-filled as a 4-week monthly equivalent.`,
-    };
-  }
+  const sourceSummary = `${formatCurrency(role.sourceRate, role.sourceCurrencyCode)} · ${rateBillingLabel(role.billingPeriod)}`;
+  const proposalSummary = formatCurrency(role.defaultMonthlyRate, proposalCurrency);
 
   return {
     tone: "neutral" as const,
-    message: `Using saved source rate: ${sourceSummary}.`,
+    message: `Shared benchmark: ${sourceSummary}. Proposal default: ${proposalSummary} per month.`,
   };
 }
 
@@ -1473,6 +1702,78 @@ function rateBillingLabel(period: RateBillingPeriod) {
     case "MONTH":
       return "per month";
   }
+}
+
+function roleLevelFromArea(area: string) {
+  const normalized = area.trim().toLowerCase();
+  if (normalized.startsWith("senior")) {
+    return "senior";
+  }
+  if (normalized.startsWith("mid level") || normalized.startsWith("mid-level")) {
+    return "mid-level";
+  }
+  if (normalized.startsWith("junior")) {
+    return "junior";
+  }
+  return null;
+}
+
+function average(values: number[]) {
+  if (!values.length) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function convertSourceRateToMonthlyProposalCurrency(
+  person: RateCardPersonRecord,
+  proposalCurrency: "GBP" | "USD" | "EUR",
+) {
+  return convertMonthlyRateBetweenCurrencies(
+    convertSourceRateToMonthlyAmount(person.sourceRate, person.billingPeriod),
+    normalizeSupportedCurrency(person.sourceCurrencyCode),
+    proposalCurrency,
+  );
+}
+
+function convertSourceRateToMonthlyAmount(sourceRate: number, billingPeriod: RateBillingPeriod) {
+  switch (billingPeriod) {
+    case "DAY":
+      return sourceRate * 20;
+    case "WEEK":
+      return sourceRate * 4;
+    case "MONTH":
+      return sourceRate;
+  }
+}
+
+function convertMonthlyRateBetweenCurrencies(
+  amount: number,
+  sourceCurrencyCode: "GBP" | "USD" | "EUR" | null,
+  targetCurrencyCode: "GBP" | "USD" | "EUR",
+) {
+  if (!sourceCurrencyCode) {
+    return null;
+  }
+
+  const sourceRateToGBP = ROLE_FX_TO_GBP[sourceCurrencyCode];
+  const targetRateToGBP = ROLE_FX_TO_GBP[targetCurrencyCode];
+
+  if (!sourceRateToGBP || !targetRateToGBP) {
+    return null;
+  }
+
+  const amountInGBP = amount * sourceRateToGBP;
+  return amountInGBP / targetRateToGBP;
+}
+
+function normalizeSupportedCurrency(value: string): "GBP" | "USD" | "EUR" | null {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "GBP" || normalized === "USD" || normalized === "EUR") {
+    return normalized;
+  }
+  return null;
 }
 
 const tableInputClasses = "app-input-compact min-w-[120px] text-[var(--text-1)]";
