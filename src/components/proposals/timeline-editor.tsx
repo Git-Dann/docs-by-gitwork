@@ -17,7 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Bars3Icon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import type { TimelinePhaseInput } from "@/types/proposal";
+import type { PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
 
 const phaseStarters = [
   { name: "Discovery", duration: "Weeks 1-2", summary: "Align on scope, users, and delivery plan." },
@@ -27,10 +27,12 @@ const phaseStarters = [
 
 export function TimelineEditor({
   phases,
+  paymentSchedule,
   viewMode,
   onChange,
 }: {
   phases: TimelinePhaseInput[];
+  paymentSchedule: PaymentScheduleRow[];
   viewMode: "LIST" | "MILESTONE";
   onChange: (payload: { phases: TimelinePhaseInput[]; viewMode: "LIST" | "MILESTONE" }) => void;
 }) {
@@ -151,6 +153,7 @@ export function TimelineEditor({
                 id={phase.id ?? phase.name}
                 phase={phase}
                 index={index}
+                linkedMilestones={paymentSchedule.filter((entry) => entry.timelinePhaseId && entry.timelinePhaseId === phase.id)}
                 onChange={(patch) => {
                   const next = sorted.map((entry, entryIndex) =>
                     entryIndex === index ? { ...entry, ...patch } : entry,
@@ -184,12 +187,14 @@ function PhaseItem({
   id,
   phase,
   index,
+  linkedMilestones,
   onChange,
   onRemove,
 }: {
   id: string;
   phase: TimelinePhaseInput;
   index: number;
+  linkedMilestones: PaymentScheduleRow[];
   onChange: (patch: Partial<TimelinePhaseInput>) => void;
   onRemove: () => void;
 }) {
@@ -274,6 +279,39 @@ function PhaseItem({
           rows={4}
           placeholder={"Discovery notes\nInteractive prototype\nLaunch checklist"}
         />
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+            Linked milestones
+          </p>
+          <span className="text-xs text-[var(--text-3)]">
+            {linkedMilestones.length ? `${linkedMilestones.length} linked` : "None linked yet"}
+          </span>
+        </div>
+
+        {linkedMilestones.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {linkedMilestones.map((milestone) => (
+              <div
+                key={milestone.id}
+                className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-2"
+              >
+                <p className="text-sm font-semibold text-[var(--text-1)]">
+                  {milestone.action || "Milestone"}
+                </p>
+                <p className="mt-1 text-xs text-[var(--text-3)]">
+                  {milestone.periodCovered || phase.duration || "Timeline to confirm"}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--text-3)]">
+            Link a payment milestone to this phase in the payment schedule to keep delivery and commercials aligned.
+          </p>
+        )}
       </div>
     </article>
   );

@@ -131,9 +131,12 @@ export function ProposalSectionEditor({
 
     case "timeline": {
       const data = section.data as { viewMode: "LIST" | "MILESTONE" };
+      const costingSection = proposal.sections.find((entry) => entry.key === "costing");
+      const costingData = costingSection?.data as CostingSectionData | undefined;
       return (
         <TimelineEditor
           phases={proposal.timelinePhases}
+          paymentSchedule={costingData?.paymentSchedule ?? []}
           viewMode={data.viewMode ?? "LIST"}
           onChange={({ phases, viewMode }) => {
             const timelineDurationSummary = summarizeTimelineDuration(phases);

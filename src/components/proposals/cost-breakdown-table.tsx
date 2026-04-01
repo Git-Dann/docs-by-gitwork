@@ -354,7 +354,7 @@ export function CostBreakdownTable({
               <tr>
                 <th className="text-left">Assignment</th>
                 <th className="text-left">Delivery focus</th>
-                <th className="text-right">Duration</th>
+                <th className="text-right">Timeline</th>
                 <th className="text-right">Monthly rate</th>
                 <th className="text-right">Subtotal</th>
                 <th className="text-right" />
@@ -453,10 +453,15 @@ export function CostBreakdownTable({
                     />
                   </td>
                   <td className="align-top text-right">
-                    <DurationInput
-                      value={item.quantity}
-                      onChange={(quantity) => updateItem(index, { quantity })}
-                    />
+                    <div className="flex flex-col items-end gap-1.5">
+                      <DurationInput
+                        value={item.quantity}
+                        onChange={(quantity) => updateItem(index, { quantity })}
+                      />
+                      <span className="text-[11px] text-[var(--text-3)]">
+                        {item.quantity === suggestedDurationMonths ? "Uses timeline default" : "Manual override"}
+                      </span>
+                    </div>
                   </td>
                   <td className="align-top text-right">
                     <MoneyInput
@@ -521,43 +526,43 @@ export function CostBreakdownTable({
         title="Payment schedule"
         description="Describe how the project is invoiced over time. Milestones can link directly to the delivery timeline so commercials and delivery stay in step."
       >
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <TextAreaField
-            label="Intro shown above the milestones"
-            value={value.paymentScheduleIntro}
-            onChange={(paymentScheduleIntro) => onChange({ ...value, paymentScheduleIntro })}
-            rows={3}
-            placeholder="Explain how the project is invoiced and how the milestones map to delivery."
-          />
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <NoticeCard>
-              <TextAreaField
-                label="Payment terms"
-                value={value.paymentTerms}
-                onChange={(paymentTerms) => onChange({ ...value, paymentTerms })}
-                rows={2}
-                placeholder="Invoices are issued with a 7-day payment term."
-              />
-            </NoticeCard>
-            <NoticeCard>
-              <TextAreaField
-                label="VAT note"
-                value={value.vatNotice}
-                onChange={(vatNotice) => onChange({ ...value, vatNotice })}
-                rows={2}
-                placeholder="All prices are exclusive of VAT."
-              />
-            </NoticeCard>
-            <NoticeCard>
-              <TextAreaField
-                label="IP transfer note"
-                value={value.ipTransferNotice}
-                onChange={(ipTransferNotice) => onChange({ ...value, ipTransferNotice })}
-                rows={2}
-                placeholder="IP transfers on receipt of the relevant payment."
-              />
-            </NoticeCard>
-          </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <NoticeCard>
+            <TextAreaField
+              label="Intro shown above the milestones"
+              value={value.paymentScheduleIntro}
+              onChange={(paymentScheduleIntro) => onChange({ ...value, paymentScheduleIntro })}
+              rows={3}
+              placeholder="Explain how the project is invoiced and how the milestones map to delivery."
+            />
+          </NoticeCard>
+          <NoticeCard>
+            <TextAreaField
+              label="Payment terms"
+              value={value.paymentTerms}
+              onChange={(paymentTerms) => onChange({ ...value, paymentTerms })}
+              rows={3}
+              placeholder="Invoices are issued with a 7-day payment term."
+            />
+          </NoticeCard>
+          <NoticeCard>
+            <TextAreaField
+              label="VAT note"
+              value={value.vatNotice}
+              onChange={(vatNotice) => onChange({ ...value, vatNotice })}
+              rows={3}
+              placeholder="All prices are exclusive of VAT."
+            />
+          </NoticeCard>
+          <NoticeCard>
+            <TextAreaField
+              label="IP transfer note"
+              value={value.ipTransferNotice}
+              onChange={(ipTransferNotice) => onChange({ ...value, ipTransferNotice })}
+              rows={3}
+              placeholder="IP transfers on receipt of the relevant payment."
+            />
+          </NoticeCard>
         </div>
 
         {value.paymentSchedule.length ? (
@@ -757,14 +762,14 @@ function DurationInput({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex min-h-9 w-[124px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
+    <div className="flex min-h-9 w-[148px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
       <input
         value={value}
         onChange={(event) => onChange(parseNumber(event.target.value, 0))}
         className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
       />
-      <span className="inline-flex min-w-[46px] items-center justify-center border-l border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
-        mos
+      <span className="inline-flex min-w-[70px] items-center justify-center border-l border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
+        months
       </span>
     </div>
   );
