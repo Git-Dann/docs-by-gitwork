@@ -30,20 +30,14 @@ export function ProposalBuilderPanel({
   });
 
   return (
-    <article className="proposal-form-theme app-card space-y-5 p-6 sm:p-7">
-      <div className="border-b border-[var(--border-2)] pb-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-2xl">
-            <p className="app-eyebrow">Builder</p>
-            <h3 className="mt-2 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-              {activeSection.title}
-            </h3>
-            {activeSection.description ? (
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{activeSection.description}</p>
-            ) : null}
-          </div>
-          <span className="app-chip">Module {activeEntry?.order ?? sectionIndex + 1}</span>
-        </div>
+    <article className="proposal-form-theme app-card space-y-5 p-5 sm:p-6">
+      <div>
+        <h3 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+          {activeSection.title}
+        </h3>
+        {activeSection.description ? (
+          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{activeSection.description}</p>
+        ) : null}
       </div>
 
       <div className="pt-1">

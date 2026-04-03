@@ -6,50 +6,77 @@ import type { CoverSectionData } from "@/types/proposal";
 export function CoverEditor({
   value,
   onChange,
+  preparedBy,
+  onPreparedByChange,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
+  preparedBy: string;
+  onPreparedByChange: (value: string) => void;
 }) {
   const { settings } = useLocalSettings();
   const confidentialityMode = value.confidentialityMode ?? "INTERNAL";
-  const confidentialityText = resolveConfidentialityText(confidentialityMode, settings, value.confidentiality);
+  const confidentialityText = resolveConfidentialityText(
+    confidentialityMode,
+    settings,
+    value.confidentiality,
+  );
 
   return (
-    <div className="space-y-5">
-      <div className="app-subtle-panel p-5">
-        <p className="app-eyebrow">Cover System</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Use the proposal and client metadata here. Template-owned branding and confidentiality defaults still come from Settings.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <section className="grid gap-4 md:grid-cols-2">
+        <Input
+          label="Proposal title"
+          value={value.proposalTitle}
+          onChange={(proposalTitle) => onChange({ ...value, proposalTitle })}
+        />
+        <Input label="Prepared by" value={preparedBy} onChange={onPreparedByChange} />
+        <Input
+          label="Client / company name"
+          value={value.clientName}
+          onChange={(clientName) => onChange({ ...value, clientName })}
+        />
+        <Input
+          label="Subtitle / version"
+          value={value.subtitle}
+          onChange={(subtitle) => onChange({ ...value, subtitle })}
+        />
+        <Input
+          label="Date"
+          value={value.date}
+          onChange={(date) => onChange({ ...value, date })}
+          type="date"
+        />
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Confidentiality</span>
+          <select
+            value={confidentialityMode}
+            onChange={(event) => {
+              const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
+              onChange({
+                ...value,
+                confidentialityMode: nextMode,
+                confidentiality: resolveConfidentialityText(
+                  nextMode,
+                  settings,
+                  value.confidentiality,
+                ),
+              });
+            }}
+            className="app-select w-full"
+          >
+            <option value="INTERNAL">Internal</option>
+            <option value="EXTERNAL">External</option>
+          </select>
+        </label>
+      </section>
 
-      <div className="app-subtle-panel p-5">
-        <div className="grid gap-5 md:grid-cols-2">
-          <Input
-            label="Proposal title"
-            value={value.proposalTitle}
-            onChange={(proposalTitle) => onChange({ ...value, proposalTitle })}
-          />
+      <section className="app-subtle-panel space-y-4 p-4">
+        <div className="grid gap-4 md:grid-cols-2">
           <Input
             label="Product / project name"
             value={value.productName}
             onChange={(productName) => onChange({ ...value, productName })}
-          />
-          <Input
-            label="Client / company name"
-            value={value.clientName}
-            onChange={(clientName) => onChange({ ...value, clientName })}
-          />
-          <Input
-            label="Subtitle / version"
-            value={value.subtitle}
-            onChange={(subtitle) => onChange({ ...value, subtitle })}
-          />
-          <Input
-            label="Date"
-            value={value.date}
-            onChange={(date) => onChange({ ...value, date })}
-            type="date"
           />
           <label className="space-y-1.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Cover lockup</span>
@@ -68,35 +95,17 @@ export function CoverEditor({
             </select>
           </label>
         </div>
-      </div>
 
-      <div className="app-subtle-panel space-y-3 p-5">
-        <label className="space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">Confidentiality audience</span>
-          <select
-            value={confidentialityMode}
-            onChange={(event) => {
-              const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
-              onChange({
-                ...value,
-                confidentialityMode: nextMode,
-                confidentiality: resolveConfidentialityText(nextMode, settings, value.confidentiality),
-              });
-            }}
-            className="app-select w-full"
-          >
-            <option value="INTERNAL">Internal</option>
-            <option value="EXTERNAL">External</option>
-          </select>
-        </label>
-
-        <div className="pt-2">
-          <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-4">
-            <p className="app-eyebrow">Resolved Copy</p>
-            <p className="text-sm text-[var(--text-2)]">{confidentialityText}</p>
-          </div>
+        <div className="rounded-[12px] border border-[var(--border-2)] bg-white px-4 py-4">
+          <p className="app-eyebrow">Resolved copy</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-2)]">{confidentialityText}</p>
         </div>
-      </div>
+
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Template-owned branding and confidentiality defaults still come from Settings, while
+          proposal metadata is controlled here in the builder.
+        </p>
+      </section>
     </div>
   );
 }

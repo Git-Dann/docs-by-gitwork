@@ -62,8 +62,12 @@ export function TimelineEditor({
       return;
     }
 
-    const oldIndex = sorted.findIndex((phase) => phase.id === active.id || phase.name === active.id);
-    const newIndex = sorted.findIndex((phase) => phase.id === over.id || phase.name === over.id);
+    const oldIndex = sorted.findIndex(
+      (phase) => phase.id === active.id || phase.name === active.id,
+    );
+    const newIndex = sorted.findIndex(
+      (phase) => phase.id === over.id || phase.name === over.id,
+    );
 
     if (oldIndex < 0 || newIndex < 0) {
       return;
@@ -81,17 +85,27 @@ export function TimelineEditor({
   }
 
   return (
-    <div className="app-subtle-panel space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="app-eyebrow">Timeline</p>
-          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Delivery timeline</p>
-          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
-            Build the proposal in phases. This is the clearest way to map back to Axis timeline details.
-          </p>
+          <p className="text-sm leading-6 text-[var(--text-3)]">Phases and delivery rhythm.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={viewMode}
+            onChange={(event) =>
+              onChange({
+                phases: sorted,
+                viewMode: event.target.value as "LIST" | "MILESTONE",
+              })
+            }
+            className="app-select-compact min-w-[170px]"
+          >
+            <option value="LIST">Simple list</option>
+            <option value="MILESTONE">Milestone timeline</option>
+          </select>
+
           <Button
             type="button"
             onClick={() =>
@@ -101,10 +115,10 @@ export function TimelineEditor({
               })
             }
             variant="secondary"
-            size="sm"
-            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            size="md"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
           >
-            Add phase
+            Add
           </Button>
         </div>
       </div>
@@ -114,14 +128,16 @@ export function TimelineEditor({
           items={sorted.map((phase) => phase.id ?? phase.name)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-3">
+          <div className="space-y-4">
             {sorted.map((phase, index) => (
               <PhaseItem
                 key={phase.id ?? `${phase.name}-${index}`}
                 id={phase.id ?? phase.name}
                 phase={phase}
                 index={index}
-                linkedMilestones={paymentSchedule.filter((entry) => entry.timelinePhaseId && entry.timelinePhaseId === phase.id)}
+                linkedMilestones={paymentSchedule.filter(
+                  (entry) => entry.timelinePhaseId && entry.timelinePhaseId === phase.id,
+                )}
                 onChange={(patch) => {
                   const next = sorted.map((entry, entryIndex) =>
                     entryIndex === index ? { ...entry, ...patch } : entry,
@@ -177,79 +193,96 @@ function PhaseItem({
     <article
       ref={setNodeRef}
       style={style}
-      className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+      className="rounded-[14px] border border-[var(--border-2)] bg-white px-4 py-4"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
             Phase {index + 1}
           </p>
+
+          <div className="mt-3 flex min-w-0 items-start gap-3">
+            <Button
+              type="button"
+              variant="utility"
+              size="icon-md"
+              className="mt-7 text-[var(--text-3)]"
+              aria-label="Drag phase"
+              {...attributes}
+              {...listeners}
+            >
+              <Bars3Icon className="h-4 w-4" />
+            </Button>
+
+            <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Phase title</span>
+                <input
+                  value={phase.name}
+                  onChange={(event) => onChange({ name: event.target.value })}
+                  className="app-input"
+                  placeholder="Discovery"
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Duration</span>
+                <input
+                  value={phase.duration}
+                  onChange={(event) => onChange({ duration: event.target.value })}
+                  className="app-input"
+                  placeholder="Week 1"
+                />
+              </label>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon-sm"
-            className="text-[var(--text-3)]"
-            aria-label="Drag phase"
-            {...attributes}
-            {...listeners}
-          >
-            <Bars3Icon className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            onClick={onRemove}
-            variant="danger"
-            size="icon-sm"
-            aria-label="Remove phase"
-          >
-            <TrashIcon className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={onRemove}
+          variant="utility"
+          size="icon-md"
+          className="mt-7 text-rose-600 hover:text-rose-700"
+          aria-label="Remove phase"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </Button>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <FieldInput
-          label="Phase name"
-          value={phase.name}
-          onChange={(name) => onChange({ name })}
-          placeholder="Discovery"
-        />
-        <FieldInput
-          label="Project window"
-          value={phase.duration}
-          onChange={(duration) => onChange({ duration })}
-          placeholder="Weeks 1-2"
-        />
+      <div className="mt-4 space-y-3">
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">
+            Deliverables (comma separated)
+          </span>
+          <input
+            value={phase.deliverables.join(", ")}
+            onChange={(event) =>
+              onChange({
+                deliverables: event.target.value
+                  .split(",")
+                  .map((entry) => entry.trim())
+                  .filter(Boolean),
+              })
+            }
+            className="app-input"
+            placeholder="Discovery brief, implementation plan"
+          />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Summary</span>
+          <textarea
+            value={phase.summary}
+            onChange={(event) => onChange({ summary: event.target.value })}
+            rows={3}
+            className="app-textarea min-h-[92px]"
+            placeholder="Describe the work, decision points, or outputs in this phase."
+          />
+        </label>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <FieldTextArea
-          label="What happens in this phase"
-          value={phase.summary}
-          onChange={(summary) => onChange({ summary })}
-          rows={4}
-          placeholder="Describe the work, decision points, or outputs in this phase."
-        />
-        <FieldTextArea
-          label="Key deliverables"
-          value={phase.deliverables.join("\n")}
-          onChange={(next) =>
-            onChange({
-              deliverables: next
-                .split("\n")
-                .map((entry) => entry.trim())
-                .filter(Boolean),
-            })
-          }
-          rows={4}
-          placeholder={"Discovery notes\nInteractive prototype\nLaunch checklist"}
-        />
-      </div>
-
-      <div className="mt-4 rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+      <div className="mt-4 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
             Linked milestones
@@ -264,7 +297,7 @@ function PhaseItem({
             {linkedMilestones.map((milestone) => (
               <div
                 key={milestone.id}
-                className="rounded-[14px] border border-[var(--border-2)] bg-white px-3 py-2"
+                className="rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2"
               >
                 <p className="text-sm font-semibold text-[var(--text-1)]">
                   {milestone.action || "Milestone"}
@@ -277,61 +310,11 @@ function PhaseItem({
           </div>
         ) : (
           <p className="mt-3 text-sm text-[var(--text-3)]">
-            Link a payment milestone to this phase in the payment schedule to keep delivery and commercials aligned.
+            Link a payment milestone to this phase in the payment schedule to keep delivery and
+            commercials aligned.
           </p>
         )}
       </div>
     </article>
-  );
-}
-
-function FieldInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs text-[var(--text-3)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="app-input-compact"
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function FieldTextArea({
-  label,
-  value,
-  onChange,
-  rows,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  rows: number;
-  placeholder?: string;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs text-[var(--text-3)]">{label}</span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={rows}
-        className="proposal-field-compact w-full"
-        placeholder={placeholder}
-      />
-    </label>
   );
 }

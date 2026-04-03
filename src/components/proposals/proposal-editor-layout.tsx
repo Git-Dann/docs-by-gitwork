@@ -24,7 +24,6 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
-  ExclamationTriangleIcon,
   HomeIcon,
   MinusIcon,
   PlusIcon,
@@ -399,16 +398,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
   const saveTone =
     saveState === "saved"
-      ? "text-emerald-700"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : saveState === "saving"
-        ? "text-amber-700"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
         : saveState === "error"
-          ? "text-rose-700"
-          : "text-[var(--text-3)]";
+          ? "border-rose-200 bg-rose-50 text-rose-700"
+          : "border-[var(--border-2)] bg-white text-[var(--text-3)]";
 
   return (
     <div className="space-y-5">
-      <section className="app-surface overflow-hidden px-6 py-6 sm:px-7">
+      <section className="app-card overflow-hidden px-4 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-3)]">
@@ -432,25 +431,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
 
-            <p className="app-eyebrow mt-5">Proposal Editor</p>
-            <h1 className="mt-3 text-[38px] font-semibold tracking-[-0.045em] text-[var(--text-1)] sm:text-[42px]">
+            <h1 className="mt-4 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)] sm:text-[34px]">
               {draft.title}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-              Build the live proposal structure, keep approvals current, and shape the client-facing document from one controlled workspace.
-            </p>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusBadge status={draft.status} />
               {draft.version ? <span className="app-chip">Version {draft.version}</span> : null}
-              {draft.clientName ? <span className="app-chip">{draft.clientName}</span> : null}
               <span className={cn("app-chip", saveTone)}>
-                {saveState === "saved" ? (
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
-                ) : saveState === "error" ? (
-                  <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                ) : null}
-                Last saved {lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString() : "Not yet"}
+                {saveState === "saved"
+                  ? `Saved ${lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "just now"}`
+                  : saveState === "saving"
+                    ? "Saving..."
+                    : saveState === "error"
+                      ? "Save failed"
+                      : "Waiting to save"}
               </span>
             </div>
           </div>
@@ -584,18 +579,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
         </div>
 
-        <div className="mt-6 border-t border-[var(--border-2)] pt-5">
-          <div className="inline-flex items-center rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
+        <div className="mt-5">
+          <div className="inline-flex items-center rounded-[10px] bg-[var(--surface-1)] p-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 className={cn(
-                  "inline-flex h-[42px] min-w-[128px] items-center justify-center rounded-[14px] px-5 text-sm font-medium transition outline-none",
+                  "inline-flex h-[36px] min-w-[92px] items-center justify-center rounded-[8px] px-4 text-sm font-medium transition outline-none",
                   "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   activeTab === tab.id
-                    ? "border border-[var(--border-2)] bg-white text-[var(--text-1)] shadow-[var(--shadow-xs)]"
-                    : "border border-transparent bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
+                    ? "bg-[rgba(51,92,255,0.14)] text-[var(--brand-700)]"
+                    : "bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
                 )}
                 onClick={() => setActiveTab(tab.id)}
               >
@@ -612,7 +607,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           <ProposalProofPanel proposalId={proposalId} proposalTitle={draft.title} />
         </div>
       ) : (
-        <section className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]">
+        <section className="grid gap-4 xl:grid-cols-[246px_minmax(0,1fr)]">
           <TableOfContentsCard
             sections={sectionEntries}
             activeId={activeEntry?.id ?? null}
@@ -672,16 +667,10 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="app-card p-5 xl:sticky xl:top-6">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] pb-4">
+    <aside className="app-card p-4 xl:sticky xl:top-6">
+      <div className="flex items-start justify-between gap-3 pb-2">
         <div>
-          <p className="app-eyebrow">Structure</p>
-          <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-            Table of contents
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-            Reorder modules, switch the active section, and keep the proposal structure intentional.
-          </p>
+          <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Contents</h2>
         </div>
         {editable ? (
           <details className="group relative">
@@ -690,7 +679,7 @@ function TableOfContentsCard({
                 variant: "secondary",
                 size: "md",
                 className:
-                  "list-none gap-2 rounded-xl px-3.5 [&::-webkit-details-marker]:hidden",
+                  "list-none gap-2 rounded-[8px] px-3 [&::-webkit-details-marker]:hidden",
               })}
             >
               <PlusIcon className="h-4 w-4" />
@@ -720,7 +709,7 @@ function TableOfContentsCard({
         editable ? (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={sections.map((entry) => entry.id)} strategy={verticalListSortingStrategy}>
-              <ol className="mt-5 space-y-1.5">
+              <ol className="mt-4 space-y-1.5">
                 {sections.map((entry) => (
                   <SortableTableOfContentsItem
                     key={entry.id}
@@ -734,14 +723,14 @@ function TableOfContentsCard({
             </SortableContext>
           </DndContext>
         ) : (
-          <ol className="mt-5 space-y-1.5">
+          <ol className="mt-4 space-y-1.5">
             {sections.map((entry) => (
               <li key={entry.id}>
                 <button
                   type="button"
                   onClick={() => onSelect(entry.id)}
                   className={cn(
-                    "w-full rounded-[14px] px-3 py-3 text-left text-base tracking-[-0.01em] transition",
+                    "w-full rounded-[10px] px-3 py-3 text-left text-sm tracking-[-0.01em] transition",
                     entry.id === activeId
                       ? "bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
                       : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
@@ -788,7 +777,7 @@ function SortableTableOfContentsItem({
     >
       <div
         className={cn(
-          "flex items-center gap-2 rounded-[16px] border px-3 py-3 transition",
+          "flex items-center gap-2 rounded-[10px] border px-2.5 py-2.5 transition",
           isActive
             ? "border-[var(--border-2)] bg-[var(--surface-1)]"
             : "border-transparent hover:bg-[var(--surface-1)]",
@@ -798,7 +787,7 @@ function SortableTableOfContentsItem({
         <button
           type="button"
           aria-label={`Reorder ${entry.section.title}`}
-          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[10px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
+          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
@@ -809,7 +798,7 @@ function SortableTableOfContentsItem({
           type="button"
           onClick={() => onSelect(entry.id)}
           className={cn(
-            "min-w-0 flex-1 text-left text-base tracking-[-0.01em]",
+            "min-w-0 flex-1 text-left text-sm tracking-[-0.01em]",
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
           )}
         >
@@ -823,7 +812,7 @@ function SortableTableOfContentsItem({
             event.stopPropagation();
             onDelete?.(entry.id);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
         >
           <MinusIcon className="h-4 w-4" />
         </button>

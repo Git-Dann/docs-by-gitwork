@@ -3,31 +3,31 @@ import { cn, statusLabel } from "@/lib/format";
 
 const statusBadgeTones: Record<DocumentStatus, { wrapper: string; dot: string }> = {
   DRAFT: {
-    wrapper: "border-slate-200 bg-slate-50 text-slate-700",
-    dot: "bg-slate-400",
+    wrapper: "border-violet-200 bg-white text-violet-700",
+    dot: "bg-violet-500",
   },
   PRODUCT_SIGN_OFF: {
-    wrapper: "border-sky-200 bg-sky-50 text-sky-800",
+    wrapper: "border-sky-200 bg-white text-sky-800",
     dot: "bg-sky-500",
   },
   TECH_SIGN_OFF: {
-    wrapper: "border-violet-200 bg-violet-50 text-violet-800",
-    dot: "bg-violet-500",
+    wrapper: "border-emerald-200 bg-white text-emerald-800",
+    dot: "bg-emerald-500",
   },
   IN_REVIEW: {
-    wrapper: "border-amber-200 bg-amber-50 text-amber-800",
+    wrapper: "border-amber-200 bg-white text-amber-800",
     dot: "bg-amber-500",
   },
   APPROVED: {
-    wrapper: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    wrapper: "border-emerald-200 bg-white text-emerald-800",
     dot: "bg-emerald-500",
   },
   SENT: {
-    wrapper: "border-sky-200 bg-sky-50 text-sky-800",
+    wrapper: "border-sky-200 bg-white text-sky-800",
     dot: "bg-sky-500",
   },
   ARCHIVED: {
-    wrapper: "border-zinc-200 bg-zinc-100 text-zinc-700",
+    wrapper: "border-zinc-200 bg-white text-zinc-700",
     dot: "bg-zinc-400",
   },
 };
@@ -38,7 +38,7 @@ export function StatusBadge({ status, className }: { status: DocumentStatus; cla
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         tone.wrapper,
         className,
       )}

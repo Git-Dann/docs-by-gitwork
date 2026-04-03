@@ -2,7 +2,7 @@
 
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { IconSelect } from "@/components/proposals/icon-select";
+import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
 import { useLocalSettings } from "@/lib/local-settings";
 import type { ObjectiveItem } from "@/types/proposal";
 
@@ -43,22 +43,21 @@ export function ObjectivesEditor({
   }
 
   return (
-    <div className="app-subtle-panel space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="app-eyebrow">Objectives</p>
-          <p className="mt-2 text-lg font-semibold text-[var(--text-1)]">Outcome statements</p>
+          <p className="text-sm leading-6 text-[var(--text-3)]">Key outcomes this proposal is designed to achieve.</p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             onClick={() => onChange([...safeItems, createObjective()])}
             variant="secondary"
-            size="sm"
-            className="whitespace-nowrap"
-            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            size="md"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
           >
-            Add objective
+            Add
           </Button>
 
           <select
@@ -80,7 +79,7 @@ export function ObjectivesEditor({
 
               event.target.value = "";
             }}
-            className="app-select-compact min-w-[220px] text-sm"
+            className="app-select-compact min-w-[180px]"
           >
             <option value="">Use snippet...</option>
             {snippets.map((snippet, index) => (
@@ -93,15 +92,12 @@ export function ObjectivesEditor({
       </div>
 
       {safeItems.length ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {safeItems.map((item, index) => (
-            <article
-              key={item.id ?? `${item.title}-${index}`}
-              className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
-            >
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_auto]">
+            <article key={item.id ?? `${item.title}-${index}`} className="space-y-4 border-b border-[rgba(0,0,0,0.08)] pb-4 last:border-b-0 last:pb-0">
+              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
                 <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Title</span>
+                  <span className="text-sm font-medium text-[var(--text-2)]">Title</span>
                   <input
                     value={item.title}
                     onChange={(event) =>
@@ -111,13 +107,14 @@ export function ObjectivesEditor({
                         ),
                       )
                     }
-                    className="app-input-compact"
+                    className="app-input"
+                    placeholder={`Objective ${index + 1}`}
                   />
                 </label>
 
                 <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Description</span>
-                  <input
+                  <span className="text-sm font-medium text-[var(--text-2)]">Description</span>
+                  <textarea
                     value={item.description}
                     onChange={(event) =>
                       onChange(
@@ -126,12 +123,47 @@ export function ObjectivesEditor({
                         ),
                       )
                     }
-                    className="app-input-compact"
+                    rows={3}
+                    className="app-textarea min-h-[92px]"
+                    placeholder="Describe the outcome this objective supports."
                   />
                 </label>
 
+                <div className="flex items-start justify-end gap-1 pt-7">
+                  <Button
+                    type="button"
+                    onClick={() => move(index, -1)}
+                    variant="utility"
+                    size="icon-md"
+                    aria-label="Move objective up"
+                  >
+                    <ArrowUpIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => move(index, 1)}
+                    variant="utility"
+                    size="icon-md"
+                    aria-label="Move objective down"
+                  >
+                    <ArrowDownIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
+                    variant="utility"
+                    size="icon-md"
+                    className="text-rose-600 hover:text-rose-700"
+                    aria-label="Delete objective"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
                 <label className="space-y-1.5">
-                  <span className="text-xs text-[var(--text-3)]">Icon</span>
+                  <span className="text-sm font-medium text-[var(--text-2)]">Icon</span>
                   <IconSelect
                     value={item.icon}
                     onChange={(icon) =>
@@ -144,34 +176,14 @@ export function ObjectivesEditor({
                   />
                 </label>
 
-                <div className="flex items-end justify-end gap-1.5">
-                  <Button
-                    type="button"
-                    onClick={() => move(index, -1)}
-                    variant="secondary"
-                    size="icon-md"
-                    aria-label="Move objective up"
-                  >
-                    <ArrowUpIcon className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => move(index, 1)}
-                    variant="secondary"
-                    size="icon-md"
-                    aria-label="Move objective down"
-                  >
-                    <ArrowDownIcon className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
-                    variant="danger"
-                    size="icon-md"
-                    aria-label="Delete objective"
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </Button>
+                <div className="flex items-center gap-2 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3 text-sm text-[var(--text-3)]">
+                  {(() => {
+                    const SelectedIcon = getObjectiveIcon(item.icon);
+                    return <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />;
+                  })()}
+                  <span>
+                    Preview icon: <span className="font-medium text-[var(--text-2)]">{item.icon || "sparkles"}</span>
+                  </span>
                 </div>
               </div>
             </article>

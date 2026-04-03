@@ -49,7 +49,22 @@ export function ProposalSectionEditor({
 
   switch (section.key) {
     case "cover":
-      return <CoverEditor value={section.data as never} onChange={updateSectionData as never} />;
+      return (
+        <CoverEditor
+          value={section.data as never}
+          onChange={updateSectionData as never}
+          preparedBy={proposal.metadata.owner}
+          onPreparedByChange={(owner) =>
+            onProposalChange({
+              ...proposal,
+              metadata: {
+                ...proposal.metadata,
+                owner,
+              },
+            })
+          }
+        />
+      );
 
     case "introduction": {
       const data = section.data as {
@@ -70,6 +85,7 @@ export function ProposalSectionEditor({
             value={data.summary}
             onChange={(summary) => updateSectionData({ ...data, summary })}
           />
+          <EditorHint message="Section graphics are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
@@ -90,27 +106,32 @@ export function ProposalSectionEditor({
             value={data.platformDescription}
             onChange={(platformDescription) => updateSectionData({ ...data, platformDescription })}
           />
-          <Input
-            label="Who it is for"
-            value={data.audience}
-            onChange={(audience) => updateSectionData({ ...data, audience })}
-          />
-          <Input
-            label="Key value proposition"
-            value={data.valueProposition}
-            onChange={(valueProposition) => updateSectionData({ ...data, valueProposition })}
-          />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Input
+              label="Who it is for"
+              value={data.audience}
+              onChange={(audience) => updateSectionData({ ...data, audience })}
+            />
+            <Input
+              label="Key value proposition"
+              value={data.valueProposition}
+              onChange={(valueProposition) => updateSectionData({ ...data, valueProposition })}
+            />
+          </div>
           <PlatformSupportField
             label="Platforms supported"
             value={data.platformsSupported}
             onChange={(platformsSupported) => updateSectionData({ ...data, platformsSupported })}
           />
+          <EditorHint message="Architecture and workflow visuals are managed in Supporting Links & Assets." />
         </SimpleForm>
       );
     }
 
     case "objectives": {
-      const data = section.data as { items: ProposalDocument["sections"][number]["data"] extends { items: infer T } ? T : never };
+      const data = section.data as {
+        items: ProposalDocument["sections"][number]["data"] extends { items: infer T } ? T : never;
+      };
       return (
         <ObjectivesEditor
           items={(data.items as never[]) ?? []}
@@ -120,7 +141,9 @@ export function ProposalSectionEditor({
     }
 
     case "touchpoints": {
-      const data = section.data as { items: ProposalDocument["sections"][number]["data"] extends { items: infer T } ? T : never };
+      const data = section.data as {
+        items: ProposalDocument["sections"][number]["data"] extends { items: infer T } ? T : never;
+      };
       return (
         <TouchpointEditor
           items={(data.items as never[]) ?? []}
@@ -177,18 +200,23 @@ export function ProposalSectionEditor({
             currency: data.currency ?? "GBP",
             discount: data.discount ?? 0,
             taxRate: data.taxRate ?? 0,
-            monthlyCostSummary: data.monthlyCostSummary ?? defaultCostingData.monthlyCostSummary,
+            monthlyCostSummary:
+              data.monthlyCostSummary ?? defaultCostingData.monthlyCostSummary,
             durationSummary: data.durationSummary ?? defaultCostingData.durationSummary,
             totalCostLabel: data.totalCostLabel ?? defaultCostingData.totalCostLabel,
-            supportingNarrative: data.supportingNarrative ?? defaultCostingData.supportingNarrative,
-            paymentScheduleIntro: data.paymentScheduleIntro ?? defaultCostingData.paymentScheduleIntro,
+            supportingNarrative:
+              data.supportingNarrative ?? defaultCostingData.supportingNarrative,
+            paymentScheduleIntro:
+              data.paymentScheduleIntro ?? defaultCostingData.paymentScheduleIntro,
             paymentTerms: data.paymentTerms ?? defaultCostingData.paymentTerms,
             vatNotice: data.vatNotice ?? defaultCostingData.vatNotice,
-            ipTransferNotice: data.ipTransferNotice ?? defaultCostingData.ipTransferNotice,
+            ipTransferNotice:
+              data.ipTransferNotice ?? defaultCostingData.ipTransferNotice,
             teamAllocations: data.teamAllocations ?? defaultCostingData.teamAllocations,
             paymentSchedule: data.paymentSchedule ?? defaultCostingData.paymentSchedule,
             additionalNotes: data.additionalNotes ?? defaultCostingData.additionalNotes,
-            assignmentTimelineMode: data.assignmentTimelineMode ?? defaultCostingData.assignmentTimelineMode,
+            assignmentTimelineMode:
+              data.assignmentTimelineMode ?? defaultCostingData.assignmentTimelineMode,
             items: proposal.costLineItems,
             timelinePhases: proposal.timelinePhases,
           }}
@@ -383,9 +411,7 @@ function summarizeTimelineDuration(phases: ProposalDocument["timelinePhases"]) {
     return "";
   }
 
-  const durations = phases
-    .map((phase) => phase.duration.trim())
-    .filter(Boolean);
+  const durations = phases.map((phase) => phase.duration.trim()).filter(Boolean);
 
   if (!durations.length) {
     return "";
@@ -395,7 +421,7 @@ function summarizeTimelineDuration(phases: ProposalDocument["timelinePhases"]) {
 }
 
 function SimpleForm({ children }: { children: React.ReactNode }) {
-  return <div className="app-subtle-panel space-y-5 p-5">{children}</div>;
+  return <div className="space-y-4">{children}</div>;
 }
 
 function Input({
@@ -441,6 +467,14 @@ function TextArea({
         className="app-textarea"
       />
     </label>
+  );
+}
+
+function EditorHint({ message }: { message: string }) {
+  return (
+    <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-3 text-sm leading-6 text-[var(--text-3)]">
+      {message}
+    </p>
   );
 }
 

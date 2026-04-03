@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --surface-canvas: #f5f7fa;
+  --surface-canvas: #ffffff;
   --surface-0: #ffffff;
   --surface-1: #fafafa;
-  --surface-2: #f8fafc;
-  --surface-brand: #f5f3ff;
-  --surface-brand-soft: #f9f5ff;
-  --text-1: #181d27;
-  --text-2: #414651;
-  --text-3: #535862;
-  --text-4: #717680;
-  --border-1: #d5d7da;
-  --border-2: #e9eaeb;
+  --surface-2: #f5f5f5;
+  --surface-brand: #eff4ff;
+  --surface-brand-soft: #f5f8ff;
+  --text-1: #171717;
+  --text-2: #404040;
+  --text-3: #525252;
+  --text-4: #737373;
+  --border-1: #d4d4d4;
+  --border-2: #e5e5e5;
   --border-3: rgba(10, 13, 18, 0.08);
-  --brand-500: #9e77ed;
-  --brand-600: #7f56d9;
-  --brand-700: #6941c6;
-  --brand-800: #53389e;
+  --brand-500: #5b7cff;
+  --brand-600: #335cff;
+  --brand-700: #2447d5;
+  --brand-800: #1e3aa9;
   --success-500: #17b26a;
   --success-50: #ecfdf3;
   --warning-500: #dc6803;
@@ -60,16 +60,14 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(158, 119, 237, 0.08), transparent 28%),
-    linear-gradient(180deg, #f7f8fb 0%, #f4f6f8 100%);
+  background: #ffffff;
   color: var(--text-1);
   font-family: "Inter", "Segoe UI", sans-serif;
   line-height: 1.45;
 }
 
 ::selection {
-  background: rgba(127, 86, 217, 0.18);
+  background: rgba(51, 92, 255, 0.16);
 }
 
 a {
@@ -80,14 +78,14 @@ a {
 @layer components {
   .app-surface {
     border: 1px solid var(--border-2);
-    border-radius: 24px;
+    border-radius: 16px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
 
   .app-card {
     border: 1px solid var(--border-2);
-    border-radius: 20px;
+    border-radius: 16px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
@@ -100,15 +98,15 @@ a {
 
   .app-subtle-panel {
     border: 1px solid var(--border-2);
-    border-radius: 18px;
-    background: linear-gradient(180deg, #ffffff 0%, var(--surface-1) 100%);
+    border-radius: 14px;
+    background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
 
   .app-eyebrow {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-4);
   }
@@ -121,12 +119,12 @@ a {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 24px;
+    min-height: 22px;
     border: 1px solid var(--border-2);
     border-radius: 999px;
     background: var(--surface-0);
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 0 8px;
+    font-size: 11px;
     font-weight: 500;
     color: var(--text-3);
   }
@@ -134,7 +132,7 @@ a {
   .app-table-shell {
     overflow: hidden;
     border: 1px solid var(--border-2);
-    border-radius: 20px;
+    border-radius: 16px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
@@ -146,18 +144,16 @@ a {
   }
 
   .app-table thead th {
-    padding: 14px 20px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border-3);
     font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-weight: 500;
     color: var(--text-4);
     background: var(--surface-0);
   }
 
   .app-table tbody td {
-    padding: 18px 20px;
+    padding: 14px 16px;
     border-top: 1px solid var(--border-3);
     color: var(--text-2);
     vertical-align: middle;
@@ -212,7 +208,7 @@ a {
 
   .app-button:focus-visible {
     box-shadow:
-      0 0 0 4px rgba(158, 119, 237, 0.12),
+      0 0 0 4px rgba(51, 92, 255, 0.12),
       var(--shadow-xs);
   }
 
@@ -222,9 +218,9 @@ a {
 
   .app-button-primary {
     background: var(--brand-600);
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: var(--brand-600);
     color: #ffffff;
-    box-shadow: var(--shadow-skeuomorphic);
+    box-shadow: var(--shadow-xs);
   }
 
   a.app-button-primary,
@@ -234,11 +230,12 @@ a {
 
   .app-button-primary:hover:not(:disabled) {
     background: var(--brand-700);
+    border-color: var(--brand-700);
   }
 
   .app-button-primary:disabled {
-    background: #c9b7f7;
-    border-color: rgba(255, 255, 255, 0.18);
+    background: #9db0ff;
+    border-color: #9db0ff;
     color: #ffffff;
     box-shadow: none;
   }
@@ -247,7 +244,7 @@ a {
     background: var(--surface-0);
     border-color: var(--border-1);
     color: var(--text-2);
-    box-shadow: var(--shadow-skeuomorphic);
+    box-shadow: var(--shadow-xs);
   }
 
   .app-button-secondary:hover:not(:disabled) {
@@ -350,15 +347,15 @@ a {
   }
 
   .app-button-md {
-    min-height: 40px;
+    min-height: 36px;
     border-radius: 8px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .app-button-lg {
-    min-height: 44px;
-    border-radius: 10px;
+    min-height: 40px;
+    border-radius: 8px;
     padding: 0 16px;
     font-size: 14px;
   }
@@ -371,9 +368,9 @@ a {
   }
 
   .app-button-icon-md {
-    height: 40px;
-    width: 40px;
-    border-radius: 10px;
+    height: 36px;
+    width: 36px;
+    border-radius: 8px;
     padding: 0;
   }
 
@@ -419,16 +416,16 @@ a {
   .app-select,
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
   .proposal-form-theme select {
-    min-height: 40px;
-    padding: 0 14px;
+    min-height: 36px;
+    padding: 0 12px;
     font-size: 14px;
     line-height: 20px;
   }
 
   .app-textarea,
   .proposal-form-theme textarea {
-    min-height: 140px;
-    padding: 12px 14px;
+    min-height: 120px;
+    padding: 10px 12px;
     font-size: 14px;
     line-height: 20px;
     resize: vertical;
@@ -470,7 +467,7 @@ a {
   .proposal-form-theme textarea:focus {
     border-color: var(--brand-500);
     box-shadow:
-      0 0 0 4px rgba(158, 119, 237, 0.12),
+      0 0 0 4px rgba(51, 92, 255, 0.12),
       var(--shadow-xs);
   }
 

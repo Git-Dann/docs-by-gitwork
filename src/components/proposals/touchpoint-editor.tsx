@@ -4,6 +4,18 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/reac
 import { Button } from "@/components/ui/button";
 import type { TouchpointItem } from "@/types/proposal";
 
+const touchpointSnippets = [
+  "Authentication and profiles",
+  "Onboarding and consent",
+  "Submission engine",
+  "Therapist / operator dashboard",
+  "Response delivery",
+  "Admin dashboard",
+  "Payments and discounts",
+  "Re-engagement system",
+  "Partner SDK / integrations",
+];
+
 export function TouchpointEditor({
   items,
   onChange,
@@ -53,13 +65,11 @@ export function TouchpointEditor({
   }
 
   return (
-    <div className="app-subtle-panel space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="app-eyebrow">Scope</p>
-          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Scope & delivery</p>
-          <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
-            Use one card per workstream. This is the clearest match to Axis scope, deliverables, and delivery approach.
+          <p className="text-sm leading-6 text-[var(--text-3)]">
+            Core workstreams and delivery focus areas.
           </p>
         </div>
 
@@ -68,33 +78,115 @@ export function TouchpointEditor({
             type="button"
             onClick={() => onChange([...safeItems, createWorkstream()])}
             variant="secondary"
-            size="xs"
-            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            size="md"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
           >
-            Add workstream
+            Add
           </Button>
+
+          <select
+            defaultValue=""
+            onChange={(event) => {
+              const title = event.target.value;
+              if (title) {
+                onChange([...safeItems, createWorkstream(title)]);
+              }
+
+              event.target.value = "";
+            }}
+            className="app-select-compact min-w-[180px]"
+          >
+            <option value="">Add snippet...</option>
+            {touchpointSnippets.map((snippet) => (
+              <option key={snippet} value={snippet}>
+                {snippet}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
       {safeItems.length ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {safeItems.map((touchpoint, index) => (
             <article
               key={touchpoint.id ?? `${touchpoint.title}-${index}`}
-              className="rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+              className="space-y-4 rounded-[14px] border border-[var(--border-2)] px-4 py-4"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="w-full space-y-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
                     Workstream {index + 1}
                   </p>
+
+                  <label className="block max-w-[280px] space-y-1.5">
+                    <span className="text-sm font-medium text-[var(--text-2)]">Title</span>
+                    <input
+                      value={touchpoint.title}
+                      onChange={(event) => patch(index, { title: event.target.value })}
+                      className="app-input"
+                      placeholder={`Scoping Item ${String(index + 1).padStart(3, "0")}`}
+                    />
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium text-[var(--text-2)]">Description</span>
+                    <textarea
+                      value={touchpoint.summary}
+                      onChange={(event) => patch(index, { summary: event.target.value })}
+                      rows={3}
+                      className="app-textarea min-h-[92px]"
+                      placeholder="Describe the workstream or touchpoint."
+                    />
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium text-[var(--text-2)]">
+                      Features (comma separated)
+                    </span>
+                    <input
+                      value={touchpoint.features.join(", ")}
+                      onChange={(event) =>
+                        patch(index, {
+                          features: event.target.value
+                            .split(",")
+                            .map((entry) => entry.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      className="app-input"
+                      placeholder="Multi-step capture flow, validation rules"
+                    />
+                  </label>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium text-[var(--text-2)]">Notes</span>
+                      <input
+                        value={touchpoint.notes ?? ""}
+                        onChange={(event) => patch(index, { notes: event.target.value })}
+                        className="app-input"
+                        placeholder="Optional delivery note"
+                      />
+                    </label>
+
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium text-[var(--text-2)]">Callout</span>
+                      <input
+                        value={touchpoint.callout ?? ""}
+                        onChange={(event) => patch(index, { callout: event.target.value })}
+                        className="app-input"
+                        placeholder="Optional callout"
+                      />
+                    </label>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 pt-5">
                   <Button
                     type="button"
                     onClick={() => move(index, -1)}
-                    variant="secondary"
+                    variant="utility"
                     size="icon-md"
                     aria-label="Move workstream up"
                   >
@@ -103,7 +195,7 @@ export function TouchpointEditor({
                   <Button
                     type="button"
                     onClick={() => move(index, 1)}
-                    variant="secondary"
+                    variant="utility"
                     size="icon-md"
                     aria-label="Move workstream down"
                   >
@@ -111,60 +203,16 @@ export function TouchpointEditor({
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
-                    variant="danger"
+                    onClick={() =>
+                      onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))
+                    }
+                    variant="utility"
                     size="icon-md"
+                    className="text-rose-600 hover:text-rose-700"
                     aria-label="Delete workstream"
                   >
                     <TrashIcon className="h-4 w-4" />
                   </Button>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <FieldInput
-                  label="Workstream title"
-                  value={touchpoint.title}
-                  onChange={(title) => patch(index, { title })}
-                  placeholder="Core app delivery"
-                />
-                <FieldInput
-                  label="Included scope"
-                  value={touchpoint.summary}
-                  onChange={(summary) => patch(index, { summary })}
-                  placeholder="What this workstream covers"
-                />
-              </div>
-
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <FieldTextArea
-                  label="Key deliverables"
-                  value={touchpoint.features.join("\n")}
-                  onChange={(next) =>
-                    patch(index, {
-                      features: next
-                        .split("\n")
-                        .map((entry) => entry.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder={"Wireframes\nAcceptance criteria\nQA-ready build"}
-                  rows={5}
-                />
-                <div className="space-y-3">
-                  <FieldTextArea
-                    label="Delivery notes"
-                    value={touchpoint.notes ?? ""}
-                    onChange={(notes) => patch(index, { notes })}
-                    placeholder="Dependencies, handoffs, or implementation notes"
-                    rows={3}
-                  />
-                  <FieldInput
-                    label="Optional callout"
-                    value={touchpoint.callout ?? ""}
-                    onChange={(callout) => patch(index, { callout })}
-                    placeholder="Anything worth highlighting in the proposal"
-                  />
                 </div>
               </div>
             </article>
@@ -172,60 +220,10 @@ export function TouchpointEditor({
         </div>
       ) : (
         <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-          No workstreams yet. Add a workstream to define in-scope delivery, outputs, and delivery notes.
+          No workstreams yet. Add a workstream to define in-scope delivery, outputs, and delivery
+          notes.
         </p>
       )}
     </div>
-  );
-}
-
-function FieldInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs text-[var(--text-3)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="app-input-compact"
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function FieldTextArea({
-  label,
-  value,
-  onChange,
-  placeholder,
-  rows,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows: number;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs text-[var(--text-3)]">{label}</span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={rows}
-        className="proposal-field-compact w-full"
-        placeholder={placeholder}
-      />
-    </label>
   );
 }
