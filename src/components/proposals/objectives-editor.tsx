@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
 import type { ObjectiveItem } from "@/types/proposal";
@@ -13,19 +13,6 @@ export function ObjectivesEditor({
   onChange: (items: ObjectiveItem[]) => void;
 }) {
   const safeItems = items ?? [];
-
-  function createObjective(overrides?: Partial<ObjectiveItem>) {
-    return {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2, 10),
-      title: "",
-      description: "",
-      icon: "sparkles",
-      ...overrides,
-    };
-  }
 
   function move(index: number, delta: -1 | 1) {
     const targetIndex = index + delta;
@@ -41,18 +28,6 @@ export function ObjectivesEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          onClick={() => onChange([...safeItems, createObjective()])}
-          variant="secondary"
-          size="md"
-          leadingIcon={<PlusIcon className="h-4 w-4" />}
-        >
-          Add
-        </Button>
-      </div>
-
       {safeItems.length ? (
         <div className="space-y-4">
           {safeItems.map((item, index) => (

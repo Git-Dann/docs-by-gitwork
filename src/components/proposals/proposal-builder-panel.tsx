@@ -1,7 +1,16 @@
 "use client";
 
+import { PlusIcon } from "@heroicons/react/24/outline";
+import type { ReactNode } from "react";
 import { ProposalSectionEditor } from "@/components/proposals/proposal-section-editor";
-import type { ProposalDocument, ProposalSection } from "@/types/proposal";
+import { Button } from "@/components/ui/button";
+import type {
+  ObjectiveItem,
+  ProposalDocument,
+  ProposalSection,
+  TimelinePhaseInput,
+  TouchpointItem,
+} from "@/types/proposal";
 
 export function ProposalBuilderPanel({
   proposal,
@@ -29,15 +38,144 @@ export function ProposalBuilderPanel({
     return (section.id ?? section.key) === activeEntry.id;
   });
 
+  function createDraftId() {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2, 10);
+  }
+
+  let headerAction: ReactNode = null;
+
+  if (sectionIndex >= 0) {
+    if (activeSection.key === "objectives") {
+      const data = activeSection.data as { items?: ObjectiveItem[] };
+      headerAction = (
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+          onClick={() =>
+            onProposalChange({
+              ...proposal,
+              sections: proposal.sections.map((entry, index) =>
+                index === sectionIndex
+                  ? {
+                      ...entry,
+                      data: {
+                        ...data,
+                        items: [
+                          ...(data.items ?? []),
+                          {
+                            id: createDraftId(),
+                            title: "",
+                            description: "",
+                            icon: "sparkles",
+                          } satisfies ObjectiveItem,
+                        ],
+                      },
+                    }
+                  : entry,
+              ),
+            })
+          }
+        >
+          Add
+        </Button>
+      );
+    }
+
+    if (activeSection.key === "touchpoints") {
+      const data = activeSection.data as { items?: TouchpointItem[] };
+      headerAction = (
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+          onClick={() =>
+            onProposalChange({
+              ...proposal,
+              sections: proposal.sections.map((entry, index) =>
+                index === sectionIndex
+                  ? {
+                      ...entry,
+                      data: {
+                        ...data,
+                        items: [
+                          ...(data.items ?? []),
+                          {
+                            id: createDraftId(),
+                            title: "",
+                            summary: "",
+                            features: [],
+                            notes: "",
+                            callout: "",
+                          } satisfies TouchpointItem,
+                        ],
+                      },
+                    }
+                  : entry,
+              ),
+            })
+          }
+        >
+          Add
+        </Button>
+      );
+    }
+
+    if (activeSection.key === "timeline") {
+      const data = activeSection.data as { viewMode?: "LIST" | "MILESTONE" };
+      const nextSortOrder = [...proposal.timelinePhases].sort(
+        (left, right) => left.sortOrder - right.sortOrder,
+      ).length;
+
+      headerAction = (
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+          onClick={() =>
+            onProposalChange({
+              ...proposal,
+              timelinePhases: [
+                ...proposal.timelinePhases,
+                {
+                  id: createDraftId(),
+                  name: "",
+                  duration: "",
+                  summary: "",
+                  deliverables: [],
+                  sortOrder: nextSortOrder,
+                  viewMode: data.viewMode ?? "LIST",
+                } satisfies TimelinePhaseInput,
+              ],
+            })
+          }
+        >
+          Add
+        </Button>
+      );
+    }
+  }
+
   return (
     <article className="proposal-form-theme app-card space-y-5 p-5 sm:p-6">
-      <div>
-        <h3 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-          {activeSection.title}
-        </h3>
-        {activeSection.description ? (
-          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{activeSection.description}</p>
-        ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-3xl">
+          <h3 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+            {activeSection.title}
+          </h3>
+          {activeSection.description ? (
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+              {activeSection.description}
+            </p>
+          ) : null}
+        </div>
+
+        {headerAction ? <div className="pt-1">{headerAction}</div> : null}
       </div>
 
       <div className="pt-1">

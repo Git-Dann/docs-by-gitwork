@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import type { TouchpointItem } from "@/types/proposal";
 
@@ -12,20 +12,6 @@ export function TouchpointEditor({
   onChange: (items: TouchpointItem[]) => void;
 }) {
   const safeItems = items ?? [];
-
-  function createWorkstream(title = ""): TouchpointItem {
-    return {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2, 10),
-      title,
-      summary: "",
-      features: [],
-      notes: "",
-      callout: "",
-    };
-  }
 
   function move(index: number, delta: -1 | 1) {
     const nextIndex = index + delta;
@@ -54,18 +40,6 @@ export function TouchpointEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          onClick={() => onChange([...safeItems, createWorkstream()])}
-          variant="secondary"
-          size="md"
-          leadingIcon={<PlusIcon className="h-4 w-4" />}
-        >
-          Add
-        </Button>
-      </div>
-
       {safeItems.length ? (
         <div className="space-y-4">
           {safeItems.map((touchpoint, index) => (

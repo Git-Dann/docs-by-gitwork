@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bars3Icon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import type { PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
 
@@ -39,22 +39,6 @@ export function TimelineEditor({
   );
 
   const sorted = [...phases].sort((left, right) => left.sortOrder - right.sortOrder);
-
-  function createPhase(initialValues?: Partial<TimelinePhaseInput>): TimelinePhaseInput {
-    return {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2, 10),
-      name: "",
-      duration: "",
-      summary: "",
-      deliverables: [],
-      sortOrder: sorted.length,
-      viewMode,
-      ...initialValues,
-    };
-  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -86,23 +70,6 @@ export function TimelineEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          onClick={() =>
-            onChange({
-              viewMode,
-              phases: [...sorted, createPhase()],
-            })
-          }
-          variant="secondary"
-          size="md"
-          leadingIcon={<PlusIcon className="h-4 w-4" />}
-        >
-          Add
-        </Button>
-      </div>
-
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext
           items={sorted.map((phase) => phase.id ?? phase.name)}
