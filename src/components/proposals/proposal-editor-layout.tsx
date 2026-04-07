@@ -607,7 +607,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           <ProposalProofPanel proposalId={proposalId} proposalTitle={draft.title} />
         </div>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-[246px_minmax(0,1fr)]">
+        <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
           <TableOfContentsCard
             sections={sectionEntries}
             activeId={activeEntry?.id ?? null}
@@ -798,11 +798,13 @@ function SortableTableOfContentsItem({
           type="button"
           onClick={() => onSelect(entry.id)}
           className={cn(
-            "min-w-0 flex-1 text-left text-sm tracking-[-0.01em]",
+            "min-w-0 flex-1 overflow-hidden text-left text-sm tracking-[-0.01em]",
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
           )}
         >
-          {entry.order}. {entry.section.title}
+          <span className="block truncate whitespace-nowrap">
+            {entry.order}. {entry.section.title}
+          </span>
         </button>
 
         <button

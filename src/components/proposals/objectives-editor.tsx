@@ -3,7 +3,6 @@
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
-import { useLocalSettings } from "@/lib/local-settings";
 import type { ObjectiveItem } from "@/types/proposal";
 
 export function ObjectivesEditor({
@@ -14,8 +13,6 @@ export function ObjectivesEditor({
   onChange: (items: ObjectiveItem[]) => void;
 }) {
   const safeItems = items ?? [];
-  const { settings } = useLocalSettings();
-  const snippets = settings.proposalDefaults.objectiveSnippets;
 
   function createObjective(overrides?: Partial<ObjectiveItem>) {
     return {
@@ -44,51 +41,16 @@ export function ObjectivesEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm leading-6 text-[var(--text-3)]">Key outcomes this proposal is designed to achieve.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => onChange([...safeItems, createObjective()])}
-            variant="secondary"
-            size="md"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            Add
-          </Button>
-
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const index = Number(event.target.value);
-              if (!Number.isNaN(index)) {
-                const snippet = snippets[index];
-                if (snippet) {
-                  onChange([
-                    ...safeItems,
-                    createObjective({
-                      title: snippet.title,
-                      description: snippet.description,
-                    }),
-                  ]);
-                }
-              }
-
-              event.target.value = "";
-            }}
-            className="app-select-compact min-w-[180px]"
-          >
-            <option value="">Use snippet...</option>
-            {snippets.map((snippet, index) => (
-              <option key={snippet.title} value={index}>
-                {snippet.title}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={() => onChange([...safeItems, createObjective()])}
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+        >
+          Add
+        </Button>
       </div>
 
       {safeItems.length ? (

@@ -86,41 +86,21 @@ export function TimelineEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm leading-6 text-[var(--text-3)]">Phases and delivery rhythm.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={viewMode}
-            onChange={(event) =>
-              onChange({
-                phases: sorted,
-                viewMode: event.target.value as "LIST" | "MILESTONE",
-              })
-            }
-            className="app-select-compact min-w-[170px]"
-          >
-            <option value="LIST">Simple list</option>
-            <option value="MILESTONE">Milestone timeline</option>
-          </select>
-
-          <Button
-            type="button"
-            onClick={() =>
-              onChange({
-                viewMode,
-                phases: [...sorted, createPhase()],
-              })
-            }
-            variant="secondary"
-            size="md"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            Add
-          </Button>
-        </div>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={() =>
+            onChange({
+              viewMode,
+              phases: [...sorted, createPhase()],
+            })
+          }
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+        >
+          Add
+        </Button>
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

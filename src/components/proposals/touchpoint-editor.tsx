@@ -4,18 +4,6 @@ import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from "@heroicons/reac
 import { Button } from "@/components/ui/button";
 import type { TouchpointItem } from "@/types/proposal";
 
-const touchpointSnippets = [
-  "Authentication and profiles",
-  "Onboarding and consent",
-  "Submission engine",
-  "Therapist / operator dashboard",
-  "Response delivery",
-  "Admin dashboard",
-  "Payments and discounts",
-  "Re-engagement system",
-  "Partner SDK / integrations",
-];
-
 export function TouchpointEditor({
   items,
   onChange,
@@ -66,44 +54,16 @@ export function TouchpointEditor({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm leading-6 text-[var(--text-3)]">
-            Core workstreams and delivery focus areas.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            onClick={() => onChange([...safeItems, createWorkstream()])}
-            variant="secondary"
-            size="md"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            Add
-          </Button>
-
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const title = event.target.value;
-              if (title) {
-                onChange([...safeItems, createWorkstream(title)]);
-              }
-
-              event.target.value = "";
-            }}
-            className="app-select-compact min-w-[180px]"
-          >
-            <option value="">Add snippet...</option>
-            {touchpointSnippets.map((snippet) => (
-              <option key={snippet} value={snippet}>
-                {snippet}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={() => onChange([...safeItems, createWorkstream()])}
+          variant="secondary"
+          size="md"
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+        >
+          Add
+        </Button>
       </div>
 
       {safeItems.length ? (
