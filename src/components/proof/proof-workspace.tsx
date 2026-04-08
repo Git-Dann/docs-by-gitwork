@@ -15,7 +15,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAnalyseBrief } from "@/hooks/use-proof-brief";
 import { cn } from "@/lib/format";
-import type { BriefConfidence } from "@/types/proof-brief";
+import type { BriefAnalysis, BriefConfidence } from "@/types/proof-brief";
 
 const MIN_BRIEF_LENGTH = 50;
 const MAX_BRIEF_LENGTH = 20000;
@@ -85,16 +85,68 @@ Constraints
 
 const ACCEPTED_TYPES = ".txt,.md,.pdf,.doc,.docx";
 
+const DEMO_ANALYSIS: BriefAnalysis = {
+  clientName: "Apex Health Group",
+  projectTitle: "Apex Wellness App",
+  overview:
+    "Apex Health Group requires a cross-platform corporate wellness app enabling employees to track fitness, log nutrition, access meditations, and join group challenges. The goal is to reduce burnout and drive measurable wellbeing engagement across enterprise clients. Gitwork will deliver the mobile apps, admin portal, CMS, and HR system integrations.",
+  goals: [
+    "Launch iOS and Android apps within 6 months of project kickoff",
+    "Achieve 40% monthly active user rate within 3 months of launch",
+    "Integrate with Workday and BambooHR via API",
+    "Provide HR admin dashboards with anonymised engagement data",
+    "Establish a scalable CMS for wellbeing content",
+  ],
+  deliverables: [
+    "Branded iOS & Android apps (React Native)",
+    "Admin web portal for HR managers (React / Next.js)",
+    "Wellbeing content CMS (articles, videos, challenges)",
+    "API integrations with Workday and BambooHR",
+    "Analytics dashboard with cohort reporting",
+    "Onboarding flow and push notification system",
+  ],
+  timeline: "May–October 2025 (6 months). Design: 6 weeks. Dev sprints: July–August. QA: September. Launch: October.",
+  budget: "£320,000 GBP — includes design, development, QA, PM, and 3-month post-launch support retainer.",
+  targetAudience:
+    "Corporate employees aged 25–55 at Apex enterprise clients — primarily desk-based, time-poor workers needing low-friction access to workplace wellness resources.",
+  technicalRequirements: [
+    "React Native for mobile (iOS 16+, Android 10+)",
+    "Next.js for the admin web portal",
+    "Node.js / PostgreSQL backend",
+    "AWS infrastructure (ECS, RDS, S3)",
+    "OAuth 2.0 / SSO for enterprise authentication",
+    "WCAG 2.1 AA accessibility compliance",
+  ],
+  successCriteria: [
+    "40% MAU within 3 months post-launch",
+    "App store rating of 4.2+ within 60 days",
+    "Zero critical security incidents in first 6 months",
+    "Integration uptime of 99.5% or better",
+  ],
+  keyContacts: [
+    { name: "Sarah Okonkwo", role: "Head of Product" },
+    { name: "James Rafferty", role: "CTO" },
+  ],
+  constraints: [
+    "GDPR compliance required — all health data encrypted at rest and in transit",
+    "App store submission through Apex's existing developer accounts",
+    "No health data may be stored in the US — EU-only hosting required",
+    "Design must follow Apex brand guidelines supplied at kickoff",
+  ],
+  confidence: "HIGH",
+};
+
 export function ProofWorkspace() {
   const [brief, setBrief] = useState("");
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [demoAnalysis, setDemoAnalysis] = useState<BriefAnalysis | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mutation = useAnalyseBrief();
 
-  const analysis = mutation.data?.analysis ?? null;
+  const analysis = demoAnalysis ?? mutation.data?.analysis ?? null;
   const errorMessage = mutation.error instanceof Error ? mutation.error.message : null;
   const charCount = brief.length;
   const briefTooShort = charCount > 0 && charCount < MIN_BRIEF_LENGTH;
@@ -106,10 +158,12 @@ export function ProofWorkspace() {
     setUploadedFile(null);
     setUploadError(null);
     mutation.reset();
+    setDemoAnalysis(DEMO_ANALYSIS);
   }
 
   function handleSubmit() {
     if (!canSubmit) return;
+    setDemoAnalysis(null);
     mutation.mutate(brief);
   }
 
@@ -117,6 +171,7 @@ export function ProofWorkspace() {
     setBrief("");
     setUploadedFile(null);
     setUploadError(null);
+    setDemoAnalysis(null);
     mutation.reset();
   }
 
