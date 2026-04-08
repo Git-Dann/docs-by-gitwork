@@ -9,14 +9,12 @@ import {
   DocumentTextIcon,
   MagnifyingGlassIcon,
   Squares2X2Icon,
-  StarIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
 import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
 
@@ -43,12 +41,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
-  const { data: proposalListData } = useProposalList({
-    status: "ALL",
-    sort: "updatedAt:desc",
-  });
-
-  const proposalCount = proposalListData?.proposals.length ?? 0;
   const primaryNav = useMemo<NavItem[]>(
     () => [
       {
@@ -57,14 +49,14 @@ export function AppShell({
         icon: Squares2X2Icon,
       },
       {
-        href: "/app/proposals",
-        label: "Docs",
-        icon: ChartBarSquareIcon,
-      },
-      {
         href: "/app/proof",
         label: "Proof",
         icon: DocumentTextIcon,
+      },
+      {
+        href: "/app/proposals",
+        label: "Docs",
+        icon: ChartBarSquareIcon,
       },
       {
         href: "/app/codeclear",
@@ -73,7 +65,7 @@ export function AppShell({
       },
       {
         href: "/app/clients",
-        label: "People",
+        label: "Clients",
         icon: UsersIcon,
       },
     ],
@@ -82,16 +74,11 @@ export function AppShell({
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
-      {
-        href: "/app/settings",
-        label: "Settings",
-        icon: Cog8ToothIcon,
-      },
-      {
-        href: "/app/templates",
-        label: "Library",
-        icon: StarIcon,
-      },
+      // {
+      //   href: "/app/templates",
+      //   label: "Library",
+      //   icon: StarIcon,
+      // },
     ],
     [],
   );
@@ -104,7 +91,6 @@ export function AppShell({
             pathname={pathname}
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
-            proposalCount={proposalCount}
             account={settings.account}
           />
         </aside>
@@ -144,13 +130,11 @@ function ExpandedRail({
   pathname,
   primaryNav,
   secondaryNav,
-  proposalCount,
   account,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
-  proposalCount: number;
   account: AccountSettings;
 }) {
   const [query, setQuery] = useState("");
@@ -222,36 +206,11 @@ function ExpandedRail({
           </div>
         </div>
 
-        <div className="mt-4 space-y-4">
-          <div className="rounded-[16px] border border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,#fafafa_100%)] p-4 shadow-[var(--shadow-xs)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--text-1)]">Source of truth</p>
-                <p className="mt-2 text-[13px] leading-5 text-[var(--text-3)]">
-                  Gitwork Standard Library governs Dashboard, Docs, Proof, CodeClear, and People.
-                </p>
-              </div>
-              {proposalCount ? (
-                <span className="rounded-full border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--text-3)]">
-                  {proposalCount} docs
-                </span>
-              ) : null}
-            </div>
-
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[var(--surface-1)]">
-              <div className="h-full w-[72%] rounded-full bg-[linear-gradient(90deg,var(--brand-500)_0%,var(--brand-700)_100%)]" />
-            </div>
-
-            <div className="mt-4 flex items-center gap-3 text-sm">
-              <Link href="/app/templates" className="font-medium text-[var(--text-2)] transition hover:text-[var(--text-1)]">
-                Open library
-              </Link>
-              <Link href="/app/settings" className="font-medium text-[var(--brand-600)] transition hover:text-[var(--brand-700)]">
-                View settings
-              </Link>
-            </div>
-          </div>
-
+        <div className="mt-4 space-y-2">
+          <SidebarNavItem
+            item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
+            active={Boolean(isActivePath(pathname, "/app/settings"))}
+          />
           <ProfileMenu account={account} />
         </div>
       </div>
