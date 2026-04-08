@@ -3,9 +3,9 @@ import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Docs by Gitwork",
+  title: "Gitwork | Docs, Proof and CodeClear",
   description:
-    "Template-driven proposal builder with structured editing, live preview, and export-ready output.",
+    "Gitwork’s delivery platform for structured proposals, brief analysis, and developer verification.",
 };
 
 export default function RootLayout({
