@@ -747,7 +747,7 @@ export async function getCodeClearStats(
           workspaceId,
         },
       },
-      take: 10,
+      take: 5,
       orderBy: {
         createdAt: "desc",
       },
