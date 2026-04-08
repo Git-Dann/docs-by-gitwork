@@ -24,6 +24,7 @@ export function serializeProofDocument(document: ProofDocumentPayload): ProofDoc
     proposalTitle: document.proposal?.title ?? null,
     slug: document.slug,
     title: document.title,
+    markdown: document.markdown,
     shareUrl: document.shareUrl,
     tokenUrl: document.tokenUrl,
     accessToken: document.accessToken,

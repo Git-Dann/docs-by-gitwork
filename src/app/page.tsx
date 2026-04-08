@@ -1,33 +1,14 @@
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowRightIcon, MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
+import { MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
 import { CodeClearSiteDemo } from "@/components/marketing/codeclear-site-demo";
-
-const navItems = ["Products", "Services", "Pricing", "Resources", "About"];
-
-const featureTabs = [
-  {
-    title: "Run better proposal systems",
-    body:
-      "Structure briefs, proposals, commercials, preview output, and sign-off without the usual delivery admin drag.",
-  },
-  {
-    title: "Validate developer fit earlier",
-    body:
-      "Use CodeClear to add confidence before staffing decisions, shortlist reviews, and live delivery commitments.",
-  },
-  {
-    title: "Keep agency delivery in one rhythm",
-    body:
-      "Gitwork keeps client context, platform workflows, and delivery decisions moving through one clearer operating system.",
-  },
-];
 
 const faqs = [
   "What does Gitwork actually do?",
-  "Is CodeClear a standalone product or part of the agency?",
-  "Can we use the platform without a delivery engagement?",
-  "Do you work with existing teams and agencies?",
-  "What kind of projects are the best fit?",
+  "Is CodeClear part of the agency or a standalone product?",
+  "Can hiring teams use the CodeClear integration first?",
+  "Do you work with in-house teams as well as startups?",
+  "Can Gitwork take a project from brief to delivery?",
   "How quickly can we get started?",
 ];
 
@@ -50,6 +31,21 @@ const footerColumns = [
   },
 ];
 
+const proofPoints = [
+  {
+    title: "Agency delivery",
+    copy: "Design, proposals, staffing, and shipping support under one calmer operating rhythm.",
+  },
+  {
+    title: "Platform systems",
+    copy: "Docs and Proof keep briefs, commercials, sign-off, and working drafts properly structured.",
+  },
+  {
+    title: "Hiring signal",
+    copy: "CodeClear gives hiring companies a faster way to frame demand and surface stronger-fit developers.",
+  },
+];
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -58,27 +54,15 @@ export default function HomePage() {
           <HeroGrid />
 
           <div className="relative z-10 mx-auto max-w-[1280px] px-8">
-            <header className="flex h-[72px] items-center justify-between">
-              <div className="flex items-center gap-8">
-                <GitworkLogo className="h-7 w-auto text-white" />
-
-                <nav className="hidden items-center gap-1 md:flex">
-                  {navItems.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="rounded-[8px] px-[10px] py-[6px] text-[14px] font-semibold text-white/72 transition hover:bg-white/[0.03] hover:text-white"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </nav>
-              </div>
+            <header className="flex h-[84px] items-center justify-between">
+              <Link href="/" aria-label="Gitwork home" className="inline-flex items-center">
+                <Image src="/gitwork-logo.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
+              </Link>
 
               <div className="flex items-center gap-3">
                 <Link
                   href="/app/proposals"
-                  className="app-button app-button-secondary app-button-md border-[#2c2c2c] bg-[#0a0a0a] text-white shadow-none hover:bg-[#141414]"
+                  className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]"
                 >
                   Open platform
                 </Link>
@@ -86,108 +70,106 @@ export default function HomePage() {
                   href="https://calendly.com/gitworkgroup/30min"
                   target="_blank"
                   rel="noreferrer"
-                  className="app-button app-button-primary app-button-md bg-[#2454ff]"
+                  className="app-button app-button-primary app-button-md"
                 >
                   Book call
                 </a>
               </div>
             </header>
 
-            <div className="grid items-center gap-8 pb-24 pt-16 lg:grid-cols-[1fr_590px] lg:pt-12">
-              <div className="max-w-[560px]">
-                <h1 className="text-[60px] font-semibold leading-[1.02] tracking-[-0.06em] text-white">
-                  Better delivery systems for modern digital work.
+            <div className="grid items-center gap-12 pb-24 pt-14 lg:grid-cols-[minmax(0,520px)_1fr] lg:gap-16 lg:pb-28">
+              <div className="max-w-[520px]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Gitwork</p>
+                <h1 className="mt-5 text-[64px] font-semibold leading-[0.98] tracking-[-0.065em] text-white">
+                  Agency delivery with better systems built in.
                 </h1>
-                <p className="mt-6 text-[20px] leading-[1.5] text-[#a3a3a3]">
-                  Gitwork is a creative design and developer agency. Docs, Proof, and CodeClear are the internal
-                  systems that help us move from brief to proposal to validated delivery with more confidence.
+                <p className="mt-6 text-[20px] leading-[1.6] text-white/62">
+                  Gitwork is a design and developer agency. We use Docs, Proof, and CodeClear to turn messy briefs
+                  into cleaner proposals, clearer delivery, and stronger hiring decisions.
                 </p>
 
-                <div className="mt-8 flex max-w-[480px] gap-4">
-                  <div className="flex min-w-0 flex-1 items-center rounded-[8px] border border-[#404040] bg-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-                    <div className="border-r border-[#404040] px-[14px] py-[10px] text-[16px] text-[#a3a3a3]">UK</div>
-                    <div className="min-w-0 flex-1 px-3 py-3 text-[16px] text-[#737373]">hello@gitwork.co.uk</div>
-                  </div>
+                <div className="mt-9 flex flex-wrap gap-3">
+                  <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]">
+                    Open platform
+                  </Link>
                   <a
                     href="https://calendly.com/gitworkgroup/30min"
                     target="_blank"
                     rel="noreferrer"
-                    className="app-button app-button-primary h-[44px] shrink-0 rounded-[8px] px-[18px] text-[16px]"
+                    className="app-button app-button-primary app-button-md"
                   >
-                    Book a call
+                    Book call
                   </a>
                 </div>
-
-                <p className="mt-3 text-[14px] text-[#737373]">
-                  We care about your data in our{" "}
-                  <span className="underline decoration-[#404040] underline-offset-2">privacy policy</span>.
-                </p>
               </div>
 
-              <HeroProductPanel />
+              <div className="relative">
+                <div className="absolute inset-0 rounded-[42px] bg-[radial-gradient(circle_at_50%_18%,rgba(84,130,255,0.28),transparent_38%),radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.12),transparent_45%)] blur-3xl" />
+                <div className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_28px_120px_rgba(0,0,0,0.42)]">
+                  <Image
+                    src="/gitwork-header.png"
+                    alt="Gitwork platform layers"
+                    width={592}
+                    height={599}
+                    className="h-auto w-full rounded-[28px] object-cover"
+                    priority
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="bg-[#0a0a0a] py-24 text-white">
+        <section className="bg-[#0a0a0a] py-24">
           <div className="mx-auto max-w-[1280px] px-8">
-            <div className="mx-auto max-w-[820px] text-center">
-              <p className="text-[16px] font-semibold text-white">Features</p>
-              <h2 className="mt-3 text-[36px] font-semibold leading-[1.22] tracking-[-0.04em] text-white">
-                Overflowing with useful delivery features
+            <div className="mx-auto max-w-[760px] text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Public integration</p>
+              <h2 className="mt-4 text-[44px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
+                A better front door for hiring companies.
               </h2>
-              <p className="mt-5 text-[20px] leading-[1.5] text-[#a3a3a3]">
-                Gitwork combines agency delivery, proposal structure, and developer validation so work moves with more
-                clarity and fewer handover gaps.
+              <p className="mt-4 text-[19px] leading-8 text-white/60">
+                This is the public-facing CodeClear experience. A company frames the work, Gitwork surfaces the best
+                matches, and the shortlist can move into a proper agency-led review.
               </p>
             </div>
 
-            <div className="mx-auto mt-16 max-w-[820px]">
-              <div className="mx-auto max-w-[640px]">
-                {featureTabs.map((feature, index) => (
-                  <div
-                    key={feature.title}
-                    className={`border-l-4 py-4 pl-6 ${
-                      index === 0 ? "border-[#9e77ed]" : "border-[#262626]"
-                    }`}
-                  >
-                    <h3 className="text-[18px] font-semibold leading-7 text-white">{feature.title}</h3>
-                    <p className="mt-1 text-[16px] leading-6 text-[#a3a3a3]">{feature.body}</p>
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex items-center gap-2 text-[16px] font-semibold text-[#2454ff]"
-                    >
-                      Learn more
-                      <ArrowRightIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-16">
+            <div className="mt-14">
               <CodeClearSiteDemo />
             </div>
           </div>
         </section>
 
-        <section className="bg-[#0a0a0a] pb-24">
+        <section className="border-y border-white/5 bg-[#0a0a0a] py-20">
+          <div className="mx-auto max-w-[1280px] px-8">
+            <div className="grid gap-8 lg:grid-cols-3">
+              {proofPoints.map((item) => (
+                <div key={item.title} className="border-t border-white/10 pt-5">
+                  <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-white">{item.title}</h3>
+                  <p className="mt-3 max-w-[320px] text-[16px] leading-7 text-white/56">{item.copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#0a0a0a] py-24">
           <div className="mx-auto max-w-[1280px] px-8">
             <div className="rounded-[24px] border border-[#262626] bg-[#171717] px-8 py-10">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <h2 className="text-[30px] font-semibold leading-[1.2] tracking-[-0.04em] text-white">
-                    Start your next project with Gitwork
+                    Start the conversation with structure already in place.
                   </h2>
-                  <p className="mt-2 text-[16px] leading-6 text-[#a3a3a3]">
-                    Agency delivery, better proposal systems, and stronger developer validation in one flow.
+                  <p className="mt-2 text-[16px] leading-6 text-white/60">
+                    Use Gitwork when you need design, delivery thinking, staffing confidence, and a stronger proposal
+                    system around the work.
                   </p>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <Link
                     href="/app/proposals"
-                    className="app-button app-button-secondary app-button-md border-[#2c2c2c] bg-[#0f0f0f] text-white shadow-none hover:bg-[#1a1a1a]"
+                    className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]"
                   >
                     Open platform
                   </Link>
@@ -210,8 +192,8 @@ export default function HomePage() {
             <h2 className="text-[36px] font-semibold leading-[1.22] tracking-[-0.04em] text-white">
               Frequently asked questions
             </h2>
-            <p className="mt-4 text-[18px] leading-7 text-[#a3a3a3]">
-              Everything you need to know about the agency, the platform, and how we work.
+            <p className="mt-4 text-[18px] leading-7 text-white/56">
+              A quick overview of how Gitwork works as an agency and where the platform fits in.
             </p>
           </div>
 
@@ -220,27 +202,17 @@ export default function HomePage() {
               <div key={item} className="flex items-center justify-between border-b border-[#262626] py-6">
                 <span className="text-[18px] leading-7 text-white">{item}</span>
                 {index === 0 ? (
-                  <MinusSmallIcon className="h-5 w-5 text-[#a3a3a3]" />
+                  <MinusSmallIcon className="h-5 w-5 text-white/56" />
                 ) : (
-                  <PlusSmallIcon className="h-5 w-5 text-[#a3a3a3]" />
+                  <PlusSmallIcon className="h-5 w-5 text-white/56" />
                 )}
               </div>
             ))}
 
             <div className="mt-10 rounded-[24px] border border-[#262626] bg-[#171717] px-8 py-10 text-center">
-              <div className="mx-auto flex w-fit -space-x-2">
-                {["A", "G", "C"].map((item) => (
-                  <div
-                    key={item}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#2c2c2c] bg-[#0f0f0f] text-sm font-semibold text-white"
-                  >
-                    {item}
-                  </div>
-                ))}
-              </div>
-              <h3 className="mt-4 text-[20px] font-semibold text-white">Still have questions?</h3>
-              <p className="mt-2 text-[16px] text-[#a3a3a3]">
-                Can&apos;t find the answer you&apos;re looking for? Please chat to our friendly team.
+              <h3 className="text-[20px] font-semibold text-white">Still have questions?</h3>
+              <p className="mt-2 text-[16px] text-white/56">
+                Talk to Gitwork about the platform, the agency model, or the right delivery shape for the next build.
               </p>
               <a
                 href="https://calendly.com/gitworkgroup/30min"
@@ -248,39 +220,8 @@ export default function HomePage() {
                 rel="noreferrer"
                 className="app-button app-button-primary app-button-md mt-6"
               >
-                Get in touch
+                Book call
               </a>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-[#0a0a0a] py-24">
-          <div className="mx-auto max-w-[1280px] px-8">
-            <div className="mx-auto max-w-[860px] text-center">
-              <h2 className="text-[48px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
-                Agency delivery with platform systems built in
-              </h2>
-              <p className="mt-4 text-[20px] leading-[1.5] text-[#a3a3a3]">
-                Use Gitwork when you need design, proposals, delivery thinking, developer validation, or a stronger
-                structure behind the next project.
-              </p>
-              <div className="mt-8 flex justify-center gap-3">
-                <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-[#2c2c2c] bg-[#0f0f0f] text-white shadow-none hover:bg-[#1a1a1a]">
-                  Open platform
-                </Link>
-                <a
-                  href="https://calendly.com/gitworkgroup/30min"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="app-button app-button-primary app-button-md"
-                >
-                  Book call
-                </a>
-              </div>
-            </div>
-
-            <div className="mt-16 flex justify-center">
-              <HeroProductPanel compact />
             </div>
           </div>
         </section>
@@ -290,7 +231,7 @@ export default function HomePage() {
             <h2 className="text-[30px] font-semibold leading-[1.2] tracking-[-0.04em] text-white">
               Sign up for our newsletter
             </h2>
-            <p className="mt-4 text-[16px] leading-6 text-[#a3a3a3]">
+            <p className="mt-4 text-[16px] leading-6 text-white/56">
               Be the first to know about platform updates, agency thinking, and release notes.
             </p>
             <div className="mx-auto mt-8 flex max-w-[440px] gap-4">
@@ -309,8 +250,8 @@ export default function HomePage() {
           <div className="mx-auto max-w-[1280px] px-8">
             <div className="grid gap-10 lg:grid-cols-[1.2fr_repeat(4,1fr)]">
               <div>
-                <GitworkLogo className="h-7 w-auto text-white" />
-                <p className="mt-6 max-w-[320px] text-[16px] leading-6 text-[#a3a3a3]">
+                <Image src="/gitwork-logo.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
+                <p className="mt-6 max-w-[320px] text-[16px] leading-6 text-white/56">
                   Gitwork is a creative design and developer agency with a sharper operating system behind the work.
                 </p>
               </div>
@@ -320,7 +261,7 @@ export default function HomePage() {
                   <h3 className="text-[14px] font-semibold text-white">{column.title}</h3>
                   <div className="mt-4 space-y-3">
                     {column.links.map((item) => (
-                      <p key={item} className="text-[14px] text-[#2454ff]">
+                      <p key={item} className="text-[14px] text-[#bfbfbf]">
                         {item}
                       </p>
                     ))}
@@ -329,7 +270,7 @@ export default function HomePage() {
               ))}
             </div>
 
-            <div className="mt-12 border-t border-[#262626] pt-8 text-[14px] text-[#a3a3a3]">
+            <div className="mt-12 border-t border-[#262626] pt-8 text-[14px] text-white/56">
               © 2026 Gitwork. All rights reserved.
             </div>
           </div>
@@ -345,158 +286,5 @@ function HeroGrid() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]" />
       <div className="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:76px_76px]" />
     </div>
-  );
-}
-
-function HeroProductPanel({ compact = false }: { compact?: boolean }) {
-  return (
-    <div
-      className={`rounded-[32px] border border-[#2a2a2a] bg-[#0f131c] shadow-[0_12px_48px_rgba(0,0,0,0.28)] ${
-        compact ? "w-full max-w-[470px]" : "w-full max-w-[590px]"
-      }`}
-    >
-      <div className="flex items-center justify-between border-b border-[#252934] px-5 py-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8f98]">Gitwork OS</p>
-          <p className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-white">Brief to delivery in one view</p>
-        </div>
-        <div className="rounded-full border border-[#2e3440] bg-[#171b23] px-3 py-1 text-[12px] text-[#d4d4d4]">
-          <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#17b26a]" />
-          Live flow
-        </div>
-      </div>
-
-      <div className="grid gap-3 p-3 md:grid-cols-2">
-        <div className="rounded-[24px] border border-[#252934] bg-[#171c24] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#666d78]">Proof</p>
-          <h3 className="mt-3 text-[24px] font-semibold leading-[1.15] tracking-[-0.05em] text-white">
-            Turn a brief into something a team can use.
-          </h3>
-          <p className="mt-4 text-[16px] leading-7 text-[#8d939f]">
-            Extract goals, scope, timing, budgets, and risk before the project gets noisy.
-          </p>
-
-          <div className="mt-6 rounded-[20px] border border-[#2a3140] bg-[#121721] p-3">
-            <div className="h-[8px] w-[92px] rounded-full bg-[#2b3444]" />
-            <div className="mt-4 h-[28px] rounded-[12px] bg-[#1c2330]" />
-            <div className="mt-3 h-[80px] rounded-[18px] bg-[#1c2330]" />
-          </div>
-        </div>
-
-        <div className="rounded-[24px] bg-white p-5">
-          <div className="grid grid-cols-3 gap-x-5 gap-y-4 text-[16px] leading-6">
-            {[
-              ["Django", "#42b463"],
-              ["GCP", "#f59e0b"],
-              ["MS SQL", "#b45309"],
-              ["Flask", "#111827"],
-              ["Kubernetes", "#38bdf8"],
-              ["Java", "#d97706"],
-              ["Laravel", "#ef4444"],
-              ["FTP", "#6b7280"],
-              ["Python", "#0ea5e9"],
-              [".NET", "#9333ea"],
-              ["React", "#38bdf8"],
-              ["GoLang", "#0ea5e9"],
-              ["Angular", "#ef4444"],
-              ["Swift", "#f97316"],
-              ["GitHub", "#111827"],
-              ["Vue", "#22c55e"],
-              ["TypeScript", "#2563eb"],
-              ["GitLab", "#ef4444"],
-              ["MySQL", "#eab308"],
-              ["PHP", "#8b5cf6"],
-              ["PostgreSQL", "#2563eb"],
-              ["Java", "#f59e0b"],
-              ["MongoDB", "#22c55e"],
-              ["Azure", "#2563eb"],
-              ["Redis", "#ef4444"],
-            ].map(([name, color]) => (
-              <span key={name} className="font-medium" style={{ color }}>
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[24px] border border-[#252934] bg-[#171c24] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#666d78]">Docs</p>
-              <h3 className="mt-3 max-w-[220px] text-[18px] font-semibold leading-[1.35] tracking-[-0.04em] text-white">
-                Builder, commercials, preview, sign-off
-              </h3>
-            </div>
-            <span className="rounded-full border border-[#303744] bg-[#20252f] px-3 py-1 text-[12px] text-[#8f95a3]">
-              Synced
-            </span>
-          </div>
-
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            {["Overview", "Builder", "Preview"].map((item) => (
-              <div key={item} className="rounded-[16px] border border-[#252f40] bg-[#141925] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5f6878]">{item}</p>
-                <div className="mt-3 h-[6px] w-[34px] rounded-full bg-[#2f3950]" />
-                <div className="mt-2 h-[6px] w-[26px] rounded-full bg-[#2f3950]" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[24px] border border-[#252934] bg-[#171c24] p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#666d78]">CodeClear</p>
-          <h3 className="mt-3 text-[18px] font-semibold leading-[1.35] tracking-[-0.04em] text-white">
-            Show candidate signal before delivery risk appears.
-          </h3>
-
-          <div className="mt-5 space-y-3">
-            {[
-              ["Identity confidence", "High"],
-              ["GitHub analysis", "Ready"],
-              ["Delivery fit", "Strong"],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between rounded-[14px] border border-[#283140] bg-[#121824] px-4 py-3"
-              >
-                <span className="text-[14px] text-[#9ca3af]">{label}</span>
-                <span className="text-[14px] font-medium text-white">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GitworkLogo({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 134 25"
-      className={className}
-      fill="none"
-      aria-label="Gitwork"
-      role="img"
-    >
-      <g clipPath="url(#gitwork-logo-clip)">
-        <path d="M132.906 22.5753C132.906 23.4462 132.19 24.1522 131.307 24.1522C130.424 24.1522 129.709 23.4462 129.709 22.5753C129.709 21.7045 130.424 20.9985 131.307 20.9985C132.19 20.9985 132.906 21.7045 132.906 22.5753Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M115.442 22.5931C115.442 23.454 114.735 24.152 113.862 24.152C112.99 24.152 112.282 23.454 112.282 22.5931V2.38596C112.282 1.52498 112.99 0.827026 113.862 0.827026C114.735 0.827026 115.442 1.52498 115.442 2.38596V14.1734V17.5413V22.5931Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M115.697 15.0157C115.697 14.6197 116.022 14.2987 116.423 14.2987C116.965 14.2987 117.403 13.8658 117.403 13.3317C117.403 12.9358 117.729 12.6148 118.131 12.6148C118.672 12.6148 119.111 12.1819 119.111 11.6478C119.111 11.2519 119.436 10.9309 119.837 10.9309C120.379 10.9309 120.817 10.4979 120.817 9.96388C120.817 9.56794 121.142 9.24695 121.543 9.24695C122.085 9.24695 122.524 8.81403 122.524 8.27997C122.524 7.88398 122.849 7.56299 123.251 7.56299H124.104C124.977 7.56299 125.684 8.26096 125.684 9.12195V9.96388C125.684 10.3599 125.359 10.6809 124.957 10.6809C124.416 10.6809 123.977 11.1138 123.977 11.6478C123.977 12.0438 123.652 12.3648 123.251 12.3648C122.709 12.3648 122.27 12.7977 122.27 13.3317C122.27 13.7277 121.945 14.0487 121.543 14.0487C121.002 14.0487 120.563 14.4816 120.563 15.0157V16.6996C120.563 17.2336 121.002 17.6666 121.543 17.6666C121.945 17.6666 122.27 17.9876 122.27 18.3835C122.27 18.9176 122.709 19.3505 123.251 19.3505C123.652 19.3505 123.977 19.6715 123.977 20.0675C123.977 20.6015 124.416 21.0344 124.957 21.0344C125.359 21.0344 125.684 21.3554 125.684 21.7514V22.5933C125.684 23.4543 124.977 24.1523 124.104 24.1523H123.251C122.849 24.1523 122.524 23.8313 122.524 23.4353C122.524 22.9013 122.085 22.4683 121.543 22.4683C121.142 22.4683 120.817 22.1473 120.817 21.7514C120.817 21.2173 120.379 20.7844 119.837 20.7844C119.436 20.7844 119.111 20.4634 119.111 20.0675C119.111 19.5334 118.672 19.1005 118.131 19.1005C117.729 19.1005 117.403 18.7795 117.403 18.3835C117.403 17.8495 116.965 17.4166 116.423 17.4166C116.022 17.4166 115.697 17.0956 115.697 16.6996V15.0157Z" fill="#0795FF" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M101.825 22.5753C101.825 23.4461 101.11 24.1521 100.227 24.1521C99.3439 24.1521 98.6283 23.4461 98.6283 22.5753V11.6297C98.6283 11.2239 98.9619 10.8949 99.3734 10.8949H99.3914C99.9326 10.8949 100.372 10.4619 100.372 9.92787C100.372 9.53193 100.697 9.21089 101.098 9.21089C101.639 9.21089 102.079 8.77802 102.079 8.24396C102.079 7.84797 102.404 7.52698 102.805 7.52698H107.037C107.909 7.52698 108.617 8.22495 108.617 9.08589C108.617 9.94688 107.909 10.6449 107.037 10.6449H104.476C103.935 10.6449 103.496 11.0778 103.496 11.6118V11.6297C103.496 12.0158 103.178 12.3288 102.787 12.3288C102.256 12.3288 101.825 12.7537 101.825 13.2778V22.5753Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M80.3107 12.3288C79.769 12.3288 79.3304 12.7617 79.3304 13.2958V18.3834C79.3304 18.9174 79.769 19.3503 80.3107 19.3503C80.7117 19.3503 81.0372 19.6713 81.0372 20.0673C81.0372 20.6013 81.4763 21.0343 82.0175 21.0343H87.1019C87.6431 21.0343 88.0822 20.6013 88.0822 20.0673C88.0822 19.6713 88.4072 19.3503 88.8087 19.3503C89.35 19.3503 89.789 18.9174 89.789 18.3834V13.2958C89.789 12.7617 89.35 12.3288 88.8087 12.3288C88.4072 12.3288 88.0822 12.0078 88.0822 11.6118C88.0822 11.0778 87.6431 10.6449 87.1019 10.6449H82.0175C81.4763 10.6449 81.0372 11.0778 81.0372 11.6118C81.0372 12.0078 80.7117 12.3288 80.3107 12.3288ZM79.5836 23.4351C79.5836 22.9011 79.1451 22.4682 78.6038 22.4682C78.2023 22.4682 77.8768 22.1472 77.8768 21.7512C77.8768 21.2172 77.4382 20.7843 76.8965 20.7843C76.4955 20.7843 76.17 20.4633 76.17 20.0673V11.6118C76.17 11.2159 76.4955 10.8949 76.8965 10.8949C77.4382 10.8949 77.8768 10.4619 77.8768 9.92787C77.8768 9.53193 78.2023 9.21089 78.6038 9.21089C79.1451 9.21089 79.5836 8.77802 79.5836 8.24396C79.5836 7.84797 79.9091 7.52698 80.3107 7.52698H88.8087C89.2103 7.52698 89.5358 7.84797 89.5358 8.24396C89.5358 8.77802 89.9744 9.21089 90.5156 9.21089C90.9171 9.21089 91.2426 9.53193 91.2426 9.92787C91.2426 10.4619 91.6812 10.8949 92.2229 10.8949C92.6239 10.8949 92.9494 11.2159 92.9494 11.6118V20.0673C92.9494 20.4633 92.6239 20.7843 92.2229 20.7843C91.6812 20.7843 91.2426 21.2172 91.2426 21.7512C91.2426 22.1472 90.9171 22.4682 90.5156 22.4682C89.9744 22.4682 89.5358 22.9011 89.5358 23.4351C89.5358 23.8311 89.2103 24.1521 88.8087 24.1521H80.3107C79.9091 24.1521 79.5836 23.8311 79.5836 23.4351Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M57.1634 23.4351C57.1634 23.8311 56.8379 24.1521 56.4368 24.1521H55.5834C54.7105 24.1521 54.003 23.4541 54.003 22.5932V9.08589C54.003 8.22495 54.7105 7.52698 55.5834 7.52698C56.4558 7.52698 57.1634 8.22495 57.1634 9.08589V16.6815C57.1634 17.2255 57.6105 17.6664 58.1617 17.6664H58.1798C58.721 17.6664 59.16 17.2335 59.16 16.6994V16.6815C59.16 16.2955 59.4775 15.9824 59.8685 15.9824C60.3998 15.9824 60.8308 15.5576 60.8308 15.0334V14.2094C60.8308 13.3682 61.5222 12.6863 62.3746 12.6863H62.4473C63.2998 12.6863 63.9912 13.3682 63.9912 14.2094V15.0155C63.9912 15.5496 64.4298 15.9824 64.9715 15.9824C65.3725 15.9824 65.698 16.3035 65.698 16.6994C65.698 17.2335 66.1371 17.6664 66.6783 17.6664C67.2195 17.6664 67.6586 17.2335 67.6586 16.6994V9.08594C67.6586 8.22495 68.3661 7.52698 69.2386 7.52698C70.1115 7.52698 70.819 8.22495 70.819 9.08589V22.5932C70.819 23.4541 70.1115 24.1521 69.2386 24.1521H68.3851C67.9841 24.1521 67.6586 23.8311 67.6586 23.4351C67.6586 22.9011 67.2195 22.4682 66.6783 22.4682C66.2768 22.4682 65.9513 22.1472 65.9513 21.7512C65.9513 21.2172 65.5127 20.7843 64.9715 20.7843C64.5699 20.7843 64.2444 20.4633 64.2444 20.0673C64.2444 19.5333 63.8059 19.1003 63.2642 19.1003H61.5573C61.0161 19.1003 60.5775 19.5333 60.5775 20.0673C60.5775 20.4633 60.252 20.7843 59.8505 20.7843C59.3093 20.7843 58.8702 21.2172 58.8702 21.7512C58.8702 22.1472 58.5452 22.4682 58.1436 22.4682C57.6024 22.4682 57.1634 22.9011 57.1634 23.4351Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M45.7034 22.4682C45.302 22.4682 44.9766 22.1472 44.9766 21.7512C44.9766 21.2172 44.5378 20.7842 43.9965 20.7842C43.5951 20.7842 43.2697 20.4633 43.2697 20.0673V12.3642C43.2697 11.3949 42.4732 10.6091 41.4905 10.6091C40.6479 10.6091 39.9648 9.93514 39.9648 9.10382V9.03217C39.9648 8.2009 40.6479 7.52698 41.4905 7.52698C42.4732 7.52698 43.2697 6.74118 43.2697 5.77179V4.1058C43.2697 3.24484 43.9773 2.54688 44.8499 2.54688C45.7227 2.54688 46.4301 3.24484 46.4301 4.1058V5.73599C46.4301 6.72514 47.243 7.52698 48.2457 7.52698C49.1081 7.52698 49.8076 8.21694 49.8076 9.06802C49.8076 9.91911 49.1081 10.6091 48.2457 10.6091C47.243 10.6091 46.4301 11.4109 46.4301 12.4V18.3834C46.4301 18.9174 46.869 19.3504 47.4103 19.3504C47.8119 19.3504 48.1374 19.6713 48.1374 20.0673V20.0851C48.1374 20.6094 48.5679 21.0342 49.0991 21.0342C49.4907 21.0342 49.8076 21.3472 49.8076 21.7333V22.6111C49.8076 23.4622 49.1081 24.1521 48.2457 24.1521H47.4103C47.0089 24.1521 46.6836 23.8311 46.6836 23.4351C46.6836 22.9011 46.2447 22.4682 45.7034 22.4682Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M27.119 22.602C27.119 21.7599 27.8111 21.07 28.6629 21.07C29.6556 21.07 30.4602 20.2761 30.4602 19.2969V12.382C30.4602 11.4028 29.6556 10.6089 28.6629 10.6089C27.8111 10.6089 27.119 9.91899 27.119 9.07692C27.119 8.22494 27.8192 7.52692 28.681 7.52692H31.6837C32.7334 7.52692 33.5843 8.36635 33.5843 9.40192V19.279C33.5843 20.2681 34.3972 21.07 35.3998 21.07C36.2625 21.07 36.9619 21.7599 36.9619 22.611C36.9619 23.4621 36.2625 24.152 35.3998 24.152H28.681C27.8192 24.152 27.119 23.4539 27.119 22.602ZM30.4602 2.35012C30.4602 1.50894 31.1514 0.827026 32.0041 0.827026H32.0404C32.8931 0.827026 33.5843 1.50894 33.5843 2.35012C33.5843 3.19131 32.8931 3.87322 32.0404 3.87322H32.0041C31.1514 3.87322 30.4602 3.19131 30.4602 2.35012Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M16.0731 21.0341C17.2628 21.0341 18.2271 20.0827 18.2271 18.9091V17.595C18.2271 16.5861 17.398 15.7682 16.3754 15.7682H16.3391C15.4763 15.7682 14.777 15.0783 14.777 14.2272C14.777 13.3761 15.4763 12.6862 16.3391 12.6862H19.487C20.5366 12.6862 21.3876 13.5256 21.3876 14.5612V22.277C21.3876 23.3125 20.5366 24.152 19.487 24.152H13.2229C12.3502 24.152 11.6428 23.454 11.6428 22.5931C11.6428 21.7321 12.3502 21.0341 13.2229 21.0341H16.0731ZM17.247 0.827026C17.6484 0.827026 17.9737 1.14802 17.9737 1.54399C17.9737 2.07803 18.4126 2.51095 18.9539 2.51095C19.3553 2.51095 19.6807 2.83195 19.6807 3.22792C19.6807 3.76195 20.1195 4.19488 20.6608 4.19488C21.0622 4.19488 21.3876 4.51588 21.3876 4.91182V5.73588C21.3876 6.58697 20.6883 7.27692 19.8256 7.27692H18.9358C18.5444 7.27692 18.2271 6.96395 18.2271 6.57786C18.2271 6.05371 17.7964 5.62881 17.2651 5.62881H17.247C16.8456 5.62881 16.5202 5.30781 16.5202 4.91182C16.5202 4.3778 16.0814 3.94488 15.5401 3.94488H13.2229C12.3502 3.94488 11.6428 3.24692 11.6428 2.38595C11.6428 1.52498 12.3502 0.827026 13.2229 0.827026H17.247Z" fill="currentColor" stroke="currentColor" strokeWidth="0.0476619" />
-        <path d="M4.09676 23.0182C3.84347 23.0182 3.63814 22.8156 3.63814 22.5657C3.63814 22.1778 3.31936 21.8633 2.92612 21.8633C2.67283 21.8633 2.46751 21.6607 2.46751 21.4109V15.784C2.46751 15.396 2.14872 15.0815 1.75548 15.0815C1.50218 15.0815 1.29686 14.879 1.29686 14.6291C1.29686 14.2412 0.978076 13.9267 0.584834 13.9267C0.331547 13.9267 0.126219 13.7241 0.126219 13.4742V11.364C0.126219 11.1141 0.331547 10.9115 0.584834 10.9115H0.597283C0.98365 10.9115 1.29686 10.6025 1.29686 10.2214C1.29686 9.97833 1.49661 9.78125 1.74302 9.78125H1.75548C2.14872 9.78125 2.46751 9.46677 2.46751 9.07885V3.64851C2.46751 3.39864 2.67283 3.19608 2.92612 3.19608C3.31936 3.19608 3.63814 2.88159 3.63814 2.49365C3.63814 2.24378 3.84347 2.04122 4.09676 2.04122C4.49001 2.04122 4.80879 1.72673 4.80879 1.33878C4.80879 1.08891 5.01412 0.886353 5.26739 0.886353H8.30463C9.14864 0.886353 9.8328 1.56132 9.8328 2.39393V2.47849C9.8328 3.2644 9.18698 3.9015 8.39035 3.9015H7.40649C7.01328 3.9015 6.69449 4.21599 6.69449 4.60393C6.69449 4.8538 6.48916 5.05635 6.23589 5.05635C5.84264 5.05635 5.52384 5.37083 5.52384 5.7588V11.1645C5.52384 11.4144 5.31852 11.6169 5.06525 11.6169C4.67199 11.6169 4.3532 11.9314 4.3532 12.3194V12.5188C4.3532 12.9068 4.67199 13.2213 5.06525 13.2213C5.31852 13.2213 5.52384 13.4238 5.52384 13.6737V19.3006C5.52384 19.6885 5.84264 20.003 6.23589 20.003H6.24834C6.49472 20.003 6.69449 20.2001 6.69449 20.4432C6.69449 20.8243 7.00768 21.1333 7.39404 21.1333H8.39035C9.18698 21.1333 9.8328 21.7705 9.8328 22.5563V22.6532C9.8328 23.4926 9.14303 24.173 8.29218 24.173H5.26739C5.01412 24.173 4.80879 23.9705 4.80879 23.7206C4.80879 23.3326 4.49001 23.0182 4.09676 23.0182Z" fill="#0795FF" stroke="currentColor" strokeWidth="0.0476619" />
-      </g>
-      <defs>
-        <clipPath id="gitwork-logo-clip">
-          <rect width="134" height="25" fill="white" />
-        </clipPath>
-      </defs>
-    </svg>
   );
 }

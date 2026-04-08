@@ -212,6 +212,7 @@ model ProofDocument {
   ownerId      String
   proposalId   String?
   title        String
+  markdown     String?
   slug         String    @unique
   shareUrl     String
   tokenUrl     String

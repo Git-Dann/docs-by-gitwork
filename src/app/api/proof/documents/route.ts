@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
         ownerId: user.id,
         proposalId: body.proposalId ?? null,
         title: body.title,
+        markdown: body.markdown ?? null,
         slug,
         shareUrl,
         tokenUrl,

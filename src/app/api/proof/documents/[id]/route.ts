@@ -33,6 +33,7 @@ export async function PATCH(
       },
       data: {
         ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.markdown !== undefined ? { markdown: body.markdown } : {}),
         ...(body.proposalId !== undefined ? { proposalId: body.proposalId } : {}),
         ...(body.touch ? { lastOpenedAt: new Date() } : {}),
         ...(body.archived !== undefined

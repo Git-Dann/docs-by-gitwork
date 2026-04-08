@@ -182,6 +182,7 @@ export const proofUpdateSchema = z
     touch: z.boolean().optional(),
     archived: z.boolean().optional(),
     title: z.string().trim().min(1).optional(),
+    markdown: z.string().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one proof field is required.",

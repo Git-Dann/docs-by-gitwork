@@ -27,6 +27,7 @@ export interface ProofDocumentRecord {
   proposalTitle?: string | null;
   slug: string;
   title: string;
+  markdown?: string | null;
   shareUrl: string;
   tokenUrl: string;
   accessToken: string;
@@ -42,6 +43,7 @@ export interface ProofDocumentUpdateInput {
   touch?: boolean;
   archived?: boolean;
   title?: string;
+  markdown?: string;
 }
 
 export function resolveProofServerUrl(): string {
