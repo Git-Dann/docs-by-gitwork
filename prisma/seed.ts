@@ -56,30 +56,43 @@ async function main() {
     skipDuplicates: true,
   });
 
-  const existingCandidateCount = await prisma.candidate.count({
+  const rateCardPeople = await prisma.rateCardPerson.findMany({
     where: {
       workspaceId: workspace.id,
     },
+    select: {
+      id: true,
+      seedIdentifier: true,
+      name: true,
+      area: true,
+    },
   });
 
-  if (existingCandidateCount === 0) {
-    const rateCardPeople = await prisma.rateCardPerson.findMany({
-      where: {
-        workspaceId: workspace.id,
-      },
-      select: {
-        id: true,
-        seedIdentifier: true,
-      },
-    });
+  const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
+  const existingHandles = new Set(
+    (
+      await prisma.candidate.findMany({
+        where: {
+          workspaceId: workspace.id,
+          githubHandle: {
+            in: candidates.map((candidate) => candidate.githubHandle),
+          },
+        },
+        select: {
+          githubHandle: true,
+        },
+      })
+    ).map((candidate) => candidate.githubHandle),
+  );
 
-    const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
-
-    for (const candidate of candidates) {
-      await prisma.candidate.create({
-        data: candidate,
-      });
+  for (const candidate of candidates) {
+    if (existingHandles.has(candidate.githubHandle)) {
+      continue;
     }
+
+    await prisma.candidate.create({
+      data: candidate,
+    });
   }
 
   const template = await prisma.documentTemplate.upsert({

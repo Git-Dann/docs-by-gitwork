@@ -375,15 +375,20 @@ export function ProposalList() {
               Page {currentPage} of {totalPages}
             </span>
             <span className="text-[var(--border-1)]">|</span>
-            <label className={cn("flex items-center gap-2", proposals.length <= rowsPerPageOptions[0] && "opacity-40")}>
-              <span>Rows per page</span>
+            <label
+              className={cn(
+                "flex min-w-[190px] items-center gap-2 whitespace-nowrap",
+                proposals.length <= rowsPerPageOptions[0] && "opacity-40",
+              )}
+            >
+              <span className="shrink-0">Rows per page</span>
               <select
                 value={rowsPerPage}
                 onChange={(event) =>
                   setRowsPerPage(Number(event.target.value) as (typeof rowsPerPageOptions)[number])
                 }
                 disabled={proposals.length <= rowsPerPageOptions[0]}
-                className="app-select-compact min-w-[72px]"
+                className="app-select-compact min-w-[96px]"
               >
                 {rowsPerPageOptions.map((option) => (
                   <option key={option} value={option}>

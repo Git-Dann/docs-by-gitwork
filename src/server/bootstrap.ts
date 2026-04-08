@@ -138,14 +138,6 @@ async function ensureSampleCodeClearCandidates({
 }: {
   workspace: { id: string };
 }) {
-  const count = await prisma.candidate.count({
-    where: { workspaceId: workspace.id },
-  });
-
-  if (count > 0) {
-    return;
-  }
-
   const rateCardPeople = await prisma.rateCardPerson.findMany({
     where: {
       workspaceId: workspace.id,
@@ -153,21 +145,35 @@ async function ensureSampleCodeClearCandidates({
     select: {
       id: true,
       seedIdentifier: true,
+      name: true,
+      area: true,
     },
   });
 
   const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
+  const existingHandles = new Set(
+    (
+      await prisma.candidate.findMany({
+        where: {
+          workspaceId: workspace.id,
+          githubHandle: {
+            in: candidates.map((candidate) => candidate.githubHandle),
+          },
+        },
+        select: {
+          githubHandle: true,
+        },
+      })
+    ).map((candidate) => candidate.githubHandle),
+  );
 
   for (const candidate of candidates) {
-    await prisma.candidate.upsert({
-      where: {
-        workspaceId_githubHandle: {
-          workspaceId: workspace.id,
-          githubHandle: candidate.githubHandle,
-        },
-      },
-      update: {},
-      create: candidate,
+    if (existingHandles.has(candidate.githubHandle)) {
+      continue;
+    }
+
+    await prisma.candidate.create({
+      data: candidate,
     });
   }
 }

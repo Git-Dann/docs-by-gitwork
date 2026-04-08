@@ -64,6 +64,8 @@ type SeedCodeClearCandidate = {
   }>;
 };
 
+type CodeClearRateCardSeedPerson = Pick<RateCardPerson, "id" | "seedIdentifier" | "name" | "area">;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -561,17 +563,87 @@ const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [
   },
 ];
 
+function normalizeGitworkHandle(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function parseRateCardArea(area: string) {
+  const [levelPart, stackPart = ""] = area.split("•").map((part) => part.trim());
+  const stacks = stackPart
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return {
+    level: levelPart || "Mid Level",
+    stacks,
+  };
+}
+
+function getTierFromLevel(level: string): SeedCodeClearCandidate["tier"] {
+  const normalized = level.toLowerCase();
+
+  if (normalized.includes("senior")) {
+    return "TIER_1";
+  }
+
+  if (normalized.includes("junior")) {
+    return "TIER_3";
+  }
+
+  return "TIER_2";
+}
+
+function buildGitworkRosterCandidates(
+  rateCardPeople: CodeClearRateCardSeedPerson[],
+): SeedCodeClearCandidate[] {
+  return rateCardPeople
+    .filter((person) => person.seedIdentifier?.startsWith("gitwork."))
+    .map((person) => {
+      const { level, stacks } = parseRateCardArea(person.area);
+      const primaryStack = stacks[0] ?? "Full Stack";
+      const githubHandle = person.seedIdentifier
+        ? normalizeGitworkHandle(person.seedIdentifier.replace(/^gitwork\./, ""))
+        : normalizeGitworkHandle(person.name);
+      const capabilityLabel = stacks.length ? stacks.join(", ") : "full-stack delivery";
+
+      return {
+        name: person.name,
+        githubHandle,
+        primaryStack,
+        location: "Gitwork",
+        bio: `${level} Gitwork developer with experience across ${capabilityLabel}.`,
+        status: "SOURCED",
+        tier: getTierFromLevel(level),
+        rateCardSeedIdentifier: person.seedIdentifier ?? undefined,
+        activity: [
+          {
+            eventType: "SOURCED",
+            metadata: { by: "rate-card-sync", source: "people-and-rates" },
+            createdAtOffsetDays: -1,
+          },
+        ],
+      } satisfies SeedCodeClearCandidate;
+    });
+}
+
 export function getDefaultCodeClearCandidatePayloads(
   workspaceId: string,
-  rateCardPeople: Array<Pick<RateCardPerson, "id" | "seedIdentifier">> = [],
+  rateCardPeople: CodeClearRateCardSeedPerson[] = [],
 ): Prisma.CandidateCreateInput[] {
   const rateCardPeopleBySeed = new Map(
     rateCardPeople
       .filter((person) => Boolean(person.seedIdentifier))
       .map((person) => [person.seedIdentifier as string, person.id]),
   );
+  const seededCandidates = [...defaultCodeClearCandidates, ...buildGitworkRosterCandidates(rateCardPeople)];
+  const uniqueCandidates = [...new Map(seededCandidates.map((candidate) => [candidate.githubHandle, candidate])).values()];
 
-  return defaultCodeClearCandidates.map((candidate) => {
+  return uniqueCandidates.map((candidate) => {
     const scoreVerifiedAt = candidate.score?.verifiedAtOffsetDays
       ? shiftDateByDays(candidate.score.verifiedAtOffsetDays)
       : candidate.score

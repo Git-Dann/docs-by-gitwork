@@ -176,52 +176,6 @@ export function CodeClearOverview() {
         </div>
       ) : null}
 
-      {/* Workflow journey */}
-      <div className="app-muted-card px-5 py-4">
-        <p className="app-eyebrow mb-3">Gitwork workflow</p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-0">
-          {[
-            { step: "1", label: "Proof", desc: "Analyse the client brief", href: "/app/proof", icon: BeakerIcon, active: false },
-            { step: "2", label: "Docs", desc: "Write the proposal", href: "/app/proposals", icon: DocumentTextIcon, active: false },
-            { step: "3", label: "CodeClear", desc: "Verify the developer", href: "/app/codeclear", icon: CheckCircleIcon, active: true },
-          ].map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.step} className="flex items-center gap-0 sm:flex-1">
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex flex-1 items-center gap-3 rounded-[12px] px-4 py-3 transition",
-                    item.active
-                      ? "bg-white border border-[var(--border-2)] shadow-[var(--shadow-xs)]"
-                      : "hover:bg-[var(--surface-2)]",
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold",
-                    item.active
-                      ? "border-[var(--brand-600)] bg-[var(--brand-600)] text-white"
-                      : "border-[var(--border-1)] bg-white text-[var(--text-3)]",
-                  )}>
-                    {item.step}
-                  </div>
-                  <div>
-                    <p className={cn("text-sm font-semibold", item.active ? "text-[var(--brand-700)]" : "text-[var(--text-2)]")}>
-                      {item.label}
-                    </p>
-                    <p className="text-xs text-[var(--text-4)]">{item.desc}</p>
-                  </div>
-                  {item.active ? <Icon className="ml-auto h-4 w-4 shrink-0 text-[var(--brand-600)]" /> : null}
-                </Link>
-                {i < 2 ? (
-                  <ArrowRightIcon className="mx-1 h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Top metrics */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
