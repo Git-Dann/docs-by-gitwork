@@ -159,8 +159,15 @@ async function ensureSampleCodeClearCandidates({
   const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
 
   for (const candidate of candidates) {
-    await prisma.candidate.create({
-      data: candidate,
+    await prisma.candidate.upsert({
+      where: {
+        workspaceId_githubHandle: {
+          workspaceId: workspace.id,
+          githubHandle: candidate.githubHandle,
+        },
+      },
+      update: {},
+      create: candidate,
     });
   }
 }
