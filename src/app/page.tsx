@@ -1,7 +1,69 @@
 import Image from "next/image";
 import Link from "next/link";
-import { MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
 import { CodeClearSiteDemo } from "@/components/marketing/codeclear-site-demo";
+
+const tiers = [
+  {
+    name: "Starter",
+    price: "Free",
+    priceUnit: "",
+    description: "Full access to Docs, Proof, and CodeClear. Build, analyse, and verify — no card required.",
+    features: [
+      "Docs — unlimited proposals",
+      "Proof — brief analysis",
+      "CodeClear — up to 10 candidates",
+      "Standard templates",
+      "Community support",
+    ],
+    cta: "Open platform",
+    ctaHref: "/app/proposals",
+    ctaExternal: false,
+    secondary: "Book a call",
+    secondaryHref: "https://calendly.com/gitworkgroup/30min",
+    featured: false,
+  },
+  {
+    name: "Intermediate",
+    price: "£149",
+    priceUnit: "/mth",
+    description: "Platform access plus agency input — proposal reviews, strategic sessions, and priority support.",
+    features: [
+      "Everything in Starter",
+      "CodeClear — up to 50 candidates",
+      "Monthly strategy session",
+      "Proposal review & feedback",
+      "Priority email support",
+      "Custom template set-up",
+    ],
+    cta: "Get started",
+    ctaHref: "https://calendly.com/gitworkgroup/30min",
+    ctaExternal: true,
+    secondary: "Chat to us",
+    secondaryHref: "https://calendly.com/gitworkgroup/30min",
+    featured: true,
+  },
+  {
+    name: "Pro",
+    price: "£399",
+    priceUnit: "/mth",
+    description: "Full Gitwork agency engagement with a dedicated team behind the work.",
+    features: [
+      "Everything in Intermediate",
+      "CodeClear — unlimited candidates",
+      "Dedicated account lead",
+      "Embedded delivery support",
+      "White-label exports",
+      "Bespoke automation & workflows",
+    ],
+    cta: "Talk to us",
+    ctaHref: "https://calendly.com/gitworkgroup/30min",
+    ctaExternal: true,
+    secondary: "Chat to sales",
+    secondaryHref: "https://calendly.com/gitworkgroup/30min",
+    featured: false,
+  },
+] as const;
 
 const faqs = [
   "What does Gitwork actually do?",
@@ -154,35 +216,91 @@ export default function HomePage() {
 
         <section className="bg-[#0a0a0a] py-24">
           <div className="mx-auto max-w-[1280px] px-8">
-            <div className="rounded-[24px] border border-[#262626] bg-[#171717] px-8 py-10">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="text-[30px] font-semibold leading-[1.2] tracking-[-0.04em] text-white">
-                    Start the conversation with structure already in place.
-                  </h2>
-                  <p className="mt-2 text-[16px] leading-6 text-white/60">
-                    Use Gitwork when you need design, delivery thinking, staffing confidence, and a stronger proposal
-                    system around the work.
-                  </p>
-                </div>
+            <div className="text-center">
+              <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
+                Simple packages, open platform.
+              </h2>
+              <p className="mt-4 text-[19px] leading-8 text-white/60">
+                Use Docs, Proof, and CodeClear free — or bring Gitwork closer to the work.
+              </p>
+            </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    href="/app/proposals"
-                    className="app-button app-button-dark app-button-md"
+            <div className="mt-16 grid items-end gap-6 lg:grid-cols-3">
+              {tiers.map((tier) => (
+                <div key={tier.name} className="relative flex flex-col">
+                  {/* Most popular badge */}
+                  {tier.featured ? (
+                    <div className="flex items-center justify-center rounded-t-[20px] bg-[linear-gradient(90deg,#6d28d9,#7c3aed)] px-6 py-3">
+                      <span className="text-[13px] font-semibold text-white">Most popular</span>
+                    </div>
+                  ) : null}
+
+                  <div
+                    className={`flex flex-1 flex-col rounded-b-[20px] border p-8 ${
+                      tier.featured
+                        ? "rounded-t-none border-violet-700/50 bg-[#1a1625]"
+                        : "rounded-t-[20px] border-[#262626] bg-[#171717]"
+                    }`}
                   >
-                    Open platform
-                  </Link>
-                  <a
-                    href="https://calendly.com/gitworkgroup/30min"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="app-button app-button-primary app-button-md"
-                  >
-                    Book call
-                  </a>
+                    {/* Tier name */}
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">
+                      {tier.name}
+                    </p>
+
+                    {/* Price */}
+                    <div className="mt-5 flex items-end gap-1">
+                      <span className="text-[52px] font-semibold leading-none tracking-[-0.05em] text-white">
+                        {tier.price}
+                      </span>
+                      {tier.priceUnit ? (
+                        <span className="mb-1 text-[18px] text-white/40">{tier.priceUnit}</span>
+                      ) : null}
+                    </div>
+
+                    {/* Description */}
+                    <p className="mt-4 text-[15px] leading-6 text-white/56">{tier.description}</p>
+
+                    {/* Features */}
+                    <ul className="mt-8 flex-1 space-y-3">
+                      {tier.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-3">
+                          <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+                          <span className="text-[15px] leading-6 text-white/80">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* CTAs */}
+                    <div className="mt-10 space-y-3">
+                      {tier.ctaExternal ? (
+                        <a
+                          href={tier.ctaHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="app-button app-button-primary app-button-md w-full justify-center"
+                        >
+                          {tier.cta}
+                        </a>
+                      ) : (
+                        <Link
+                          href={tier.ctaHref}
+                          className="app-button app-button-primary app-button-md w-full justify-center"
+                        >
+                          {tier.cta}
+                        </Link>
+                      )}
+                      <a
+                        href={tier.secondaryHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="app-button app-button-dark app-button-md w-full justify-center"
+                      >
+                        {tier.secondary}
+                      </a>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
