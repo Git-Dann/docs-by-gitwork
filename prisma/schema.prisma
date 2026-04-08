@@ -138,6 +138,7 @@ model Workspace {
   members     WorkspaceMember[]
   documents   Document[]
   templates   DocumentTemplate[]
+  clients     WorkspaceClient[]
   rateCardPeople RateCardPerson[]
   proofDocuments ProofDocument[]
   candidates  Candidate[]
@@ -226,6 +227,21 @@ model ProofDocument {
 
   @@index([workspaceId, lastOpenedAt])
   @@index([proposalId, lastOpenedAt])
+}
+
+model WorkspaceClient {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  logoUrl     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, name])
+  @@map("Client")
 }
 
 model Candidate {

@@ -253,21 +253,22 @@ export async function listClients(params?: { search?: string }): Promise<ClientL
 export async function createClient(
   input: { name: string; logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
-  void input;
-  throw new Error(
-    "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
-  );
+  return apiFetch<{ client: ClientListItem }>("/api/clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function updateClient(
   slug: string,
-  input: { logoUrl?: string },
+  input: { name?: string; logoUrl?: string },
 ): Promise<{ client: ClientListItem }> {
-  void slug;
-  void input;
-  throw new Error(
-    "Clients are suggested automatically from proposal names. Saved client records are not enabled yet.",
-  );
+  return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getClientDetail(slug: string): Promise<ClientDetailRecord> {

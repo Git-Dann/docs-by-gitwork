@@ -41,17 +41,40 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/clients",
-    description: "List suggested clients inferred from proposal metadata, including drafts.",
+    description: "List manual and suggested clients in the Docs workspace.",
     auth: true,
-    response: `{ "clients": [{ "id": "client_acme-health", "name": "Acme Health", "slug": "acme-health", "proposalCount": 3, "source": "SUGGESTED" }] }`,
+    response: `{ "clients": [{ "id": "client_acme-health", "name": "Acme Health", "slug": "acme-health", "proposalCount": 3, "source": "SUGGESTED" }, { "id": "clx...", "name": "Gitwork", "slug": "gitwork", "proposalCount": 0, "source": "MANUAL" }] }`,
+  },
+  {
+    method: "POST",
+    path: "/api/clients",
+    description: "Create a manual client record.",
+    auth: true,
+    body: [
+      { name: "name", type: "string", required: true, description: "Client name" },
+      { name: "logoUrl", type: "string", required: false, description: "Optional logo URL" },
+    ],
+    response: `{ "client": { "id": "clx...", "name": "Gitwork", "slug": "gitwork", "proposalCount": 0, "source": "MANUAL" } }`,
   },
   {
     method: "GET",
     path: "/api/clients/:slug",
-    description: "Get a suggested client with linked proposals and proof documents.",
+    description: "Get a client with linked proposals and proof documents.",
     auth: true,
     params: [{ name: "slug", type: "string", required: true, description: "Client slug" }],
     response: `{ "client": { "id": "...", "name": "...", "slug": "...", "proposalCount": 3, "source": "SUGGESTED" }, "proposals": [{ "id": "...", "title": "...", "status": "DRAFT" }], "proofDocuments": [] }`,
+  },
+  {
+    method: "PATCH",
+    path: "/api/clients/:slug",
+    description: "Update a client record or promote a suggested client into a saved manual record.",
+    auth: true,
+    params: [{ name: "slug", type: "string", required: true, description: "Client slug" }],
+    body: [
+      { name: "name", type: "string", required: false, description: "Updated client name" },
+      { name: "logoUrl", type: "string", required: false, description: "Optional logo URL" },
+    ],
+    response: `{ "client": { "id": "...", "name": "...", "slug": "...", "proposalCount": 3, "source": "MANUAL" } }`,
   },
   {
     method: "POST",

@@ -1,7 +1,7 @@
 import type { ProposalListItem } from "@/types/proposal";
 import type { ProofDocumentRecord } from "@/lib/proof";
 
-export type ClientSource = "SUGGESTED";
+export type ClientSource = "SUGGESTED" | "MANUAL";
 
 export interface ClientRecord {
   id: string;

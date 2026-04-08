@@ -19,6 +19,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   }
 
   const { client, proposals, proofDocuments } = data;
+  const isSuggested = client.source === "SUGGESTED";
 
   return (
     <div className="space-y-5">
@@ -46,8 +47,8 @@ export function ClientDetail({ slug }: { slug: string }) {
                   {client.proposalCount} proposal{client.proposalCount === 1 ? "" : "s"} currently linked
                 </p>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
-                  <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                  Suggested client
+                  {isSuggested ? <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" /> : null}
+                  {isSuggested ? "Suggested client" : "Manual client"}
                 </span>
               </div>
             </div>
@@ -58,7 +59,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               href={`/app/proposals?client=${encodeURIComponent(client.name)}`}
               className={buttonStyles({ variant: "secondary", size: "md" })}
             >
-              View proposals
+              Open proposals
             </Link>
             <Link
               href={`/app/proposals?new=1&client=${encodeURIComponent(client.name)}`}
@@ -68,16 +69,6 @@ export function ClientDetail({ slug }: { slug: string }) {
             </Link>
           </div>
         </div>
-      </section>
-
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Source</p>
-        <h3 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Suggested from proposal metadata
-        </h3>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          This client appears automatically whenever a proposal uses this client name, including drafts. That keeps the Docs workspace and iOS integrations aligned even before a dedicated client record exists.
-        </p>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">

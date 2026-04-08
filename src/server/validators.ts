@@ -156,6 +156,20 @@ export const rateCardPersonCreateSchema = z.object({
   billingPeriod: rateBillingPeriodSchema.default("MONTH"),
 });
 
+export const clientCreateSchema = z.object({
+  name: requiredTrimmedString,
+  logoUrl: z.string().trim().url().optional(),
+});
+
+export const clientUpdateSchema = z
+  .object({
+    name: requiredTrimmedString.optional(),
+    logoUrl: z.string().trim().url().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one client field is required.",
+  });
+
 export const rateCardPersonUpdateSchema = z
   .object({
     name: requiredTrimmedString.optional(),
