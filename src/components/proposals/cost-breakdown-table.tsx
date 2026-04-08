@@ -646,14 +646,14 @@ export function CostBreakdownTable({
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
-          <table className="min-w-[708px] table-fixed border-separate border-spacing-0 text-sm">
+          <table className="min-w-[780px] table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
-              <col className="w-[155px]" />
-              <col className="w-[194px]" />
-              <col className="w-[98px]" />
-              <col className="w-[85px]" />
-              <col className="w-[118px]" />
-              <col className="w-[58px]" />
+              <col className="w-[190px]" />
+              <col className="w-[224px]" />
+              <col className="w-[102px]" />
+              <col className="w-[102px]" />
+              <col className="w-[126px]" />
+              <col className="w-[68px]" />
             </colgroup>
             <thead>
               <tr>
@@ -720,7 +720,9 @@ export function CostBreakdownTable({
                         </div>
                       </td>
                       <td className="h-[72px] border-t border-[var(--border-3)] px-6 py-4 align-middle">
-                        <TechStackPreview stacks={parseTechStackValue(item.description)} />
+                        <div className="min-w-0">
+                          <TechStackPreview stacks={parseTechStackValue(item.description)} />
+                        </div>
                       </td>
                       <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-center align-middle text-[var(--text-2)]">
                         {formatPlainNumber(item.quantity)}
@@ -796,16 +798,16 @@ export function CostBreakdownTable({
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
-          <table className="min-w-[708px] table-fixed border-separate border-spacing-0 text-sm">
+          <table className="min-w-[998px] table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
-              <col className="w-[92px]" />
-              <col className="w-[89px]" />
-              <col className="w-[66px]" />
-              <col className="w-[107px]" />
-              <col className="w-[107px]" />
-              <col className="w-[100px]" />
-              <col className="w-[92px]" />
-              <col className="w-[55px]" />
+              <col className="w-[146px]" />
+              <col className="w-[114px]" />
+              <col className="w-[104px]" />
+              <col className="w-[174px]" />
+              <col className="w-[140px]" />
+              <col className="w-[112px]" />
+              <col className="w-[132px]" />
+              <col className="w-[76px]" />
             </colgroup>
             <thead>
               <tr>
@@ -816,10 +818,10 @@ export function CostBreakdownTable({
                   Duration
                 </th>
                 <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
-                  <span className="block">Total Cost ({currencySymbol(value.currency)})</span>
-                  <span className="block text-[10px] font-semibold text-[var(--text-4)]">
-                    (Excl. VAT)
-                  </span>
+                  <span className="block">Total</span>
+                  <span className="block">Cost</span>
+                  <span className="block">({currencySymbol(value.currency)})</span>
+                  <span className="block">(Excl. VAT)</span>
                 </th>
                 <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Milestone
@@ -832,9 +834,7 @@ export function CostBreakdownTable({
                 </th>
                 <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
                   <span className="block">Amount ({currencySymbol(value.currency)})</span>
-                  <span className="block text-[10px] font-semibold text-[var(--text-4)]">
-                    (Excl. VAT)
-                  </span>
+                  <span className="block">(Excl. VAT)</span>
                 </th>
                 <th className="bg-[var(--surface-1)] px-4 py-3" />
               </tr>
@@ -848,6 +848,7 @@ export function CostBreakdownTable({
                         value={row.phaseLabel ?? ""}
                         placeholder="Phase"
                         variant="field"
+                        className="min-w-0"
                         onChange={(phaseLabel) =>
                           updatePaymentRow(
                             index,
@@ -872,6 +873,7 @@ export function CostBreakdownTable({
                         placeholder="Duration"
                         variant="field"
                         align="center"
+                        className="min-w-0"
                         onChange={(phaseDuration) =>
                           updatePaymentRow(
                             index,
@@ -894,6 +896,7 @@ export function CostBreakdownTable({
                         placeholder="0"
                         align="center"
                         variant="field"
+                        className="min-w-0"
                         onChange={(phaseTotal) =>
                           updatePaymentRow(
                             index,
@@ -915,6 +918,7 @@ export function CostBreakdownTable({
                         value={row.action}
                         placeholder="Milestone"
                         variant="field"
+                        className="min-w-0"
                         onChange={(action) => updatePaymentRow(index, { ...row, action })}
                       />
                     </td>
@@ -923,6 +927,7 @@ export function CostBreakdownTable({
                         value={row.periodCovered}
                         placeholder="Timing"
                         variant="field"
+                        className="min-w-0"
                         onChange={(periodCovered) =>
                           updatePaymentRow(index, { ...row, periodCovered })
                         }
@@ -934,6 +939,7 @@ export function CostBreakdownTable({
                         placeholder="0"
                         align="center"
                         variant="field"
+                        className="min-w-0"
                         onChange={(paymentPercent) =>
                           updatePaymentRow(
                             index,
@@ -955,6 +961,8 @@ export function CostBreakdownTable({
                         value={row.amount ?? 0}
                         placeholder="0"
                         align="center"
+                        variant="field"
+                        className="min-w-0"
                         onChange={(amount) =>
                           updatePaymentRow(
                             index,
@@ -1104,7 +1112,7 @@ function TechStackPreview({
   const hiddenStacks = stacks.slice(2);
 
   const content = (
-    <span className="inline-flex max-w-[146px] flex-wrap gap-1">
+    <span className="inline-flex max-w-[182px] flex-wrap gap-1.5">
       {visibleStacks.map((stack) => (
         <StackBadge key={stack} label={stack} />
       ))}
@@ -1131,7 +1139,7 @@ function StackBadge({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
         tone,
       )}
     >
@@ -1146,12 +1154,14 @@ function InlineCellInput({
   onChange,
   align = "left",
   variant = "plain",
+  className,
 }: {
   value: string;
   placeholder?: string;
   onChange: (value: string) => void;
   align?: "left" | "right" | "center";
   variant?: "plain" | "field";
+  className?: string;
 }) {
   return (
     <input
@@ -1163,6 +1173,7 @@ function InlineCellInput({
           ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
+        className,
       )}
     />
   );
@@ -1174,12 +1185,14 @@ function InlineCellNumber({
   onChange,
   align = "right",
   variant = "plain",
+  className,
 }: {
   value: number;
   placeholder?: string;
   onChange: (value: number) => void;
   align?: "left" | "right" | "center";
   variant?: "plain" | "field";
+  className?: string;
 }) {
   return (
     <input
@@ -1192,6 +1205,7 @@ function InlineCellNumber({
           ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
+        className,
       )}
     />
   );
@@ -1866,7 +1880,64 @@ function resolveBudgetRowSubtitle(
 }
 
 function stackTone(label: string) {
-  switch (label.toLowerCase()) {
+  const normalized = label.trim().toLowerCase();
+
+  if (
+    [
+      "django",
+      "flask",
+      "laravel",
+      "php",
+      "python",
+      "mysql",
+      "postgresql",
+      "mongodb",
+      "redis",
+      "firebase",
+      "ms sql",
+    ].includes(normalized)
+  ) {
+    return "border-[#b7e3cc] bg-[#eefbf4] text-[#116043]";
+  }
+
+  if (
+    [
+      "javascript",
+      "typescript",
+      "react",
+      "angular",
+      "vue",
+      "jquery",
+      "css",
+      "bootstrap",
+      "swift",
+      "c#",
+      ".net",
+      "java",
+      "c",
+      "golang",
+    ].includes(normalized)
+  ) {
+    return "border-[#c7d7fe] bg-[#eef2ff] text-[#3d4fd1]";
+  }
+
+  if (
+    [
+      "aws",
+      "gcp",
+      "azure",
+      "kubernetes",
+      "ftp",
+    ].includes(normalized)
+  ) {
+    return "border-[#f5d0a6] bg-[#fff3e3] text-[#b85d07]";
+  }
+
+  if (["github", "gitlab", "bitbucket"].includes(normalized)) {
+    return "border-[#d7d8ff] bg-[#f4f5ff] text-[#555dcd]";
+  }
+
+  switch (normalized) {
     case "docs":
       return "border-[#e9d7fe] bg-[#f9f5ff] text-[#6941c6]";
     case "commercial":
@@ -1880,9 +1951,9 @@ function stackTone(label: string) {
     case "legal":
       return "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]";
     case "...":
-      return "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]";
+      return "border-[#d2dbff] bg-[#f4f6ff] text-[#5660d5]";
     default:
-      return "border-[var(--border-2)] bg-white text-[var(--text-2)]";
+      return "border-[#d9def4] bg-[#f8faff] text-[#606b85]";
   }
 }
 
