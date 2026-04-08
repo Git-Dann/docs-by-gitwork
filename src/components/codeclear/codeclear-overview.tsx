@@ -1,8 +1,18 @@
 "use client";
 
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  PencilSquareIcon,
+  PlayCircleIcon,
+  SparklesIcon,
+  UserPlusIcon,
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
-import { formatDate } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
 import { statusLabel } from "@/types/codeclear";
 import {
   CodeClearAnalysisBadge,
@@ -14,6 +24,70 @@ import {
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 
+// Human-readable labels for activity event types
+const EVENT_META: Record<string, { label: string; icon: typeof SparklesIcon; tone: string }> = {
+  SOURCED: {
+    label: "Candidate added to pipeline",
+    icon: UserPlusIcon,
+    tone: "text-sky-600 bg-sky-50 border-sky-200",
+  },
+  STATUS_CHANGE: {
+    label: "Pipeline stage updated",
+    icon: ArrowPathIcon,
+    tone: "text-slate-600 bg-slate-50 border-slate-200",
+  },
+  RECHECK_FLAGGED: {
+    label: "Flagged for re-check",
+    icon: ClockIcon,
+    tone: "text-amber-600 bg-amber-50 border-amber-200",
+  },
+  GITHUB_ANALYSIS_STARTED: {
+    label: "GitHub scan started",
+    icon: PlayCircleIcon,
+    tone: "text-sky-600 bg-sky-50 border-sky-200",
+  },
+  GITHUB_ANALYSIS_COMPLETED: {
+    label: "GitHub scan completed",
+    icon: CheckCircleIcon,
+    tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  },
+  GITHUB_ANALYSIS_FAILED: {
+    label: "GitHub scan failed",
+    icon: ExclamationTriangleIcon,
+    tone: "text-rose-600 bg-rose-50 border-rose-200",
+  },
+  ANALYSIS_APPLIED: {
+    label: "Analysis applied to score draft",
+    icon: SparklesIcon,
+    tone: "text-violet-600 bg-violet-50 border-violet-200",
+  },
+  SCORE_FINALIZED: {
+    label: "Score finalized",
+    icon: CheckCircleIcon,
+    tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  },
+  NOTE_ADDED: {
+    label: "Note added",
+    icon: PencilSquareIcon,
+    tone: "text-slate-600 bg-slate-50 border-slate-200",
+  },
+  PLACED: {
+    label: "Placed with client",
+    icon: CheckCircleIcon,
+    tone: "text-violet-600 bg-violet-50 border-violet-200",
+  },
+};
+
+function getEventMeta(eventType: string) {
+  return (
+    EVENT_META[eventType] ?? {
+      label: eventType.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase()),
+      icon: ArrowPathIcon,
+      tone: "text-slate-600 bg-slate-50 border-slate-200",
+    }
+  );
+}
+
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
   const spotlightQuery = useCodeClearCandidates({
@@ -22,103 +96,167 @@ export function CodeClearOverview() {
     sortBy: "overallScore",
     sortDir: "desc",
   });
+  const allCandidatesQuery = useCodeClearCandidates({
+    page: 1,
+    pageSize: 100,
+    sortBy: "createdAt",
+    sortDir: "desc",
+  });
+
   const stats = statsQuery.data;
   const spotlight = spotlightQuery.data?.items ?? [];
+  const allCandidates = allCandidatesQuery.data?.items ?? [];
+
+  const stageTotal = (stats?.byStatus ?? []).reduce((sum, e) => sum + e.count, 0);
+
+  // Derived: analysis coverage
+  const scanned = allCandidates.filter(
+    (c) => c.analysisState === "COMPLETE" || c.analysisState === "DRAFT_UPDATED",
+  ).length;
+  const coveragePct =
+    allCandidates.length > 0 ? Math.round((scanned / allCandidates.length) * 100) : null;
+
+  // Derived: how many are actively scanning right now
+  const scanning = allCandidates.filter((c) => c.analysisState === "RUNNING").length;
 
   return (
     <div className="space-y-6">
       <CodeClearTabs />
 
+      {/* Top metrics */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Total candidates"
           value={String(stats?.total ?? 0)}
-          caption="Workspace-wide CodeClear pipeline"
+          caption="Across all pipeline stages"
         />
         <MetricCard
-          label="Average verified"
-          value={stats?.avgThis != null ? `${stats.avgThis}` : "—"}
-          caption={stats?.avgLast != null ? `Last month ${stats.avgLast}` : "No prior month data"}
+          label="Avg score (this month)"
+          value={stats?.avgThis != null ? `${stats.avgThis}/100` : "—"}
+          caption={
+            stats?.avgLast != null
+              ? `Last month: ${stats.avgLast}/100`
+              : "No prior month data yet"
+          }
         />
         <MetricCard
-          label="Pass rate"
+          label="Pass rate (65+)"
           value={stats?.passRateThis != null ? `${stats.passRateThis}%` : "—"}
-          caption="Verified candidates scoring 65+ this month"
+          caption="Verified candidates scoring 65 or above this month"
         />
         <MetricCard
-          label="Re-check due"
-          value={String(stats?.recheckDue ?? 0)}
-          caption="Candidates needing another review soon"
+          label="GitHub coverage"
+          value={coveragePct !== null ? `${coveragePct}%` : "—"}
+          caption={
+            scanning > 0
+              ? `${scanning} scan${scanning > 1 ? "s" : ""} running now`
+              : `${scanned} of ${allCandidates.length} profiles scanned`
+          }
         />
       </div>
 
+      {/* Stage distribution + Activity */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <section className="app-card p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-lg font-semibold text-[var(--text-1)]">Stage distribution</p>
-              <p className="mt-1 text-sm text-[var(--text-4)]">How the pipeline is moving today.</p>
+              <p className="mt-1 text-sm text-[var(--text-4)]">
+                Where candidates sit in the pipeline right now.
+              </p>
             </div>
-            <Link
-              href="/app/codeclear/pipeline"
-              className="text-sm font-semibold text-[var(--brand-700)]"
-            >
-              Open pipeline
+            <Link href="/app/codeclear/pipeline" className="text-sm font-semibold text-[var(--brand-700)]">
+              Open pipeline →
             </Link>
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {(stats?.byStatus ?? []).map((entry) => (
-              <div
-                key={entry.status}
-                className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
-              >
-                <CodeClearStatusBadge status={entry.status} />
-                <p className="mt-4 text-[26px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-                  {entry.count}
-                </p>
-                <p className="mt-1 text-sm text-[var(--text-4)]">{statusLabel(entry.status)}</p>
-              </div>
-            ))}
+            {(stats?.byStatus ?? []).map((entry) => {
+              const pct = stageTotal > 0 ? (entry.count / stageTotal) * 100 : 0;
+              return (
+                <div
+                  key={entry.status}
+                  className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
+                >
+                  <CodeClearStatusBadge status={entry.status} />
+                  <p className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                    {entry.count}
+                  </p>
+                  <p className="mt-0.5 text-sm text-[var(--text-4)]">{statusLabel(entry.status)}</p>
+                  {/* Progress bar showing proportion of total */}
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--brand-500),var(--brand-700))] transition-all duration-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-[var(--text-4)]">
+                    {pct.toFixed(0)}% of pipeline
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </section>
 
+        {/* Recent activity */}
         <section className="app-card p-6">
-          <p className="text-lg font-semibold text-[var(--text-1)]">Recent activity</p>
-          <div className="mt-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-lg font-semibold text-[var(--text-1)]">Recent activity</p>
+              <p className="mt-1 text-sm text-[var(--text-4)]">Latest events across the pipeline.</p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-2">
             {(stats?.recentActivity ?? []).length ? (
-              stats?.recentActivity.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded-[14px] border border-[var(--border-2)] px-4 py-3"
-                >
-                  <p className="text-sm font-semibold text-[var(--text-1)]">
-                    {entry.candidate?.name ?? "Candidate"}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--text-3)]">{entry.eventType}</p>
-                  <p className="mt-2 text-xs text-[var(--text-4)]">{formatDate(entry.createdAt)}</p>
-                </div>
-              ))
+              stats?.recentActivity.map((entry) => {
+                const meta = getEventMeta(entry.eventType);
+                const Icon = meta.icon;
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-start gap-3 rounded-[14px] border border-[var(--border-2)] bg-white px-4 py-3"
+                  >
+                    <div
+                      className={cn(
+                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
+                        meta.tone,
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-[var(--text-1)]">
+                        {entry.candidate?.name ?? "Candidate"}
+                      </p>
+                      <p className="mt-0.5 text-sm text-[var(--text-3)]">{meta.label}</p>
+                      <p className="mt-1.5 text-xs text-[var(--text-4)]">
+                        {formatDate(entry.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
-              <p className="text-sm text-[var(--text-4)]">No activity yet.</p>
+              <p className="py-4 text-center text-sm text-[var(--text-4)]">No activity yet.</p>
             )}
           </div>
         </section>
       </div>
 
+      {/* Candidate spotlight */}
       <section className="app-card p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-lg font-semibold text-[var(--text-1)]">Candidate spotlight</p>
             <p className="mt-1 text-sm text-[var(--text-4)]">
-              Highest-signal profiles and the latest draft states.
+              Top profiles by score — verified and draft combined.
             </p>
           </div>
-          <Link
-            href="/app/codeclear/candidates"
-            className="text-sm font-semibold text-[var(--brand-700)]"
-          >
-            View all
+          <Link href="/app/codeclear/candidates" className="text-sm font-semibold text-[var(--brand-700)]">
+            View all →
           </Link>
         </div>
 
@@ -130,7 +268,7 @@ export function CodeClearOverview() {
                   <th className="text-left">Candidate</th>
                   <th className="text-left">Stack</th>
                   <th className="text-left">Status</th>
-                  <th className="text-left">Analysis</th>
+                  <th className="text-left">GitHub scan</th>
                   <th className="text-left">Score</th>
                 </tr>
               </thead>
@@ -143,7 +281,9 @@ export function CodeClearOverview() {
                         className="block"
                       >
                         <p className="font-semibold text-[var(--text-1)]">{candidate.name}</p>
-                        <p className="mt-1 text-sm text-[var(--text-4)]">@{candidate.githubHandle}</p>
+                        <p className="mt-1 text-sm text-[var(--text-4)]">
+                          @{candidate.githubHandle}
+                        </p>
                       </Link>
                     </td>
                     <td>

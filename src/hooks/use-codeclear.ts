@@ -31,6 +31,12 @@ export function useCodeClearCandidates(filters: Partial<CandidateListParams> = {
     queryKey: ["codeclear", "candidates", filters],
     queryFn: () => listCodeClearCandidates(filters),
     staleTime: 1000 * 10,
+    // Poll every 4 s while any candidate has an analysis in flight
+    refetchInterval: (query) => {
+      const items = query.state.data?.items;
+      const hasRunning = items?.some((item) => item.analysisState === "RUNNING");
+      return hasRunning ? 4000 : false;
+    },
   });
 }
 

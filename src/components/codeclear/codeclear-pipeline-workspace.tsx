@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  ArrowPathIcon,
   Bars3Icon,
   EyeIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import {
   DndContext,
@@ -17,7 +19,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { useBulkUpdateCodeClearCandidates, useCodeClearCandidates } from "@/hooks/use-codeclear";
+import {
+  useBulkUpdateCodeClearCandidates,
+  useCodeClearCandidates,
+  useRunCodeClearGitHubAnalysis,
+} from "@/hooks/use-codeclear";
 import {
   PIPELINE_STATUSES,
   type CodeClearCandidateListItem,
@@ -49,6 +55,10 @@ export function CodeClearPipelineWorkspace() {
   });
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
+  const scanningCount = useMemo(
+    () => candidates.filter((c) => c.analysisState === "RUNNING").length,
+    [candidates],
+  );
 
   const groups = useMemo(() => {
     return Object.fromEntries(
@@ -74,27 +84,32 @@ export function CodeClearPipelineWorkspace() {
     const activeId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
 
-    if (!overId) {
-      return;
-    }
+    if (!overId) return;
 
     const candidate = candidates.find((item) => item.id === activeId);
     const targetStatus = PIPELINE_STATUSES.find((item) => item.value === overId)?.value;
 
-    if (!candidate || !targetStatus || candidate.status === targetStatus) {
-      return;
-    }
+    if (!candidate || !targetStatus || candidate.status === targetStatus) return;
 
-    bulkUpdate.mutate({
-      action: "MOVE_STAGE",
-      ids: [candidate.id],
-      status: targetStatus,
-    });
+    bulkUpdate.mutate({ action: "MOVE_STAGE", ids: [candidate.id], status: targetStatus });
   }
 
   return (
     <div className="space-y-6">
       <CodeClearTabs />
+
+      {/* Live scanning banner */}
+      {scanningCount > 0 ? (
+        <div className="flex items-center gap-3 rounded-[14px] border border-sky-200 bg-sky-50 px-4 py-3">
+          <ArrowPathIcon className="h-4 w-4 shrink-0 animate-spin text-sky-600" />
+          <p className="text-sm font-semibold text-sky-700">
+            {scanningCount} GitHub scan{scanningCount > 1 ? "s" : ""} running
+            <span className="ml-1.5 font-normal text-sky-600">
+              — this page updates automatically every 4 seconds.
+            </span>
+          </p>
+        </div>
+      ) : null}
 
       {candidates.length ? (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -136,9 +151,7 @@ function PipelineColumn({
   candidates: CodeClearCandidateListItem[];
   onOpen: (candidateId: string) => void;
 }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: status,
-  });
+  const { isOver, setNodeRef } = useDroppable({ id: status });
 
   return (
     <section
@@ -175,57 +188,100 @@ function PipelineCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: candidate.id,
   });
+  const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
+
+  const isRunning = candidate.analysisState === "RUNNING";
+  const neverScanned = candidate.analysisState === "NEVER_RUN";
+  const scanFailed = candidate.analysisState === "FAILED";
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Translate.toString(transform),
-      }}
+      style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
-        "rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]",
+        "rounded-[18px] border bg-white shadow-[var(--shadow-xs)] transition",
         isDragging ? "opacity-70" : "",
+        isRunning
+          ? "border-sky-300 bg-sky-50/60"
+          : "border-[var(--border-2)]",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
-          <p className="mt-1 truncate text-sm text-[var(--text-4)]">@{candidate.githubHandle}</p>
+      {/* Scanning banner */}
+      {isRunning ? (
+        <div className="flex items-center gap-2 rounded-t-[18px] border-b border-sky-200 bg-sky-100 px-4 py-2">
+          <ArrowPathIcon className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-600" />
+          <p className="text-xs font-semibold text-sky-700">Scanning GitHub profile…</p>
         </div>
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-2)] text-[var(--text-4)]"
-          {...attributes}
-          {...listeners}
-        >
-          <Bars3Icon className="h-4 w-4" />
-        </button>
-      </div>
+      ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <StackPill label={candidate.primaryStack} tone="brand" />
-        <CodeClearTierBadge tier={candidate.tier} />
-      </div>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
+            <p className="mt-1 truncate text-xs text-[var(--text-4)]">@{candidate.githubHandle}</p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--border-1)]"
+            {...attributes}
+            {...listeners}
+            title="Drag to move stage"
+          >
+            <Bars3Icon className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <CodeClearAnalysisBadge state={candidate.analysisState} />
-        <CodeClearScoreBadge
-          value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
-        />
-      </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <StackPill label={candidate.primaryStack} tone="brand" />
+          <CodeClearTierBadge tier={candidate.tier} />
+        </div>
 
-      <p className="mt-3 text-xs text-[var(--text-4)]">Updated {formatDate(candidate.updatedAt)}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <CodeClearAnalysisBadge state={candidate.analysisState} />
+          <CodeClearScoreBadge
+            value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
+          />
+        </div>
 
-      <div className="mt-4 flex justify-end">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          leadingIcon={<EyeIcon className="h-4 w-4" />}
-          onClick={() => onOpen(candidate.id)}
-        >
-          Open
-        </Button>
+        <p className="mt-3 text-xs text-[var(--text-4)]">
+          Updated {formatDate(candidate.updatedAt)}
+        </p>
+
+        {/* Action row */}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          {/* Run / Re-run analysis button */}
+          {isRunning ? (
+            <span className="text-xs text-sky-600">Live update in ~4s</span>
+          ) : (
+            <Button
+              type="button"
+              variant={neverScanned || scanFailed ? "primary" : "secondary"}
+              size="sm"
+              leadingIcon={
+                runAnalysis.isPending ? (
+                  <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <SparklesIcon className="h-3.5 w-3.5" />
+                )
+              }
+              onClick={() => runAnalysis.mutate()}
+              loading={runAnalysis.isPending}
+              disabled={runAnalysis.isPending}
+            >
+              {scanFailed ? "Retry scan" : neverScanned ? "Scan GitHub" : "Re-scan"}
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            leadingIcon={<EyeIcon className="h-3.5 w-3.5" />}
+            onClick={() => onOpen(candidate.id)}
+          >
+            Open
+          </Button>
+        </div>
       </div>
     </div>
   );
