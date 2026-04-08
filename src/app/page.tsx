@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRightIcon, MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
+import { CodeClearSiteDemo } from "@/components/marketing/codeclear-site-demo";
 
 const navItems = ["Products", "Services", "Pricing", "Resources", "About"];
 
@@ -130,7 +131,7 @@ export default function HomePage() {
 
         <section className="bg-[#0a0a0a] py-24 text-white">
           <div className="mx-auto max-w-[1280px] px-8">
-            <div className="max-w-[768px]">
+            <div className="mx-auto max-w-[820px] text-center">
               <p className="text-[16px] font-semibold text-white">Features</p>
               <h2 className="mt-3 text-[36px] font-semibold leading-[1.22] tracking-[-0.04em] text-white">
                 Overflowing with useful delivery features
@@ -141,8 +142,8 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="mt-16 grid items-center gap-16 lg:grid-cols-[1fr_1fr]">
-              <div className="max-w-[560px]">
+            <div className="mx-auto mt-16 max-w-[820px]">
+              <div className="mx-auto max-w-[640px]">
                 {featureTabs.map((feature, index) => (
                   <div
                     key={feature.title}
@@ -162,24 +163,10 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+            </div>
 
-              <div className="relative h-[560px]">
-                <PhoneMockup
-                  className="absolute left-0 top-16"
-                  title="Docs"
-                  statA="12 live proposals"
-                  statB="4 awaiting sign-off"
-                  footer="Builder, preview, commercials"
-                />
-                <PhoneMockup
-                  className="absolute right-16 top-0"
-                  title="CodeClear"
-                  statA="91/100 confidence"
-                  statB="High fit for delivery"
-                  footer="Identity, GitHub, delivery fit"
-                  accent
-                />
-              </div>
+            <div className="mt-16">
+              <CodeClearSiteDemo />
             </div>
           </div>
         </section>
@@ -268,8 +255,8 @@ export default function HomePage() {
         </section>
 
         <section className="bg-[#0a0a0a] py-24">
-          <div className="mx-auto grid max-w-[1280px] items-center gap-16 px-8 lg:grid-cols-[1fr_420px]">
-            <div className="max-w-[560px]">
+          <div className="mx-auto max-w-[1280px] px-8">
+            <div className="mx-auto max-w-[860px] text-center">
               <h2 className="text-[48px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
                 Agency delivery with platform systems built in
               </h2>
@@ -277,7 +264,7 @@ export default function HomePage() {
                 Use Gitwork when you need design, proposals, delivery thinking, developer validation, or a stronger
                 structure behind the next project.
               </p>
-              <div className="mt-8 flex gap-3">
+              <div className="mt-8 flex justify-center gap-3">
                 <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-[#2c2c2c] bg-[#0f0f0f] text-white shadow-none hover:bg-[#1a1a1a]">
                   Open platform
                 </Link>
@@ -292,7 +279,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="flex justify-center">
+            <div className="mt-16 flex justify-center">
               <HeroProductPanel compact />
             </div>
           </div>
@@ -478,69 +465,6 @@ function HeroProductPanel({ compact = false }: { compact?: boolean }) {
             ))}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PhoneMockup({
-  className,
-  title,
-  statA,
-  statB,
-  footer,
-  accent = false,
-}: {
-  className?: string;
-  title: string;
-  statA: string;
-  statB: string;
-  footer: string;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`h-[420px] w-[220px] rounded-[40px] border border-[#2f2f2f] bg-black p-[10px] shadow-[24px_24px_48px_-4px_rgba(10,13,18,0.2),12px_12px_24px_-2px_rgba(10,13,18,0.08)] ${className ?? ""}`}
-    >
-      <div className="relative h-full rounded-[30px] border border-[#1f1f1f] bg-[#0d0d0d] p-4">
-        <div className="absolute left-1/2 top-3 h-2 w-16 -translate-x-1/2 rounded-full bg-[#222]" />
-        <div className="mt-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className={`h-3 w-3 rounded-full ${accent ? "bg-[#9e77ed]" : "bg-[#c4b5fd]"}`} />
-            <span className="text-[10px] font-semibold text-white">{title}</span>
-          </div>
-          <span className="text-[11px] text-[#8a8a8a]">⋮</span>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          <div className="rounded-[14px] border border-[#212121] bg-[#101010] p-3">
-            <p className="text-[11px] text-[#7a7a7a]">Signal</p>
-            <p className="mt-2 text-[18px] font-semibold text-white">{statA}</p>
-          </div>
-          <div className="rounded-[14px] border border-[#212121] bg-[#101010] p-3">
-            <p className="text-[11px] text-[#7a7a7a]">Insight</p>
-            <p className="mt-2 text-[18px] font-semibold text-white">{statB}</p>
-          </div>
-          <div className="rounded-[14px] border border-[#212121] bg-[#101010] p-3">
-            <div className="flex gap-2">
-              {["12m", "30d", "7d", "24h"].map((item, index) => (
-                <div
-                  key={item}
-                  className={`rounded-[8px] px-2 py-1 text-[10px] ${
-                    index === 0 ? "bg-[#1f1f1f] text-white" : "bg-[#111] text-[#8a8a8a]"
-                  }`}
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 h-[90px] rounded-[12px] bg-[linear-gradient(180deg,#121212,#0f0f0f)]">
-              <div className="h-full w-full bg-[radial-gradient(circle_at_70%_20%,rgba(158,119,237,0.45),transparent_30%),linear-gradient(180deg,transparent,rgba(37,84,255,0.18))]" />
-            </div>
-          </div>
-        </div>
-
-        <p className="mt-4 text-[11px] leading-4 text-[#8f8f8f]">{footer}</p>
       </div>
     </div>
   );
