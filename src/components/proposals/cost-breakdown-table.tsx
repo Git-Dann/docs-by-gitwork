@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { listRateCardPeople } from "@/lib/api";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
@@ -57,10 +61,11 @@ const techStackOptions = [
   "Azure",
 ];
 
-const CUSTOM_ROLE_VALUE = "__custom_role__";
 const RATE_CARD_PREFIX = "rate-card:";
 const PROPOSAL_ROLE_PREFIX = "proposal-role:";
 const CUSTOM_ROLE_PREFIX = "custom-role:";
+const CUSTOM_ROLE_VALUE = "__custom_role__";
+const DAYS_PER_MONTH = 21;
 const ROLE_FX_TO_GBP: Record<"GBP" | "USD" | "EUR", number> = {
   GBP: 1,
   USD: 0.7558603274120514,
@@ -78,6 +83,21 @@ type ProposalRoleOption = {
   isManualRate: boolean;
 };
 
+type BudgetEditorState = {
+  index: number | null;
+  roleValue: string;
+  customRole: string;
+  techStack: string[];
+  monthsRequired: number;
+  monthlyCost: number;
+  included: boolean;
+};
+
+type TimelineWindow = {
+  unit: "DAY" | "WEEK" | "MONTH";
+  end: number;
+};
+
 const proposalRoleBlueprints: Array<{
   id: string;
   title: string;
@@ -89,7 +109,7 @@ const proposalRoleBlueprints: Array<{
 }> = [
   {
     id: "senior",
-    title: "Senior",
+    title: "Senior Developer",
     description: "Senior developer benchmark from People & Rates.",
     requiresManualRate: false,
     fallbackSourceRate: 1900,
@@ -98,7 +118,7 @@ const proposalRoleBlueprints: Array<{
   },
   {
     id: "mid-level",
-    title: "Mid Level",
+    title: "Mid-level Developer",
     description: "Mid-level developer benchmark from People & Rates.",
     requiresManualRate: false,
     fallbackSourceRate: 1500,
@@ -107,7 +127,7 @@ const proposalRoleBlueprints: Array<{
   },
   {
     id: "junior",
-    title: "Junior",
+    title: "Junior Developer",
     description: "Junior developer benchmark from People & Rates.",
     requiresManualRate: false,
     fallbackSourceRate: 1300,
@@ -153,6 +173,7 @@ export function CostBreakdownTable({
   const [rateCardPeople, setRateCardPeople] = useState<RateCardPersonRecord[]>([]);
   const [rateCardLoading, setRateCardLoading] = useState(true);
   const [rateCardError, setRateCardError] = useState<string | null>(null);
+  const [budgetEditor, setBudgetEditor] = useState<BudgetEditorState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,52 +209,10 @@ export function CostBreakdownTable({
     };
   }, []);
 
-  useEffect(() => {
-    const sortedTimelinePhases = [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder);
-    const normalizedTimelineSummary = summarizeTimelineDuration(sortedTimelinePhases, value.durationSummary);
-    const normalizedTimelineEstimate = inferProjectTimelineEstimate(
-      sortedTimelinePhases,
-      normalizedTimelineSummary,
-      value.items,
-    );
-    const currentAssignmentTimelineMode = value.assignmentTimelineMode ?? {};
-    const normalizedItems = value.items.map((item, index) =>
-      normalizeCostItem(
-        item,
-        index,
-        currentAssignmentTimelineMode,
-        sortedTimelinePhases.length > 0,
-        normalizedTimelineEstimate.months,
-      ),
-    );
-    const normalizedAssignmentTimelineMode = buildAssignmentTimelineMode(
-      normalizedItems,
-      currentAssignmentTimelineMode,
-    );
-    const changed = normalizedTimelineSummary !== value.durationSummary ||
-      normalizedItems.some((item, index) => {
-      const current = value.items[index];
-      return (
-        item.id !== current?.id ||
-        item.itemName !== current?.itemName ||
-        item.quantity !== current?.quantity ||
-        item.subtotal !== current?.subtotal
-      );
-      });
-    const timelineModeChanged = !assignmentTimelineModeEqual(
-      normalizedAssignmentTimelineMode,
-      currentAssignmentTimelineMode,
-    );
-
-    if (changed || timelineModeChanged) {
-      onChange({
-        ...value,
-        durationSummary: normalizedTimelineSummary,
-        assignmentTimelineMode: normalizedAssignmentTimelineMode,
-        items: normalizedItems,
-      });
-    }
-  }, [onChange, value]);
+  const timelinePhases = useMemo(
+    () => [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
+    [value.timelinePhases],
+  );
 
   const rateCardPeopleById = useMemo(
     () =>
@@ -243,10 +222,12 @@ export function CostBreakdownTable({
       }, {}),
     [rateCardPeople],
   );
+
   const proposalRoleOptions = useMemo(
     () => buildProposalRoleOptions(rateCardPeople, value.currency),
     [rateCardPeople, value.currency],
   );
+
   const proposalRoleOptionsById = useMemo(
     () =>
       proposalRoleOptions.reduce<Record<string, ProposalRoleOption>>((result, option) => {
@@ -255,20 +236,69 @@ export function CostBreakdownTable({
       }, {}),
     [proposalRoleOptions],
   );
-  const timelinePhases = useMemo(
-    () => [...(value.timelinePhases ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
-    [value.timelinePhases],
+
+  const timelineDurationSummary = summarizeTimelineDuration(timelinePhases, value.durationSummary);
+  const assignmentTimelineMode = value.assignmentTimelineMode ?? {};
+  const timelineEstimate = inferProjectTimelineEstimate(
+    timelinePhases,
+    timelineDurationSummary,
+    value.items,
   );
-  const timelinePhaseById = useMemo(
-    () =>
-      timelinePhases.reduce<Record<string, TimelinePhaseInput>>((result, phase) => {
-        if (phase.id) {
-          result[phase.id] = phase;
-        }
-        return result;
-      }, {}),
-    [timelinePhases],
-  );
+  const suggestedDurationMonths = timelineEstimate.months;
+
+  useEffect(() => {
+    const currentAssignmentTimelineMode = value.assignmentTimelineMode ?? {};
+    const normalizedItems = value.items.map((item, index) =>
+      normalizeCostItem(
+        item,
+        index,
+        currentAssignmentTimelineMode,
+        timelinePhases.length > 0,
+        suggestedDurationMonths,
+      ),
+    );
+    const normalizedAssignmentTimelineMode = buildAssignmentTimelineMode(
+      normalizedItems,
+      currentAssignmentTimelineMode,
+    );
+
+    const itemsChanged = normalizedItems.some((item, index) => {
+      const current = value.items[index];
+      return (
+        item.id !== current?.id ||
+        item.itemName !== current?.itemName ||
+        item.category !== current?.category ||
+        item.quantity !== current?.quantity ||
+        item.unitCost !== current?.unitCost ||
+        item.subtotal !== current?.subtotal ||
+        item.description !== current?.description
+      );
+    });
+
+    const timelineModeChanged = !assignmentTimelineModeEqual(
+      normalizedAssignmentTimelineMode,
+      currentAssignmentTimelineMode,
+    );
+
+    if (
+      timelineDurationSummary !== value.durationSummary ||
+      itemsChanged ||
+      timelineModeChanged
+    ) {
+      onChange({
+        ...value,
+        durationSummary: timelineDurationSummary,
+        assignmentTimelineMode: normalizedAssignmentTimelineMode,
+        items: normalizedItems,
+      });
+    }
+  }, [
+    onChange,
+    suggestedDurationMonths,
+    timelineDurationSummary,
+    timelinePhases.length,
+    value,
+  ]);
 
   useEffect(() => {
     if (!value.items.length) {
@@ -278,7 +308,11 @@ export function CostBreakdownTable({
     let hasChanges = false;
 
     const migratedItems = value.items.map((item) => {
-      const selectedRole = resolveSelectedProposalRole(item, rateCardPeopleById, proposalRoleOptionsById);
+      const selectedRole = resolveSelectedProposalRole(
+        item,
+        rateCardPeopleById,
+        proposalRoleOptionsById,
+      );
 
       if (!selectedRole) {
         return item;
@@ -286,9 +320,10 @@ export function CostBreakdownTable({
 
       const normalizedItemName = `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}`;
       const normalizedCategory = selectedRole.title;
-      const normalizedUnitCost = item.unitCost > 0
-        ? item.unitCost
-        : suggestedUnitCostForRole(selectedRole, item.unitCost, null);
+      const normalizedUnitCost =
+        item.unitCost > 0
+          ? item.unitCost
+          : suggestedUnitCostForRole(selectedRole, item.unitCost, null);
 
       if (
         item.itemName === normalizedItemName &&
@@ -323,14 +358,36 @@ export function CostBreakdownTable({
   const discountedSubtotal = Math.max(subtotal - discountAmount, 0);
   const taxValue = discountedSubtotal * ((value.taxRate ?? 0) / 100);
   const grandTotal = discountedSubtotal + taxValue;
-  const paymentScheduleTotal = value.paymentSchedule.reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
-  const paymentMatchesBudget = Math.abs(paymentScheduleTotal - discountedSubtotal) < 0.01;
-  const billablePeopleCount = value.items.filter((item) => item.category.trim().length > 0 && item.unitCost > 0).length;
-  const monthlyRunRate = value.items.reduce((sum, item) => sum + (item.unitCost > 0 ? item.unitCost : 0), 0);
-  const timelineDurationSummary = summarizeTimelineDuration(timelinePhases, value.durationSummary);
-  const assignmentTimelineMode = value.assignmentTimelineMode ?? {};
-  const timelineEstimate = inferProjectTimelineEstimate(timelinePhases, timelineDurationSummary, value.items);
-  const suggestedDurationMonths = timelineEstimate.months;
+  const phaseBudgetMap = useMemo(
+    () => buildPhaseBudgetMap(timelinePhases, grandTotal),
+    [grandTotal, timelinePhases],
+  );
+
+  const paymentSchedule = useMemo(
+    () =>
+      (value.paymentSchedule ?? []).map((row, index) =>
+        hydratePaymentScheduleRow(row, index, timelinePhases, phaseBudgetMap),
+      ),
+    [phaseBudgetMap, timelinePhases, value.paymentSchedule],
+  );
+
+  const paymentScheduleTotal = paymentSchedule.reduce(
+    (sum, row) => sum + (row.amount ?? 0),
+    0,
+  );
+  const paymentMatchesBudget = Math.abs(paymentScheduleTotal - grandTotal) < 0.5;
+
+  function commitItems(
+    items: CostLineItemInput[],
+    nextAssignmentTimelineMode: Record<string, AssignmentTimelineMode>,
+  ) {
+    onChange({
+      ...value,
+      durationSummary: timelineDurationSummary,
+      assignmentTimelineMode: nextAssignmentTimelineMode,
+      items,
+    });
+  }
 
   function updateItem(
     index: number,
@@ -347,992 +404,963 @@ export function CostBreakdownTable({
         ...patch,
       };
 
-      return normalizeCostItem({
-        ...next,
-        subtotal: Number((next.quantity * next.unitCost).toFixed(2)),
-      }, itemIndex, assignmentTimelineMode, timelinePhases.length > 0, suggestedDurationMonths);
+      return normalizeCostItem(
+        {
+          ...next,
+          subtotal: Number((next.quantity * next.unitCost).toFixed(2)),
+        },
+        itemIndex,
+        assignmentTimelineMode,
+        timelinePhases.length > 0,
+        suggestedDurationMonths,
+      );
     });
 
-    const itemID = nextItems[index]?.id;
-    const nextAssignmentTimelineMode = itemID
+    const itemId = nextItems[index]?.id;
+    const nextAssignmentTimelineMode = itemId
       ? {
           ...assignmentTimelineMode,
-          [itemID]: nextTimelineMode ?? assignmentTimelineMode[itemID] ?? "DEFAULT",
+          [itemId]: nextTimelineMode ?? assignmentTimelineMode[itemId] ?? "DEFAULT",
         }
       : assignmentTimelineMode;
 
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      assignmentTimelineMode: nextAssignmentTimelineMode,
-      items: nextItems,
-    });
-  }
-
-  function addItem() {
-    const id = createRowId("cost");
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      assignmentTimelineMode: {
-        ...assignmentTimelineMode,
-        [id]: "DEFAULT",
-      },
-      items: [
-        ...value.items,
-        normalizeCostItem({
-          id,
-          category: "",
-          itemName: `${CUSTOM_ROLE_PREFIX}new-person`,
-          description: "",
-          quantity: suggestedDurationMonths,
-          unitCost: 0,
-          subtotal: 0,
-          costKind: "ONE_OFF",
-          sortOrder: value.items.length,
-        }, value.items.length, { ...assignmentTimelineMode, [id]: "DEFAULT" }, timelinePhases.length > 0, suggestedDurationMonths),
-      ],
-    });
+    commitItems(nextItems, nextAssignmentTimelineMode);
   }
 
   function removeItem(index: number) {
-    const itemID = value.items[index]?.id;
+    const itemId = value.items[index]?.id;
     const nextAssignmentTimelineMode = { ...assignmentTimelineMode };
-    if (itemID) {
-      delete nextAssignmentTimelineMode[itemID];
+    if (itemId) {
+      delete nextAssignmentTimelineMode[itemId];
     }
 
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      assignmentTimelineMode: nextAssignmentTimelineMode,
-      items: value.items
+    commitItems(
+      value.items
         .filter((_, itemIndex) => itemIndex !== index)
-        .map((item, itemIndex) => ({ ...item, sortOrder: itemIndex })),
-    });
+        .map((item, itemIndex) => ({
+          ...item,
+          sortOrder: itemIndex,
+        })),
+      nextAssignmentTimelineMode,
+    );
   }
 
-  function updatePaymentRow(index: number, patch: Partial<PaymentScheduleRow>) {
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      paymentSchedule: value.paymentSchedule.map((row, rowIndex) =>
-        rowIndex === index
-          ? {
-              ...row,
-              ...patch,
-            }
-          : row,
-      ),
-    });
-  }
-
-  function addPaymentRow() {
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      paymentSchedule: [
-        ...value.paymentSchedule,
-        {
-          id: createRowId("payment"),
-          timelinePhaseId: "",
-          action: "",
-          periodCovered: "",
-          includedWork: "",
-          amount: 0,
-        },
-      ],
-    });
-  }
-
-  function removePaymentRow(index: number) {
-    onChange({
-      ...value,
-      durationSummary: timelineDurationSummary,
-      paymentSchedule: value.paymentSchedule.filter((_, rowIndex) => rowIndex !== index),
-    });
-  }
-
-  function buildPaymentScheduleFromTimeline() {
-    if (!timelinePhases.length) {
+  function openBudgetEditor(index: number | null) {
+    if (index === null) {
+      const defaultRole = proposalRoleOptions[0];
+      setBudgetEditor({
+        index: null,
+        roleValue: defaultRole ? `${PROPOSAL_ROLE_PREFIX}${defaultRole.id}` : CUSTOM_ROLE_VALUE,
+        customRole: "",
+        techStack: [],
+        monthsRequired: suggestedDurationMonths,
+        monthlyCost: defaultRole?.defaultMonthlyRate ?? 0,
+        included: false,
+      });
       return;
     }
 
+    const item = value.items[index];
+    const selectedRole = resolveSelectedProposalRole(
+      item,
+      rateCardPeopleById,
+      proposalRoleOptionsById,
+    );
+
+    setBudgetEditor({
+      index,
+      roleValue: selectedRole
+        ? `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}`
+        : CUSTOM_ROLE_VALUE,
+      customRole: selectedRole ? "" : item.category,
+      techStack: parseTechStackValue(item.description),
+      monthsRequired: Math.max(1, item.quantity || suggestedDurationMonths),
+      monthlyCost: item.unitCost > 0 ? item.unitCost : selectedRole?.defaultMonthlyRate ?? 0,
+      included: item.unitCost <= 0,
+    });
+  }
+
+  function closeBudgetEditor() {
+    setBudgetEditor(null);
+  }
+
+  function saveBudgetEditor() {
+    if (!budgetEditor) {
+      return;
+    }
+
+    const selectedRole =
+      budgetEditor.roleValue === CUSTOM_ROLE_VALUE
+        ? null
+        : proposalRoleOptionsById[budgetEditor.roleValue.replace(PROPOSAL_ROLE_PREFIX, "")];
+
+    const roleTitle = selectedRole
+      ? selectedRole.title
+      : budgetEditor.customRole.trim() || "Flexible role";
+    const quantity = Math.max(1, parseNumber(String(budgetEditor.monthsRequired), 1));
+    const unitCost = budgetEditor.included
+      ? 0
+      : roundToCurrency(parseNumber(String(budgetEditor.monthlyCost), 0));
+    const timelineMode =
+      timelinePhases.length > 0 && quantity === suggestedDurationMonths ? "DEFAULT" : "MANUAL";
+
+    if (budgetEditor.index === null) {
+      const id = createRowId("cost");
+      const nextAssignmentTimelineMode: Record<string, AssignmentTimelineMode> = {
+        ...assignmentTimelineMode,
+        [id]: timelineMode,
+      };
+
+      commitItems(
+        [
+          ...value.items,
+          normalizeCostItem(
+            {
+              id,
+              category: roleTitle,
+              itemName: selectedRole
+                ? `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}`
+                : buildCustomRoleReference(roleTitle),
+              description: budgetEditor.techStack.join(", "),
+              quantity,
+              unitCost,
+              subtotal: roundToCurrency(quantity * unitCost),
+              costKind: "ONE_OFF",
+              sortOrder: value.items.length,
+            },
+            value.items.length,
+            nextAssignmentTimelineMode,
+            timelinePhases.length > 0,
+            suggestedDurationMonths,
+          ),
+        ],
+        nextAssignmentTimelineMode,
+      );
+      setBudgetEditor(null);
+      return;
+    }
+
+    updateItem(
+      budgetEditor.index,
+      {
+        category: roleTitle,
+        itemName: selectedRole
+          ? `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}`
+          : buildCustomRoleReference(roleTitle),
+        description: budgetEditor.techStack.join(", "),
+        quantity,
+        unitCost,
+      },
+      timelineMode,
+    );
+    setBudgetEditor(null);
+  }
+
+  function commitPaymentRows(rows: PaymentScheduleRow[]) {
     onChange({
       ...value,
       durationSummary: timelineDurationSummary,
-      paymentSchedule: timelinePhases.map((phase, index) => createPaymentMilestoneFromPhase(phase, index)),
+      paymentSchedule: rows,
     });
+  }
+
+  function updatePaymentRow(index: number, nextRow: PaymentScheduleRow) {
+    commitPaymentRows(
+      paymentSchedule.map((row, rowIndex) => (rowIndex === index ? nextRow : row)),
+    );
+  }
+
+  function addPaymentRow() {
+    commitPaymentRows([
+      ...paymentSchedule,
+      createPaymentScheduleRow(timelinePhases, phaseBudgetMap),
+    ]);
+  }
+
+  function removePaymentRow(index: number) {
+    commitPaymentRows(
+      paymentSchedule.filter((_, rowIndex) => rowIndex !== index),
+    );
   }
 
   return (
     <div className="space-y-4">
-      <SectionCard
-        title="Commercial settings"
-        description="Set the commercial frame for this proposal. Budget rows follow the delivery timeline by default, and short day-based plans are billed as a one-month minimum when you are using monthly rates."
-      >
-        <div className="grid gap-3 lg:grid-cols-3">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Currency</span>
-            <CurrencyField
-              value={value.currency}
-              onChange={(currency) => onChange({ ...value, currency })}
-            />
-          </label>
-
-          <NumberField
-            label="Discount (%)"
-            value={value.discount}
-            onChange={(discount) => onChange({ ...value, discount })}
+      <div className="grid gap-3 md:grid-cols-3">
+        <MetricFieldCard label="Currency">
+          <CurrencyField
+            value={value.currency}
+            onChange={(currency) =>
+              onChange({
+                ...value,
+                currency,
+              })
+            }
           />
-
-          <NumberField
-            label="VAT (%)"
-            value={value.taxRate}
-            onChange={(taxRate) => onChange({ ...value, taxRate })}
+        </MetricFieldCard>
+        <MetricFieldCard label="Discount">
+          <input
+            value={formatEditableNumber(value.discount ?? 0)}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                discount: parseNumber(event.target.value, 0),
+              })
+            }
+            inputMode="decimal"
+            className="w-full border-0 bg-transparent p-0 text-[26px] font-semibold tracking-[-0.04em] text-[var(--text-1)] outline-none"
           />
+          <span className="text-sm font-medium text-[var(--text-3)]">%</span>
+        </MetricFieldCard>
+        <MetricFieldCard label="VAT">
+          <input
+            value={formatEditableNumber(value.taxRate ?? 0)}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                taxRate: parseNumber(event.target.value, 0),
+              })
+            }
+            inputMode="decimal"
+            className="w-full border-0 bg-transparent p-0 text-[26px] font-semibold tracking-[-0.04em] text-[var(--text-1)] outline-none"
+          />
+          <span className="text-sm font-medium text-[var(--text-3)]">%</span>
+        </MetricFieldCard>
+      </div>
+
+      <section className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
+        <div className="flex items-center justify-between gap-4">
+          <h4 className="text-base font-semibold text-[var(--text-1)]">Budget breakdown</h4>
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() => openBudgetEditor(null)}
+          >
+            Add
+          </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <MiniMetric
-            label="Budget rows"
-            value={`${billablePeopleCount} ${billablePeopleCount === 1 ? "role" : "roles"}`}
-          />
-          <MiniMetric label="Timeline default" value={formatDurationSummary(timelineDurationSummary)} />
-          <MiniMetric label="Monthly run rate" value={formatCurrency(monthlyRunRate, value.currency)} />
-          <MiniMetric label="Grand total" value={formatCurrency(grandTotal, value.currency)} />
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Budget breakdown"
-        description="Build the delivery budget row by row. Use shared job levels from People & Rates, or choose a manual role when you want to set the commercial rate yourself."
-      >
-        {timelinePhases.length ? (
-          <div className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
-                  Timeline default
-                </p>
-                <p className="mt-2 text-sm text-[var(--text-2)]">
-                  Team rows now inherit the delivery timeline by default. Override any role when a
-                  person joins later, finishes earlier, or only covers one phase.
-                </p>
-                {timelineEstimate.helperText ? (
-                  <p className="mt-2 text-xs text-[var(--text-3)]">{timelineEstimate.helperText}</p>
-                ) : null}
-              </div>
-              <div className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-1 text-sm font-medium text-[var(--text-1)]">
-                {formatDurationSummary(timelineDurationSummary)}
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              {timelinePhases.map((phase) => (
-                <div
-                  key={phase.id ?? `${phase.name}-${phase.sortOrder}`}
-                  className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2"
-                >
-                  <p className="text-sm font-semibold text-[var(--text-1)]">{phase.name}</p>
-                  <p className="mt-1 text-xs text-[var(--text-3)]">{phase.duration}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-[16px] border border-dashed border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
-            Add your delivery timeline above first. Budget rows will then inherit that duration automatically.
-          </div>
-        )}
-
-        <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)] shadow-[var(--shadow-xs)]">
-          Cost breakdown should reflect the jobs working on the project. Proposal rows use shared role levels from People & Rates, while individual names stay in People & Rates and staffing only.
-        </div>
-
-        <div className="app-table-shell overflow-x-auto">
+        <div className="mt-4 app-table-shell overflow-x-auto">
           <table className="app-table min-w-full text-sm">
             <thead>
               <tr>
-                <th className="text-left">Role</th>
-                <th className="text-left">Delivery focus</th>
-                <th className="text-right">Billed duration</th>
-                <th className="text-right">Monthly rate</th>
-                <th className="text-right">Subtotal</th>
-                <th className="text-right" />
+                <th className="w-[220px] text-left">People</th>
+                <th className="w-[220px] text-left">Tech Stack</th>
+                <th className="w-[120px] text-right">Months Rqd.</th>
+                <th className="w-[120px] text-right">
+                  Day Rate ({currencySymbol(value.currency)})
+                </th>
+                <th className="w-[140px] text-right">
+                  Monthly Cost ({currencySymbol(value.currency)})
+                </th>
+                <th className="w-[56px]" />
               </tr>
             </thead>
             <tbody>
-              {value.items.map((item, index) => {
-                const selectedRole = resolveSelectedProposalRole(item, rateCardPeopleById, proposalRoleOptionsById);
-                const roleGuidance = selectedRole
-                  ? buildRoleGuidance(selectedRole, value.currency)
-                  : null;
-                const itemTimelineMode = item.id ? assignmentTimelineMode[item.id] ?? "DEFAULT" : "DEFAULT";
-                const usesTimelineDefault = timelinePhases.length > 0 && itemTimelineMode !== "MANUAL";
-                const selectedRoleValue = selectedRole ? `${PROPOSAL_ROLE_PREFIX}${selectedRole.id}` : CUSTOM_ROLE_VALUE;
+              {value.items.length ? (
+                value.items.map((item, index) => {
+                  const selectedRole = resolveSelectedProposalRole(
+                    item,
+                    rateCardPeopleById,
+                    proposalRoleOptionsById,
+                  );
+                  const title =
+                    selectedRole?.title ?? item.category ?? "Flexible role";
+                  const subtitle = resolveBudgetRowSubtitle(
+                    title,
+                    value.teamAllocations,
+                    rateCardPeople,
+                  );
+                  const monthlyCost = item.unitCost > 0 ? roundToCurrency(item.unitCost) : null;
+                  const dayRate =
+                    monthlyCost && monthlyCost > 0
+                      ? roundToDecimal(monthlyCost / DAYS_PER_MONTH, 1)
+                      : null;
 
-                return (
-                <tr key={item.id ?? `cost-${index}`}>
-                  <td className="align-top">
-                    <div className="min-w-[280px] space-y-2">
-                      <select
-                        value={selectedRoleValue}
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-
-                          if (nextValue === CUSTOM_ROLE_VALUE) {
-                            updateItem(index, {
-                              category: item.category.trim().length === 0 ? "Flexible role" : item.category,
-                              itemName: buildCustomRoleReference(item.category),
-                            });
-                            return;
-                          }
-
-                          const role = proposalRoleOptionsById[nextValue.replace(PROPOSAL_ROLE_PREFIX, "")];
-                          if (!role) {
-                            return;
-                          }
-
-                          updateItem(index, {
-                            itemName: `${PROPOSAL_ROLE_PREFIX}${role.id}`,
-                            category: role.title,
-                            unitCost: suggestedUnitCostForRole(
-                              role,
-                              item.unitCost,
-                              selectedRole?.id ?? null,
-                            ),
-                          });
-                        }}
-                        className="app-select-compact w-full text-sm"
-                      >
-                        <option value={CUSTOM_ROLE_VALUE}>Flexible role</option>
-                        <optgroup label="Developer levels">
-                          {proposalRoleOptions
-                            .filter((role) => ["senior", "mid-level", "junior"].includes(role.id))
-                            .map((role) => (
-                              <option key={role.id} value={`${PROPOSAL_ROLE_PREFIX}${role.id}`}>
-                                {role.title}
-                              </option>
-                            ))}
-                        </optgroup>
-                        <optgroup label="Manual roles">
-                          {proposalRoleOptions
-                            .filter((role) => !["senior", "mid-level", "junior"].includes(role.id))
-                            .map((role) => (
-                              <option key={role.id} value={`${PROPOSAL_ROLE_PREFIX}${role.id}`}>
-                                {role.title}
-                              </option>
-                            ))}
-                        </optgroup>
-                      </select>
-
-                      {selectedRole ? (
-                        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
-                          <p className="text-sm font-semibold text-[var(--text-1)]">
-                            {selectedRole.title}
-                          </p>
-                          <p className="mt-1 text-sm text-[var(--text-3)]">
-                            {selectedRole.detail}
-                          </p>
-                          <p
-                            className={cn(
-                              "mt-2 text-xs",
-                              roleGuidance?.tone === "warning"
-                                ? "text-amber-700"
-                                : "text-[var(--text-3)]",
-                            )}
-                          >
-                            {roleGuidance?.message}
-                          </p>
-                        </div>
-                      ) : (
-                        <input
-                          value={item.category}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              category: event.target.value,
-                              itemName: buildCustomRoleReference(event.target.value),
-                            })
-                          }
-                          className={cn(tableInputClasses, "min-w-[220px]")}
-                          placeholder="Delivery team, QA, Product oversight..."
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="align-top">
-                    <TechStackMultiSelect
-                      value={parseTechStackValue(item.description)}
-                      onChange={(nextStacks) =>
-                        updateItem(index, {
-                          description: nextStacks.join(", "),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="align-top text-right">
-                    <div className="flex flex-col items-end gap-1.5">
-                      <DurationInput
-                        value={item.quantity}
-                        onChange={(quantity) => updateItem(index, { quantity }, "MANUAL")}
-                      />
-                      <span className="text-[11px] text-[var(--text-3)]">
-                        {usesTimelineDefault
-                          ? `Timeline default: ${formatDurationSummary(timelineDurationSummary)}`
-                          : `Manual override · default is ${formatDurationSummary(timelineDurationSummary)}`}
-                      </span>
-                      <span className="text-[11px] text-[var(--text-3)]">
-                        {timelineEstimate.billingHelperText}
-                      </span>
-                      {!usesTimelineDefault && item.id ? (
-                        <button
-                          type="button"
-                          onClick={() => updateItem(index, { quantity: suggestedDurationMonths }, "DEFAULT")}
-                          className="text-[11px] font-medium text-[var(--brand-600)] hover:text-[var(--brand-700)]"
-                        >
-                          Use timeline default
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="align-top text-right">
-                    <MoneyInput
-                      currency={value.currency}
-                      value={item.unitCost}
-                      onChange={(unitCost) => updateItem(index, { unitCost })}
-                    />
-                  </td>
-                  <td className="align-top text-right text-xs font-medium text-[var(--text-1)]">
-                    {formatCurrency(item.subtotal, value.currency)}
-                  </td>
-                  <td className="align-top text-right">
-                    <Button
-                      type="button"
-                      onClick={() => removeItem(index)}
-                      variant="danger"
-                      size="icon-sm"
-                      aria-label="Remove budget row"
+                  return (
+                    <tr
+                      key={item.id ?? `cost-${index}`}
+                      className="cursor-pointer"
+                      onClick={() => openBudgetEditor(index)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openBudgetEditor(index);
+                        }
+                      }}
+                      tabIndex={0}
                     >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </Button>
+                      <td>
+                        <div className="min-w-[150px]">
+                          <p className="text-sm font-medium text-[var(--text-1)]">{title}</p>
+                          <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
+                        </div>
+                      </td>
+                      <td>
+                        <TechStackPreview stacks={parseTechStackValue(item.description)} />
+                      </td>
+                      <td className="text-right text-[var(--text-2)]">
+                        {formatPlainNumber(item.quantity)}
+                      </td>
+                      <td className="text-right text-[var(--text-2)]">
+                        {dayRate === null ? "Inc." : formatPlainNumber(dayRate, 1)}
+                      </td>
+                      <td className="text-right text-[var(--text-2)]">
+                        {monthlyCost === null ? "Inc." : formatPlainNumber(monthlyCost)}
+                      </td>
+                      <td className="text-right">
+                        <Button
+                          type="button"
+                          variant="utility"
+                          size="icon-md"
+                          className="text-rose-500 hover:text-rose-600"
+                          aria-label="Delete budget row"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeItem(index);
+                          }}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="text-sm text-[var(--text-4)]">
+                    Add a budget row to start building the commercial plan.
                   </td>
                 </tr>
-              )})}
+              )}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-              <Button
-              type="button"
-              onClick={addItem}
-              variant="secondary"
-              size="xs"
-              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-            >
-              Add role
-            </Button>
-            <p className="text-xs text-[var(--text-3)]">
-              {rateCardLoading
-                ? "Loading People & Rates…"
-                : rateCardError
-                  ? "People & Rates are unavailable right now. You can still use flexible or manual roles."
-                  : "Proposal rows use shared developer levels from People & Rates. Dev Ops, Product Manager, Design, and flexible roles stay manual."}
-            </p>
-          </div>
-
-          <div className="w-full max-w-xs space-y-1 rounded-[18px] border border-[var(--border-2)] bg-white p-4 text-sm shadow-[var(--shadow-xs)]">
-            <SummaryRow label="Subtotal" value={formatCurrency(subtotal, value.currency)} />
-            <SummaryRow
-              label={`Discount (${value.discount}%)`}
-              value={`-${formatCurrency(discountAmount, value.currency)}`}
-            />
-            <SummaryRow label={`VAT (${value.taxRate}%)`} value={formatCurrency(taxValue, value.currency)} />
-            <SummaryRow label="Grand total" value={formatCurrency(grandTotal, value.currency)} strong />
-          </div>
+        <div className="mt-4 flex justify-end">
+          <TotalsCard
+            lines={[
+              {
+                label: "Subtotal",
+                value: formatCurrency(discountedSubtotal, value.currency),
+              },
+              {
+                label: `VAT (${value.taxRate ?? 0}%)`,
+                value: formatCurrency(taxValue, value.currency),
+              },
+              {
+                label: "Grand total",
+                value: formatCurrency(grandTotal, value.currency),
+                strong: true,
+              },
+            ]}
+          />
         </div>
-      </SectionCard>
+      </section>
 
-      <SectionCard
-        title="Payment schedule"
-        description="Describe how the project is invoiced over time. Milestones can link directly to the delivery timeline so commercials and delivery stay in step."
-      >
-        <div className="grid gap-3 md:grid-cols-2">
-          <NoticeCard>
-            <TextAreaField
-              label="Intro shown above the milestones"
-              value={value.paymentScheduleIntro}
-              onChange={(paymentScheduleIntro) => onChange({ ...value, paymentScheduleIntro })}
-              rows={3}
-              placeholder="Explain how the project is invoiced and how the milestones map to delivery."
-            />
-          </NoticeCard>
-          <NoticeCard>
-            <TextAreaField
-              label="Payment terms"
-              value={value.paymentTerms}
-              onChange={(paymentTerms) => onChange({ ...value, paymentTerms })}
-              rows={3}
-              placeholder="Invoices are issued with a 7-day payment term."
-            />
-          </NoticeCard>
-          <NoticeCard>
-            <TextAreaField
-              label="VAT note"
-              value={value.vatNotice}
-              onChange={(vatNotice) => onChange({ ...value, vatNotice })}
-              rows={3}
-              placeholder="All prices are exclusive of VAT."
-            />
-          </NoticeCard>
-          <NoticeCard>
-            <TextAreaField
-              label="IP transfer note"
-              value={value.ipTransferNotice}
-              onChange={(ipTransferNotice) => onChange({ ...value, ipTransferNotice })}
-              rows={3}
-              placeholder="IP transfers on receipt of the relevant payment."
-            />
-          </NoticeCard>
+      <section className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
+        <div className="flex items-center justify-between gap-4">
+          <h4 className="text-base font-semibold text-[var(--text-1)]">Payment Schedule</h4>
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={addPaymentRow}
+          >
+            Add
+          </Button>
         </div>
 
-        {value.paymentSchedule.length ? (
-          <div className="space-y-3">
-            {value.paymentSchedule.map((row, index) => (
-              <article
-                key={row.id}
-                className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
-                      Milestone {index + 1}
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--text-3)]">
-                      What gets invoiced, when it lands, and what delivery it covers.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => removePaymentRow(index)}
-                    variant="danger"
-                    size="icon-sm"
-                    aria-label="Remove payment milestone"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-
-                <div
-                  className={cn(
-                    "mt-4 grid gap-3",
-                    timelinePhases.length
-                      ? "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_160px]"
-                      : "md:grid-cols-[minmax(0,1fr)_220px_160px]",
-                  )}
-                >
-                  <FieldInput
-                    label="Milestone name"
-                    value={row.action}
-                    onChange={(action) => updatePaymentRow(index, { action })}
-                    placeholder="Kickoff invoice"
-                  />
-                  {timelinePhases.length ? (
-                    <label className="space-y-1.5">
-                      <span className="text-sm font-medium text-[var(--text-2)]">Linked timeline phase</span>
-                      <select
-                        value={row.timelinePhaseId ?? ""}
-                        onChange={(event) => {
-                          const nextPhaseId = event.target.value;
-                          if (!nextPhaseId) {
-                            updatePaymentRow(index, { timelinePhaseId: "", periodCovered: row.periodCovered });
-                            return;
-                          }
-
-                          const phase = timelinePhaseById[nextPhaseId];
-                          if (!phase) {
-                            return;
-                          }
-
-                          updatePaymentRow(index, {
-                            timelinePhaseId: nextPhaseId,
-                            action: row.action.trim() ? row.action : phase.name,
-                            periodCovered: phase.duration,
-                            includedWork: row.includedWork.trim()
-                              ? row.includedWork
-                              : phase.deliverables.length
-                                ? phase.deliverables.join(", ")
-                                : phase.summary,
-                          });
-                        }}
-                        className="app-select-compact w-full text-sm"
+        <div className="mt-4 app-table-shell overflow-x-auto">
+          <table className="app-table min-w-[840px] text-sm">
+            <thead>
+              <tr>
+                <th className="w-[120px] text-left">Phase</th>
+                <th className="w-[120px] text-left">Duration</th>
+                <th className="w-[120px] text-right">
+                  <span className="block">Total Cost ({currencySymbol(value.currency)})</span>
+                  <span className="block text-[10px] font-semibold text-[var(--text-4)]">
+                    (Excl. VAT)
+                  </span>
+                </th>
+                <th className="w-[140px] text-left">Milestone</th>
+                <th className="w-[160px] text-left">Timing</th>
+                <th className="w-[96px] text-right">Payment %</th>
+                <th className="w-[120px] text-right">
+                  <span className="block">Amount ({currencySymbol(value.currency)})</span>
+                  <span className="block text-[10px] font-semibold text-[var(--text-4)]">
+                    (Excl. VAT)
+                  </span>
+                </th>
+                <th className="w-[56px]" />
+              </tr>
+            </thead>
+            <tbody>
+              {paymentSchedule.length ? (
+                paymentSchedule.map((row, index) => (
+                  <tr key={row.id}>
+                    <td>
+                      <InlineCellInput
+                        value={row.phaseLabel ?? ""}
+                        placeholder="Phase 1"
+                        onChange={(phaseLabel) =>
+                          updatePaymentRow(
+                            index,
+                            reconcilePaymentScheduleRow(
+                              {
+                                ...row,
+                                phaseLabel,
+                                timelinePhaseId:
+                                  findMatchingPhaseId(phaseLabel, timelinePhases) ?? "",
+                              },
+                              timelinePhases,
+                              phaseBudgetMap,
+                              row.paymentPercent != null ? "percent" : "amount",
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <InlineCellInput
+                        value={row.phaseDuration ?? ""}
+                        placeholder="8 Weeks"
+                        onChange={(phaseDuration) =>
+                          updatePaymentRow(
+                            index,
+                            reconcilePaymentScheduleRow(
+                              {
+                                ...row,
+                                phaseDuration,
+                              },
+                              timelinePhases,
+                              phaseBudgetMap,
+                              row.paymentPercent != null ? "percent" : "amount",
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <InlineCellNumber
+                        value={row.phaseTotal ?? 0}
+                        placeholder="0"
+                        align="right"
+                        onChange={(phaseTotal) =>
+                          updatePaymentRow(
+                            index,
+                            reconcilePaymentScheduleRow(
+                              {
+                                ...row,
+                                phaseTotal,
+                              },
+                              timelinePhases,
+                              phaseBudgetMap,
+                              "amount",
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <InlineCellInput
+                        value={row.action}
+                        placeholder="Deposit"
+                        onChange={(action) => updatePaymentRow(index, { ...row, action })}
+                      />
+                    </td>
+                    <td>
+                      <InlineCellInput
+                        value={row.periodCovered}
+                        placeholder="Project Kickoff"
+                        onChange={(periodCovered) =>
+                          updatePaymentRow(index, { ...row, periodCovered })
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <InlineCellNumber
+                        value={row.paymentPercent ?? 0}
+                        placeholder="0"
+                        align="right"
+                        onChange={(paymentPercent) =>
+                          updatePaymentRow(
+                            index,
+                            reconcilePaymentScheduleRow(
+                              {
+                                ...row,
+                                paymentPercent,
+                              },
+                              timelinePhases,
+                              phaseBudgetMap,
+                              "percent",
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <InlineCellNumber
+                        value={row.amount ?? 0}
+                        placeholder="0"
+                        align="right"
+                        onChange={(amount) =>
+                          updatePaymentRow(
+                            index,
+                            reconcilePaymentScheduleRow(
+                              {
+                                ...row,
+                                amount,
+                              },
+                              timelinePhases,
+                              phaseBudgetMap,
+                              "amount",
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="text-right">
+                      <Button
+                        type="button"
+                        variant="utility"
+                        size="icon-md"
+                        className="text-rose-500 hover:text-rose-600"
+                        aria-label="Delete payment row"
+                        onClick={() => removePaymentRow(index)}
                       >
-                        <option value="">Not linked</option>
-                        {timelinePhases.map((phase) => (
-                          <option key={phase.id ?? phase.name} value={phase.id ?? ""}>
-                            {phase.name} · {phase.duration}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <FieldInput
-                    label="Timing"
-                    value={row.periodCovered}
-                    onChange={(periodCovered) => updatePaymentRow(index, { periodCovered })}
-                    placeholder="Week 1"
-                  />
-                  <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-[var(--text-2)]">Amount (ex VAT)</span>
-                    <MoneyInput
-                      currency={value.currency}
-                      value={row.amount ?? 0}
-                      onChange={(amount) => updatePaymentRow(index, { amount })}
-                    />
-                  </div>
-                </div>
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="text-sm text-[var(--text-4)]">
+                    Add a payment row to map billing against the proposal total.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                <div className="mt-3">
-                  <TextAreaField
-                    label="What this milestone covers"
-                    value={row.includedWork}
-                    onChange={(includedWork) => updatePaymentRow(index, { includedWork })}
-                    rows={3}
-                    placeholder="What the client receives or what delivery checkpoint this invoice unlocks"
-                  />
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-            No milestones yet. Add a billing step to explain how the delivery is invoiced.
-          </div>
-        )}
+        <div className="mt-4 flex justify-end">
+          <TotalsCard
+            lines={[
+              {
+                label: "Budget Breakdown",
+                value: formatCurrency(grandTotal, value.currency),
+              },
+              {
+                label: "Payment Schedule",
+                value: formatCurrency(paymentScheduleTotal, value.currency),
+              },
+              {
+                label: `${formatCurrency(paymentScheduleTotal, value.currency)} allocated of ${formatCurrency(grandTotal, value.currency)}`,
+                value: "",
+                strong: true,
+                stackLabel: true,
+                tone: paymentMatchesBudget ? "default" : "warning",
+              },
+            ]}
+          />
+        </div>
+      </section>
 
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              onClick={addPaymentRow}
-              variant="secondary"
-              size="xs"
-              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+      {budgetEditor ? (
+        <BudgetEditorDialog
+          value={budgetEditor}
+          currency={value.currency}
+          rateCardLoading={rateCardLoading}
+          rateCardError={rateCardError}
+          proposalRoleOptions={proposalRoleOptions}
+          proposalRoleOptionsById={proposalRoleOptionsById}
+          onChange={setBudgetEditor}
+          onClose={closeBudgetEditor}
+          onSave={saveBudgetEditor}
+          onRemove={
+            budgetEditor.index === null
+              ? null
+              : () => {
+                  removeItem(budgetEditor.index ?? 0);
+                  closeBudgetEditor();
+                }
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MetricFieldCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
+      <p className="text-xs font-medium text-[var(--text-4)]">{label}</p>
+      <div className="mt-2 flex items-end gap-2">{children}</div>
+    </div>
+  );
+}
+
+function TotalsCard({
+  lines,
+}: {
+  lines: Array<{
+    label: string;
+    value: string;
+    strong?: boolean;
+    stackLabel?: boolean;
+    tone?: "default" | "warning";
+  }>;
+}) {
+  return (
+    <div className="w-full max-w-[290px] rounded-[12px] border border-[var(--border-2)] bg-white px-4 py-4 text-right shadow-[var(--shadow-xs)]">
+      <div className="space-y-2">
+        {lines.map((line) => (
+          <div
+            key={`${line.label}-${line.value}`}
+            className={cn(
+              line.stackLabel
+                ? "text-[15px] leading-[22px]"
+                : "flex items-center justify-end gap-2 text-[13px] leading-[19px]",
+              line.strong ? "font-semibold text-[var(--text-1)]" : "font-medium text-[var(--text-2)]",
+              line.tone === "warning" ? "text-amber-700" : null,
+            )}
+          >
+            {line.stackLabel ? (
+              <span>{line.label}</span>
+            ) : (
+              <>
+                <span>{line.label}:</span>
+                <span>{line.value}</span>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TechStackPreview({
+  stacks,
+}: {
+  stacks: string[];
+}) {
+  if (!stacks.length) {
+    return <span className="text-sm text-[var(--text-4)]">No stack set</span>;
+  }
+
+  const visibleStacks = stacks.slice(0, 2);
+  const hiddenStacks = stacks.slice(2);
+
+  const content = (
+    <span className="inline-flex max-w-[180px] flex-wrap gap-1.5">
+      {visibleStacks.map((stack) => (
+        <StackBadge key={stack} label={stack} />
+      ))}
+      {hiddenStacks.length ? <StackBadge label="..." /> : null}
+    </span>
+  );
+
+  return hiddenStacks.length ? (
+    <Tooltip label={stacks.join(", ")}>
+      <span>{content}</span>
+    </Tooltip>
+  ) : (
+    content
+  );
+}
+
+function StackBadge({
+  label,
+}: {
+  label: string;
+}) {
+  const tone = stackTone(label);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+        tone,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function InlineCellInput({
+  value,
+  placeholder,
+  onChange,
+  align = "left",
+}: {
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+  align?: "left" | "right";
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      className={cn(
+        "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    />
+  );
+}
+
+function InlineCellNumber({
+  value,
+  placeholder,
+  onChange,
+  align = "right",
+}: {
+  value: number;
+  placeholder?: string;
+  onChange: (value: number) => void;
+  align?: "left" | "right";
+}) {
+  return (
+    <input
+      value={value ? formatEditableNumber(value) : ""}
+      onChange={(event) => onChange(parseNumber(event.target.value, 0))}
+      inputMode="decimal"
+      placeholder={placeholder}
+      className={cn(
+        "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    />
+  );
+}
+
+function BudgetEditorDialog({
+  value,
+  currency,
+  rateCardLoading,
+  rateCardError,
+  proposalRoleOptions,
+  proposalRoleOptionsById,
+  onChange,
+  onClose,
+  onSave,
+  onRemove,
+}: {
+  value: BudgetEditorState;
+  currency: "GBP" | "USD" | "EUR";
+  rateCardLoading: boolean;
+  rateCardError: string | null;
+  proposalRoleOptions: ProposalRoleOption[];
+  proposalRoleOptionsById: Record<string, ProposalRoleOption>;
+  onChange: (value: BudgetEditorState) => void;
+  onClose: () => void;
+  onSave: () => void;
+  onRemove: (() => void) | null;
+}) {
+  const selectedRole =
+    value.roleValue === CUSTOM_ROLE_VALUE
+      ? null
+      : proposalRoleOptionsById[value.roleValue.replace(PROPOSAL_ROLE_PREFIX, "")] ?? null;
+  const roleGuidance = selectedRole
+    ? buildRoleGuidance(selectedRole, currency)
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center px-4">
+      <div className="app-dialog-backdrop absolute inset-0" onClick={onClose} />
+
+      <div className="app-dialog-panel relative z-10 w-full max-w-[560px] p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+              {value.index === null ? "Add budget row" : "Edit budget row"}
+            </h3>
+          </div>
+
+          <Button type="button" variant="utility" size="icon-md" onClick={onClose} aria-label="Close dialog">
+            <XMarkIcon className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-[var(--text-2)]">Developer</span>
+            <select
+              value={value.roleValue}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const nextRole =
+                  nextValue === CUSTOM_ROLE_VALUE
+                    ? null
+                    : proposalRoleOptionsById[nextValue.replace(PROPOSAL_ROLE_PREFIX, "")] ?? null;
+
+                onChange({
+                  ...value,
+                  roleValue: nextValue,
+                  customRole: nextValue === CUSTOM_ROLE_VALUE ? value.customRole : "",
+                  monthlyCost:
+                    nextRole?.defaultMonthlyRate && !value.included
+                      ? nextRole.defaultMonthlyRate
+                      : value.monthlyCost,
+                });
+              }}
+              className="app-select w-full"
             >
-              Add milestone
-            </Button>
-            {timelinePhases.length ? (
-              <Button
-                type="button"
-                onClick={buildPaymentScheduleFromTimeline}
-                variant="secondary"
-                size="xs"
-              >
-                Use timeline phases
+              {proposalRoleOptions.map((role) => (
+                <option key={role.id} value={`${PROPOSAL_ROLE_PREFIX}${role.id}`}>
+                  {role.title}
+                </option>
+              ))}
+              <option value={CUSTOM_ROLE_VALUE}>Flexible role</option>
+            </select>
+          </label>
+
+          {value.roleValue === CUSTOM_ROLE_VALUE ? (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">Role title</span>
+              <input
+                value={value.customRole}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    customRole: event.target.value,
+                  })
+                }
+                className="app-input"
+                placeholder="QA, Strategy, Technical Lead"
+              />
+            </label>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">Months required</span>
+              <input
+                value={formatEditableNumber(value.monthsRequired)}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    monthsRequired: Math.max(1, parseNumber(event.target.value, 1)),
+                  })
+                }
+                inputMode="decimal"
+                className="app-input"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">
+                Monthly cost ({currencySymbol(currency)})
+              </span>
+              <input
+                value={value.monthlyCost ? formatEditableNumber(value.monthlyCost) : ""}
+                onChange={(event) =>
+                  onChange({
+                    ...value,
+                    monthlyCost: parseNumber(event.target.value, 0),
+                  })
+                }
+                inputMode="decimal"
+                className="app-input"
+                disabled={value.included}
+                placeholder="0"
+              />
+            </label>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
+            <input
+              type="checkbox"
+              checked={value.included}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  included: event.target.checked,
+                })
+              }
+              className="app-checkbox"
+            />
+            Included in commercial total
+          </label>
+
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-[var(--text-2)]">Tech Stack</span>
+            <div className="max-h-[220px] overflow-y-auto rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <div className="flex flex-wrap gap-2">
+                {techStackOptions.map((option) => {
+                  const selected = value.techStack.includes(option);
+
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() =>
+                        onChange({
+                          ...value,
+                          techStack: selected
+                            ? value.techStack.filter((entry) => entry !== option)
+                            : [...value.techStack, option].sort((left, right) =>
+                                left.localeCompare(right),
+                              ),
+                        })
+                      }
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                        selected
+                          ? "border-[var(--brand-300)] bg-[var(--surface-brand-soft)] text-[var(--brand-700)]"
+                          : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                      )}
+                    >
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-[var(--text-3)]">
+            {rateCardLoading
+              ? "Loading People & Rates…"
+              : rateCardError
+                ? "People & Rates are unavailable right now."
+                : roleGuidance?.message ?? "Manual role. Set the proposal rate yourself."}
+          </p>
+        </div>
+
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <div>
+            {onRemove ? (
+              <Button type="button" variant="danger" size="sm" onClick={onRemove}>
+                Remove
               </Button>
             ) : null}
           </div>
 
-          <div className="space-y-1 text-right text-sm">
-            <p className="text-[var(--text-3)]">
-              Payment schedule total:{" "}
-              <span className="font-semibold text-[var(--text-1)]">
-                {formatCurrency(paymentScheduleTotal, value.currency)}
-              </span>
-            </p>
-            <p className={cn("text-xs", paymentMatchesBudget ? "text-emerald-700" : "text-amber-700")}>
-              {paymentMatchesBudget
-                ? "Milestones match the discounted ex-VAT subtotal."
-                : "Milestones do not yet match the discounted ex-VAT subtotal."}
-            </p>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Commercial notes"
-        description="Add the small print and delivery assumptions in short notes that are easy to scan in the final proposal."
-      >
-        <NotesEditor
-          items={value.additionalNotes}
-          onChange={(additionalNotes) => onChange({ ...value, additionalNotes })}
-        />
-      </SectionCard>
-    </div>
-  );
-}
-
-function MoneyInput({
-  currency,
-  value,
-  onChange,
-}: {
-  currency: "GBP" | "USD" | "EUR";
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="flex min-h-9 w-[144px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
-      <span className="inline-flex min-w-[54px] items-center justify-center border-r border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
-        {currency}
-      </span>
-      <input
-        value={value}
-        onChange={(event) => onChange(parseNumber(event.target.value, 0))}
-        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
-      />
-    </div>
-  );
-}
-
-function DurationInput({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="flex min-h-9 w-[148px] min-w-0 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)] focus-within:border-[var(--brand-300)]">
-      <input
-        value={value}
-        onChange={(event) => onChange(parseNumber(event.target.value, 0))}
-        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-right text-sm font-medium text-[var(--text-1)] outline-none"
-      />
-      <span className="inline-flex min-w-[70px] items-center justify-center border-l border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]">
-        {value === 1 ? "month" : "months"}
-      </span>
-    </div>
-  );
-}
-
-function NoticeCard({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
-      {children}
-    </div>
-  );
-}
-
-function TechStackMultiSelect({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (value: string[]) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  function toggle(option: string) {
-    onChange(
-      value.includes(option)
-        ? value.filter((entry) => entry !== option)
-        : [...value, option].sort((left, right) => left.localeCompare(right)),
-    );
-  }
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    function updatePosition() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) {
-        return;
-      }
-
-      setMenuStyle({
-        top: rect.bottom + 8,
-        left: rect.left,
-        width: Math.max(rect.width, 320),
-      });
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (
-        triggerRef.current?.contains(target) ||
-        menuRef.current?.contains(target)
-      ) {
-        return;
-      }
-
-      setIsOpen(false);
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    }
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        className="flex min-h-9 min-w-[260px] w-full list-none items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 pr-4 text-left text-sm text-[var(--text-1)]"
-        aria-expanded={isOpen}
-      >
-        <span className="flex flex-wrap gap-1.5">
-          {value.length ? (
-            value.map((entry) => (
-              <span
-                key={entry}
-                className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]"
-              >
-                {entry}
-              </span>
-            ))
-          ) : (
-            <span className="text-[var(--text-3)]">Select delivery focus</span>
-          )}
-        </span>
-        <ChevronDownIcon
-          className={cn(
-            "h-4 w-4 shrink-0 text-[var(--text-3)] transition-transform",
-            isOpen ? "rotate-180" : null,
-          )}
-        />
-      </button>
-
-      {isOpen && menuStyle
-        ? createPortal(
-            <div
-              ref={menuRef}
-              className="fixed z-[80] max-h-80 overflow-y-auto rounded-[20px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]"
-              style={{
-                top: menuStyle.top,
-                left: menuStyle.left,
-                width: menuStyle.width,
-              }}
-            >
-              {techStackOptions.map((option) => {
-                const selected = value.includes(option);
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => toggle(option)}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-1)]"
-                  >
-                    <span className={selected ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}>
-                      {option}
-                    </span>
-                    {selected ? <CheckIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
-                  </button>
-                );
-              })}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
-function SectionCard({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="app-subtle-panel space-y-4 p-4">
-      <div>
-        <p className="app-eyebrow">Section</p>
-        <h4 className="mt-2 text-base font-semibold tracking-tight text-[var(--text-1)]">{title}</h4>
-        <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">{description}</p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-3)]">{label}</p>
-      <p className="mt-2 text-lg font-semibold tracking-tight text-[var(--text-1)]">{value}</p>
-    </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(parseNumber(event.target.value, 0))}
-        className="app-input-compact w-full"
-      />
-    </label>
-  );
-}
-
-function FieldInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="app-input-compact w-full"
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  onChange,
-  rows,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  rows?: number;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={rows ?? 4}
-        className="proposal-field-compact w-full"
-        placeholder={placeholder}
-      />
-    </label>
-  );
-}
-
-function NotesEditor({
-  items,
-  onChange,
-}: {
-  items: string[];
-  onChange: (items: string[]) => void;
-}) {
-  return (
-    <div className="space-y-3">
-      {items.length ? (
-        items.map((item, index) => (
-          <div
-            key={`${index}-${item}`}
-            className="flex items-start gap-3 rounded-[16px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
-          >
-            <div className="rounded-full bg-[var(--surface-brand-soft)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
-              Note {index + 1}
-            </div>
-            <input
-              value={item}
-              onChange={(event) =>
-                onChange(items.map((entry, entryIndex) => (entryIndex === index ? event.target.value : entry)))
-              }
-              className="app-input-compact flex-1"
-              placeholder="Add a commercial note or delivery assumption"
-            />
-            <Button
-              type="button"
-              onClick={() => onChange(items.filter((_, entryIndex) => entryIndex !== index))}
-              variant="danger"
-              size="icon-sm"
-              aria-label="Remove note"
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={onSave}>
+              Save
             </Button>
           </div>
-        ))
-      ) : (
-        <div className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-          No commercial notes yet. Add anything the client should know around billing, support, or handover.
         </div>
-      )}
-
-      <Button
-        type="button"
-        onClick={() => onChange([...items, ""])}
-        variant="secondary"
-        size="xs"
-        leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-      >
-        Add commercial note
-      </Button>
-    </div>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  strong,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className={strong ? "font-semibold text-[var(--text-1)]" : "text-[var(--text-2)]"}>{label}</span>
-      <span className={strong ? "font-semibold text-[var(--text-1)]" : "text-[var(--text-2)]"}>{value}</span>
+      </div>
     </div>
   );
 }
@@ -1353,23 +1381,20 @@ function normalizeCostItem(
 ) {
   const id = item.id ?? createRowId(`cost-${index + 1}`);
   const timelineMode = assignmentTimelineMode[id] ?? "DEFAULT";
-  const quantity = hasTimeline && timelineMode !== "MANUAL"
-    ? suggestedDurationMonths
-    : item.quantity;
+  const quantity =
+    hasTimeline && timelineMode !== "MANUAL" ? suggestedDurationMonths : item.quantity;
 
   return {
     ...item,
     id,
     quantity,
-    itemName: item.itemName.trim() || buildCustomRoleReference(item.category || `role-${index + 1}`),
+    itemName:
+      item.itemName.trim() || buildCustomRoleReference(item.category || `role-${index + 1}`),
     subtotal: Number((quantity * item.unitCost).toFixed(2)),
   };
 }
 
-function summarizeTimelineDuration(
-  phases: TimelinePhaseInput[],
-  fallback: string,
-) {
+function summarizeTimelineDuration(phases: TimelinePhaseInput[], fallback: string) {
   if (!phases.length) {
     return fallback;
   }
@@ -1397,7 +1422,10 @@ function inferProjectDurationMonths(durationSummary: string, items: CostLineItem
     return Math.max(1, Math.ceil(Number(weekMatch[1]) / 4));
   }
 
-  const existingMax = items.reduce((max, item) => Math.max(max, Number(item.quantity) || 0), 0);
+  const existingMax = items.reduce(
+    (max, item) => Math.max(max, Number(item.quantity) || 0),
+    0,
+  );
   return existingMax > 0 ? existingMax : 1;
 }
 
@@ -1423,7 +1451,9 @@ function assignmentTimelineModeEqual(
     return false;
   }
 
-  return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
+  return leftKeys.every(
+    (key, index) => key === rightKeys[index] && left[key] === right[key],
+  );
 }
 
 function inferProjectTimelineEstimate(
@@ -1440,10 +1470,7 @@ function inferProjectTimelineEstimate(
     const months = Math.max(1, Math.ceil(totalDays / 20));
     return {
       months,
-      helperText:
-        totalDays < 20
-          ? `Current delivery plan: ${formatDurationSummary(durationSummary)}. Monthly pricing floors this to ${formatMonthLabel(months)}.`
-          : `Current delivery plan: ${formatDurationSummary(durationSummary)}.`,
+      helperText: durationSummary.trim() ? `Current delivery plan: ${durationSummary}.` : "",
       billingHelperText: `Billing uses ${formatMonthLabel(months)} at the current monthly rate.`,
     };
   }
@@ -1451,15 +1478,10 @@ function inferProjectTimelineEstimate(
   const months = inferProjectDurationMonths(durationSummary, items);
   return {
     months,
-    helperText: durationSummary.trim() ? `Current delivery plan: ${formatDurationSummary(durationSummary)}.` : "",
+    helperText: durationSummary.trim() ? `Current delivery plan: ${durationSummary}.` : "",
     billingHelperText: `Billing uses ${formatMonthLabel(months)} at the current monthly rate.`,
   };
 }
-
-type TimelineWindow = {
-  unit: "DAY" | "WEEK" | "MONTH";
-  end: number;
-};
 
 function parseTimelineWindow(value: string): TimelineWindow | null {
   const trimmed = value.trim();
@@ -1519,34 +1541,6 @@ function formatMonthLabel(months: number) {
   return `${months} ${months === 1 ? "month" : "months"}`;
 }
 
-function formatDurationSummary(value: string) {
-  const trimmed = value.trim();
-  return trimmed || "Not set";
-}
-
-function createPaymentMilestoneFromPhase(phase: TimelinePhaseInput, index: number): PaymentScheduleRow {
-  return {
-    id: createRowId(`payment-${index + 1}`),
-    timelinePhaseId: phase.id ?? "",
-    action: phase.name,
-    periodCovered: phase.duration,
-    includedWork: phase.deliverables.length ? phase.deliverables.join(", ") : phase.summary,
-    amount: 0,
-  };
-}
-
-function getSelectedRateCardPerson(
-  item: CostLineItemInput,
-  peopleById: Record<string, RateCardPersonRecord>,
-) {
-  if (!item.itemName.startsWith(RATE_CARD_PREFIX)) {
-    return null;
-  }
-
-  const personId = item.itemName.replace(RATE_CARD_PREFIX, "");
-  return peopleById[personId] ?? null;
-}
-
 function buildProposalRoleOptions(
   people: RateCardPersonRecord[],
   proposalCurrency: "GBP" | "USD" | "EUR",
@@ -1565,38 +1559,50 @@ function buildProposalRoleOptions(
       };
     }
 
-    const matchingPeople = people.filter((person) => roleLevelFromArea(person.area) === blueprint.id);
-    const sourceRates = matchingPeople.map((person) => Number(person.sourceRate)).filter((rate) => rate > 0);
+    const matchingPeople = people.filter(
+      (person) => roleLevelFromArea(person.area) === blueprint.id,
+    );
+    const sourceRates = matchingPeople
+      .map((person) => Number(person.sourceRate))
+      .filter((rate) => rate > 0);
     const convertedRates = matchingPeople
       .map((person) => convertSourceRateToMonthlyProposalCurrency(person, proposalCurrency))
       .filter((rate): rate is number => rate !== null && rate > 0);
 
-    const fallbackMonthlyRate = blueprint.fallbackSourceRate && blueprint.fallbackSourceCurrencyCode && blueprint.fallbackBillingPeriod
-      ? convertMonthlyRateBetweenCurrencies(
-          convertSourceRateToMonthlyAmount(
-            blueprint.fallbackSourceRate,
-            blueprint.fallbackBillingPeriod,
-          ),
-          blueprint.fallbackSourceCurrencyCode,
-          proposalCurrency,
-        )
-      : null;
+    const fallbackMonthlyRate =
+      blueprint.fallbackSourceRate &&
+      blueprint.fallbackSourceCurrencyCode &&
+      blueprint.fallbackBillingPeriod
+        ? convertMonthlyRateBetweenCurrencies(
+            convertSourceRateToMonthlyAmount(
+              blueprint.fallbackSourceRate,
+              blueprint.fallbackBillingPeriod,
+            ),
+            blueprint.fallbackSourceCurrencyCode,
+            proposalCurrency,
+          )
+        : null;
 
     const defaultMonthlyRate = average(convertedRates) ?? fallbackMonthlyRate;
     const sourceRate = average(sourceRates) ?? blueprint.fallbackSourceRate ?? null;
-    const sourceCurrencyCode = normalizeSupportedCurrency(matchingPeople[0]?.sourceCurrencyCode ?? "")
-      ?? blueprint.fallbackSourceCurrencyCode
-      ?? null;
-    const billingPeriod = matchingPeople[0]?.billingPeriod ?? blueprint.fallbackBillingPeriod ?? null;
+    const sourceCurrencyCode =
+      normalizeSupportedCurrency(matchingPeople[0]?.sourceCurrencyCode ?? "") ??
+      blueprint.fallbackSourceCurrencyCode ??
+      null;
+    const billingPeriod =
+      matchingPeople[0]?.billingPeriod ?? blueprint.fallbackBillingPeriod ?? null;
     const rosterCount = matchingPeople.length;
 
     return {
       id: blueprint.id,
       title: blueprint.title,
-      detail: rosterCount > 0
-        ? `${blueprint.description} Built from ${rosterCount} saved ${rosterCount === 1 ? "person" : "people"}.`
-        : `${blueprint.description} Using the current shared benchmark.`,
-      defaultMonthlyRate: defaultMonthlyRate ? Number(defaultMonthlyRate.toFixed(2)) : null,
+      detail:
+        rosterCount > 0
+          ? `${blueprint.description} Built from ${rosterCount} saved ${rosterCount === 1 ? "person" : "people"}.`
+          : `${blueprint.description} Using the current shared benchmark.`,
+      defaultMonthlyRate: defaultMonthlyRate
+        ? Number(defaultMonthlyRate.toFixed(2))
+        : null,
       sourceRate: sourceRate ? Number(sourceRate.toFixed(2)) : null,
       sourceCurrencyCode,
       billingPeriod,
@@ -1605,20 +1611,32 @@ function buildProposalRoleOptions(
   });
 }
 
+function getSelectedRateCardPerson(
+  item: CostLineItemInput,
+  peopleById: Record<string, RateCardPersonRecord>,
+) {
+  if (!item.itemName.startsWith(RATE_CARD_PREFIX)) {
+    return null;
+  }
+
+  const personId = item.itemName.replace(RATE_CARD_PREFIX, "");
+  return peopleById[personId] ?? null;
+}
+
 function resolveSelectedProposalRole(
   item: CostLineItemInput,
   peopleById: Record<string, RateCardPersonRecord>,
   roleOptionsById: Record<string, ProposalRoleOption>,
 ) {
   if (item.itemName.startsWith(PROPOSAL_ROLE_PREFIX)) {
-    const roleID = item.itemName.replace(PROPOSAL_ROLE_PREFIX, "");
-    return roleOptionsById[roleID] ?? null;
+    const roleId = item.itemName.replace(PROPOSAL_ROLE_PREFIX, "");
+    return roleOptionsById[roleId] ?? null;
   }
 
   const selectedPerson = getSelectedRateCardPerson(item, peopleById);
   if (selectedPerson) {
-    const roleID = roleLevelFromArea(selectedPerson.area);
-    return roleID ? roleOptionsById[roleID] ?? null : null;
+    const roleId = roleLevelFromArea(selectedPerson.area);
+    return roleId ? roleOptionsById[roleId] ?? null : null;
   }
 
   const normalizedCategory = slugify(item.category);
@@ -1626,7 +1644,11 @@ function resolveSelectedProposalRole(
     return null;
   }
 
-  return Object.values(roleOptionsById).find((role) => slugify(role.title) === normalizedCategory) ?? null;
+  return (
+    Object.values(roleOptionsById).find(
+      (role) => slugify(role.title) === normalizedCategory,
+    ) ?? null
+  );
 }
 
 function buildCustomRoleReference(role: string) {
@@ -1645,16 +1667,16 @@ function slugify(value: string) {
 function suggestedUnitCostForRole(
   role: ProposalRoleOption,
   currentValue: number,
-  currentRoleID: string | null,
+  currentRoleId: string | null,
 ) {
   if (role.defaultMonthlyRate === null) {
-    if (currentRoleID == null || currentRoleID === role.id) {
+    if (currentRoleId == null || currentRoleId === role.id) {
       return currentValue;
     }
     return 0;
   }
 
-  if (currentRoleID === role.id && currentValue > 0) {
+  if (currentRoleId === role.id && currentValue > 0) {
     return currentValue;
   }
 
@@ -1737,7 +1759,10 @@ function convertSourceRateToMonthlyProposalCurrency(
   );
 }
 
-function convertSourceRateToMonthlyAmount(sourceRate: number, billingPeriod: RateBillingPeriod) {
+function convertSourceRateToMonthlyAmount(
+  sourceRate: number,
+  billingPeriod: RateBillingPeriod,
+) {
   switch (billingPeriod) {
     case "DAY":
       return sourceRate * 20;
@@ -1776,4 +1801,234 @@ function normalizeSupportedCurrency(value: string): "GBP" | "USD" | "EUR" | null
   return null;
 }
 
-const tableInputClasses = "app-input-compact min-w-[120px] text-[var(--text-1)]";
+function resolveBudgetRowSubtitle(
+  roleTitle: string,
+  teamAllocations: CostingSectionData["teamAllocations"],
+  rateCardPeople: RateCardPersonRecord[],
+) {
+  const matchingAllocation = (teamAllocations ?? []).find(
+    (entry) => slugify(entry.role) === slugify(roleTitle),
+  );
+
+  if (matchingAllocation?.teamMemberName?.trim()) {
+    return matchingAllocation.teamMemberName;
+  }
+
+  const matchingPerson = rateCardPeople.find((person) =>
+    slugify(person.area).includes(slugify(roleTitle)),
+  );
+
+  return matchingPerson?.name ?? "TBC";
+}
+
+function stackTone(label: string) {
+  switch (label.toLowerCase()) {
+    case "docs":
+      return "border-[#e9d7fe] bg-[#f9f5ff] text-[#6941c6]";
+    case "commercial":
+      return "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]";
+    case "delivery oversight":
+      return "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]";
+    case "signed":
+      return "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]";
+    case "delivery":
+      return "border-[#e5e5e5] bg-[#fafafa] text-[#404040]";
+    case "legal":
+      return "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]";
+    case "...":
+      return "border-[#c7d2fe] bg-[#eef2ff] text-[#4338ca]";
+    default:
+      return "border-[var(--border-2)] bg-white text-[var(--text-2)]";
+  }
+}
+
+function currencySymbol(currency: "GBP" | "USD" | "EUR") {
+  switch (currency) {
+    case "GBP":
+      return "£";
+    case "USD":
+      return "$";
+    case "EUR":
+      return "€";
+  }
+}
+
+function roundToCurrency(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function roundToDecimal(value: number, decimals: number) {
+  return Number(value.toFixed(decimals));
+}
+
+function formatPlainNumber(value: number, decimals = 0) {
+  return new Intl.NumberFormat("en-GB", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+}
+
+function formatEditableNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : String(value);
+}
+
+function buildPhaseBudgetMap(
+  phases: TimelinePhaseInput[],
+  totalBudget: number,
+) {
+  if (!phases.length) {
+    return {} as Record<string, number>;
+  }
+
+  const phaseDurations = estimatePhaseDurations(phases);
+  const totalDuration = phaseDurations.reduce((sum, duration) => sum + duration, 0) || phases.length;
+  const budgetMap: Record<string, number> = {};
+  let allocated = 0;
+
+  phases.forEach((phase, index) => {
+    const key = phase.id ?? phase.name;
+    const remaining = roundToCurrency(totalBudget - allocated);
+    const amount =
+      index === phases.length - 1
+        ? remaining
+        : roundToCurrency(totalBudget * (phaseDurations[index] / totalDuration));
+
+    budgetMap[key] = amount;
+    allocated += amount;
+  });
+
+  return budgetMap;
+}
+
+function estimatePhaseDurations(phases: TimelinePhaseInput[]) {
+  const parsedWindows = phases.map((phase) => parseTimelineWindow(phase.duration));
+
+  if (parsedWindows.some((window) => !window)) {
+    return phases.map(() => 1);
+  }
+
+  let previousEnd = 0;
+  return parsedWindows.map((window) => {
+    const nextEnd = convertWindowToDays(window as TimelineWindow);
+    const duration = Math.max(nextEnd - previousEnd, 1);
+    previousEnd = Math.max(previousEnd, nextEnd);
+    return duration;
+  });
+}
+
+function findMatchingPhaseId(label: string, phases: TimelinePhaseInput[]) {
+  const normalizedLabel = label.trim().toLowerCase();
+  if (!normalizedLabel) {
+    return null;
+  }
+
+  const match = phases.find(
+    (phase) => phase.name.trim().toLowerCase() === normalizedLabel,
+  );
+
+  return match?.id ?? null;
+}
+
+function hydratePaymentScheduleRow(
+  row: PaymentScheduleRow,
+  index: number,
+  phases: TimelinePhaseInput[],
+  phaseBudgetMap: Record<string, number>,
+) {
+  const matchedPhase = row.timelinePhaseId
+    ? phases.find((phase) => phase.id === row.timelinePhaseId) ?? null
+    : null;
+  const phaseKey = matchedPhase ? matchedPhase.id ?? matchedPhase.name : "";
+  const phaseTotal =
+    row.phaseTotal ?? (phaseKey ? phaseBudgetMap[phaseKey] ?? null : null);
+
+  return reconcilePaymentScheduleRow(
+    {
+      id: row.id || createRowId(`payment-${index + 1}`),
+      timelinePhaseId: matchedPhase?.id ?? row.timelinePhaseId ?? "",
+      phaseLabel: row.phaseLabel ?? matchedPhase?.name ?? "",
+      phaseDuration: row.phaseDuration ?? matchedPhase?.duration ?? "",
+      phaseTotal,
+      action: row.action,
+      periodCovered: row.periodCovered,
+      paymentPercent: row.paymentPercent ?? null,
+      includedWork: row.includedWork ?? "",
+      amount: row.amount ?? null,
+    },
+    phases,
+    phaseBudgetMap,
+    row.paymentPercent != null ? "percent" : "amount",
+  );
+}
+
+function createPaymentScheduleRow(
+  phases: TimelinePhaseInput[],
+  phaseBudgetMap: Record<string, number>,
+) {
+  const firstPhase = phases[0];
+  const phaseKey = firstPhase ? firstPhase.id ?? firstPhase.name : "";
+
+  return reconcilePaymentScheduleRow(
+    {
+      id: createRowId("payment"),
+      timelinePhaseId: firstPhase?.id ?? "",
+      phaseLabel: firstPhase?.name ?? "",
+      phaseDuration: firstPhase?.duration ?? "",
+      phaseTotal: phaseKey ? phaseBudgetMap[phaseKey] ?? null : null,
+      action: "",
+      periodCovered: "",
+      paymentPercent: 0,
+      includedWork: "",
+      amount: 0,
+    },
+    phases,
+    phaseBudgetMap,
+    "percent",
+  );
+}
+
+function reconcilePaymentScheduleRow(
+  row: PaymentScheduleRow,
+  phases: TimelinePhaseInput[],
+  phaseBudgetMap: Record<string, number>,
+  driver: "amount" | "percent",
+) {
+  const matchedPhase = row.timelinePhaseId
+    ? phases.find((phase) => phase.id === row.timelinePhaseId) ?? null
+    : null;
+  const matchedPhaseKey = matchedPhase ? matchedPhase.id ?? matchedPhase.name : "";
+  const nextPhaseLabel = row.phaseLabel ?? matchedPhase?.name ?? "";
+  const nextPhaseDuration = row.phaseDuration ?? matchedPhase?.duration ?? "";
+  const nextPhaseTotal =
+    row.phaseTotal ?? (matchedPhaseKey ? phaseBudgetMap[matchedPhaseKey] ?? null : null);
+
+  const amount =
+    row.amount == null
+      ? driver === "percent" && nextPhaseTotal != null
+        ? roundToCurrency(nextPhaseTotal * ((row.paymentPercent ?? 0) / 100))
+        : 0
+      : row.amount;
+
+  const paymentPercent =
+    row.paymentPercent == null
+      ? nextPhaseTotal
+        ? roundToDecimal((amount / nextPhaseTotal) * 100, 2)
+        : 0
+      : row.paymentPercent;
+
+  return {
+    ...row,
+    timelinePhaseId: matchedPhase?.id ?? row.timelinePhaseId ?? "",
+    phaseLabel: nextPhaseLabel,
+    phaseDuration: nextPhaseDuration,
+    phaseTotal: nextPhaseTotal,
+    amount:
+      driver === "percent" && nextPhaseTotal != null
+        ? roundToCurrency(nextPhaseTotal * (paymentPercent / 100))
+        : amount,
+    paymentPercent:
+      driver === "amount" && nextPhaseTotal
+        ? roundToDecimal((amount / nextPhaseTotal) * 100, 2)
+        : paymentPercent,
+  };
+}

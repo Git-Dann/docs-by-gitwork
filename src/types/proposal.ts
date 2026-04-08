@@ -116,8 +116,12 @@ export interface CostTeamAllocationRow {
 export interface PaymentScheduleRow {
   id: string;
   timelinePhaseId?: string;
+  phaseLabel?: string;
+  phaseDuration?: string;
+  phaseTotal?: number | null;
   action: string;
   periodCovered: string;
+  paymentPercent?: number | null;
   includedWork: string;
   amount: number | null;
 }

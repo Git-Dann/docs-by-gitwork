@@ -47,8 +47,12 @@ export const costTeamAllocationSchema = z.object({
 export const paymentScheduleRowSchema = z.object({
   id: z.string(),
   timelinePhaseId: z.string().optional(),
+  phaseLabel: z.string().optional(),
+  phaseDuration: z.string().optional(),
+  phaseTotal: z.number().nonnegative().nullable().optional(),
   action: z.string(),
   periodCovered: z.string(),
+  paymentPercent: z.number().nonnegative().nullable().optional(),
   includedWork: z.string(),
   amount: z.number().nonnegative().nullable().optional(),
 });
