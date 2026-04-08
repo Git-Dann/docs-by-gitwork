@@ -446,6 +446,30 @@ export default function HomePage() {
 
         <section className="bg-[#0a0a0a] py-24">
           <div className="mx-auto max-w-[768px] px-8 text-center">
+            <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
+              Start the conversation.
+            </h2>
+            <p className="mt-4 text-[19px] leading-8 text-white/60">
+              Tell us what you&apos;re building. We&apos;ll work out the right shape together.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="https://calendly.com/gitworkgroup/30min"
+                target="_blank"
+                rel="noreferrer"
+                className="app-button app-button-primary app-button-md"
+              >
+                Book a call
+              </a>
+              <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
+                Open platform
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#0a0a0a] py-24">
+          <div className="mx-auto max-w-[768px] px-8 text-center">
             <h2 className="text-[36px] font-semibold leading-[1.22] tracking-[-0.04em] text-white">
               Frequently asked questions
             </h2>
