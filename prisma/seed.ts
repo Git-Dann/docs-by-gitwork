@@ -9,6 +9,7 @@ import {
   getDefaultProposalSections,
 } from "../src/lib/default-template";
 import { getDefaultRateCardPeoplePayload } from "../src/server/rate-card";
+import { getDefaultCodeClearCandidatePayloads } from "../src/server/codeclear";
 
 const prisma = new PrismaClient();
 
@@ -54,6 +55,32 @@ async function main() {
     data: getDefaultRateCardPeoplePayload(workspace.id),
     skipDuplicates: true,
   });
+
+  const existingCandidateCount = await prisma.candidate.count({
+    where: {
+      workspaceId: workspace.id,
+    },
+  });
+
+  if (existingCandidateCount === 0) {
+    const rateCardPeople = await prisma.rateCardPerson.findMany({
+      where: {
+        workspaceId: workspace.id,
+      },
+      select: {
+        id: true,
+        seedIdentifier: true,
+      },
+    });
+
+    const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
+
+    for (const candidate of candidates) {
+      await prisma.candidate.create({
+        data: candidate,
+      });
+    }
+  }
 
   const template = await prisma.documentTemplate.upsert({
     where: {

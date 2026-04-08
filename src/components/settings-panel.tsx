@@ -846,8 +846,9 @@ function ApiSection({
             API access
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-            Use these endpoints to connect Axis and other external clients to Docs by Gitwork. The
-            web app uses a secure server-set session cookie, while external clients authenticate with{" "}
+            Use these endpoints to connect Docs, Proof, CodeClear, and external clients to Docs by
+            Gitwork. The web app uses a secure server-set session cookie, while external clients
+            authenticate with{" "}
             <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
               Authorization: Bearer &lt;key&gt;
             </code>
@@ -918,6 +919,19 @@ function ApiSection({
               ["GET", "/api/rate-card/people/:id", "Get rate-card person"],
               ["PATCH", "/api/rate-card/people/:id", "Update rate-card person"],
               ["DELETE", "/api/rate-card/people/:id", "Archive rate-card person"],
+              ["GET", "/api/codeclear/stats", "CodeClear overview stats"],
+              ["GET", "/api/codeclear/candidates", "List CodeClear candidates"],
+              ["POST", "/api/codeclear/candidates", "Create CodeClear candidate"],
+              ["PATCH", "/api/codeclear/candidates", "Bulk stage or re-check update"],
+              ["GET", "/api/codeclear/candidates/:id", "Get CodeClear candidate"],
+              ["PATCH", "/api/codeclear/candidates/:id", "Update CodeClear candidate"],
+              ["DELETE", "/api/codeclear/candidates/:id", "Delete CodeClear candidate"],
+              ["POST", "/api/codeclear/candidates/:id/notes", "Add CodeClear note"],
+              ["PUT", "/api/codeclear/candidates/:id/score", "Finalize CodeClear score"],
+              ["GET", "/api/codeclear/candidates/:id/github-analysis/runs", "List analysis runs"],
+              ["POST", "/api/codeclear/candidates/:id/github-analysis/runs", "Run GitHub analysis"],
+              ["POST", "/api/codeclear/candidates/:id/github-analysis/runs/:runId/apply", "Apply analysis draft"],
+              ["GET", "/api/codeclear/candidates/:id/scorecard", "Export CodeClear scorecard"],
               ["GET", "/api/templates", "List templates"],
             ] as const).map(([method, path, label]) => (
               <div key={`${method}-${path}`} className="flex items-baseline gap-2">
@@ -928,6 +942,8 @@ function ApiSection({
                       ? "text-emerald-600"
                       : method === "DELETE"
                         ? "text-rose-600"
+                        : method === "PUT"
+                          ? "text-violet-600"
                         : method === "PATCH"
                           ? "text-amber-600"
                           : "text-sky-600",

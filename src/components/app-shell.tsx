@@ -67,9 +67,9 @@ export function AppShell({
         icon: DocumentTextIcon,
       },
       {
+        href: "/app/codeclear",
         label: "CodeClear",
         icon: CheckCircleIcon,
-        disabled: true,
       },
       {
         href: "/app/clients",

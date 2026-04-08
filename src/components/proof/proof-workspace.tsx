@@ -2,329 +2,367 @@
 
 import {
   ArrowPathIcon,
-  ArrowTopRightOnSquareIcon,
-  CheckCircleIcon,
-  CommandLineIcon,
-  DocumentPlusIcon,
-  ExclamationTriangleIcon,
+  ClipboardDocumentIcon,
+  DocumentMagnifyingGlassIcon,
   SparklesIcon,
+  UserCircleIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  useCreateProofDocument,
-  useProofDocuments,
-  useProofHealth,
-  useUpdateProofDocument,
-} from "@/hooks/use-proof";
-import {
-  DEFAULT_PROOF_SERVER_URL,
-  DEFAULT_PROOF_START_COMMAND,
-  type ProofDocumentRecord,
-} from "@/lib/proof";
-import { cn, formatDate } from "@/lib/format";
+import { useAnalyseBrief } from "@/hooks/use-proof-brief";
+import { cn } from "@/lib/format";
+import type { BriefConfidence } from "@/types/proof-brief";
+
+const MIN_BRIEF_LENGTH = 50;
+const MAX_BRIEF_LENGTH = 20000;
 
 export function ProofWorkspace() {
-  const healthQuery = useProofHealth();
-  const documentsQuery = useProofDocuments();
-  const createMutation = useCreateProofDocument();
-  const updateMutation = useUpdateProofDocument();
+  const [brief, setBrief] = useState("");
+  const [copied, setCopied] = useState(false);
+  const mutation = useAnalyseBrief();
 
-  const [draftTitle, setDraftTitle] = useState("Gitwork Proof Draft");
-  const [activeSlug, setActiveSlug] = useState<string | null>(null);
-  const [frameLoaded, setFrameLoaded] = useState(false);
+  const analysis = mutation.data?.analysis ?? null;
+  const errorMessage = mutation.error instanceof Error ? mutation.error.message : null;
+  const charCount = brief.length;
+  const briefTooShort = charCount > 0 && charCount < MIN_BRIEF_LENGTH;
+  const briefTooLong = charCount > MAX_BRIEF_LENGTH;
+  const canSubmit = charCount >= MIN_BRIEF_LENGTH && !briefTooLong && !mutation.isPending;
 
-  const recentDocuments = useMemo(() => documentsQuery.data?.documents ?? [], [documentsQuery.data?.documents]);
-
-  const activeDocument = useMemo(() => {
-    if (!recentDocuments.length) {
-      return null;
-    }
-
-    if (!activeSlug) {
-      return recentDocuments[0] ?? null;
-    }
-
-    return recentDocuments.find((item) => item.slug === activeSlug) ?? recentDocuments[0] ?? null;
-  }, [activeSlug, recentDocuments]);
-
-  useEffect(() => {
-    if (!recentDocuments.length) {
-      setActiveSlug(null);
-      return;
-    }
-
-    setActiveSlug((current) => {
-      if (!current) {
-        return recentDocuments[0]?.slug ?? null;
-      }
-
-      return recentDocuments.some((item) => item.slug === current)
-        ? current
-        : recentDocuments[0]?.slug ?? null;
-    });
-  }, [recentDocuments]);
-
-  useEffect(() => {
-    setFrameLoaded(false);
-  }, [activeDocument?.tokenUrl]);
-
-  async function handleCreateDocument() {
-    const title = draftTitle.trim() || "Gitwork Proof Draft";
-    const response = await createMutation.mutateAsync({ title });
-    setActiveSlug(response.document.slug);
-    setDraftTitle(`${title} Copy`);
-    window.open(response.document.tokenUrl, "_blank", "noopener,noreferrer");
+  function handleSubmit() {
+    if (!canSubmit) return;
+    mutation.mutate(brief);
   }
 
-  async function handleOpenDocument(record: ProofDocumentRecord) {
-    setActiveSlug(record.slug);
-    await updateMutation.mutateAsync({
-      id: record.id,
-      input: { touch: true },
-    });
+  function handleClear() {
+    setBrief("");
+    mutation.reset();
   }
 
-  async function handleArchiveDocument(record: ProofDocumentRecord) {
-    await updateMutation.mutateAsync({
-      id: record.id,
-      input: { archived: true },
+  function handleCopySummary() {
+    if (!analysis) return;
+    const parts: string[] = [];
+    if (analysis.projectTitle) parts.push(`Project: ${analysis.projectTitle}`);
+    if (analysis.clientName) parts.push(`Client: ${analysis.clientName}`);
+    if (analysis.overview) parts.push(`\nOverview\n${analysis.overview}`);
+    if (analysis.goals.length) parts.push(`\nGoals\n${analysis.goals.map((g) => `• ${g}`).join("\n")}`);
+    if (analysis.deliverables.length) parts.push(`\nDeliverables\n${analysis.deliverables.map((d) => `• ${d}`).join("\n")}`);
+    void navigator.clipboard.writeText(parts.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   }
-
-  const serviceBaseUrl = healthQuery.data?.baseUrl || DEFAULT_PROOF_SERVER_URL;
-  const serviceReady = healthQuery.isSuccess;
-  const createErrorMessage = createMutation.error instanceof Error ? createMutation.error.message : null;
-  const loadingDocuments = documentsQuery.isLoading && !documentsQuery.data;
 
   return (
     <div className="grid min-h-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <aside className="space-y-6">
+      {/* Left panel — input */}
+      <aside className="space-y-4">
         <section className="app-card p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="app-eyebrow">Proof</p>
-              <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">Collaborative writing</h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Proof is now baked into the Gitwork workspace for drafting, comments, provenance, and review.
-              </p>
-            </div>
-            <div
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
-                serviceReady
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-amber-200 bg-amber-50 text-amber-800",
-              )}
-            >
-              {serviceReady ? <CheckCircleIcon className="h-4 w-4" /> : <ExclamationTriangleIcon className="h-4 w-4" />}
-              {serviceReady ? "Connected" : "Service needed"}
-            </div>
-          </div>
+          <p className="app-eyebrow">Proof</p>
+          <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            Brief analysis
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+            {"Paste any client brief — an email, document, or message — and we'll extract the key information your team needs."}
+          </p>
 
-          <div className="mt-5 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-            <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]" htmlFor="proof-title">
-              New Proof document
+          <div className="mt-5 space-y-3">
+            <label htmlFor="brief-input" className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+              Client brief
             </label>
-            <input
-              id="proof-title"
-              value={draftTitle}
-              onChange={(event) => setDraftTitle(event.target.value)}
-              className="app-input mt-3"
-              placeholder="Proof draft title"
+            <textarea
+              id="brief-input"
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={12}
+              className="app-input w-full resize-none leading-6"
+              placeholder="Paste your client brief here…"
             />
+            <div className="flex items-center justify-between text-xs text-[var(--text-4)]">
+              <span className={cn(briefTooShort && "text-amber-600", briefTooLong && "text-rose-600")}>
+                {charCount.toLocaleString()} / {MAX_BRIEF_LENGTH.toLocaleString()} characters
+              </span>
+              {briefTooShort && (
+                <span className="text-amber-600">Minimum {MIN_BRIEF_LENGTH} characters</span>
+              )}
+              {briefTooLong && (
+                <span className="text-rose-600">Brief too long</span>
+              )}
+            </div>
+
             <Button
               type="button"
               variant="primary"
               size="md"
-              className="mt-3 w-full justify-center"
-              loading={createMutation.isPending}
-              leadingIcon={<DocumentPlusIcon className="h-4 w-4" />}
-              onClick={() => {
-                void handleCreateDocument();
-              }}
-              disabled={!serviceReady || !draftTitle.trim()}
+              className="w-full justify-center"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              loading={mutation.isPending}
+              leadingIcon={<SparklesIcon className="h-4 w-4" />}
             >
-              Create Proof document
+              {mutation.isPending ? "Analysing…" : "Analyse Brief"}
             </Button>
-            {createErrorMessage ? <p className="mt-3 text-sm text-rose-700">{createErrorMessage}</p> : null}
-          </div>
 
-          {serviceReady ? (
-            <div className="mt-4 flex items-center justify-between rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
-              <span className="truncate">{serviceBaseUrl}</span>
-              <a href={serviceBaseUrl} target="_blank" rel="noreferrer" className="text-[var(--brand-700)] hover:underline">
-                Open service
-              </a>
-            </div>
-          ) : (
-            <div className="mt-4 rounded-[18px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-              <div className="flex items-start gap-3">
-                <CommandLineIcon className="mt-0.5 h-5 w-5 text-[var(--text-3)]" />
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-1)]">Start the local Proof service</p>
-                  <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
-                    We’ll talk to Proof through <span className="font-medium text-[var(--text-2)]">{serviceBaseUrl}</span>. Run the command below once, then refresh this page.
-                  </p>
-                </div>
+            {errorMessage ? (
+              <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {errorMessage}
               </div>
-              <code className="mt-3 block rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-2)]">
-                {DEFAULT_PROOF_START_COMMAND}
-              </code>
+            ) : null}
+
+            {analysis ? (
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="mt-3"
+                className="w-full justify-center"
+                onClick={handleClear}
                 leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
-                onClick={() => {
-                  void healthQuery.refetch();
-                }}
               >
-                Check again
+                Analyse a new brief
               </Button>
-            </div>
-          )}
+            ) : null}
+          </div>
         </section>
 
-        <section className="app-card p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Recent Proof sessions</h3>
-              <p className="mt-1 text-sm text-[var(--text-3)]">Persistent drafts available across the Gitwork workspace.</p>
-            </div>
-            <span className="rounded-full border border-[var(--border-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-3)]">
-              {recentDocuments.length}
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {loadingDocuments ? (
-              <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
-                Loading Proof sessions...
-              </div>
-            ) : recentDocuments.length ? (
-              recentDocuments.map((record) => {
-                const active = record.slug === activeDocument?.slug;
-
-                return (
-                  <div
-                    key={record.id}
-                    className={cn(
-                      "rounded-[18px] border px-4 py-3 transition",
-                      active
-                        ? "border-[var(--brand-500)] bg-[var(--surface-brand)]"
-                        : "border-[var(--border-2)] bg-white hover:border-[var(--brand-500)]/40",
-                    )}
-                  >
-                    <button type="button" className="w-full text-left" onClick={() => void handleOpenDocument(record)}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{record.title}</p>
-                          <p className="mt-1 text-xs text-[var(--text-3)]">Slug: {record.slug}</p>
-                          {record.proposalTitle ? (
-                            <span className="mt-2 inline-flex rounded-full border border-[var(--border-1)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--text-2)]">
-                              Linked to {record.proposalTitle}
-                            </span>
-                          ) : null}
-                        </div>
-                        <SparklesIcon className={cn("h-5 w-5 shrink-0", active ? "text-[var(--brand-700)]" : "text-[var(--text-3)]")} />
-                      </div>
-                    </button>
-                    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[var(--text-3)]">
-                      <span>Opened {formatDate(record.lastOpenedAt)}</span>
-                      <button type="button" onClick={() => void handleArchiveDocument(record)} className="text-rose-600 hover:underline">
-                        Archive
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="rounded-[18px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
-                Create your first Proof document and we’ll keep it here for quick re-entry.
-              </div>
-            )}
-          </div>
+        <section className="app-muted-card p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">Tips</p>
+          <ul className="mt-3 space-y-2.5">
+            {[
+              "Works best with full briefs, RFPs, or detailed email threads.",
+              "Include any budget, timeline, or technical mentions for richer extraction.",
+              "The more context, the higher the confidence score.",
+              "Copy the summary to share a clean snapshot with your team.",
+            ].map((tip) => (
+              <li key={tip} className="flex items-start gap-2.5 text-sm leading-5 text-[var(--text-3)]">
+                <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full bg-[var(--brand-500)]/10 text-center text-[10px] font-bold leading-4 text-[var(--brand-700)]">
+                  ✓
+                </span>
+                {tip}
+              </li>
+            ))}
+          </ul>
         </section>
       </aside>
 
-      <section className="app-card flex min-h-[760px] flex-col p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-1)] pb-4">
-          <div>
-            <p className="app-eyebrow">Proof workspace</p>
-            <h3 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-              {activeDocument?.title || "Open a Proof document"}
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              {activeDocument
-                ? "Proof is running inside the Gitwork application chrome so the collaboration flow stays in one place."
-                : "Create or reopen a Proof document from the left rail to start editing here."}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
-              onClick={() => {
-                void Promise.all([healthQuery.refetch(), documentsQuery.refetch()]);
-              }}
-            >
-              Refresh status
-            </Button>
-            {activeDocument ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                leadingIcon={<ArrowTopRightOnSquareIcon className="h-4 w-4" />}
-                onClick={() => {
-                  window.open(activeDocument.tokenUrl, "_blank", "noopener,noreferrer");
-                }}
-              >
-                Open Proof
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        {serviceReady && activeDocument ? (
-          <div className="relative mt-5 min-h-0 flex-1 overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)]">
-            {!frameLoaded ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-1)]/95 text-sm text-[var(--text-3)]">
-                Loading Proof session...
-              </div>
-            ) : null}
-            <iframe
-              key={activeDocument.tokenUrl}
-              src={activeDocument.tokenUrl}
-              title={activeDocument.title}
-              className="h-full min-h-[720px] w-full border-0 bg-white"
-              onLoad={() => setFrameLoaded(true)}
-              sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-            />
-          </div>
-        ) : (
-          <div className="mt-5 flex min-h-[720px] items-center justify-center rounded-[20px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-8">
-            <div className="max-w-lg text-center">
+      {/* Right panel — results */}
+      <section className="app-card flex min-h-[600px] flex-col p-5">
+        {!analysis ? (
+          /* Empty state */
+          <div className="flex flex-1 items-center justify-center">
+            <div className="max-w-sm text-center">
               <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border-2)] bg-white">
-                <DocumentPlusIcon className="h-7 w-7 text-[var(--brand-700)]" />
+                <DocumentMagnifyingGlassIcon className="h-7 w-7 text-[var(--brand-700)]" />
               </div>
               <h4 className="mt-5 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                {serviceReady ? "Create a Proof document to begin" : "Proof is not running yet"}
+                {mutation.isPending ? "Analysing your brief…" : "Paste a brief to get started"}
               </h4>
               <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
-                {serviceReady
-                  ? "We’ll embed the full Proof editor here, including comments, provenance tracking, and collaborative review."
-                  : "Run the Proof service locally, then come back here. The Gitwork wrapper is ready and will connect as soon as the backend responds."}
+                {mutation.isPending
+                  ? "Claude is reading the brief and extracting key information. This usually takes a few seconds."
+                  : "We'll extract goals, deliverables, timeline, budget, and more — laid out clearly for your team."}
               </p>
+              {mutation.isPending ? (
+                <div className="mx-auto mt-5 flex items-center justify-center gap-2 text-sm text-[var(--brand-600)]">
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  <span>Running analysis…</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          /* Results */
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Results header */}
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-1)] pb-4">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  {analysis.clientName ? (
+                    <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                      {analysis.clientName}
+                    </span>
+                  ) : null}
+                  <ConfidenceBadge confidence={analysis.confidence} />
+                </div>
+                <h3 className="text-[22px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                  {analysis.projectTitle ?? "Brief Analysis"}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                  onClick={handleCopySummary}
+                >
+                  {copied ? "Copied!" : "Copy summary"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-4)] transition hover:border-[var(--border-1)] hover:text-[var(--text-2)]"
+                  title="Clear results"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Results grid */}
+            <div className="mt-4 flex-1 space-y-4 overflow-auto">
+              {/* Overview */}
+              {analysis.overview ? (
+                <ResultCard label="Overview">
+                  <p className="italic leading-6 text-[var(--text-2)]">{analysis.overview}</p>
+                </ResultCard>
+              ) : null}
+
+              {/* Goals + Deliverables */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <ResultCard label="Goals" empty={!analysis.goals.length} emptyText="No goals identified">
+                  <BulletList items={analysis.goals} />
+                </ResultCard>
+                <ResultCard label="Deliverables" empty={!analysis.deliverables.length} emptyText="No deliverables identified">
+                  <BulletList items={analysis.deliverables} />
+                </ResultCard>
+              </div>
+
+              {/* Timeline + Budget */}
+              {(analysis.timeline ?? analysis.budget) ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {analysis.timeline ? (
+                    <StatCard label="Timeline" value={analysis.timeline} />
+                  ) : null}
+                  {analysis.budget ? (
+                    <StatCard label="Budget" value={analysis.budget} />
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Target audience */}
+              {analysis.targetAudience ? (
+                <ResultCard label="Target Audience">
+                  <p className="leading-6 text-[var(--text-2)]">{analysis.targetAudience}</p>
+                </ResultCard>
+              ) : null}
+
+              {/* Technical requirements + Success criteria */}
+              {(analysis.technicalRequirements.length || analysis.successCriteria.length) ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {analysis.technicalRequirements.length ? (
+                    <ResultCard label="Technical Requirements">
+                      <BulletList items={analysis.technicalRequirements} />
+                    </ResultCard>
+                  ) : null}
+                  {analysis.successCriteria.length ? (
+                    <ResultCard label="Success Criteria">
+                      <BulletList items={analysis.successCriteria} />
+                    </ResultCard>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Key contacts */}
+              {analysis.keyContacts.length ? (
+                <ResultCard label="Key Contacts">
+                  <div className="divide-y divide-[var(--border-2)]">
+                    {analysis.keyContacts.map((contact, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-4)]">
+                            <UserCircleIcon className="h-4 w-4" />
+                          </div>
+                          <span className="text-sm font-medium text-[var(--text-1)]">{contact.name}</span>
+                        </div>
+                        <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-3)]">
+                          {contact.role}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </ResultCard>
+              ) : null}
+
+              {/* Constraints */}
+              {analysis.constraints.length ? (
+                <ResultCard label="Constraints">
+                  <BulletList items={analysis.constraints} />
+                </ResultCard>
+              ) : null}
             </div>
           </div>
         )}
       </section>
     </div>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence: BriefConfidence }) {
+  const map: Record<BriefConfidence, { label: string; className: string }> = {
+    HIGH: {
+      label: "High confidence",
+      className: "border-emerald-200 bg-[var(--success-50)] text-emerald-700",
+    },
+    MEDIUM: {
+      label: "Medium confidence",
+      className: "border-amber-200 bg-[var(--warning-50)] text-amber-700",
+    },
+    LOW: {
+      label: "Low confidence",
+      className: "border-rose-200 bg-[var(--danger-50)] text-rose-700",
+    },
+  };
+  const { label, className } = map[confidence];
+  return (
+    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium", className)}>
+      {label}
+    </span>
+  );
+}
+
+function ResultCard({
+  label,
+  children,
+  empty,
+  emptyText,
+}: {
+  label: string;
+  children?: React.ReactNode;
+  empty?: boolean;
+  emptyText?: string;
+}) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">{label}</p>
+      <div className="mt-2.5">
+        {empty ? (
+          <p className="text-sm text-[var(--text-4)]">{emptyText}</p>
+        ) : (
+          children
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">{label}</p>
+      <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">{value}</p>
+    </div>
+  );
+}
+
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map((item, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm leading-5 text-[var(--text-2)]">
+          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-500)]" />
+          {item}
+        </li>
+      ))}
+    </ul>
   );
 }

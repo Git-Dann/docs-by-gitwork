@@ -86,6 +86,38 @@ enum RateBillingPeriod {
   MONTH
 }
 
+enum PipelineStatus {
+  SOURCED
+  INVITED
+  ASSESSMENT_IN_PROGRESS
+  CODECLEAR_COMPLETE
+  PLACED
+  RECHECK_DUE
+}
+
+enum IdentityConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  PENDING
+}
+
+enum CodeClearTier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+enum GitHubAnalysisStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum GitHubAnalysisTriggerSource {
+  MANUAL
+}
+
 model User {
   id          String            @id @default(cuid())
   email       String            @unique
@@ -108,6 +140,7 @@ model Workspace {
   templates   DocumentTemplate[]
   rateCardPeople RateCardPerson[]
   proofDocuments ProofDocument[]
+  candidates  Candidate[]
 }
 
 model WorkspaceMember {
@@ -193,6 +226,140 @@ model ProofDocument {
 
   @@index([workspaceId, lastOpenedAt])
   @@index([proposalId, lastOpenedAt])
+}
+
+model Candidate {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  rateCardPersonId String?
+  name             String
+  githubHandle     String
+  email            String?
+  primaryStack     String
+  location         String?
+  bio              String?
+  status           PipelineStatus @default(SOURCED)
+  tier             CodeClearTier  @default(TIER_1)
+  avatarUrl        String?
+  recheckDueAt     DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rateCardPerson   RateCardPerson? @relation(fields: [rateCardPersonId], references: [id], onDelete: SetNull)
+  score            CodeClearScore?
+  scoreDraft       CodeClearScoreDraft?
+  githubAnalysisRuns GitHubAnalysisRun[]
+  placements       Placement[]
+  notes            Note[]
+  activityLog      ActivityLog[]
+
+  @@unique([workspaceId, githubHandle])
+  @@index([workspaceId, status])
+  @@index([workspaceId, updatedAt])
+  @@index([workspaceId, recheckDueAt])
+}
+
+model CodeClearScore {
+  id                 String             @id @default(cuid())
+  candidateId        String             @unique
+  candidate          Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  technicalDepth     Int                @default(0)
+  codeQuality        Int                @default(0)
+  aiFluency          Int                @default(0)
+  deliveryReadiness  Int                @default(0)
+  identityConfidence IdentityConfidence @default(PENDING)
+  overallScore       Int                @default(0)
+  taskScore          Int?
+  taskTimeSeconds    Int?
+  taskAiReview       String?
+  verifiedAt         DateTime?
+  validUntil         DateTime?
+  reminderSentAt     DateTime?
+  expiredAt          DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model CodeClearScoreDraft {
+  id                 String              @id @default(cuid())
+  candidateId        String              @unique
+  candidate          Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  technicalDepth     Int?
+  codeQuality        Int?
+  aiFluency          Int?
+  deliveryReadiness  Int?
+  identityConfidence IdentityConfidence?
+  overallScore       Int?
+  taskScore          Int?
+  taskTimeSeconds    Int?
+  taskAiReview       String?
+  sourceRunId        String?
+  sourceRun          GitHubAnalysisRun?  @relation("GitHubAnalysisRunDraftSource", fields: [sourceRunId], references: [id], onDelete: SetNull)
+  lastAppliedAt      DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model GitHubAnalysisRun {
+  id                           String                      @id @default(cuid())
+  candidateId                  String
+  candidate                    Candidate                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  drafts                       CodeClearScoreDraft[]       @relation("GitHubAnalysisRunDraftSource")
+  status                       GitHubAnalysisStatus        @default(RUNNING)
+  triggerSource                GitHubAnalysisTriggerSource @default(MANUAL)
+  analysisVersion              String
+  startedAt                    DateTime                    @default(now())
+  completedAt                  DateTime?
+  profileSnapshot              Json?
+  repoSnapshot                 Json?
+  metrics                      Json?
+  redFlags                     Json?
+  recommendedTechnicalDepth    Int?
+  recommendedCodeQuality       Int?
+  recommendedDeliveryReadiness Int?
+  llmSummary                   String?
+  errorCode                    String?
+  errorMessage                 String?
+  createdAt                    DateTime                    @default(now())
+  updatedAt                    DateTime                    @updatedAt
+
+  @@index([candidateId, createdAt])
+  @@index([candidateId, status])
+}
+
+model Placement {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  clientName  String
+  projectName String
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([candidateId, startDate])
+}
+
+model Note {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  body        String
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  @@index([candidateId, createdAt])
+}
+
+model ActivityLog {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  eventType   String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([candidateId, createdAt])
 }
 
 model DocumentSection {
@@ -324,6 +491,7 @@ model RateCardPerson {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  candidates         Candidate[]
 
   @@unique([workspaceId, seedIdentifier])
   @@index([workspaceId, updatedAt])

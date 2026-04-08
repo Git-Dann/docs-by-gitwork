@@ -5,7 +5,7 @@ export default function ProofPage() {
   return (
     <AppShell
       title="Proof"
-      subtitle="Collaborative drafting and provenance-aware editing inside the Gitwork workspace."
+      subtitle="Parse a client brief and extract key information — summarised clearly for your team."
     >
       <ProofWorkspace />
     </AppShell>

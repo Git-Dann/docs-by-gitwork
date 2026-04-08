@@ -13,6 +13,7 @@ import {
   getDefaultTimelinePayload,
 } from "@/server/proposals";
 import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
+import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 
 export async function ensureBaseRecords() {
   const user = await prisma.user.upsert({
@@ -79,6 +80,7 @@ export async function ensureBaseRecords() {
   });
 
   await ensureSampleProposal({ workspace, user, template });
+  await ensureSampleCodeClearCandidates({ workspace });
 
   return {
     user,
@@ -129,4 +131,36 @@ async function ensureSampleProposal({
       assets: { create: getDefaultAssetPayload() },
     },
   });
+}
+
+async function ensureSampleCodeClearCandidates({
+  workspace,
+}: {
+  workspace: { id: string };
+}) {
+  const count = await prisma.candidate.count({
+    where: { workspaceId: workspace.id },
+  });
+
+  if (count > 0) {
+    return;
+  }
+
+  const rateCardPeople = await prisma.rateCardPerson.findMany({
+    where: {
+      workspaceId: workspace.id,
+    },
+    select: {
+      id: true,
+      seedIdentifier: true,
+    },
+  });
+
+  const candidates = getDefaultCodeClearCandidatePayloads(workspace.id, rateCardPeople);
+
+  for (const candidate of candidates) {
+    await prisma.candidate.create({
+      data: candidate,
+    });
+  }
 }

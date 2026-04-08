@@ -137,6 +137,16 @@ const currencyCodeSchema = z
   .transform((value) => value.toUpperCase());
 
 export const rateBillingPeriodSchema = z.enum(["DAY", "WEEK", "MONTH"]);
+export const pipelineStatusSchema = z.enum([
+  "SOURCED",
+  "INVITED",
+  "ASSESSMENT_IN_PROGRESS",
+  "CODECLEAR_COMPLETE",
+  "PLACED",
+  "RECHECK_DUE",
+]);
+export const codeClearTierSchema = z.enum(["TIER_1", "TIER_2", "TIER_3"]);
+export const identityConfidenceSchema = z.enum(["HIGH", "MEDIUM", "LOW", "PENDING"]);
 
 export const rateCardPersonCreateSchema = z.object({
   name: requiredTrimmedString,
@@ -156,6 +166,87 @@ export const rateCardPersonUpdateSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one rate card field is required.",
+  });
+
+const optionalTrimmedString = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  });
+
+const scoreMetricSchema = z.coerce.number().min(0).max(100);
+const githubHandleSchema = requiredTrimmedString.transform((value) =>
+  value.replace(/^@+/, ""),
+);
+
+export const candidateCreateSchema = z.object({
+  name: requiredTrimmedString,
+  githubHandle: githubHandleSchema,
+  email: optionalTrimmedString,
+  primaryStack: requiredTrimmedString,
+  location: optionalTrimmedString,
+  bio: optionalTrimmedString,
+  tier: codeClearTierSchema.default("TIER_1"),
+  rateCardPersonId: z.string().cuid().nullable().optional(),
+});
+
+export const candidateUpdateSchema = z
+  .object({
+    name: optionalTrimmedString,
+    githubHandle: githubHandleSchema.optional(),
+    email: optionalTrimmedString,
+    primaryStack: optionalTrimmedString,
+    location: optionalTrimmedString,
+    bio: optionalTrimmedString,
+    status: pipelineStatusSchema.optional(),
+    tier: codeClearTierSchema.optional(),
+    rateCardPersonId: z.string().cuid().nullable().optional(),
+    recheckDueAt: z.coerce.date().nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one candidate field is required.",
+  });
+
+export const candidateBulkUpdateSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("MOVE_STAGE"),
+    ids: z.array(z.string().cuid()).min(1),
+    status: pipelineStatusSchema,
+  }),
+  z.object({
+    action: z.literal("FLAG_RECHECK"),
+    ids: z.array(z.string().cuid()).min(1),
+    recheckDueAt: z.coerce.date().optional(),
+  }),
+]);
+
+export const candidateNoteSchema = z.object({
+  body: requiredTrimmedString,
+});
+
+export const candidateScoreSchema = z
+  .object({
+    technicalDepth: scoreMetricSchema.optional(),
+    codeQuality: scoreMetricSchema.optional(),
+    aiFluency: scoreMetricSchema.optional(),
+    deliveryReadiness: scoreMetricSchema.optional(),
+    identityConfidence: identityConfidenceSchema.optional(),
+    taskScore: scoreMetricSchema.nullable().optional(),
+    taskTimeSeconds: z.coerce.number().int().min(0).nullable().optional(),
+    taskAiReview: optionalTrimmedString,
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one score field is required.",
   });
 
 export const proposalCreateSchema = z.object({
