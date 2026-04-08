@@ -1,22 +1,96 @@
 "use client";
 
 import { CheckCircleIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useState } from "react";
 
-type DemoState = "idle" | "loading" | "ready";
-
-type MatchCard = {
-  id: string;
+type DemoTier = {
   name: string;
-  role: string;
-  location: string;
-  availability: string;
-  fit: string;
-  score: number;
-  summary: string;
-  stack: string[];
-  strengths: string[];
+  price: string;
+  priceUnit: string;
+  description: string;
+  features: string[];
+  cta: string;
+  ctaHref: string;
+  ctaExternal: boolean;
+  featured: boolean;
+  badgeText?: string;
+  accentBadge: string;
+  accentBorder: string;
+  accentBg: string;
+  accentCheck: string;
 };
+
+const demoTiers: DemoTier[] = [
+  {
+    name: "Starter",
+    price: "Free",
+    priceUnit: "",
+    description: "Full platform access. Analyse briefs, write proposals, verify candidates — no card required.",
+    features: [
+      "Docs — unlimited proposals",
+      "Proof — brief analysis",
+      "CodeClear — up to 10 scans",
+      "3 Tier 3 developer matches per brief",
+      "Community support",
+    ],
+    cta: "Open platform",
+    ctaHref: "/app/proposals",
+    ctaExternal: false,
+    featured: false,
+    accentBadge: "",
+    accentBorder: "border-white/8",
+    accentBg: "bg-[#101522]",
+    accentCheck: "text-[#f4b942]",
+  },
+  {
+    name: "Pro",
+    price: "£399",
+    priceUnit: "/mth",
+    description: "Full Gitwork agency engagement. A dedicated team behind every brief, proposal, and hire.",
+    features: [
+      "Everything in Intermediate",
+      "CodeClear — unlimited scans",
+      "3 Tier 1 + unlimited Tier 2 & Tier 3 matches",
+      "Dedicated account lead",
+      "Embedded delivery support",
+      "White-label exports",
+    ],
+    cta: "Talk to us",
+    ctaHref: "https://calendly.com/gitworkgroup/30min",
+    ctaExternal: true,
+    featured: true,
+    badgeText: "Best fit",
+    accentBadge: "bg-[linear-gradient(90deg,#059669,#10b981)]",
+    accentBorder: "border-emerald-800/60",
+    accentBg: "bg-[#0a1f15]",
+    accentCheck: "text-[#45d483]",
+  },
+  {
+    name: "Intermediate",
+    price: "£149",
+    priceUnit: "/mth",
+    description: "Platform access plus agency input — proposal reviews, strategy sessions, and priority support.",
+    features: [
+      "Everything in Starter",
+      "CodeClear — up to 50 scans",
+      "3 Tier 2 + 3 Tier 3 developer matches per brief",
+      "Monthly strategy session",
+      "Proposal review & feedback",
+      "Priority email support",
+    ],
+    cta: "Get started",
+    ctaHref: "https://calendly.com/gitworkgroup/30min",
+    ctaExternal: true,
+    featured: false,
+    accentBadge: "",
+    accentBorder: "border-white/8",
+    accentBg: "bg-[#101522]",
+    accentCheck: "text-[#7c8cff]",
+  },
+];
+
+type DemoState = "idle" | "loading" | "ready";
 
 type DemoScenario = {
   id: string;
@@ -25,7 +99,6 @@ type DemoScenario = {
   timeline: string;
   workType: string;
   nextStep: string;
-  matches: MatchCard[];
 };
 
 const scenarios: DemoScenario[] = [
@@ -37,44 +110,6 @@ const scenarios: DemoScenario[] = [
     timeline: "12-month embedded engagement",
     workType: "iOS product build",
     nextStep: "Public match first, then a Gitwork-led capability review and delivery recommendation.",
-    matches: [
-      {
-        id: "shahab",
-        name: "Shahab",
-        role: "Senior Product Engineer",
-        location: "Remote, UK-aligned",
-        availability: "Available in 2 weeks",
-        fit: "92/100",
-        score: 92,
-        summary: "Strong delivery lead for product builds that need hands-on engineering and calm client communication.",
-        stack: ["SwiftUI", "Node.js", "Product delivery", "APIs"],
-        strengths: ["Owns feature delivery", "Comfortable with agency cadence", "Strong cross-functional collaboration"],
-      },
-      {
-        id: "usman",
-        name: "Usman Ali",
-        role: "Senior Full Stack Engineer",
-        location: "Remote, EU hours",
-        availability: "Available this month",
-        fit: "89/100",
-        score: 89,
-        summary: "Useful when the iOS surface needs reliable backend work and broader platform support around it.",
-        stack: ["Swift", "React", "Node.js", "PostgreSQL"],
-        strengths: ["Good technical breadth", "Strong implementation pace", "Reliable under changing scope"],
-      },
-      {
-        id: "nasir",
-        name: "Nasir",
-        role: "Senior Delivery Engineer",
-        location: "Remote, UK overlap",
-        availability: "Open for long-term work",
-        fit: "86/100",
-        score: 86,
-        summary: "Best when the build needs steadier systems thinking around DevOps, releases, and platform resilience.",
-        stack: ["iOS", "DevOps", "Cloud", "Delivery"],
-        strengths: ["Release discipline", "Production-minded", "Strong delivery support"],
-      },
-    ],
   },
   {
     id: "ai-dashboard",
@@ -84,44 +119,6 @@ const scenarios: DemoScenario[] = [
     timeline: "6-month build and launch",
     workType: "AI-enabled product",
     nextStep: "Gitwork would turn the shortlist into a staffed recommendation with delivery ownership, not just names on a page.",
-    matches: [
-      {
-        id: "fahad",
-        name: "Fahad",
-        role: "Senior Platform Engineer",
-        location: "Remote, UK-aligned",
-        availability: "Available next month",
-        fit: "91/100",
-        score: 91,
-        summary: "Strong fit for product teams that need clean architecture, platform depth, and sensible delivery structure.",
-        stack: ["Next.js", "Python", "AI", "Cloud"],
-        strengths: ["Platform architecture", "Excellent systems judgment", "Strong implementation quality"],
-      },
-      {
-        id: "waqar",
-        name: "Waqar",
-        role: "Mid-Level Full Stack Engineer",
-        location: "Remote, EU hours",
-        availability: "Available now",
-        fit: "85/100",
-        score: 85,
-        summary: "Useful for sustained delivery across frontend and backend where pace matters more than layered process.",
-        stack: ["React", "Python", "PostgreSQL", "APIs"],
-        strengths: ["Good execution speed", "Solid across the stack", "Strong feature ownership"],
-      },
-      {
-        id: "jamal",
-        name: "Jamal",
-        role: "Mid-Level Product Engineer",
-        location: "Remote, UK overlap",
-        availability: "Available in 1 week",
-        fit: "82/100",
-        score: 82,
-        summary: "Best for product-focused delivery where interface quality and dependable implementation need to stay balanced.",
-        stack: ["Next.js", "TypeScript", "UI systems", "APIs"],
-        strengths: ["Interface quality", "Clear communication", "Steady delivery pace"],
-      },
-    ],
   },
   {
     id: "design-system",
@@ -131,44 +128,6 @@ const scenarios: DemoScenario[] = [
     timeline: "4-month systems engagement",
     workType: "Design systems + frontend",
     nextStep: "The public integration creates trust early; Gitwork takes it through capability review, delivery planning, and staffing.",
-    matches: [
-      {
-        id: "hamza",
-        name: "Hamza Ahmed",
-        role: "Junior Frontend Engineer",
-        location: "Remote, UK-aligned",
-        availability: "Available now",
-        fit: "79/100",
-        score: 79,
-        summary: "Good support profile for a larger squad where consistency and component implementation matter most.",
-        stack: ["React", "TypeScript", "CSS", "Components"],
-        strengths: ["Strong support capacity", "Comfortable in systems work", "Good implementation discipline"],
-      },
-      {
-        id: "sibghatullah",
-        name: "Sibghatullah",
-        role: "Mid-Level Frontend Engineer",
-        location: "Remote, EU hours",
-        availability: "Available in 2 weeks",
-        fit: "84/100",
-        score: 84,
-        summary: "A practical match for teams tightening component consistency and shipping frontend improvements fast.",
-        stack: ["React", "Design systems", "Next.js", "Frontend QA"],
-        strengths: ["Strong component thinking", "Clear frontend focus", "Good day-to-day reliability"],
-      },
-      {
-        id: "umer",
-        name: "Umer Fayyaz",
-        role: "Mid-Level Product Engineer",
-        location: "Remote, UK overlap",
-        availability: "Available this month",
-        fit: "83/100",
-        score: 83,
-        summary: "Best when the team needs a frontend-heavy builder who still understands delivery constraints and product tradeoffs.",
-        stack: ["React", "Next.js", "TypeScript", "Product UI"],
-        strengths: ["Strong UI delivery", "Good product judgment", "Works well inside collaborative teams"],
-      },
-    ],
   },
 ];
 
@@ -188,40 +147,6 @@ function resolveScenario(value: string) {
   }
 
   return scenarios[0];
-}
-
-function stackTone(item: string) {
-  const token = item.toLowerCase();
-
-  if (token.includes("swift") || token.includes("ios")) {
-    return "border-[#7c8cff]/28 bg-[#7c8cff]/12 text-[#d8ddff]";
-  }
-
-  if (token.includes("react") || token.includes("next")) {
-    return "border-[#3da9fc]/24 bg-[#3da9fc]/12 text-[#d4efff]";
-  }
-
-  if (token.includes("node") || token.includes("cloud") || token.includes("apis")) {
-    return "border-[#45d483]/24 bg-[#45d483]/12 text-[#d7ffe8]";
-  }
-
-  if (token.includes("python") || token.includes("ai")) {
-    return "border-[#f4b942]/24 bg-[#f4b942]/12 text-[#fff1cd]";
-  }
-
-  return "border-white/10 bg-white/[0.05] text-white/78";
-}
-
-function scoreTone(score: number) {
-  if (score >= 90) {
-    return "border-[#45d483]/24 bg-[#45d483]/12 text-[#d7ffe8]";
-  }
-
-  if (score >= 84) {
-    return "border-[#7c8cff]/24 bg-[#7c8cff]/12 text-[#e2e6ff]";
-  }
-
-  return "border-[#f4b942]/24 bg-[#f4b942]/12 text-[#fff1cd]";
 }
 
 export function CodeClearSiteDemo() {
@@ -345,66 +270,73 @@ export function CodeClearSiteDemo() {
 
       <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Top matches</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Matched packages</p>
           <h4 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-white">
-            3 developers surfaced for this brief
+            Choose the right delivery shape
           </h4>
         </div>
         <p className="max-w-[420px] text-sm leading-6 text-white/56 md:text-right">
-          The public integration gives a hiring team immediate confidence. Gitwork takes the shortlist through review,
-          validation, and staffing.
+          Each package unlocks a different tier of developer matches. Gitwork takes the shortlist through capability
+          review, delivery planning, and staffing.
         </p>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-3">
-        {result.matches.map((match, index) => (
-          <article
-            key={match.id}
-            className="rounded-[26px] border border-white/8 bg-[#101522] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">
-                  Match {index + 1}
-                </p>
-                <h5 className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-white">{match.name}</h5>
-                <p className="mt-1 text-sm text-white/56">{match.role}</p>
+      <div className="mt-5 grid items-end gap-4 xl:grid-cols-3">
+        {demoTiers.map((tier) => (
+          <div key={tier.name} className="relative flex flex-col">
+            {tier.featured ? (
+              <div className={`flex items-center justify-center rounded-t-[20px] px-6 py-3 ${tier.accentBadge}`}>
+                <span className="text-[13px] font-semibold text-white">{tier.badgeText}</span>
               </div>
-              <span className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${scoreTone(match.score)}`}>
-                {match.fit}
-              </span>
-            </div>
+            ) : null}
+            <article
+              className={`flex flex-1 flex-col border p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] ${tier.accentBg} ${tier.accentBorder} ${
+                tier.featured ? "rounded-b-[26px] rounded-t-none" : "rounded-[26px]"
+              }`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">{tier.name}</p>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[16px] border border-white/8 bg-white/[0.04] px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Location</p>
-                <p className="mt-2 text-sm text-white/82">{match.location}</p>
-              </div>
-              <div className="rounded-[16px] border border-white/8 bg-white/[0.04] px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Availability</p>
-                <p className="mt-2 text-sm text-white/82">{match.availability}</p>
-              </div>
-            </div>
-
-            <p className="mt-5 text-sm leading-7 text-white/68">{match.summary}</p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {match.stack.map((item) => (
-                <span key={item} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${stackTone(item)}`}>
-                  {item}
+              <div className="mt-4 flex items-end gap-1">
+                <span className="text-[40px] font-semibold leading-none tracking-[-0.05em] text-white">
+                  {tier.price}
                 </span>
-              ))}
-            </div>
+                {tier.priceUnit ? (
+                  <span className="mb-0.5 text-[16px] text-white/40">{tier.priceUnit}</span>
+                ) : null}
+              </div>
 
-            <div className="mt-5 space-y-2.5">
-              {match.strengths.map((item) => (
-                <div key={item} className="flex items-start gap-2 text-sm text-white/72">
-                  <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#45d483]" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </article>
+              <p className="mt-3 text-[13px] leading-5 text-white/54">{tier.description}</p>
+
+              <ul className="mt-6 flex-1 space-y-2.5">
+                {tier.features.map((feature) => (
+                  <li key={feature} className="flex items-start gap-2.5">
+                    <CheckCircleIcon className={`mt-0.5 h-4 w-4 shrink-0 ${tier.accentCheck}`} />
+                    <span className="text-[13px] leading-5 text-white/78">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-7">
+                {tier.ctaExternal ? (
+                  <a
+                    href={tier.ctaHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="app-button app-button-primary app-button-md w-full justify-center"
+                  >
+                    {tier.cta}
+                  </a>
+                ) : (
+                  <Link
+                    href={tier.ctaHref}
+                    className="app-button app-button-primary app-button-md w-full justify-center"
+                  >
+                    {tier.cta}
+                  </Link>
+                )}
+              </div>
+            </article>
+          </div>
         ))}
       </div>
     </section>

@@ -3,17 +3,6 @@ import Link from "next/link";
 import { CheckCircleIcon, MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
 import { CodeClearSiteDemo } from "@/components/marketing/codeclear-site-demo";
 
-type TierDev = {
-  match: number;
-  name: string;
-  role: string;
-  score: number;
-  location: string;
-  availability: string;
-  stack: string[];
-  strengths: string[];
-};
-
 type Tier = {
   name: string;
   price: string;
@@ -27,8 +16,7 @@ type Tier = {
   secondaryHref: string;
   featured: boolean;
   badgeText?: string;
-  accent: { badge: string; score: string; tag: string; check: string; card: string; border: string };
-  devs: TierDev[];
+  accent: { badge: string; check: string; border: string };
 };
 
 const tiers: Tier[] = [
@@ -40,8 +28,8 @@ const tiers: Tier[] = [
     features: [
       "Docs — unlimited proposals",
       "Proof — brief analysis",
-      "CodeClear — up to 10 candidates",
-      "Standard templates",
+      "CodeClear — up to 10 scans",
+      "3 Tier 3 developer matches per brief",
       "Community support",
     ],
     cta: "Open platform",
@@ -52,17 +40,9 @@ const tiers: Tier[] = [
     featured: false,
     accent: {
       badge: "",
-      score: "border-[#f4b942]/24 bg-[#f4b942]/12 text-[#fff1cd]",
-      tag:   "border-[#f4b942]/20 bg-[#f4b942]/10 text-[#fff1cd]",
       check: "text-[#f4b942]",
-      card:  "bg-[#171717] border-[#262626]",
       border: "border-[#262626]",
     },
-    devs: [
-      { match: 1, name: "Alex C.", role: "Mid Frontend Developer", score: 78, location: "Remote, EU hours", availability: "Available now", stack: ["React", "TypeScript", "CSS", "APIs"], strengths: ["Solid component delivery", "Clear code quality", "Good pace"] },
-      { match: 2, name: "Jamie T.", role: "Frontend Developer", score: 74, location: "Remote, UK-aligned", availability: "In 2 weeks", stack: ["Vue.js", "JavaScript", "HTML", "Figma"], strengths: ["Design fidelity", "UI consistency", "Dependable output"] },
-      { match: 3, name: "Sam P.", role: "Full Stack Developer", score: 72, location: "Remote, Global", availability: "This month", stack: ["Node.js", "React", "MongoDB"], strengths: ["Full stack coverage", "Consistent delivery", "Good communication"] },
-    ],
   },
   {
     name: "Pro",
@@ -71,7 +51,8 @@ const tiers: Tier[] = [
     description: "Full Gitwork agency engagement. A dedicated team behind every brief, proposal, and hire.",
     features: [
       "Everything in Intermediate",
-      "CodeClear — unlimited candidates",
+      "CodeClear — unlimited scans",
+      "3 Tier 1 + unlimited Tier 2 & Tier 3 matches",
       "Dedicated account lead",
       "Embedded delivery support",
       "White-label exports",
@@ -86,17 +67,9 @@ const tiers: Tier[] = [
     badgeText: "Best fit",
     accent: {
       badge: "bg-[linear-gradient(90deg,#059669,#10b981)]",
-      score: "border-[#45d483]/24 bg-[#45d483]/12 text-[#d7ffe8]",
-      tag:   "border-[#45d483]/20 bg-[#45d483]/10 text-[#d7ffe8]",
       check: "text-[#45d483]",
-      card:  "bg-[#0e1f18] border-emerald-900/50",
       border: "border-emerald-700/50",
     },
-    devs: [
-      { match: 1, name: "Shahab", role: "Senior Product Engineer", score: 92, location: "Remote, UK-aligned", availability: "Available in 2 weeks", stack: ["SwiftUI", "Node.js", "Product delivery", "APIs"], strengths: ["Owns feature delivery", "Comfortable with agency cadence", "Strong cross-functional collaboration"] },
-      { match: 2, name: "Usman Ali", role: "Senior Full Stack Engineer", score: 89, location: "Remote, EU hours", availability: "Available this month", stack: ["Swift", "React", "Node.js", "PostgreSQL"], strengths: ["Good technical breadth", "Strong implementation pace", "Reliable under changing scope"] },
-      { match: 3, name: "Nasir", role: "Senior Delivery Engineer", score: 86, location: "Remote, UK overlap", availability: "Open for long-term work", stack: ["iOS", "DevOps", "Cloud", "Delivery"], strengths: ["Release discipline", "Production-minded", "Strong delivery support"] },
-    ],
   },
   {
     name: "Intermediate",
@@ -105,11 +78,11 @@ const tiers: Tier[] = [
     description: "Platform access plus agency input — proposal reviews, strategic sessions, and priority support.",
     features: [
       "Everything in Starter",
-      "CodeClear — up to 50 candidates",
+      "CodeClear — up to 50 scans",
+      "3 Tier 2 + 3 Tier 3 developer matches per brief",
       "Monthly strategy session",
       "Proposal review & feedback",
       "Priority email support",
-      "Custom template set-up",
     ],
     cta: "Get started",
     ctaHref: "https://calendly.com/gitworkgroup/30min",
@@ -119,17 +92,9 @@ const tiers: Tier[] = [
     featured: false,
     accent: {
       badge: "",
-      score: "border-[#7c8cff]/24 bg-[#7c8cff]/12 text-[#e2e6ff]",
-      tag:   "border-[#7c8cff]/20 bg-[#7c8cff]/10 text-[#e2e6ff]",
       check: "text-[#7c8cff]",
-      card:  "bg-[#171717] border-[#262626]",
       border: "border-[#262626]",
     },
-    devs: [
-      { match: 1, name: "Priya S.", role: "Senior iOS Engineer", score: 85, location: "Remote, UK-aligned", availability: "Available next month", stack: ["Swift", "SwiftUI", "iOS", "APIs"], strengths: ["iOS architecture", "Strong product sense", "Reliable timeline"] },
-      { match: 2, name: "Daniel O.", role: "Backend Engineer", score: 82, location: "Remote, EU hours", availability: "Available now", stack: ["Python", "PostgreSQL", "Cloud", "APIs"], strengths: ["Backend architecture", "Strong data modelling", "Good delivery pace"] },
-      { match: 3, name: "Mia C.", role: "Platform Engineer", score: 80, location: "Remote, UK overlap", availability: "In 3 weeks", stack: ["DevOps", "Cloud", "Docker", "CI/CD"], strengths: ["Platform stability", "Release discipline", "Systems thinking"] },
-    ],
   },
 ];
 
@@ -295,148 +260,72 @@ export default function HomePage() {
 
             <div className="mt-16 grid items-end gap-6 lg:grid-cols-3">
               {tiers.map((tier) => (
-                <div key={tier.name} className="flex flex-col gap-4">
-                  {/* Pricing card */}
-                  <div className="relative flex flex-col">
-                    {/* Featured badge */}
-                    {tier.featured ? (
-                      <div className={`flex items-center justify-center rounded-t-[20px] px-6 py-3 ${tier.accent.badge}`}>
-                        <span className="text-[13px] font-semibold text-white">{tier.badgeText ?? "Best fit"}</span>
-                      </div>
-                    ) : null}
-
-                    <div
-                      className={`flex flex-1 flex-col border p-8 ${
-                        tier.featured
-                          ? `rounded-b-[20px] rounded-t-none ${tier.accent.border} bg-[#0e1f18]`
-                          : `rounded-[20px] border-[#262626] bg-[#171717]`
-                      }`}
-                    >
-                      {/* Tier name */}
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">
-                        {tier.name}
-                      </p>
-
-                      {/* Price */}
-                      <div className="mt-5 flex items-end gap-1">
-                        <span className="text-[52px] font-semibold leading-none tracking-[-0.05em] text-white">
-                          {tier.price}
-                        </span>
-                        {tier.priceUnit ? (
-                          <span className="mb-1 text-[18px] text-white/40">{tier.priceUnit}</span>
-                        ) : null}
-                      </div>
-
-                      {/* Description */}
-                      <p className="mt-4 text-[15px] leading-6 text-white/56">{tier.description}</p>
-
-                      {/* Features */}
-                      <ul className="mt-8 flex-1 space-y-3">
-                        {tier.features.map((feature) => (
-                          <li key={feature} className="flex items-start gap-3">
-                            <CheckCircleIcon className={`mt-0.5 h-5 w-5 shrink-0 ${tier.accent.check}`} />
-                            <span className="text-[15px] leading-6 text-white/80">{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {/* CTAs */}
-                      <div className="mt-10 space-y-3">
-                        {tier.ctaExternal ? (
-                          <a
-                            href={tier.ctaHref}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="app-button app-button-primary app-button-md w-full justify-center"
-                          >
-                            {tier.cta}
-                          </a>
-                        ) : (
-                          <Link
-                            href={tier.ctaHref}
-                            className="app-button app-button-primary app-button-md w-full justify-center"
-                          >
-                            {tier.cta}
-                          </Link>
-                        )}
-                        <a
-                          href={tier.secondaryHref}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="app-button app-button-dark app-button-md w-full justify-center"
-                        >
-                          {tier.secondary}
-                        </a>
-                      </div>
+                <div key={tier.name} className="relative flex flex-col">
+                  {/* Featured badge */}
+                  {tier.featured ? (
+                    <div className={`flex items-center justify-center rounded-t-[20px] px-6 py-3 ${tier.accent.badge}`}>
+                      <span className="text-[13px] font-semibold text-white">{tier.badgeText ?? "Best fit"}</span>
                     </div>
-                  </div>
+                  ) : null}
 
-                  {/* Developer match cards */}
-                  <div className="space-y-3">
-                    {tier.devs.map((dev) => (
-                      <div
-                        key={dev.name}
-                        className={`rounded-[16px] border p-4 ${tier.accent.card}`}
-                      >
-                        {/* Header row */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-white/30">
-                              #{dev.match}
-                            </span>
-                            <div>
-                              <p className="text-[14px] font-semibold leading-tight text-white">{dev.name}</p>
-                              <p className="text-[12px] text-white/50">{dev.role}</p>
-                            </div>
-                          </div>
-                          <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[12px] font-semibold tabular-nums ${tier.accent.score}`}>
-                            {dev.score}
-                          </span>
-                        </div>
+                  <div
+                    className={`flex flex-1 flex-col border p-8 ${
+                      tier.featured
+                        ? `rounded-b-[20px] rounded-t-none ${tier.accent.border} bg-[#0e1f18]`
+                        : `rounded-[20px] border-[#262626] bg-[#171717]`
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">
+                      {tier.name}
+                    </p>
 
-                        {/* Location + availability */}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-[6px] border border-white/8 bg-white/4 px-2.5 py-1 text-[11px] text-white/50">
-                            {dev.location}
-                          </span>
-                          <span className="rounded-[6px] border border-white/8 bg-white/4 px-2.5 py-1 text-[11px] text-white/50">
-                            {dev.availability}
-                          </span>
-                        </div>
+                    <div className="mt-5 flex items-end gap-1">
+                      <span className="text-[52px] font-semibold leading-none tracking-[-0.05em] text-white">
+                        {tier.price}
+                      </span>
+                      {tier.priceUnit ? (
+                        <span className="mb-1 text-[18px] text-white/40">{tier.priceUnit}</span>
+                      ) : null}
+                    </div>
 
-                        {/* Stack pills */}
-                        <div className="mt-2.5 flex flex-wrap gap-1.5">
-                          {dev.stack.map((s) => (
-                            <span
-                              key={s}
-                              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tier.accent.tag}`}
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
+                    <p className="mt-4 text-[15px] leading-6 text-white/56">{tier.description}</p>
 
-                        {/* Strengths */}
-                        <ul className="mt-3 space-y-1.5">
-                          {dev.strengths.map((strength) => (
-                            <li key={strength} className="flex items-center gap-2">
-                              <CheckCircleIcon className={`h-3.5 w-3.5 shrink-0 ${tier.accent.check}`} />
-                              <span className="text-[12px] text-white/60">{strength}</span>
-                            </li>
-                          ))}
-                        </ul>
+                    <ul className="mt-8 flex-1 space-y-3">
+                      {tier.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-3">
+                          <CheckCircleIcon className={`mt-0.5 h-5 w-5 shrink-0 ${tier.accent.check}`} />
+                          <span className="text-[15px] leading-6 text-white/80">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
 
-                        {/* Book now CTA */}
+                    <div className="mt-10 space-y-3">
+                      {tier.ctaExternal ? (
                         <a
-                          href="https://calendly.com/gitworkgroup/30min"
+                          href={tier.ctaHref}
                           target="_blank"
                           rel="noreferrer"
-                          className="app-button app-button-dark app-button-sm mt-4 w-full justify-center"
+                          className="app-button app-button-primary app-button-md w-full justify-center"
                         >
-                          Book now
+                          {tier.cta}
                         </a>
-                      </div>
-                    ))}
+                      ) : (
+                        <Link
+                          href={tier.ctaHref}
+                          className="app-button app-button-primary app-button-md w-full justify-center"
+                        >
+                          {tier.cta}
+                        </Link>
+                      )}
+                      <a
+                        href={tier.secondaryHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="app-button app-button-dark app-button-md w-full justify-center"
+                      >
+                        {tier.secondary}
+                      </a>
+                    </div>
                   </div>
                 </div>
               ))}
