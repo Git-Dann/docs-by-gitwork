@@ -430,7 +430,7 @@ export function CodeClearCandidatesWorkspace() {
                         }))
                       }
                     >
-                      <StackPill label={stack} tone="stack" />
+                      <StackPill label={stack} tone="stack" selected={active} />
                     </button>
                   );
                 })}

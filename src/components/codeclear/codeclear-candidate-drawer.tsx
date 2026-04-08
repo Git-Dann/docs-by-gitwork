@@ -134,7 +134,7 @@ export function CodeClearCandidateDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative z-10 flex h-full w-full max-w-[560px] flex-col border-l border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]">
+      <aside className="relative z-10 flex h-full w-full max-w-[720px] flex-col border-l border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]">
         <div className="flex items-start justify-between border-b border-[var(--border-2)] px-6 pb-5 pt-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
@@ -224,18 +224,6 @@ export function CodeClearCandidateDrawer({
                     >
                       Run analysis
                     </Button>
-                    {latestRun?.status === "COMPLETED" ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        leadingIcon={<PlayIcon className="h-4 w-4" />}
-                        onClick={() => applyRun.mutate(latestRun.id)}
-                        loading={applyRun.isPending}
-                      >
-                        Apply run
-                      </Button>
-                    ) : null}
                     <Button
                       type="button"
                       variant="secondary"
@@ -258,7 +246,7 @@ export function CodeClearCandidateDrawer({
                   <p className="mt-4 text-sm leading-6 text-[var(--text-3)]">{candidate.bio}</p>
                 ) : null}
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <SignalCard
                     icon={<IdentificationIcon className="h-4 w-4" />}
                     label="Identity confidence"
@@ -382,12 +370,16 @@ export function CodeClearCandidateDrawer({
                               techStacks: active
                                 ? current.techStacks.filter((entry) => entry !== stack)
                                 : [...current.techStacks, stack],
-                              primaryStack: active || current.primaryStack ? current.primaryStack : stack,
+                              primaryStack: active
+                                ? current.primaryStack === stack
+                                  ? current.techStacks.filter((entry) => entry !== stack)[0] ?? ""
+                                  : current.primaryStack
+                                : current.primaryStack || stack,
                             }))
                           }
                           className="rounded-full"
                         >
-                          <StackPill label={stack} tone="stack" />
+                          <StackPill label={stack} tone="stack" selected={active} />
                         </button>
                       );
                     })}
@@ -606,6 +598,18 @@ export function CodeClearCandidateDrawer({
                       Request {source.label}
                     </Button>
                   ))}
+                  {latestRun?.status === "COMPLETED" ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leadingIcon={<PlayIcon className="h-4 w-4" />}
+                      onClick={() => applyRun.mutate(latestRun.id)}
+                      loading={applyRun.isPending}
+                    >
+                      Apply latest run
+                    </Button>
+                  ) : null}
                 </div>
 
                 {latestRun ? (

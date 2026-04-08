@@ -5,7 +5,6 @@ import {
   Bars3Icon,
   DocumentTextIcon,
   EyeIcon,
-  LinkIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -25,12 +24,9 @@ import {
   useBulkUpdateCodeClearCandidates,
   useCodeClearCandidates,
   useRunCodeClearGitHubAnalysis,
-  useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import {
-  CANDIDATE_SIGNAL_SOURCES,
   PIPELINE_STATUSES,
-  type CandidateSignalSource,
   type CodeClearCandidateListItem,
   type PipelineStatus,
 } from "@/types/codeclear";
@@ -209,8 +205,6 @@ function PipelineCard({
     id: candidate.id,
   });
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
-  const updateCandidate = useUpdateCodeClearCandidate(candidate.id);
-
   const isRunning = candidate.analysisState === "RUNNING";
   const neverScanned = candidate.analysisState === "NEVER_RUN";
   const scanFailed = candidate.analysisState === "FAILED";
@@ -310,20 +304,6 @@ function PipelineCard({
 
           <Button
             type="button"
-            variant="utility"
-            size="sm"
-            leadingIcon={<LinkIcon className="h-3.5 w-3.5" />}
-            onClick={() =>
-              updateCandidate.mutate({
-                requestSignalSource: getNextSignalRequest(candidate.signalSources),
-              })
-            }
-          >
-            Request signal
-          </Button>
-
-          <Button
-            type="button"
             variant="secondary"
             size="sm"
             leadingIcon={<EyeIcon className="h-3.5 w-3.5" />}
@@ -344,13 +324,6 @@ function PipelineCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function getNextSignalRequest(signalSources: CandidateSignalSource[]): CandidateSignalSource {
-  return (
-    CANDIDATE_SIGNAL_SOURCES.find((source) => !signalSources.includes(source.value))?.value ??
-    "INTERVIEW"
   );
 }
 

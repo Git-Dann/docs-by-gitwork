@@ -212,9 +212,11 @@ export function MetricCard({
 export function StackPill({
   label,
   tone = "neutral",
+  selected = true,
 }: {
   label: string;
   tone?: "neutral" | "brand" | "success" | "stack";
+  selected?: boolean;
 }) {
   const stackPalette = [
     "border-sky-200 bg-sky-50 text-sky-700",
@@ -235,7 +237,9 @@ export function StackPill({
           : tone === "success"
             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
             : tone === "stack"
-              ? stackPalette[hash % stackPalette.length]
+              ? selected
+                ? stackPalette[hash % stackPalette.length]
+                : "border-[var(--border-2)] bg-white text-[var(--text-4)]"
             : "border-[var(--border-2)] bg-white text-[var(--text-3)]",
       )}
     >
