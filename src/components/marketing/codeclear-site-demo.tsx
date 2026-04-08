@@ -28,7 +28,7 @@ function buildDemoResult(value: string): DemoResult {
   };
 }
 
-export function CodeClearSiteDemo() {
+export function CodeClearSiteDemo({ compact = false }: { compact?: boolean } = {}) {
   const [value, setValue] = useState("");
   const [state, setState] = useState<DemoState>("idle");
   const [result, setResult] = useState<DemoResult | null>(null);
@@ -57,7 +57,13 @@ export function CodeClearSiteDemo() {
   }
 
   return (
-    <aside className="rounded-[28px] border border-[var(--border-2)] bg-[#0d1017] p-5 text-white shadow-[0_24px_90px_rgba(10,13,18,0.24)]">
+    <aside
+      className={
+        compact
+          ? "rounded-[28px] border border-white/10 bg-[#0b0f18] p-4 text-white shadow-[0_24px_90px_rgba(10,13,18,0.26)]"
+          : "rounded-[32px] border border-white/10 bg-[#0b0f18] p-5 text-white shadow-[0_24px_90px_rgba(10,13,18,0.3)]"
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">CodeClear demo</p>
@@ -89,7 +95,7 @@ export function CodeClearSiteDemo() {
         </button>
       </div>
 
-      <div className="mt-6 rounded-[22px] border border-white/8 bg-white/5 p-4">
+      <div className="mt-6 rounded-[22px] border border-white/8 bg-white/[0.045] p-4">
         {result ? (
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
