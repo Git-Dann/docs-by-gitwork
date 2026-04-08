@@ -2,15 +2,19 @@
 
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
+  BeakerIcon,
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
   PencilSquareIcon,
   PlayCircleIcon,
+  PlusIcon,
   SparklesIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
 import { cn, formatDate } from "@/lib/format";
 import { statusLabel } from "@/types/codeclear";
@@ -119,9 +123,57 @@ export function CodeClearOverview() {
   // Derived: how many are actively scanning right now
   const scanning = allCandidates.filter((c) => c.analysisState === "RUNNING").length;
 
+  const neverScanned = allCandidates.filter((c) => c.analysisState === "NEVER_RUN").length;
+
   return (
     <div className="space-y-6">
-      <CodeClearTabs />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <CodeClearTabs />
+        <div className="flex items-center gap-2">
+          <Link href="/app/codeclear/pipeline">
+            <Button type="button" variant="secondary" size="sm" trailingIcon={<ArrowRightIcon className="h-3.5 w-3.5" />}>
+              Open pipeline
+            </Button>
+          </Link>
+          <Link href="/app/codeclear/candidates">
+            <Button type="button" variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
+              Add candidate
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {(neverScanned > 0 || (stats?.recheckDue ?? 0) > 0) ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {neverScanned > 0 ? (
+            <Link
+              href="/app/codeclear/pipeline"
+              className="flex flex-1 items-center gap-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300"
+            >
+              <BeakerIcon className="h-4 w-4 shrink-0 text-amber-600" />
+              <p className="text-sm font-semibold text-amber-700">
+                {neverScanned} candidate{neverScanned > 1 ? "s" : ""} haven&apos;t been GitHub scanned yet
+                <span className="ml-1.5 font-normal text-amber-600">— go to pipeline to scan them</span>
+              </p>
+              <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-amber-500" />
+            </Link>
+          ) : null}
+          {(stats?.recheckDue ?? 0) > 0 ? (
+            <Link
+              href="/app/codeclear/candidates?status=RECHECK_DUE"
+              className="flex flex-1 items-center gap-3 rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
+            >
+              <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />
+              <p className="text-sm font-semibold text-rose-700">
+                {stats!.recheckDue} re-check{stats!.recheckDue > 1 ? "s" : ""} overdue
+                <span className="ml-1.5 font-normal text-rose-600">— review these candidates</span>
+              </p>
+              <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-rose-500" />
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Top metrics */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

@@ -102,9 +102,10 @@ export function CodeClearCandidatesWorkspace() {
       <CodeClearTabs />
 
       <section className="app-card p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-[260px] flex-1 items-center gap-2 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3">
-            <MagnifyingGlassIcon className="h-4 w-4 text-[var(--text-4)]" />
+        {/* Row 1: search + add */}
+        <div className="flex items-center gap-3">
+          <div className="flex flex-1 items-center gap-2 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3">
+            <MagnifyingGlassIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
             <input
               value={search}
               onChange={(event) => {
@@ -113,85 +114,85 @@ export function CodeClearCandidatesWorkspace() {
                 updateQuery({ q: value || null });
               }}
               placeholder="Search candidates"
-              className="h-11 w-full border-0 bg-transparent text-sm text-[var(--text-1)] outline-none"
+              className="h-10 w-full border-0 bg-transparent text-sm text-[var(--text-1)] outline-none"
             />
           </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() => setShowCreateModal(true)}
+          >
+            Add candidate
+          </Button>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as PipelineStatus | "");
-                updateQuery({ status: event.target.value || null });
-              }}
-              className="app-input h-11 min-w-[150px]"
-            >
-              <option value="">All stages</option>
-              {PIPELINE_STATUSES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+        {/* Row 2: filters */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as PipelineStatus | "");
+              updateQuery({ status: event.target.value || null });
+            }}
+            className="app-input h-9 text-sm"
+          >
+            <option value="">All stages</option>
+            {PIPELINE_STATUSES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
 
-            <select
-              value={tierFilter}
-              onChange={(event) => {
-                setTierFilter(event.target.value as CodeClearTier | "");
-                updateQuery({ tier: event.target.value || null });
-              }}
-              className="app-input h-11 min-w-[130px]"
-            >
-              <option value="">All tiers</option>
-              {CODECLEAR_TIERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          <select
+            value={tierFilter}
+            onChange={(event) => {
+              setTierFilter(event.target.value as CodeClearTier | "");
+              updateQuery({ tier: event.target.value || null });
+            }}
+            className="app-input h-9 text-sm"
+          >
+            <option value="">All tiers</option>
+            {CODECLEAR_TIERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
 
-            <select
-              value={stackFilter}
-              onChange={(event) => {
-                setStackFilter(event.target.value);
-                updateQuery({ stack: event.target.value || null });
-              }}
-              className="app-input h-11 min-w-[140px]"
-            >
-              <option value="">All stacks</option>
-              {stackOptions.map((stack) => (
-                <option key={stack} value={stack}>
-                  {stack}
-                </option>
-              ))}
-            </select>
+          <select
+            value={stackFilter}
+            onChange={(event) => {
+              setStackFilter(event.target.value);
+              updateQuery({ stack: event.target.value || null });
+            }}
+            className="app-input h-9 text-sm"
+          >
+            <option value="">All stacks</option>
+            {stackOptions.map((stack) => (
+              <option key={stack} value={stack}>
+                {stack}
+              </option>
+            ))}
+          </select>
 
-            <select
-              value={confidenceFilter}
-              onChange={(event) => {
-                setConfidenceFilter(event.target.value as IdentityConfidence | "");
-                updateQuery({ identityConfidence: event.target.value || null });
-              }}
-              className="app-input h-11 min-w-[150px]"
-            >
-              <option value="">All confidence</option>
-              {IDENTITY_CONFIDENCE_LEVELS.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              leadingIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setShowCreateModal(true)}
-            >
-              Add candidate
-            </Button>
-          </div>
+          <select
+            value={confidenceFilter}
+            onChange={(event) => {
+              setConfidenceFilter(event.target.value as IdentityConfidence | "");
+              updateQuery({ identityConfidence: event.target.value || null });
+            }}
+            className="app-input h-9 text-sm"
+          >
+            <option value="">All confidence</option>
+            {IDENTITY_CONFIDENCE_LEVELS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
         </div>
 
         {selectedIds.length ? (
