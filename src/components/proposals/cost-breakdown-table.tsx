@@ -663,14 +663,18 @@ export function CostBreakdownTable({
                 <th className="bg-[var(--surface-1)] px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Tech Stack
                 </th>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-right text-xs font-semibold text-[var(--text-4)]">
-                  Months Rqd.
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                  <span className="block">Months</span>
+                  <span className="block">Rqd.</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-right text-xs font-semibold text-[var(--text-4)]">
-                  Day Rate ({currencySymbol(value.currency)})
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                  <span className="block">Day</span>
+                  <span className="block">Rate</span>
+                  <span className="block">({currencySymbol(value.currency)})</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-right text-xs font-semibold text-[var(--text-4)]">
-                  Monthly Cost ({currencySymbol(value.currency)})
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                  <span className="block">Monthly</span>
+                  <span className="block">Cost ({currencySymbol(value.currency)})</span>
                 </th>
                 <th className="bg-[var(--surface-1)] px-4 py-3" />
               </tr>
@@ -699,7 +703,7 @@ export function CostBreakdownTable({
                   return (
                     <tr
                       key={item.id ?? `cost-${index}`}
-                      className="cursor-pointer transition hover:bg-[var(--surface-1)] focus-within:bg-[var(--surface-1)]"
+                      className="cursor-pointer"
                       onClick={() => openBudgetEditor(index)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -709,55 +713,25 @@ export function CostBreakdownTable({
                       }}
                       tabIndex={0}
                     >
-                      <td
-                        className={cn(
-                          "h-[72px] px-6 py-4 align-middle",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-6 py-4 align-middle">
                         <div className="min-w-[150px]">
                           <p className="text-sm font-medium text-[var(--text-1)]">{title}</p>
                           <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
                         </div>
                       </td>
-                      <td
-                        className={cn(
-                          "h-[72px] px-6 py-4 align-middle",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-6 py-4 align-middle">
                         <TechStackPreview stacks={parseTechStackValue(item.description)} />
                       </td>
-                      <td
-                        className={cn(
-                          "h-[72px] px-6 py-4 text-right align-middle text-[var(--text-2)]",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-center align-middle text-[var(--text-2)]">
                         {formatPlainNumber(item.quantity)}
                       </td>
-                      <td
-                        className={cn(
-                          "h-[72px] px-6 py-4 text-right align-middle text-[var(--text-2)]",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-center align-middle text-[var(--text-2)]">
                         {dayRate === null ? "Inc." : formatPlainNumber(dayRate, 1)}
                       </td>
-                      <td
-                        className={cn(
-                          "h-[72px] px-6 py-4 text-right align-middle text-[var(--text-2)]",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-center align-middle text-[var(--text-2)]">
                         {monthlyCost === null ? "Inc." : formatPlainNumber(monthlyCost)}
                       </td>
-                      <td
-                        className={cn(
-                          "h-[72px] px-4 py-4 text-right align-middle",
-                          index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                        )}
-                      >
+                      <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-right align-middle">
                         <Button
                           type="button"
                           variant="utility"
@@ -841,7 +815,7 @@ export function CostBreakdownTable({
                 <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Duration
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-right text-[10px] font-semibold text-[var(--text-4)]">
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
                   <span className="block">Total Cost ({currencySymbol(value.currency)})</span>
                   <span className="block text-[10px] font-semibold text-[var(--text-4)]">
                     (Excl. VAT)
@@ -853,10 +827,10 @@ export function CostBreakdownTable({
                 <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Timing
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-right text-xs font-semibold text-[var(--text-4)]">
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold text-[var(--text-4)]">
                   Payment %
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-right text-[10px] font-semibold text-[var(--text-4)]">
+                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
                   <span className="block">Amount ({currencySymbol(value.currency)})</span>
                   <span className="block text-[10px] font-semibold text-[var(--text-4)]">
                     (Excl. VAT)
@@ -869,15 +843,11 @@ export function CostBreakdownTable({
               {paymentSchedule.length ? (
                 paymentSchedule.map((row, index) => (
                   <tr key={row.id}>
-                    <td
-                      className={cn(
-                        "h-[72px] px-6 py-4 align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-6 py-4 align-middle">
                       <InlineCellInput
                         value={row.phaseLabel ?? ""}
-                        placeholder="Phase 1"
+                        placeholder="Phase"
+                        variant="field"
                         onChange={(phaseLabel) =>
                           updatePaymentRow(
                             index,
@@ -896,16 +866,12 @@ export function CostBreakdownTable({
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 align-middle">
                       <InlineCellInput
                         value={row.phaseDuration ?? ""}
-                        placeholder="8 Weeks"
+                        placeholder="Duration"
                         variant="field"
+                        align="center"
                         onChange={(phaseDuration) =>
                           updatePaymentRow(
                             index,
@@ -922,16 +888,11 @@ export function CostBreakdownTable({
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 text-right align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-right align-middle">
                       <InlineCellNumber
                         value={row.phaseTotal ?? 0}
                         placeholder="0"
-                        align="right"
+                        align="center"
                         variant="field"
                         onChange={(phaseTotal) =>
                           updatePaymentRow(
@@ -949,42 +910,29 @@ export function CostBreakdownTable({
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 align-middle">
                       <InlineCellInput
                         value={row.action}
-                        placeholder="Deposit"
+                        placeholder="Milestone"
+                        variant="field"
                         onChange={(action) => updatePaymentRow(index, { ...row, action })}
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 align-middle">
                       <InlineCellInput
                         value={row.periodCovered}
-                        placeholder="Project Kickoff"
+                        placeholder="Timing"
+                        variant="field"
                         onChange={(periodCovered) =>
                           updatePaymentRow(index, { ...row, periodCovered })
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 text-right align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-right align-middle">
                       <InlineCellNumber
                         value={row.paymentPercent ?? 0}
                         placeholder="0"
-                        align="right"
+                        align="center"
                         variant="field"
                         onChange={(paymentPercent) =>
                           updatePaymentRow(
@@ -1002,16 +950,11 @@ export function CostBreakdownTable({
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 text-right align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-right align-middle">
                       <InlineCellNumber
                         value={row.amount ?? 0}
                         placeholder="0"
-                        align="right"
+                        align="center"
                         onChange={(amount) =>
                           updatePaymentRow(
                             index,
@@ -1028,12 +971,7 @@ export function CostBreakdownTable({
                         }
                       />
                     </td>
-                    <td
-                      className={cn(
-                        "h-[72px] px-4 py-4 text-right align-middle",
-                        index === 0 ? "border-t-0" : "border-t border-[var(--border-3)]",
-                      )}
-                    >
+                    <td className="h-[72px] border-t border-[var(--border-3)] px-4 py-4 text-right align-middle">
                       <Button
                         type="button"
                         variant="utility"
@@ -1212,7 +1150,7 @@ function InlineCellInput({
   value: string;
   placeholder?: string;
   onChange: (value: string) => void;
-  align?: "left" | "right";
+  align?: "left" | "right" | "center";
   variant?: "plain" | "field";
 }) {
   return (
@@ -1222,9 +1160,9 @@ function InlineCellInput({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-10 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
-        align === "right" ? "text-right" : "text-left",
+        align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
       )}
     />
   );
@@ -1240,7 +1178,7 @@ function InlineCellNumber({
   value: number;
   placeholder?: string;
   onChange: (value: number) => void;
-  align?: "left" | "right";
+  align?: "left" | "right" | "center";
   variant?: "plain" | "field";
 }) {
   return (
@@ -1251,9 +1189,9 @@ function InlineCellNumber({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-10 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
-        align === "right" ? "text-right" : "text-left",
+        align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
       )}
     />
   );
@@ -1295,7 +1233,7 @@ function BudgetEditorDialog({
         onClick={onClose}
       />
 
-      <div className="relative z-10 w-full max-w-[640px] overflow-hidden rounded-[24px] border border-[var(--border-2)] bg-white shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_3px_3px_-1.5px_rgba(16,24,40,0.04)]">
+      <div className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-white shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_3px_3px_-1.5px_rgba(16,24,40,0.04)]">
         <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">
             {value.index === null ? "Add budget row" : "Edit budget row"}
@@ -1312,7 +1250,7 @@ function BudgetEditorDialog({
           </Button>
         </div>
 
-        <div className="space-y-4 px-5 pb-5 pt-4">
+        <div className="space-y-3.5 px-5 pb-5 pt-4">
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Developer</span>
             <select
@@ -1362,7 +1300,7 @@ function BudgetEditorDialog({
             </label>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 grid-cols-2">
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-[var(--text-2)]">Months required</span>
               <input
@@ -1415,7 +1353,7 @@ function BudgetEditorDialog({
 
           <div className="space-y-2">
             <span className="text-sm font-medium text-[var(--text-2)]">Tech Stack</span>
-            <div className="max-h-[172px] overflow-y-auto rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3 shadow-[var(--shadow-xs)]">
+            <div className="max-h-[168px] overflow-y-auto rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3 shadow-[var(--shadow-xs)]">
               <div className="flex flex-wrap gap-2">
                 {techStackOptions.map((option) => {
                   const selected = value.techStack.includes(option);
@@ -1435,7 +1373,7 @@ function BudgetEditorDialog({
                         })
                       }
                       className={cn(
-                        "inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-sm font-medium transition",
+                        "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-[13px] font-medium transition",
                         selected
                           ? "border-[var(--brand-300)] bg-[var(--surface-brand-soft)] text-[var(--brand-700)]"
                           : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
