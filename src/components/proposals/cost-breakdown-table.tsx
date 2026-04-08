@@ -645,15 +645,15 @@ export function CostBreakdownTable({
           </Button>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
-          <table className="min-w-[780px] table-fixed border-separate border-spacing-0 text-sm">
+        <div className="mt-4 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
-              <col className="w-[190px]" />
-              <col className="w-[224px]" />
-              <col className="w-[102px]" />
-              <col className="w-[102px]" />
-              <col className="w-[126px]" />
-              <col className="w-[68px]" />
+              <col className="w-[22%]" />
+              <col className="w-[30%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[16%]" />
+              <col className="w-[8%]" />
             </colgroup>
             <thead>
               <tr>
@@ -714,7 +714,7 @@ export function CostBreakdownTable({
                       tabIndex={0}
                     >
                       <td className="h-[72px] border-t border-[var(--border-3)] px-6 py-4 align-middle">
-                        <div className="min-w-[150px]">
+                        <div className="min-w-0 max-w-[180px]">
                           <p className="text-sm font-medium text-[var(--text-1)]">{title}</p>
                           <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
                         </div>
