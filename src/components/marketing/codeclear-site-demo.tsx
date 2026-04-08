@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircleIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useState } from "react";
 
 type DemoState = "idle" | "loading" | "ready";
@@ -12,18 +13,20 @@ type DemoScenario = {
   timeline: string;
   workType: string;
   nextStep: string;
-  recommended: "flex" | "monthly" | "team";
+  recommended: "starter" | "pro" | "intermediate";
 };
 
 type DemoTier = {
-  id: "flex" | "monthly" | "team";
-  title: string;
-  commitment: string;
+  id: "starter" | "pro" | "intermediate";
+  name: string;
   price: string;
   priceUnit: string;
+  description: string;
   features: string[];
   cta: string;
   ctaHref: string;
+  ctaExternal: boolean;
+  featured: boolean;
   accentBadge: string;
   accentBorder: string;
   accentBg: string;
@@ -32,63 +35,72 @@ type DemoTier = {
 
 const demoTiers: DemoTier[] = [
   {
-    id: "flex",
-    title: "1 × Full Stack Developer",
-    commitment: "Zero term commitment",
+    id: "starter",
+    name: "Starter",
     price: "£350",
     priceUnit: "/ Day",
+    description: "Flexible daily rate with zero term commitment. Ideal for focused delivery sprints.",
     features: [
-      "Working UK Hours",
-      "Dedicated Project Manager",
-      "Best for Custom Projects",
+      "Docs — unlimited proposals",
+      "Proof — brief analysis",
+      "CodeClear — up to 10 scans",
+      "3 Tier 3 developer matches per brief",
+      "Community support",
     ],
     cta: "Discuss Plan",
     ctaHref: "https://calendly.com/gitworkgroup/30min",
-    accentBadge: "bg-[linear-gradient(90deg,#2563eb,#3b82f6)]",
-    accentBorder: "border-[#1e3a5f]/60",
-    accentBg: "bg-[#0c1929]",
-    accentCheck: "text-[#60a5fa]",
+    ctaExternal: true,
+    featured: false,
+    accentBadge: "",
+    accentBorder: "border-white/8",
+    accentBg: "bg-[#101522]",
+    accentCheck: "text-[#f4b942]",
   },
   {
-    id: "team",
-    title: "3 × Full Stack Developers",
-    commitment: "Ideal for larger teams needing a full delivery squad.",
+    id: "pro",
+    name: "Pro",
     price: "Custom",
     priceUnit: "",
+    description: "Full Gitwork agency engagement. A dedicated team behind every brief, proposal, and hire.",
     features: [
-      "Custom Working Hours",
-      "Full-time Product Manager Included",
-      "Custom, Scalable Software Solutions",
-      "Tailored Solutions for Complex Projects",
-      "Flexible Contracting and Team Expansion",
-      "End-to-End Project Support",
-      "Transparent Pricing",
-      "Seamless integration with existing systems",
+      "Everything in Intermediate",
+      "CodeClear — unlimited scans",
+      "3 Tier 1 + unlimited Tier 2 & Tier 3 matches",
+      "Dedicated account lead",
+      "Embedded delivery support",
+      "White-label exports",
     ],
-    cta: "Contact Us",
+    cta: "Talk to us",
     ctaHref: "https://calendly.com/gitworkgroup/30min",
+    ctaExternal: true,
+    featured: true,
     accentBadge: "bg-[linear-gradient(90deg,#059669,#10b981)]",
     accentBorder: "border-emerald-800/60",
     accentBg: "bg-[#0a1f15]",
     accentCheck: "text-[#45d483]",
   },
   {
-    id: "monthly",
-    title: "1 × Full Stack Developer",
-    commitment: "3 month commitment",
+    id: "intermediate",
+    name: "Intermediate",
     price: "£4,000",
     priceUnit: "/ Month",
+    description: "Committed monthly engagement with agency input — reviews, strategy, and priority support.",
     features: [
-      "Working UK Hours",
-      "Dedicated Project Manager",
-      "Best for Custom Projects",
+      "Everything in Starter",
+      "CodeClear — up to 50 scans",
+      "3 Tier 2 + 3 Tier 3 developer matches per brief",
+      "Monthly strategy session",
+      "Proposal review & feedback",
+      "Priority email support",
     ],
-    cta: "Discuss Plan",
+    cta: "Get started",
     ctaHref: "https://calendly.com/gitworkgroup/30min",
-    accentBadge: "bg-[linear-gradient(90deg,#7c3aed,#8b5cf6)]",
-    accentBorder: "border-violet-800/60",
-    accentBg: "bg-[#130f22]",
-    accentCheck: "text-[#a78bfa]",
+    ctaExternal: true,
+    featured: false,
+    accentBadge: "",
+    accentBorder: "border-white/8",
+    accentBg: "bg-[#101522]",
+    accentCheck: "text-[#7c8cff]",
   },
 ];
 
@@ -101,7 +113,7 @@ const scenarios: DemoScenario[] = [
     timeline: "12-month embedded engagement",
     workType: "iOS product build",
     nextStep: "Public match first, then a Gitwork-led capability review and delivery recommendation.",
-    recommended: "monthly",
+    recommended: "pro",
   },
   {
     id: "ai-dashboard",
@@ -111,7 +123,7 @@ const scenarios: DemoScenario[] = [
     timeline: "6-month build and launch",
     workType: "AI-enabled product",
     nextStep: "Gitwork would turn the shortlist into a staffed recommendation with delivery ownership, not just names on a page.",
-    recommended: "team",
+    recommended: "intermediate",
   },
   {
     id: "design-system",
@@ -121,7 +133,7 @@ const scenarios: DemoScenario[] = [
     timeline: "4-month systems engagement",
     workType: "Design systems + frontend",
     nextStep: "The public integration creates trust early; Gitwork takes it through capability review, delivery planning, and staffing.",
-    recommended: "flex",
+    recommended: "starter",
   },
 ];
 
@@ -162,12 +174,12 @@ export function CodeClearSiteDemo() {
           What do you want to build?
         </h3>
         <p className="mx-auto mt-4 max-w-[720px] text-[18px] leading-8 text-white/60">
-          A hiring company can describe the work, timeframe, and delivery shape, then see the right Gitwork package
+          A hiring company can describe the work, timeframe, and delivery shape, then see high-signal Gitwork matches
           before the first shortlist call.
         </p>
       </div>
 
-      {/* Scenario pills — pre-fill only, no auto-run */}
+      {/* Scenario pills — pre-fill textarea only, user triggers match manually */}
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {scenarios.map((scenario) => (
           <button
@@ -212,7 +224,7 @@ export function CodeClearSiteDemo() {
               </div>
               <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Output</p>
-                <p className="mt-2 text-sm text-white/82">Matched delivery package</p>
+                <p className="mt-2 text-sm text-white/82">3 top matches with delivery fit</p>
               </div>
             </div>
           </div>
@@ -245,7 +257,7 @@ export function CodeClearSiteDemo() {
               className="app-button app-button-primary app-button-md mt-5 w-full justify-center"
             >
               <SparklesIcon className="h-4 w-4" />
-              {state === "loading" ? "Matching..." : "Show top matches"}
+              {state === "loading" ? "Matching team" : "Show top matches"}
             </button>
           </div>
         </div>
@@ -259,19 +271,20 @@ export function CodeClearSiteDemo() {
           </h4>
         </div>
         <p className="max-w-[420px] text-sm leading-6 text-white/56 md:text-right">
-          Gitwork takes the shortlist through capability review, delivery planning, and staffing.
+          Each package unlocks a different tier of developer matches. Gitwork takes the shortlist through capability
+          review, delivery planning, and staffing.
         </p>
       </div>
 
-      {/* Pricing cards — horizontally aligned, best-fit dynamic per scenario */}
-      <div className="mt-5 grid items-stretch gap-4 xl:grid-cols-3">
+      {/* Cards — horizontally top-aligned, best-fit badge dynamic per scenario */}
+      <div className="mt-5 grid items-start gap-4 xl:grid-cols-3">
         {demoTiers.map((tier) => {
           const isBestFit = tier.id === result.recommended;
           return (
             <div key={tier.id} className="flex flex-col">
               {isBestFit ? (
-                <div className={`flex items-center justify-center rounded-t-[20px] px-6 py-2.5 ${tier.accentBadge}`}>
-                  <span className="text-[12px] font-semibold tracking-wide text-white">Best fit for this brief</span>
+                <div className={`flex items-center justify-center rounded-t-[20px] px-6 py-2.5 ${tier.accentBadge || "bg-[linear-gradient(90deg,#059669,#10b981)]"}`}>
+                  <span className="text-[12px] font-semibold text-white">Best fit for this brief</span>
                 </div>
               ) : null}
               <article
@@ -279,17 +292,18 @@ export function CodeClearSiteDemo() {
                   isBestFit ? "rounded-b-[26px] rounded-t-none" : "rounded-[26px]"
                 }`}
               >
-                <p className="text-[13px] font-semibold leading-tight text-white">{tier.title}</p>
-                <p className="mt-1 text-[12px] text-white/46">{tier.commitment}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">{tier.name}</p>
 
-                <div className="mt-5 flex items-end gap-1">
-                  <span className="text-[38px] font-semibold leading-none tracking-[-0.05em] text-white">
+                <div className="mt-4 flex items-end gap-1">
+                  <span className="text-[40px] font-semibold leading-none tracking-[-0.05em] text-white">
                     {tier.price}
                   </span>
                   {tier.priceUnit ? (
-                    <span className="mb-0.5 text-[15px] text-white/40">{tier.priceUnit}</span>
+                    <span className="mb-0.5 text-[16px] text-white/40">{tier.priceUnit}</span>
                   ) : null}
                 </div>
+
+                <p className="mt-3 text-[13px] leading-5 text-white/54">{tier.description}</p>
 
                 <ul className="mt-6 flex-1 space-y-2.5">
                   {tier.features.map((feature) => (
@@ -300,14 +314,25 @@ export function CodeClearSiteDemo() {
                   ))}
                 </ul>
 
-                <a
-                  href={tier.ctaHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="app-button app-button-primary app-button-md mt-7 w-full justify-center"
-                >
-                  {tier.cta}
-                </a>
+                <div className="mt-7">
+                  {tier.ctaExternal ? (
+                    <a
+                      href={tier.ctaHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="app-button app-button-primary app-button-md w-full justify-center"
+                    >
+                      {tier.cta}
+                    </a>
+                  ) : (
+                    <Link
+                      href={tier.ctaHref}
+                      className="app-button app-button-primary app-button-md w-full justify-center"
+                    >
+                      {tier.cta}
+                    </Link>
+                  )}
+                </div>
               </article>
             </div>
           );
