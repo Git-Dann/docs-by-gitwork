@@ -102,10 +102,9 @@ export function CodeClearCandidatesWorkspace() {
       <CodeClearTabs />
 
       <section className="app-card p-6">
-        {/* Row 1: search + add */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 items-center gap-2 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3">
-            <MagnifyingGlassIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="relative">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               value={search}
               onChange={(event) => {
@@ -114,13 +113,13 @@ export function CodeClearCandidatesWorkspace() {
                 updateQuery({ q: value || null });
               }}
               placeholder="Search candidates"
-              className="h-10 w-full border-0 bg-transparent text-sm text-[var(--text-1)] outline-none"
+              className="app-input pl-9"
             />
-          </div>
+          </label>
           <Button
             type="button"
             variant="primary"
-            size="sm"
+            size="md"
             leadingIcon={<PlusIcon className="h-4 w-4" />}
             onClick={() => setShowCreateModal(true)}
           >
@@ -128,15 +127,14 @@ export function CodeClearCandidatesWorkspace() {
           </Button>
         </div>
 
-        {/* Row 2: filters */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <select
             value={statusFilter}
             onChange={(event) => {
               setStatusFilter(event.target.value as PipelineStatus | "");
               updateQuery({ status: event.target.value || null });
             }}
-            className="app-input h-9 text-sm"
+            className="app-select"
           >
             <option value="">All stages</option>
             {PIPELINE_STATUSES.map((option) => (
@@ -152,7 +150,7 @@ export function CodeClearCandidatesWorkspace() {
               setTierFilter(event.target.value as CodeClearTier | "");
               updateQuery({ tier: event.target.value || null });
             }}
-            className="app-input h-9 text-sm"
+            className="app-select"
           >
             <option value="">All tiers</option>
             {CODECLEAR_TIERS.map((option) => (
@@ -168,7 +166,7 @@ export function CodeClearCandidatesWorkspace() {
               setStackFilter(event.target.value);
               updateQuery({ stack: event.target.value || null });
             }}
-            className="app-input h-9 text-sm"
+            className="app-select"
           >
             <option value="">All stacks</option>
             {stackOptions.map((stack) => (
@@ -184,7 +182,7 @@ export function CodeClearCandidatesWorkspace() {
               setConfidenceFilter(event.target.value as IdentityConfidence | "");
               updateQuery({ identityConfidence: event.target.value || null });
             }}
-            className="app-input h-9 text-sm"
+            className="app-select"
           >
             <option value="">All confidence</option>
             {IDENTITY_CONFIDENCE_LEVELS.map((value) => (
