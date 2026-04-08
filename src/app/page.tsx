@@ -62,7 +62,7 @@ export default function HomePage() {
               <div className="flex items-center gap-3">
                 <Link
                   href="/app/proposals"
-                  className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] hover:bg-white/[0.06]" style={{ color: "white" }}
+                  className="app-button app-button-dark app-button-md
                 >
                   Open platform
                 </Link>
@@ -89,7 +89,7 @@ export default function HomePage() {
                 </p>
 
                 <div className="mt-9 flex flex-wrap gap-3">
-                  <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] hover:bg-white/[0.06]" style={{ color: "white" }}>
+                  <Link href="/app/proposals" className="app-button app-button-dark app-button-md>
                     Open platform
                   </Link>
                   <a
@@ -169,7 +169,7 @@ export default function HomePage() {
                 <div className="flex flex-wrap gap-3">
                   <Link
                     href="/app/proposals"
-                    className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] hover:bg-white/[0.06]" style={{ color: "white" }}
+                    className="app-button app-button-dark app-button-md
                   >
                     Open platform
                   </Link>

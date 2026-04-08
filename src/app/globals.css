@@ -304,6 +304,17 @@ a {
     color: #a4a7ae;
   }
 
+  .app-button-dark {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: white !important;
+    box-shadow: none;
+  }
+
+  .app-button-dark:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
   .app-button-danger {
     background: var(--surface-0);
     border-color: #fecdca;
