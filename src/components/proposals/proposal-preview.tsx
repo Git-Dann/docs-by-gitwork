@@ -20,8 +20,8 @@ export function ProposalPreview({
     <article
       className={
         frame
-          ? "proposal-document app-surface p-6 sm:p-8 print:rounded-none print:border-0 print:p-0"
-          : "proposal-document rounded-[28px] border border-[var(--border-2)] bg-white p-6 sm:p-8 print:rounded-none print:border-0 print:p-0"
+          ? "proposal-document mx-auto w-full max-w-[840px] app-surface p-6 sm:p-8 print:max-w-none print:rounded-none print:border-0 print:p-0"
+          : "proposal-document mx-auto w-full max-w-[840px] rounded-[28px] border border-[var(--border-2)] bg-white p-6 sm:p-8 print:max-w-none print:rounded-none print:border-0 print:p-0"
       }
     >
       <div className="space-y-10 print:space-y-8">
@@ -43,7 +43,7 @@ export function ProposalPreview({
 
   return (
     <div className={className}>
-      <div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,840px)] xl:justify-center">
         <aside className="app-card sticky top-4 hidden h-fit p-4 xl:block">
           <TableOfContents sections={visibleSections} />
         </aside>

@@ -30,6 +30,7 @@ import {
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { Button, buttonStyles } from "@/components/ui/button";
@@ -48,6 +49,10 @@ const tabs: Array<{ id: EditorTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "builder", label: "Builder" },
 ];
+
+function parseEditorTab(value: string | null): EditorTab {
+  return value === "builder" ? "builder" : "overview";
+}
 
 function loadProposalBuilderPanel() {
   return import("@/components/proposals/proposal-builder-panel");
@@ -103,11 +108,15 @@ const approvalOptions = [
 ] as const;
 
 export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data, isPending, error } = useProposal(proposalId);
   const updateMutation = useUpdateProposal(proposalId);
+  const urlTab = parseEditorTab(searchParams.get("tab"));
 
   const [localDraft, setLocalDraft] = useState<ProposalDocument | null>(null);
-  const [activeTab, setActiveTab] = useState<EditorTab>("overview");
+  const [activeTab, setActiveTab] = useState<EditorTab>(urlTab);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -119,6 +128,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
   const baselineRef = useRef("");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
 
   const draft = localDraft ?? data?.proposal ?? null;
 
@@ -156,6 +169,23 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const publicSharePath = `/preview/${proposalId}`;
   const publicShareUrl =
     typeof window !== "undefined" ? `${window.location.origin}${publicSharePath}` : publicSharePath;
+
+  const handleTabChange = useCallback(
+    (tab: EditorTab) => {
+      setActiveTab(tab);
+
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (tab === "overview") {
+        nextParams.delete("tab");
+      } else {
+        nextParams.set("tab", tab);
+      }
+
+      const nextQuery = nextParams.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   useEffect(() => {
     if (!draft || baselineRef.current) {
@@ -592,7 +622,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     ? "bg-[rgba(51,92,255,0.14)] text-[var(--brand-700)]"
                     : "bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
                 )}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
               >
                 {tab.label}
               </button>
@@ -604,7 +634,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       {activeTab === "overview" ? (
         <div className="space-y-5">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
-          <ProposalProofPanel proposalId={proposalId} proposalTitle={draft.title} />
+          <ProposalProofPanel proposalId={proposalId} />
         </div>
       ) : (
         <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">

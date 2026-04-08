@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowTopRightOnSquareIcon, LinkIcon, PlusIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon, LinkIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { useMemo, useState } from "react";
-import { useCreateProofDocument, useProofDocuments, useUpdateProofDocument } from "@/hooks/use-proof";
+import { useProofDocuments, useUpdateProofDocument } from "@/hooks/use-proof";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
 import type { ProofDocumentRecord } from "@/lib/proof";
@@ -13,16 +13,12 @@ function openProofWindow(url: string) {
 
 export function ProposalProofPanel({
   proposalId,
-  proposalTitle,
 }: {
   proposalId: string;
-  proposalTitle: string;
 }) {
   const linkedQuery = useProofDocuments({ proposalId });
   const allQuery = useProofDocuments();
-  const createMutation = useCreateProofDocument();
   const updateMutation = useUpdateProofDocument();
-  const [draftTitle, setDraftTitle] = useState(`${proposalTitle} Working Draft`);
   const [selectedExistingId, setSelectedExistingId] = useState("");
 
   const linkedDocuments = linkedQuery.data?.documents ?? [];
@@ -31,16 +27,6 @@ export function ProposalProofPanel({
     const allDocuments = allQuery.data?.documents ?? [];
     return allDocuments.filter((document) => !document.proposalId);
   }, [allQuery.data?.documents]);
-
-  async function handleCreateProofDraft() {
-    const title = draftTitle.trim() || `${proposalTitle} Working Draft`;
-    const response = await createMutation.mutateAsync({
-      title,
-      proposalId,
-    });
-
-    openProofWindow(response.document.tokenUrl);
-  }
 
   async function handleOpenDocument(document: ProofDocumentRecord) {
     await updateMutation.mutateAsync({
@@ -80,7 +66,7 @@ export function ProposalProofPanel({
             Linked working drafts
           </h4>
           <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-            Launch collaborative Proof drafts directly from this proposal and keep active writing attached to the deal.
+            Pull an existing Proof draft onto this proposal and keep the working document attached to the deal.
           </p>
         </div>
         <span className="app-chip">
@@ -88,51 +74,27 @@ export function ProposalProofPanel({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]">
-        <div className="app-subtle-panel p-4">
-          <p className="text-sm font-semibold text-[var(--text-1)]">Create a new Proof draft</p>
-          <p className="mt-1 text-sm text-[var(--text-3)]">Start a fresh collaborative writing space for this proposal.</p>
-          <input
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            className="app-input mt-3"
-            placeholder="Draft title"
-          />
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            className="mt-3 w-full justify-center"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-            loading={createMutation.isPending}
-            onClick={() => {
-              void handleCreateProofDraft();
-            }}
-          >
-            Create Proof draft
-          </Button>
-        </div>
-
-        <div className="app-subtle-panel p-4">
-          <p className="text-sm font-semibold text-[var(--text-1)]">Attach an existing draft</p>
-          <p className="mt-1 text-sm text-[var(--text-3)]">Reuse an unlinked Proof document and connect it to this proposal.</p>
-          <select
-            value={selectedExistingId}
-            onChange={(event) => setSelectedExistingId(event.target.value)}
-            className="app-select mt-3"
-          >
-            <option value="">Select a Proof draft</option>
-            {attachCandidates.map((document) => (
-              <option key={document.id} value={document.id}>
-                {document.title}
-              </option>
-            ))}
-          </select>
+      <div className="mt-5 app-subtle-panel p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[260px] flex-1 space-y-1.5">
+            <span className="text-sm font-semibold text-[var(--text-1)]">Attach a Proof draft</span>
+            <select
+              value={selectedExistingId}
+              onChange={(event) => setSelectedExistingId(event.target.value)}
+              className="app-select"
+            >
+              <option value="">Select a Proof draft</option>
+              {attachCandidates.map((document) => (
+                <option key={document.id} value={document.id}>
+                  {document.title}
+                </option>
+              ))}
+            </select>
+          </label>
           <Button
             type="button"
             variant="secondary"
             size="md"
-            className="mt-3 w-full justify-center"
             leadingIcon={<LinkIcon className="h-4 w-4" />}
             disabled={!selectedExistingId}
             loading={updateMutation.isPending}

@@ -369,6 +369,21 @@ export function ProposalSectionEditor({
             onChange={(footerNote) => updateSectionData({ ...data, footerNote })}
           />
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Signature name"
+              value={data.signatureName ?? ""}
+              onChange={(signatureName) => updateSectionData({ ...data, signatureName })}
+              placeholder="Dan Lindsay"
+            />
+            <Input
+              label="Signature date"
+              value={data.signatureDate ?? ""}
+              onChange={(signatureDate) => updateSectionData({ ...data, signatureDate })}
+              type="date"
+            />
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
               <input
@@ -380,17 +395,6 @@ export function ProposalSectionEditor({
                 className="app-checkbox"
               />
               Show Gitwork branding block
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
-              <input
-                type="checkbox"
-                checked={data.signaturePlaceholder}
-                onChange={(event) =>
-                  updateSectionData({ ...data, signaturePlaceholder: event.target.checked })
-                }
-                className="app-checkbox"
-              />
-              Signature placeholder
             </label>
           </div>
         </SimpleForm>
@@ -429,16 +433,19 @@ function Input({
   value,
   onChange,
   placeholder,
+  type = "text",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  type?: string;
 }) {
   return (
     <label className="block space-y-1.5">
       <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
       <input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}

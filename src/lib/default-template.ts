@@ -279,7 +279,8 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       contactDetails: "hello@gitwork.io",
       footerNote: "Docs by Gitwork | Internal Business Proposal",
       showBrandingBlock: true,
-      signaturePlaceholder: true,
+      signatureName: "",
+      signatureDate: "",
     },
   },
 ];
@@ -520,7 +521,8 @@ function getBlankProposalSectionData(key: SectionKey): ProposalSectionData {
         contactDetails: "",
         footerNote: "",
         showBrandingBlock: true,
-        signaturePlaceholder: false,
+        signatureName: "",
+        signatureDate: "",
       };
     default:
       return {

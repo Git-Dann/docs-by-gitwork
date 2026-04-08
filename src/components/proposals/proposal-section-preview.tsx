@@ -476,7 +476,7 @@ function SectionBody({
             {primary ? (
               <a
                 href={primary.destination}
-                className={buttonStyles({ variant: "primary", size: "sm" })}
+                className={buttonStyles({ variant: "primary", size: "md" })}
               >
                 {primary.label}
               </a>
@@ -484,7 +484,7 @@ function SectionBody({
             {secondary ? (
               <a
                 href={secondary.destination}
-                className={buttonStyles({ variant: "secondary", size: "sm" })}
+                className={buttonStyles({ variant: "secondary", size: "md" })}
               >
                 {secondary.label}
               </a>
@@ -546,7 +546,8 @@ function SectionBody({
         contactDetails: string;
         footerNote: string;
         showBrandingBlock: boolean;
-        signaturePlaceholder: boolean;
+        signatureName?: string;
+        signatureDate?: string;
       };
 
       return (
@@ -560,11 +561,24 @@ function SectionBody({
             {data.footerNote ? <p className="text-sm leading-7 text-[var(--text-3)]">{data.footerNote}</p> : null}
           </div>
           <div className="space-y-3">
-            {data.signaturePlaceholder ? (
-              <div className="rounded-[14px] border border-dashed border-[var(--border-2)] bg-white p-4 text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">
-                Signature placeholder
+            <div className="space-y-3 rounded-[14px] border border-[var(--border-2)] bg-white p-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                  Signature
+                </p>
+                <p className="mt-2 text-sm font-medium text-[var(--text-1)]">
+                  {data.signatureName?.trim() || "Add signature name"}
+                </p>
               </div>
-            ) : null}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                  Date
+                </p>
+                <p className="mt-2 text-sm font-medium text-[var(--text-1)]">
+                  {data.signatureDate?.trim() || "Add signature date"}
+                </p>
+              </div>
+            </div>
             {data.showBrandingBlock ? (
               <div className="rounded-[14px] bg-[var(--surface-brand)] px-4 py-3 text-xs font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
                 Docs by Gitwork

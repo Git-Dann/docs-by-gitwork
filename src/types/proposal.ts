@@ -163,7 +163,8 @@ export interface SignoffFooterSectionData {
   contactDetails: string;
   footerNote: string;
   showBrandingBlock: boolean;
-  signaturePlaceholder: boolean;
+  signatureName: string;
+  signatureDate: string;
 }
 
 export type ProposalSectionData =

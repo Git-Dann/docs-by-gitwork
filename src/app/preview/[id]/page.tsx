@@ -27,7 +27,7 @@ export default function PublicPreviewPage() {
         proposal={data.proposal}
         showTableOfContents={false}
         frame
-        className="mx-auto max-w-[1040px]"
+        className="mx-auto w-full max-w-[880px]"
       />
     </main>
   );
