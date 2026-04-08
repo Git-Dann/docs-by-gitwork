@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient, type RateCardPerson } from "@prisma/client";
 import type {
+  CandidateSignalSource,
   CodeClearActivityRecord,
   CodeClearCandidateDetail,
   CodeClearCandidateListItem,
@@ -17,6 +18,8 @@ type SeedCodeClearCandidate = {
   githubHandle: string;
   email?: string;
   primaryStack: string;
+  techStacks?: string[];
+  signalSources?: CandidateSignalSource[];
   location?: string;
   bio?: string;
   status: PipelineStatus;
@@ -279,6 +282,10 @@ export function serializeCandidateListItem(
     githubHandle: candidate.githubHandle,
     email: candidate.email ?? null,
     primaryStack: candidate.primaryStack,
+    techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
+    signalSources: candidate.signalSources.length
+      ? (candidate.signalSources as CandidateSignalSource[])
+      : ["GITHUB"],
     location: candidate.location ?? null,
     bio: candidate.bio ?? null,
     status: candidate.status,
@@ -314,6 +321,10 @@ export function serializeCandidateDetails(
     githubHandle: candidate.githubHandle,
     email: candidate.email ?? null,
     primaryStack: candidate.primaryStack,
+    techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
+    signalSources: candidate.signalSources.length
+      ? (candidate.signalSources as CandidateSignalSource[])
+      : ["GITHUB"],
     location: candidate.location ?? null,
     bio: candidate.bio ?? null,
     status: candidate.status,
@@ -615,6 +626,8 @@ function buildGitworkRosterCandidates(
         name: person.name,
         githubHandle,
         primaryStack,
+        techStacks: stacks.length ? stacks : [primaryStack],
+        signalSources: ["ASSESSMENT", "INTERVIEW"],
         location: "Gitwork",
         bio: `${level} Gitwork developer with experience across ${capabilityLabel}.`,
         status: "SOURCED",
@@ -684,6 +697,8 @@ export function getDefaultCodeClearCandidatePayloads(
       githubHandle: candidate.githubHandle,
       email: candidate.email,
       primaryStack: candidate.primaryStack,
+      techStacks: candidate.techStacks?.length ? candidate.techStacks : [candidate.primaryStack],
+      signalSources: candidate.signalSources?.length ? candidate.signalSources : ["GITHUB"],
       location: candidate.location,
       bio: candidate.bio,
       status: candidate.status,

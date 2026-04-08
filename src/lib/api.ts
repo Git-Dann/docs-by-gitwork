@@ -2,6 +2,7 @@ import type { ClientDetailRecord, ClientListItem } from "@/types/client";
 import type {
   CandidateListParams,
   CandidateListResponse,
+  CandidateSignalSource,
   CodeClearCandidateDetail,
   CodeClearCandidateListItem,
   CodeClearStatsResponse,
@@ -304,6 +305,8 @@ export async function createCodeClearCandidate(input: {
   githubHandle: string;
   email?: string | null;
   primaryStack: string;
+  techStacks?: string[];
+  signalSources?: CandidateSignalSource[];
   location?: string | null;
   bio?: string | null;
   tier?: CodeClearTier;
@@ -347,12 +350,15 @@ export async function updateCodeClearCandidate(
     githubHandle: string;
     email: string | null;
     primaryStack: string | null;
+    techStacks: string[];
+    signalSources: CandidateSignalSource[];
     location: string | null;
     bio: string | null;
     status: PipelineStatus;
     tier: CodeClearTier;
     rateCardPersonId: string | null;
     recheckDueAt: string | Date | null;
+    requestSignalSource: CandidateSignalSource;
   }>,
 ): Promise<{ candidate: CodeClearCandidateDetail }> {
   return apiFetch<{ candidate: CodeClearCandidateDetail }>(`/api/codeclear/candidates/${id}`, {

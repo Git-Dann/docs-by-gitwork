@@ -12,8 +12,10 @@ import { usePathname } from "next/navigation";
 import { cn, formatDate } from "@/lib/format";
 import {
   analysisStateLabel,
+  CANDIDATE_SIGNAL_SOURCES,
   statusLabel,
   tierLabel,
+  type CandidateSignalSource,
   type CandidateAnalysisState,
   type PipelineStatus,
   type CodeClearTier,
@@ -212,8 +214,18 @@ export function StackPill({
   tone = "neutral",
 }: {
   label: string;
-  tone?: "neutral" | "brand" | "success";
+  tone?: "neutral" | "brand" | "success" | "stack";
 }) {
+  const stackPalette = [
+    "border-sky-200 bg-sky-50 text-sky-700",
+    "border-violet-200 bg-violet-50 text-violet-700",
+    "border-emerald-200 bg-emerald-50 text-emerald-700",
+    "border-amber-200 bg-amber-50 text-amber-700",
+    "border-rose-200 bg-rose-50 text-rose-700",
+    "border-cyan-200 bg-cyan-50 text-cyan-700",
+  ];
+  const hash = [...label].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
   return (
     <span
       className={cn(
@@ -222,7 +234,33 @@ export function StackPill({
           ? "border-sky-200 bg-sky-50 text-sky-700"
           : tone === "success"
             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : tone === "stack"
+              ? stackPalette[hash % stackPalette.length]
             : "border-[var(--border-2)] bg-white text-[var(--text-3)]",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function SignalSourcePill({
+  source,
+  active = true,
+}: {
+  source: CandidateSignalSource;
+  active?: boolean;
+}) {
+  const label =
+    CANDIDATE_SIGNAL_SOURCES.find((entry) => entry.value === source)?.label ?? source;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition",
+        active
+          ? "border-[rgba(63,98,255,0.2)] bg-[rgba(63,98,255,0.08)] text-[var(--brand-700)]"
+          : "border-[var(--border-2)] bg-white text-[var(--text-4)]",
       )}
     >
       {label}

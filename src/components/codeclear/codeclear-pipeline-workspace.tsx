@@ -5,6 +5,7 @@ import {
   Bars3Icon,
   DocumentTextIcon,
   EyeIcon,
+  LinkIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -24,9 +25,12 @@ import {
   useBulkUpdateCodeClearCandidates,
   useCodeClearCandidates,
   useRunCodeClearGitHubAnalysis,
+  useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import {
+  CANDIDATE_SIGNAL_SOURCES,
   PIPELINE_STATUSES,
+  type CandidateSignalSource,
   type CodeClearCandidateListItem,
   type PipelineStatus,
 } from "@/types/codeclear";
@@ -37,6 +41,7 @@ import {
   CodeClearTabs,
   CodeClearTierBadge,
   EmptyState,
+  SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
@@ -59,6 +64,14 @@ export function CodeClearPipelineWorkspace() {
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
   const scanningCount = useMemo(
     () => candidates.filter((c) => c.analysisState === "RUNNING").length,
+    [candidates],
+  );
+  const signalRequests = useMemo(
+    () =>
+      candidates.reduce(
+        (sum, candidate) => sum + Math.max(0, candidate.signalSources.length - 1),
+        0,
+      ),
     [candidates],
   );
 
@@ -100,18 +113,23 @@ export function CodeClearPipelineWorkspace() {
     <div className="space-y-6">
       <CodeClearTabs />
 
-      {/* Live scanning banner */}
-      {scanningCount > 0 ? (
-        <div className="flex items-center gap-3 rounded-[14px] border border-sky-200 bg-sky-50 px-4 py-3">
-          <ArrowPathIcon className="h-4 w-4 shrink-0 animate-spin text-sky-600" />
-          <p className="text-sm font-semibold text-sky-700">
-            {scanningCount} GitHub scan{scanningCount > 1 ? "s" : ""} running
-            <span className="ml-1.5 font-normal text-sky-600">
-              — this page updates automatically every 4 seconds.
-            </span>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <div className="rounded-[16px] border border-[rgba(63,98,255,0.14)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+            Signal orchestration
+          </p>
+          <p className="mt-2 text-base font-semibold text-[var(--text-1)]">
+            Trigger more evidence across GitHub, LinkedIn, CVs, interviews, and references.
+          </p>
+          <p className="mt-1 text-sm text-[var(--text-4)]">
+            Use the candidate cards to request more data, then review the combined score in the drawer.
           </p>
         </div>
-      ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <PipelineStatCard label="Active scans" value={String(scanningCount)} tone="sky" />
+          <PipelineStatCard label="Extra source signals" value={String(signalRequests)} tone="violet" />
+        </div>
+      </div>
 
       {candidates.length ? (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -191,6 +209,7 @@ function PipelineCard({
     id: candidate.id,
   });
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
+  const updateCandidate = useUpdateCodeClearCandidate(candidate.id);
 
   const isRunning = candidate.analysisState === "RUNNING";
   const neverScanned = candidate.analysisState === "NEVER_RUN";
@@ -208,11 +227,10 @@ function PipelineCard({
           : "border-[var(--border-2)]",
       )}
     >
-      {/* Scanning banner */}
       {isRunning ? (
         <div className="flex items-center gap-2 rounded-t-[18px] border-b border-sky-200 bg-sky-100 px-4 py-2">
           <ArrowPathIcon className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-600" />
-          <p className="text-xs font-semibold text-sky-700">Scanning GitHub profile…</p>
+          <p className="text-xs font-semibold text-sky-700">Collecting repository signal…</p>
         </div>
       ) : null}
 
@@ -234,8 +252,16 @@ function PipelineCard({
         </div>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <StackPill label={candidate.primaryStack} tone="brand" />
+          {candidate.techStacks.slice(0, 3).map((stack) => (
+            <StackPill key={stack} label={stack} tone="stack" />
+          ))}
           <CodeClearTierBadge tier={candidate.tier} />
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {candidate.signalSources.slice(0, 3).map((source) => (
+            <SignalSourcePill key={source} source={source} />
+          ))}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -278,9 +304,23 @@ function PipelineCard({
               loading={runAnalysis.isPending}
               disabled={runAnalysis.isPending}
             >
-              {scanFailed ? "Retry scan" : neverScanned ? "Scan GitHub" : "Re-scan"}
+              {scanFailed ? "Retry repo scan" : neverScanned ? "Run repo scan" : "Re-scan"}
             </Button>
           )}
+
+          <Button
+            type="button"
+            variant="utility"
+            size="sm"
+            leadingIcon={<LinkIcon className="h-3.5 w-3.5" />}
+            onClick={() =>
+              updateCandidate.mutate({
+                requestSignalSource: getNextSignalRequest(candidate.signalSources),
+              })
+            }
+          >
+            Request signal
+          </Button>
 
           <Button
             type="button"
@@ -303,6 +343,37 @@ function PipelineCard({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function getNextSignalRequest(signalSources: CandidateSignalSource[]): CandidateSignalSource {
+  return (
+    CANDIDATE_SIGNAL_SOURCES.find((source) => !signalSources.includes(source.value))?.value ??
+    "INTERVIEW"
+  );
+}
+
+function PipelineStatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "sky" | "violet";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-[16px] border px-4 py-4",
+        tone === "sky"
+          ? "border-sky-200 bg-sky-50/70"
+          : "border-violet-200 bg-violet-50/70",
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--text-1)]">{value}</p>
     </div>
   );
 }

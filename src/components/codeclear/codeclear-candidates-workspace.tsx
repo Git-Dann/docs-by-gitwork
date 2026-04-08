@@ -13,9 +13,11 @@ import {
   useCreateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import {
+  CANDIDATE_SIGNAL_SOURCES,
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
+  TECH_STACK_OPTIONS,
   type CodeClearTier,
   type IdentityConfidence,
   type PipelineStatus,
@@ -28,6 +30,7 @@ import {
   CodeClearTabs,
   CodeClearTierBadge,
   EmptyState,
+  SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
@@ -56,6 +59,8 @@ export function CodeClearCandidatesWorkspace() {
     name: "",
     githubHandle: "",
     primaryStack: "",
+    techStacks: [] as string[],
+    signalSources: ["GITHUB"] as Array<(typeof CANDIDATE_SIGNAL_SOURCES)[number]["value"]>,
     email: "",
     location: "",
     bio: "",
@@ -249,6 +254,7 @@ export function CodeClearCandidatesWorkspace() {
                   <th className="w-12 text-left" />
                   <th className="text-left">Candidate</th>
                   <th className="text-left">Stack</th>
+                  <th className="text-left">Signals</th>
                   <th className="text-left">Status</th>
                   <th className="text-left">Analysis</th>
                   <th className="text-left">Score</th>
@@ -286,7 +292,18 @@ export function CodeClearCandidatesWorkspace() {
                         </div>
                       </td>
                       <td>
-                        <StackPill label={candidate.primaryStack} tone="brand" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {candidate.techStacks.slice(0, 3).map((stack) => (
+                            <StackPill key={stack} label={stack} tone="stack" />
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap gap-1.5">
+                          {candidate.signalSources.slice(0, 2).map((source) => (
+                            <SignalSourcePill key={source} source={source} />
+                          ))}
+                        </div>
                       </td>
                       <td>
                         <div className="flex flex-wrap gap-2">
@@ -394,6 +411,57 @@ export function CodeClearCandidatesWorkspace() {
               </label>
             </div>
 
+            <div className="mt-4">
+              <p className="text-sm font-medium text-[var(--text-2)]">Tech stacks</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {TECH_STACK_OPTIONS.map((stack) => {
+                  const active = createForm.techStacks.includes(stack);
+                  return (
+                    <button
+                      key={stack}
+                      type="button"
+                      onClick={() =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          techStacks: active
+                            ? current.techStacks.filter((entry) => entry !== stack)
+                            : [...current.techStacks, stack],
+                          primaryStack: current.primaryStack || stack,
+                        }))
+                      }
+                    >
+                      <StackPill label={stack} tone="stack" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-medium text-[var(--text-2)]">Signal sources</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {CANDIDATE_SIGNAL_SOURCES.map((source) => {
+                  const active = createForm.signalSources.includes(source.value);
+                  return (
+                    <button
+                      key={source.value}
+                      type="button"
+                      onClick={() =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          signalSources: active
+                            ? current.signalSources.filter((entry) => entry !== source.value)
+                            : [...current.signalSources, source.value],
+                        }))
+                      }
+                    >
+                      <SignalSourcePill source={source.value} active={active} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <label className="mt-3 block space-y-1.5">
               <span className="text-sm font-medium text-[var(--text-2)]">Bio</span>
               <textarea
@@ -419,6 +487,10 @@ export function CodeClearCandidatesWorkspace() {
                       name: createForm.name,
                       githubHandle: createForm.githubHandle,
                       primaryStack: createForm.primaryStack,
+                      techStacks: createForm.techStacks.length
+                        ? createForm.techStacks
+                        : [createForm.primaryStack],
+                      signalSources: createForm.signalSources,
                       email: createForm.email || null,
                       location: createForm.location || null,
                       bio: createForm.bio || null,
@@ -431,6 +503,8 @@ export function CodeClearCandidatesWorkspace() {
                           name: "",
                           githubHandle: "",
                           primaryStack: "",
+                          techStacks: [],
+                          signalSources: ["GITHUB"],
                           email: "",
                           location: "",
                           bio: "",

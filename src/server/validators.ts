@@ -147,6 +147,15 @@ export const pipelineStatusSchema = z.enum([
 ]);
 export const codeClearTierSchema = z.enum(["TIER_1", "TIER_2", "TIER_3"]);
 export const identityConfidenceSchema = z.enum(["HIGH", "MEDIUM", "LOW", "PENDING"]);
+export const candidateSignalSourceSchema = z.enum([
+  "GITHUB",
+  "LINKEDIN",
+  "CV",
+  "PORTFOLIO",
+  "INTERVIEW",
+  "REFERENCE",
+  "ASSESSMENT",
+]);
 
 export const rateCardPersonCreateSchema = z.object({
   name: requiredTrimmedString,
@@ -226,6 +235,8 @@ export const candidateCreateSchema = z.object({
   githubHandle: githubHandleSchema,
   email: optionalTrimmedString,
   primaryStack: requiredTrimmedString,
+  techStacks: z.array(requiredTrimmedString).min(1).optional(),
+  signalSources: z.array(candidateSignalSourceSchema).min(1).optional(),
   location: optionalTrimmedString,
   bio: optionalTrimmedString,
   tier: codeClearTierSchema.default("TIER_1"),
@@ -238,12 +249,15 @@ export const candidateUpdateSchema = z
     githubHandle: githubHandleSchema.optional(),
     email: optionalTrimmedString,
     primaryStack: optionalTrimmedString,
+    techStacks: z.array(requiredTrimmedString).optional(),
+    signalSources: z.array(candidateSignalSourceSchema).optional(),
     location: optionalTrimmedString,
     bio: optionalTrimmedString,
     status: pipelineStatusSchema.optional(),
     tier: codeClearTierSchema.optional(),
     rateCardPersonId: z.string().cuid().nullable().optional(),
     recheckDueAt: z.coerce.date().nullable().optional(),
+    requestSignalSource: candidateSignalSourceSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one candidate field is required.",

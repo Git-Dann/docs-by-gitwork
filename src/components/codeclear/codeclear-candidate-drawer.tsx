@@ -2,13 +2,17 @@
 
 import {
   ArrowTopRightOnSquareIcon,
+  BoltIcon,
   DocumentArrowDownIcon,
+  IdentificationIcon,
+  LinkIcon,
+  MapPinIcon,
   PlayIcon,
   SparklesIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   useAddCodeClearCandidateNote,
@@ -22,9 +26,12 @@ import {
 import { getCodeClearScorecardUrl } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import {
+  CANDIDATE_SIGNAL_SOURCES,
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
+  TECH_STACK_OPTIONS,
+  type CandidateSignalSource,
   type CodeClearTier,
   type IdentityConfidence,
   type PipelineStatus,
@@ -34,6 +41,7 @@ import {
   CodeClearScoreBadge,
   CodeClearStatusBadge,
   CodeClearTierBadge,
+  SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 
@@ -61,6 +69,8 @@ export function CodeClearCandidateDrawer({
     githubHandle: "",
     email: "",
     primaryStack: "",
+    techStacks: [] as string[],
+    signalSources: [] as CandidateSignalSource[],
     location: "",
     bio: "",
     status: "SOURCED" as PipelineStatus,
@@ -88,6 +98,8 @@ export function CodeClearCandidateDrawer({
       githubHandle: candidate.githubHandle,
       email: candidate.email ?? "",
       primaryStack: candidate.primaryStack,
+      techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
+      signalSources: candidate.signalSources,
       location: candidate.location ?? "",
       bio: candidate.bio ?? "",
       status: candidate.status,
@@ -193,7 +205,9 @@ export function CodeClearCandidateDrawer({
                         <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                       </a>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <StackPill label={candidate.primaryStack} tone="brand" />
+                        {candidate.techStacks.slice(0, 4).map((stack) => (
+                          <StackPill key={stack} label={stack} tone="stack" />
+                        ))}
                         {candidate.location ? <StackPill label={candidate.location} /> : null}
                       </div>
                     </div>
@@ -243,6 +257,35 @@ export function CodeClearCandidateDrawer({
                 {candidate.bio ? (
                   <p className="mt-4 text-sm leading-6 text-[var(--text-3)]">{candidate.bio}</p>
                 ) : null}
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <SignalCard
+                    icon={<IdentificationIcon className="h-4 w-4" />}
+                    label="Identity confidence"
+                    value={candidate.score?.identityConfidence ?? scoreForm.identityConfidence}
+                  />
+                  <SignalCard
+                    icon={<BoltIcon className="h-4 w-4" />}
+                    label="Verification score"
+                    value={
+                      candidate.score?.overallScore != null
+                        ? `${candidate.score.overallScore}/100`
+                        : candidate.scoreDraft?.overallScore != null
+                          ? `${candidate.scoreDraft.overallScore}/100 draft`
+                          : "Pending"
+                    }
+                  />
+                  <SignalCard
+                    icon={<LinkIcon className="h-4 w-4" />}
+                    label="Signal sources"
+                    value={candidate.signalSources.length ? `${candidate.signalSources.length} connected` : "Not set"}
+                  />
+                  <SignalCard
+                    icon={<MapPinIcon className="h-4 w-4" />}
+                    label="Delivery fit"
+                    value={candidate.status === "CODECLEAR_COMPLETE" ? "Ready to place" : "In review"}
+                  />
+                </div>
               </section>
 
               <section className="app-card p-5">
@@ -250,7 +293,7 @@ export function CodeClearCandidateDrawer({
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-1)]">Profile</p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Core candidate fields and stage.
+                      Core candidate fields, stack coverage, and source inputs.
                     </p>
                   </div>
                 </div>
@@ -319,6 +362,68 @@ export function CodeClearCandidateDrawer({
                   />
                 </div>
 
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-[var(--text-2)]">Tech stacks</span>
+                    <span className="text-xs text-[var(--text-4)]">
+                      {profileForm.techStacks.length} selected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {TECH_STACK_OPTIONS.map((stack) => {
+                      const active = profileForm.techStacks.includes(stack);
+                      return (
+                        <button
+                          key={stack}
+                          type="button"
+                          onClick={() =>
+                            setProfileForm((current) => ({
+                              ...current,
+                              techStacks: active
+                                ? current.techStacks.filter((entry) => entry !== stack)
+                                : [...current.techStacks, stack],
+                              primaryStack: active || current.primaryStack ? current.primaryStack : stack,
+                            }))
+                          }
+                          className="rounded-full"
+                        >
+                          <StackPill label={stack} tone="stack" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-[var(--text-2)]">Signal sources</span>
+                    <span className="text-xs text-[var(--text-4)]">
+                      Use these to show what is informing the score
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {CANDIDATE_SIGNAL_SOURCES.map((source) => {
+                      const active = profileForm.signalSources.includes(source.value);
+                      return (
+                        <button
+                          key={source.value}
+                          type="button"
+                          onClick={() =>
+                            setProfileForm((current) => ({
+                              ...current,
+                              signalSources: active
+                                ? current.signalSources.filter((entry) => entry !== source.value)
+                                : [...current.signalSources, source.value],
+                            }))
+                          }
+                        >
+                          <SignalSourcePill source={source.value} active={active} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <label className="mt-3 block space-y-1.5">
                   <span className="text-sm font-medium text-[var(--text-2)]">Bio</span>
                   <textarea
@@ -341,6 +446,10 @@ export function CodeClearCandidateDrawer({
                         githubHandle: profileForm.githubHandle,
                         email: profileForm.email || null,
                         primaryStack: profileForm.primaryStack,
+                        techStacks: profileForm.techStacks.length
+                          ? profileForm.techStacks
+                          : [profileForm.primaryStack],
+                        signalSources: profileForm.signalSources,
                         location: profileForm.location || null,
                         bio: profileForm.bio || null,
                         status: profileForm.status,
@@ -475,12 +584,28 @@ export function CodeClearCandidateDrawer({
               <section className="app-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-[var(--text-1)]">GitHub analysis</p>
+                    <p className="text-sm font-semibold text-[var(--text-1)]">Signals & evidence</p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Latest public repo analysis and draft signals.
+                      Pull more evidence from multiple sources, then finalize the candidate score.
                     </p>
                   </div>
                   {latestRun ? <CodeClearAnalysisBadge state={candidate.analysisState} /> : null}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {CANDIDATE_SIGNAL_SOURCES.map((source) => (
+                    <Button
+                      key={source.value}
+                      type="button"
+                      variant={source.value === "GITHUB" ? "secondary" : "utility"}
+                      size="sm"
+                      onClick={() =>
+                        updateCandidate.mutate({ requestSignalSource: source.value })
+                      }
+                    >
+                      Request {source.label}
+                    </Button>
+                  ))}
                 </div>
 
                 {latestRun ? (
@@ -536,9 +661,14 @@ export function CodeClearCandidateDrawer({
                     </p>
                   </div>
                 ) : (
-                  <p className="mt-4 text-sm text-[var(--text-4)]">
-                    No GitHub analysis captured yet.
-                  </p>
+                  <div className="mt-4 rounded-[16px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4">
+                    <p className="text-sm font-medium text-[var(--text-2)]">
+                      No repository signal captured yet.
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--text-4)]">
+                      Request GitHub, LinkedIn, CV, interview, or portfolio evidence to make the record more complete before scoring.
+                    </p>
+                  </div>
                 )}
               </section>
 
@@ -731,6 +861,26 @@ function MiniStat({
         {label}
       </p>
       <p className="mt-2 text-lg font-semibold text-[var(--text-1)]">{value}</p>
+    </div>
+  );
+}
+
+function SignalCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[16px] border border-[rgba(63,98,255,0.12)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
+      <div className="flex items-center gap-2 text-[var(--brand-700)]">{icon}</div>
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">{value}</p>
     </div>
   );
 }

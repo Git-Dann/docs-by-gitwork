@@ -114,7 +114,7 @@ export function CodeClearOverview() {
 
   const stageTotal = (stats?.byStatus ?? []).reduce((sum, e) => sum + e.count, 0);
 
-  // Derived: analysis coverage
+  // Derived: signal coverage
   const scanned = allCandidates.filter(
     (c) => c.analysisState === "COMPLETE" || c.analysisState === "DRAFT_UPDATED",
   ).length;
@@ -154,8 +154,8 @@ export function CodeClearOverview() {
             >
               <BeakerIcon className="h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-sm font-semibold text-amber-700">
-                {neverScanned} candidate{neverScanned > 1 ? "s" : ""} haven&apos;t been GitHub scanned yet
-                <span className="ml-1.5 font-normal text-amber-600">— go to pipeline to scan them</span>
+                {neverScanned} candidate{neverScanned > 1 ? "s" : ""} still need source validation
+                <span className="ml-1.5 font-normal text-amber-600">— go to pipeline to request more signal</span>
               </p>
               <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-amber-500" />
             </Link>
@@ -198,15 +198,31 @@ export function CodeClearOverview() {
           caption="Verified candidates scoring 65 or above this month"
         />
         <MetricCard
-          label="GitHub coverage"
+          label="Signal coverage"
           value={coveragePct !== null ? `${coveragePct}%` : "—"}
           caption={
             scanning > 0
-              ? `${scanning} scan${scanning > 1 ? "s" : ""} running now`
-              : `${scanned} of ${allCandidates.length} profiles scanned`
+              ? `${scanning} live source run${scanning > 1 ? "s" : ""} in progress`
+              : `${scanned} of ${allCandidates.length} profiles scored from live signal`
           }
         />
       </div>
+
+      <section className="app-card p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-lg font-semibold text-[var(--text-1)]">Integration direction</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+              CodeClear should read as a licensable validation layer, not only an internal GitHub scanner. The strongest version combines test results, identity checks, repo signal, interview notes, references, and delivery context into one clear score.
+            </p>
+          </div>
+          <Link href="/app/codeclear/pipeline">
+            <Button type="button" variant="secondary" size="sm">
+              Open signal pipeline
+            </Button>
+          </Link>
+        </div>
+      </section>
 
       {/* Stage distribution + Activity */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">

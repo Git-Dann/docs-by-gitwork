@@ -253,6 +253,8 @@ model Candidate {
   githubHandle     String
   email            String?
   primaryStack     String
+  techStacks       String[]       @default([])
+  signalSources    String[]       @default([])
   location         String?
   bio              String?
   status           PipelineStatus @default(SOURCED)

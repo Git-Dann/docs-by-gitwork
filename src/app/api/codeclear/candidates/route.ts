@@ -56,10 +56,19 @@ function buildCandidateWhere(
     ...(tier ? { tier: tier as PrismaCodeClearTier } : {}),
     ...(stack
       ? {
-          primaryStack: {
-            contains: stack,
-            mode: "insensitive",
-          },
+          OR: [
+            {
+              primaryStack: {
+                contains: stack,
+                mode: "insensitive",
+              },
+            },
+            {
+              techStacks: {
+                has: stack,
+              },
+            },
+          ],
         }
       : {}),
     ...(q
@@ -81,6 +90,11 @@ function buildCandidateWhere(
               primaryStack: {
                 contains: q,
                 mode: "insensitive",
+              },
+            },
+            {
+              techStacks: {
+                hasSome: [q],
               },
             },
             {
@@ -178,7 +192,7 @@ export async function GET(request: NextRequest) {
     const sortDir = searchParams.get("sortDir") === "asc" ? "asc" : "desc";
     const where = buildCandidateWhere(workspace.id, searchParams);
 
-    const [items, total, stacks] = await Promise.all([
+    const [items, total, stackRecords] = await Promise.all([
       prisma.candidate.findMany({
         where,
         include: {
@@ -200,15 +214,19 @@ export async function GET(request: NextRequest) {
         where: {
           workspaceId: workspace.id,
         },
-        distinct: ["primaryStack"],
         orderBy: {
           primaryStack: "asc",
         },
         select: {
           primaryStack: true,
+          techStacks: true,
         },
       }),
     ]);
+
+    const stacks = [...new Set(
+      stackRecords.flatMap((entry) => [entry.primaryStack, ...entry.techStacks].filter(Boolean)),
+    )].sort((a, b) => a.localeCompare(b));
 
     return apiOk({
       items: items.map((candidate) => serializeCandidateListItem(candidate)),
@@ -221,7 +239,7 @@ export async function GET(request: NextRequest) {
         sortDir,
       },
       facets: {
-        stacks: stacks.map((entry) => entry.primaryStack),
+        stacks,
       },
     });
   } catch (error) {
@@ -242,6 +260,8 @@ export async function POST(request: NextRequest) {
         githubHandle: body.githubHandle,
         email: body.email ?? null,
         primaryStack: body.primaryStack,
+        techStacks: body.techStacks?.length ? body.techStacks : [body.primaryStack],
+        signalSources: body.signalSources?.length ? body.signalSources : ["GITHUB"],
         location: body.location ?? null,
         bio: body.bio ?? null,
         tier: body.tier,

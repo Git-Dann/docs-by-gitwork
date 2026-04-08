@@ -14,6 +14,15 @@ export type GitHubAnalysisStatus = "RUNNING" | "COMPLETED" | "FAILED";
 
 export type GitHubAnalysisTriggerSource = "MANUAL";
 
+export type CandidateSignalSource =
+  | "GITHUB"
+  | "LINKEDIN"
+  | "CV"
+  | "PORTFOLIO"
+  | "INTERVIEW"
+  | "REFERENCE"
+  | "ASSESSMENT";
+
 export type CandidateAnalysisState =
   | "NEVER_RUN"
   | "RUNNING"
@@ -41,6 +50,8 @@ export interface CodeClearCandidateRecord {
   githubHandle: string;
   email: string | null;
   primaryStack: string;
+  techStacks: string[];
+  signalSources: CandidateSignalSource[];
   location: string | null;
   bio: string | null;
   status: PipelineStatus;
@@ -280,6 +291,44 @@ export const IDENTITY_CONFIDENCE_LEVELS: IdentityConfidence[] = [
   "MEDIUM",
   "LOW",
   "PENDING",
+];
+
+export const CANDIDATE_SIGNAL_SOURCES: Array<{ value: CandidateSignalSource; label: string }> = [
+  { value: "GITHUB", label: "GitHub" },
+  { value: "LINKEDIN", label: "LinkedIn" },
+  { value: "CV", label: "CV" },
+  { value: "PORTFOLIO", label: "Portfolio" },
+  { value: "INTERVIEW", label: "Interview" },
+  { value: "REFERENCE", label: "Reference" },
+  { value: "ASSESSMENT", label: "Assessment" },
+];
+
+export const TECH_STACK_OPTIONS = [
+  "iOS",
+  "SwiftUI",
+  "Swift",
+  "React",
+  "Next.js",
+  "TypeScript",
+  "Node.js",
+  "Python",
+  "AI",
+  "PostgreSQL",
+  "MongoDB",
+  "AWS",
+  "GCP",
+  "Azure",
+  "DevOps",
+  "Kubernetes",
+  "Flutter",
+  "Android",
+  "Vue",
+  "Angular",
+  "PHP",
+  "Java",
+  ".NET",
+  "Design systems",
+  "Product delivery",
 ];
 
 export function statusLabel(status: PipelineStatus | string) {

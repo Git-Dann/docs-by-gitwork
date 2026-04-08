@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { cn, formatDate, statusLabel } from "@/lib/format";
+import { useProofDocuments } from "@/hooks/use-proof";
 import {
   useArchiveProposal,
   useCreateProposal,
@@ -85,8 +86,13 @@ export function ProposalList() {
   const duplicateMutation = useDuplicateProposal();
   const archiveMutation = useArchiveProposal();
   const deleteMutation = useDeleteProposal();
+  const proofDocumentsQuery = useProofDocuments();
 
   const proposals = useMemo(() => data?.proposals ?? [], [data?.proposals]);
+  const proofDocuments = useMemo(
+    () => (proofDocumentsQuery.data?.documents ?? []).filter((document) => !document.archivedAt),
+    [proofDocumentsQuery.data?.documents],
+  );
   const totalPages = Math.max(1, Math.ceil(proposals.length / rowsPerPage));
   const currentPage = Math.min(page, totalPages);
   const pagedProposals = useMemo(() => {
@@ -448,6 +454,75 @@ export function ProposalList() {
               <ChevronRightIcon className="h-4 w-4" />
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="app-card overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
+          <div>
+            <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Proof drafts</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+              Working drafts saved from Proof now sit inside Docs so they can be attached to proposals later.
+            </p>
+          </div>
+          <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-3)]">
+            {proofDocuments.length} saved
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="app-table min-w-full">
+            <thead>
+              <tr>
+                <th className="text-left">Draft</th>
+                <th className="text-left">Linked proposal</th>
+                <th className="text-left">Updated</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {proofDocumentsQuery.isPending ? (
+                <tr>
+                  <td colSpan={4} className="text-sm text-[var(--text-4)]">
+                    Loading Proof drafts...
+                  </td>
+                </tr>
+              ) : proofDocuments.length ? (
+                proofDocuments.slice(0, 8).map((document) => (
+                  <tr key={document.id}>
+                    <td>
+                      <p className="font-medium text-[var(--text-1)]">{document.title}</p>
+                      <p className="mt-0.5 text-sm text-[var(--text-3)]">
+                        {document.markdown ? "Saved content available" : "Draft shell only"}
+                      </p>
+                    </td>
+                    <td className="text-sm text-[var(--text-3)]">
+                      {document.proposalTitle ?? "Not linked yet"}
+                    </td>
+                    <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(document.updatedAt)}</td>
+                    <td>
+                      <div className="flex items-center justify-end gap-2">
+                        <a
+                          href={document.tokenUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={buttonStyles({ variant: "secondary", size: "sm" })}
+                        >
+                          Open Proof
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className="text-sm text-[var(--text-4)]">
+                    No Proof drafts saved into Docs yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 

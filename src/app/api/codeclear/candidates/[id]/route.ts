@@ -85,6 +85,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(body.primaryStack !== undefined
           ? { primaryStack: body.primaryStack ?? existing.primaryStack }
           : {}),
+        ...(body.techStacks !== undefined
+          ? {
+              techStacks: body.techStacks.length
+                ? body.techStacks
+                : [body.primaryStack ?? existing.primaryStack],
+            }
+          : {}),
+        ...(body.signalSources !== undefined ? { signalSources: body.signalSources } : {}),
+        ...(body.requestSignalSource && body.signalSources === undefined
+          ? {
+              signalSources: existing.signalSources.includes(body.requestSignalSource)
+                ? existing.signalSources
+                : [...existing.signalSources, body.requestSignalSource],
+            }
+          : {}),
         ...(body.location !== undefined ? { location: body.location } : {}),
         ...(body.bio !== undefined ? { bio: body.bio } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
@@ -93,17 +108,34 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? { rateCardPersonId: body.rateCardPersonId }
           : {}),
         ...(body.recheckDueAt !== undefined ? { recheckDueAt: body.recheckDueAt } : {}),
-        ...(body.status && body.status !== existing.status
+        ...((body.status && body.status !== existing.status) || body.requestSignalSource
           ? {
               activityLog: {
-                create: {
-                  eventType: "STATUS_CHANGE",
-                  metadata: {
-                    from: existing.status,
-                    to: body.status,
-                    by: user.name ?? user.email,
-                  } as Prisma.InputJsonValue,
-                },
+                create: [
+                  ...(body.status && body.status !== existing.status
+                    ? [
+                        {
+                          eventType: "STATUS_CHANGE",
+                          metadata: {
+                            from: existing.status,
+                            to: body.status,
+                            by: user.name ?? user.email,
+                          } as Prisma.InputJsonValue,
+                        },
+                      ]
+                    : []),
+                  ...(body.requestSignalSource
+                    ? [
+                        {
+                          eventType: "SIGNAL_REQUESTED",
+                          metadata: {
+                            source: body.requestSignalSource,
+                            by: user.name ?? user.email,
+                          } as Prisma.InputJsonValue,
+                        },
+                      ]
+                    : []),
+                ],
               },
             }
           : {}),
