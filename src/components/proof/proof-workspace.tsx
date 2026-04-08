@@ -2,13 +2,16 @@
 
 import {
   ArrowPathIcon,
+  BeakerIcon,
+  CheckCircleIcon,
   ClipboardDocumentIcon,
+  CloudArrowUpIcon,
   DocumentMagnifyingGlassIcon,
   SparklesIcon,
   UserCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAnalyseBrief } from "@/hooks/use-proof-brief";
 import { cn } from "@/lib/format";
@@ -17,9 +20,78 @@ import type { BriefConfidence } from "@/types/proof-brief";
 const MIN_BRIEF_LENGTH = 50;
 const MAX_BRIEF_LENGTH = 20000;
 
+const DEMO_BRIEF = `Project Brief — Apex Wellness App
+Client: Apex Health Group
+Date: April 2025
+Prepared for: Gitwork Delivery Team
+
+Overview
+Apex Health Group is looking for a digital product studio to design and build a cross-platform wellness app for their corporate clients. The platform will allow employees of Apex's enterprise customers to track fitness goals, access guided meditations, log nutrition, and join group challenges. The primary objective is to reduce employee burnout and increase measurable engagement with workplace wellbeing programmes.
+
+Goals
+1. Launch an iOS and Android app within 6 months of project kickoff
+2. Achieve 40% monthly active user rate within 3 months of launch
+3. Integrate with existing HR platforms (Workday, BambooHR) via API
+4. Provide admin dashboards for HR managers to view anonymised engagement data
+5. Establish a scalable content management system for wellbeing content
+
+Deliverables
+- Branded iOS and Android native apps (React Native)
+- Admin web portal for HR managers (React / Next.js)
+- Content CMS for wellbeing articles, videos, and challenges
+- API integrations with Workday and BambooHR
+- Analytics dashboard with cohort reporting
+- Onboarding flow and push notification system
+
+Timeline
+Kickoff: May 2025
+Design phase: 6 weeks (May–June 2025)
+Development sprint 1 (auth, onboarding, profile): July 2025
+Development sprint 2 (tracking, challenges, content): August 2025
+QA & testing: September 2025
+App store submission & launch: October 2025
+
+Budget
+Total approved budget: £320,000 (GBP)
+This includes design, development, QA, project management, and a 3-month post-launch support retainer.
+
+Technical Requirements
+- React Native for mobile (iOS 16+, Android 10+)
+- Next.js for admin web portal
+- Node.js / PostgreSQL backend
+- AWS infrastructure (ECS, RDS, S3)
+- OAuth 2.0 / SSO for enterprise authentication
+- WCAG 2.1 AA accessibility compliance
+
+Target Audience
+Corporate employees aged 25–55 at Apex's enterprise clients. Primarily desk-based workers who are time-poor and need low-friction access to wellness resources during the workday.
+
+Success Criteria
+- 40% MAU within 3 months post-launch
+- App store rating of 4.2+ within 60 days
+- Zero critical security incidents in first 6 months
+- Integration uptime of 99.5% or better
+
+Key Contacts
+- Sarah Okonkwo, Head of Product — sarah.o@apexhealthgroup.com
+- James Rafferty, CTO — james.r@apexhealthgroup.com
+- Delivery lead from Gitwork TBC
+
+Constraints
+- GDPR compliance is non-negotiable; all health data must be encrypted at rest and in transit
+- App store submission must go through Apex's existing Apple Developer and Google Play accounts
+- No user health data may be stored in the US (EU-only hosting required)
+- Design must align with Apex's existing brand guidelines (supplied on project kickoff)`;
+
+const ACCEPTED_TYPES = ".txt,.md,.pdf,.doc,.docx";
+
 export function ProofWorkspace() {
   const [brief, setBrief] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mutation = useAnalyseBrief();
 
   const analysis = mutation.data?.analysis ?? null;
@@ -29,6 +101,13 @@ export function ProofWorkspace() {
   const briefTooLong = charCount > MAX_BRIEF_LENGTH;
   const canSubmit = charCount >= MIN_BRIEF_LENGTH && !briefTooLong && !mutation.isPending;
 
+  function handleDemo() {
+    setBrief(DEMO_BRIEF);
+    setUploadedFile(null);
+    setUploadError(null);
+    mutation.reset();
+  }
+
   function handleSubmit() {
     if (!canSubmit) return;
     mutation.mutate(brief);
@@ -36,6 +115,8 @@ export function ProofWorkspace() {
 
   function handleClear() {
     setBrief("");
+    setUploadedFile(null);
+    setUploadError(null);
     mutation.reset();
   }
 
@@ -53,28 +134,157 @@ export function ProofWorkspace() {
     });
   }
 
+  function readFile(file: File) {
+    setUploadError(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      if (typeof text === "string" && text.trim().length > 0) {
+        setBrief(text.slice(0, MAX_BRIEF_LENGTH));
+        setUploadedFile(file.name);
+        mutation.reset();
+      } else {
+        setUploadError("Could not read text from this file. Try a plain .txt or .md file, or paste the brief directly.");
+        setUploadedFile(null);
+      }
+    };
+    reader.onerror = () => {
+      setUploadError("Failed to read the file. Please try again or paste the brief.");
+      setUploadedFile(null);
+    };
+    reader.readAsText(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+    e.target.value = "";
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) readFile(file);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  }
+
   return (
     <div className="grid min-h-0 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       {/* Left panel — input */}
       <aside className="space-y-4">
         <section className="app-card p-5">
-          <p className="app-eyebrow">Proof</p>
-          <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-            Brief analysis
-          </h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="app-eyebrow">Proof</p>
+              <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                Brief analysis
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={handleDemo}
+              className="mt-1 inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--text-2)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
+            >
+              <BeakerIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
+              Demo
+            </button>
+          </div>
           <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-            {"Paste any client brief — an email, document, or message — and we'll extract the key information your team needs."}
+            {"Upload or paste a client brief — we'll extract the key information your team needs."}
           </p>
 
           <div className="mt-5 space-y-3">
-            <label htmlFor="brief-input" className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-              Client brief
-            </label>
+            {/* File upload zone — Figma design 1175-100312 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_TYPES}
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+            {uploadedFile ? (
+              /* Uploaded state */
+              <div className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircleIcon className="h-5 w-5 shrink-0 text-emerald-600" />
+                  <span className="truncate text-sm font-medium text-[var(--text-1)]">{uploadedFile}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadedFile(null);
+                    setBrief("");
+                  }}
+                  className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                  title="Remove file"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              /* Drop zone */
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                className={cn(
+                  "flex w-full flex-col items-center gap-3 rounded-[12px] border px-6 py-4 transition",
+                  isDragging
+                    ? "border-2 border-[var(--brand-500)] bg-white"
+                    : "border border-[var(--border-2)] bg-white hover:border-[var(--brand-500)]/50",
+                )}
+              >
+                {/* Icon — matches Figma Featured icon container */}
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white shadow-[var(--shadow-skeuomorphic)]">
+                  <CloudArrowUpIcon className="h-5 w-5 text-[var(--text-3)]" />
+                </div>
+
+                {/* Action text */}
+                <div className="space-y-1 text-center">
+                  <div className="flex items-center justify-center gap-1 text-sm">
+                    <span className="font-semibold text-[var(--brand-700)]">Click to upload</span>
+                    <span className="text-[var(--text-3)]">or drag and drop</span>
+                  </div>
+                  <p className="text-xs text-[var(--text-3)]">
+                    TXT, MD or PDF (brief will be read as plain text)
+                  </p>
+                </div>
+              </button>
+            )}
+
+            {uploadError ? (
+              <p className="text-xs text-amber-700">{uploadError}</p>
+            ) : null}
+
+            {/* Divider */}
+            <div className="relative flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--border-2)]" />
+              <span className="text-xs font-medium text-[var(--text-4)]">or paste below</span>
+              <div className="h-px flex-1 bg-[var(--border-2)]" />
+            </div>
+
             <textarea
               id="brief-input"
               value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              rows={12}
+              onChange={(e) => {
+                setBrief(e.target.value);
+                if (uploadedFile) setUploadedFile(null);
+              }}
+              rows={8}
               className="app-input w-full resize-none leading-6"
               placeholder="Paste your client brief here…"
             />
@@ -154,7 +364,7 @@ export function ProofWorkspace() {
                 <DocumentMagnifyingGlassIcon className="h-7 w-7 text-[var(--brand-700)]" />
               </div>
               <h4 className="mt-5 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                {mutation.isPending ? "Analysing your brief…" : "Paste a brief to get started"}
+                {mutation.isPending ? "Analysing your brief…" : "Upload or paste a brief"}
               </h4>
               <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
                 {mutation.isPending
@@ -210,14 +420,12 @@ export function ProofWorkspace() {
 
             {/* Results grid */}
             <div className="mt-4 flex-1 space-y-4 overflow-auto">
-              {/* Overview */}
               {analysis.overview ? (
                 <ResultCard label="Overview">
                   <p className="italic leading-6 text-[var(--text-2)]">{analysis.overview}</p>
                 </ResultCard>
               ) : null}
 
-              {/* Goals + Deliverables */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <ResultCard label="Goals" empty={!analysis.goals.length} emptyText="No goals identified">
                   <BulletList items={analysis.goals} />
@@ -227,26 +435,19 @@ export function ProofWorkspace() {
                 </ResultCard>
               </div>
 
-              {/* Timeline + Budget */}
               {(analysis.timeline ?? analysis.budget) ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {analysis.timeline ? (
-                    <StatCard label="Timeline" value={analysis.timeline} />
-                  ) : null}
-                  {analysis.budget ? (
-                    <StatCard label="Budget" value={analysis.budget} />
-                  ) : null}
+                  {analysis.timeline ? <StatCard label="Timeline" value={analysis.timeline} /> : null}
+                  {analysis.budget ? <StatCard label="Budget" value={analysis.budget} /> : null}
                 </div>
               ) : null}
 
-              {/* Target audience */}
               {analysis.targetAudience ? (
                 <ResultCard label="Target Audience">
                   <p className="leading-6 text-[var(--text-2)]">{analysis.targetAudience}</p>
                 </ResultCard>
               ) : null}
 
-              {/* Technical requirements + Success criteria */}
               {(analysis.technicalRequirements.length || analysis.successCriteria.length) ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {analysis.technicalRequirements.length ? (
@@ -262,7 +463,6 @@ export function ProofWorkspace() {
                 </div>
               ) : null}
 
-              {/* Key contacts */}
               {analysis.keyContacts.length ? (
                 <ResultCard label="Key Contacts">
                   <div className="divide-y divide-[var(--border-2)]">
@@ -283,7 +483,6 @@ export function ProofWorkspace() {
                 </ResultCard>
               ) : null}
 
-              {/* Constraints */}
               {analysis.constraints.length ? (
                 <ResultCard label="Constraints">
                   <BulletList items={analysis.constraints} />
@@ -299,18 +498,9 @@ export function ProofWorkspace() {
 
 function ConfidenceBadge({ confidence }: { confidence: BriefConfidence }) {
   const map: Record<BriefConfidence, { label: string; className: string }> = {
-    HIGH: {
-      label: "High confidence",
-      className: "border-emerald-200 bg-[var(--success-50)] text-emerald-700",
-    },
-    MEDIUM: {
-      label: "Medium confidence",
-      className: "border-amber-200 bg-[var(--warning-50)] text-amber-700",
-    },
-    LOW: {
-      label: "Low confidence",
-      className: "border-rose-200 bg-[var(--danger-50)] text-rose-700",
-    },
+    HIGH: { label: "High confidence", className: "border-emerald-200 bg-[var(--success-50)] text-emerald-700" },
+    MEDIUM: { label: "Medium confidence", className: "border-amber-200 bg-[var(--warning-50)] text-amber-700" },
+    LOW: { label: "Low confidence", className: "border-rose-200 bg-[var(--danger-50)] text-rose-700" },
   };
   const { label, className } = map[confidence];
   return (
@@ -321,25 +511,15 @@ function ConfidenceBadge({ confidence }: { confidence: BriefConfidence }) {
 }
 
 function ResultCard({
-  label,
-  children,
-  empty,
-  emptyText,
+  label, children, empty, emptyText,
 }: {
-  label: string;
-  children?: React.ReactNode;
-  empty?: boolean;
-  emptyText?: string;
+  label: string; children?: React.ReactNode; empty?: boolean; emptyText?: string;
 }) {
   return (
     <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">{label}</p>
       <div className="mt-2.5">
-        {empty ? (
-          <p className="text-sm text-[var(--text-4)]">{emptyText}</p>
-        ) : (
-          children
-        )}
+        {empty ? <p className="text-sm text-[var(--text-4)]">{emptyText}</p> : children}
       </div>
     </div>
   );
