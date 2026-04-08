@@ -326,7 +326,7 @@ export function CodeClearCandidateDrawer({
                     onChange={(event) =>
                       setProfileForm((current) => ({ ...current, bio: event.target.value }))
                     }
-                    className="app-input min-h-[88px]"
+                    className="app-textarea min-h-[88px]"
                   />
                 </label>
 
@@ -442,7 +442,7 @@ export function CodeClearCandidateDrawer({
                     onChange={(event) =>
                       setScoreForm((current) => ({ ...current, taskAiReview: event.target.value }))
                     }
-                    className="app-input min-h-[88px]"
+                    className="app-textarea min-h-[88px]"
                   />
                 </label>
 
@@ -553,7 +553,7 @@ export function CodeClearCandidateDrawer({
                   <textarea
                     value={noteBody}
                     onChange={(event) => setNoteBody(event.target.value)}
-                    className="app-input min-h-[96px]"
+                    className="app-textarea min-h-[96px]"
                   />
                 </label>
 

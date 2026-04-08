@@ -1029,7 +1029,7 @@ function FieldTextArea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={4}
-        className="w-full"
+        className="app-textarea"
       />
     </label>
   );

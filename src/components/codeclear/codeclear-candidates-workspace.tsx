@@ -401,7 +401,7 @@ export function CodeClearCandidatesWorkspace() {
                 onChange={(event) =>
                   setCreateForm((current) => ({ ...current, bio: event.target.value }))
                 }
-                className="app-input min-h-[96px]"
+                className="app-textarea min-h-[96px]"
               />
             </label>
 

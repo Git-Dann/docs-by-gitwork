@@ -3,6 +3,7 @@
 import {
   ArrowPathIcon,
   Bars3Icon,
+  DocumentTextIcon,
   EyeIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
@@ -40,6 +41,7 @@ import {
 } from "@/components/codeclear/codeclear-shared";
 import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
 import { cn, formatDate } from "@/lib/format";
+import Link from "next/link";
 
 export function CodeClearPipelineWorkspace() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -247,8 +249,16 @@ function PipelineCard({
           Updated {formatDate(candidate.updatedAt)}
         </p>
 
+        {/* Verified banner */}
+        {candidate.status === "CODECLEAR_COMPLETE" ? (
+          <div className="mt-3 flex items-center gap-1.5 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <SparklesIcon className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            <p className="text-xs font-semibold text-emerald-700">Verified — ready to place</p>
+          </div>
+        ) : null}
+
         {/* Action row */}
-        <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {/* Run / Re-run analysis button */}
           {isRunning ? (
             <span className="text-xs text-sky-600">Live update in ~4s</span>
@@ -281,6 +291,16 @@ function PipelineCard({
           >
             Open
           </Button>
+
+          {candidate.status === "CODECLEAR_COMPLETE" ? (
+            <Link
+              href="/app/proposals?new=1"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--brand-600)] bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
+            >
+              <DocumentTextIcon className="h-3.5 w-3.5" />
+              Create Doc
+            </Link>
+          ) : null}
         </div>
       </div>
     </div>

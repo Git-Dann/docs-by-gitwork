@@ -340,7 +340,7 @@ export function ProofWorkspace() {
                 if (uploadedFile) setUploadedFile(null);
               }}
               rows={8}
-              className="app-input w-full resize-none leading-6"
+              className="app-textarea"
               placeholder="Paste your client brief here…"
             />
             <div className="flex items-center justify-between text-xs text-[var(--text-4)]">
