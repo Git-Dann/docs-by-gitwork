@@ -56,13 +56,13 @@ export default function HomePage() {
           <div className="relative z-10 mx-auto max-w-[1280px] px-8">
             <header className="flex h-[84px] items-center justify-between">
               <Link href="/" aria-label="Gitwork home" className="inline-flex items-center">
-                <Image src="/gitwork-logo.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
+                <Image src="/gitwork-logo-white.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
               </Link>
 
               <div className="flex items-center gap-3">
                 <Link
                   href="/app/proposals"
-                  className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]"
+                  className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] !text-white hover:bg-white/[0.06]"
                 >
                   Open platform
                 </Link>
@@ -89,7 +89,7 @@ export default function HomePage() {
                 </p>
 
                 <div className="mt-9 flex flex-wrap gap-3">
-                  <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]">
+                  <Link href="/app/proposals" className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] !text-white hover:bg-white/[0.06]">
                     Open platform
                   </Link>
                   <a
@@ -169,7 +169,7 @@ export default function HomePage() {
                 <div className="flex flex-wrap gap-3">
                   <Link
                     href="/app/proposals"
-                    className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] text-white hover:bg-white/[0.06]"
+                    className="app-button app-button-secondary app-button-md border-white/18 bg-white/[0.02] !text-white hover:bg-white/[0.06]"
                   >
                     Open platform
                   </Link>
@@ -250,7 +250,7 @@ export default function HomePage() {
           <div className="mx-auto max-w-[1280px] px-8">
             <div className="grid gap-10 lg:grid-cols-[1.2fr_repeat(4,1fr)]">
               <div>
-                <Image src="/gitwork-logo.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
+                <Image src="/gitwork-logo-white.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
                 <p className="mt-6 max-w-[320px] text-[16px] leading-6 text-white/56">
                   Gitwork is a creative design and developer agency with a sharper operating system behind the work.
                 </p>
