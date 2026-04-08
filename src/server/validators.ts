@@ -170,6 +170,23 @@ export const clientUpdateSchema = z
     message: "At least one client field is required.",
   });
 
+export const proofCreateSchema = z.object({
+  title: z.string().trim().min(1),
+  markdown: z.string().optional(),
+  proposalId: z.string().cuid().nullable().optional(),
+});
+
+export const proofUpdateSchema = z
+  .object({
+    proposalId: z.string().cuid().nullable().optional(),
+    touch: z.boolean().optional(),
+    archived: z.boolean().optional(),
+    title: z.string().trim().min(1).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one proof field is required.",
+  });
+
 export const rateCardPersonUpdateSchema = z
   .object({
     name: requiredTrimmedString.optional(),

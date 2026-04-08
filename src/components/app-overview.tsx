@@ -30,7 +30,7 @@ import { useEffect, useRef, useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { useProofDocuments } from "@/hooks/use-proof";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
-import { buttonStyles } from "@/components/ui/button";
+import { Button, buttonStyles } from "@/components/ui/button";
 import { cn, formatDate } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
@@ -272,19 +272,15 @@ export function AppOverview() {
             Open Proof
           </Link>
         </div>
-        <button
+        <Button
           type="button"
+          variant={customizing ? "secondary" : "utility"}
+          size="md"
           onClick={() => setCustomizing((v) => !v)}
-          className={cn(
-            "inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-sm font-medium transition",
-            customizing
-              ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
-              : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
-          )}
+          leadingIcon={<Squares2X2Icon className="h-4 w-4" />}
         >
-          <Squares2X2Icon className="h-4 w-4" />
           {customizing ? "Done" : "Customise"}
-        </button>
+        </Button>
       </div>
 
       {/* Widget visibility picker */}

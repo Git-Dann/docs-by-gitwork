@@ -13,8 +13,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useCreateProofDocument } from "@/hooks/use-proof";
 import { useAnalyseBrief } from "@/hooks/use-proof-brief";
 import { cn } from "@/lib/format";
+import type { ProofDocumentRecord } from "@/lib/proof";
 import type { BriefAnalysis, BriefConfidence } from "@/types/proof-brief";
 
 const MIN_BRIEF_LENGTH = 50;
@@ -143,8 +145,10 @@ export function ProofWorkspace() {
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [demoAnalysis, setDemoAnalysis] = useState<BriefAnalysis | null>(null);
+  const [savedDocument, setSavedDocument] = useState<ProofDocumentRecord | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mutation = useAnalyseBrief();
+  const createDocumentMutation = useCreateProofDocument();
 
   const analysis = demoAnalysis ?? mutation.data?.analysis ?? null;
   const errorMessage = mutation.error instanceof Error ? mutation.error.message : null;
@@ -159,11 +163,13 @@ export function ProofWorkspace() {
     setUploadError(null);
     mutation.reset();
     setDemoAnalysis(DEMO_ANALYSIS);
+    setSavedDocument(null);
   }
 
   function handleSubmit() {
     if (!canSubmit) return;
     setDemoAnalysis(null);
+    setSavedDocument(null);
     mutation.mutate(brief);
   }
 
@@ -172,6 +178,7 @@ export function ProofWorkspace() {
     setUploadedFile(null);
     setUploadError(null);
     setDemoAnalysis(null);
+    setSavedDocument(null);
     mutation.reset();
   }
 
@@ -187,6 +194,47 @@ export function ProofWorkspace() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleSaveDraft() {
+    if (!analysis || createDocumentMutation.isPending) {
+      return;
+    }
+
+    const title =
+      analysis.projectTitle?.trim() ||
+      (analysis.clientName ? `${analysis.clientName} Brief` : "") ||
+      uploadedFile?.replace(/\.[^.]+$/, "") ||
+      "Untitled Proof Draft";
+
+    const parts = [
+      `# ${title}`,
+      analysis.clientName ? `\nClient: ${analysis.clientName}` : "",
+      analysis.overview ? `\n## Overview\n\n${analysis.overview}` : "",
+      analysis.goals.length ? `\n## Goals\n\n${analysis.goals.map((item) => `- ${item}`).join("\n")}` : "",
+      analysis.deliverables.length
+        ? `\n## Deliverables\n\n${analysis.deliverables.map((item) => `- ${item}`).join("\n")}`
+        : "",
+      analysis.timeline ? `\n## Timeline\n\n${analysis.timeline}` : "",
+      analysis.budget ? `\n## Budget\n\n${analysis.budget}` : "",
+      analysis.technicalRequirements.length
+        ? `\n## Technical Requirements\n\n${analysis.technicalRequirements.map((item) => `- ${item}`).join("\n")}`
+        : "",
+      analysis.successCriteria.length
+        ? `\n## Success Criteria\n\n${analysis.successCriteria.map((item) => `- ${item}`).join("\n")}`
+        : "",
+      analysis.constraints.length
+        ? `\n## Constraints\n\n${analysis.constraints.map((item) => `- ${item}`).join("\n")}`
+        : "",
+      brief.trim() ? `\n## Source Brief\n\n${brief.trim()}` : "",
+    ].filter(Boolean);
+
+    const result = await createDocumentMutation.mutateAsync({
+      title,
+      markdown: parts.join("\n"),
+    });
+
+    setSavedDocument(result.document);
   }
 
   function readFile(file: File) {
@@ -246,14 +294,16 @@ export function ProofWorkspace() {
                 Brief analysis
               </h2>
             </div>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="xs"
+              className="mt-1"
               onClick={handleDemo}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--text-2)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
+              leadingIcon={<BeakerIcon className="h-3.5 w-3.5" />}
             >
-              <BeakerIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
               Demo
-            </button>
+            </Button>
           </div>
           <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
             {"Upload or paste a client brief — we'll extract the key information your team needs."}
@@ -455,6 +505,18 @@ export function ProofWorkspace() {
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
+                  variant={savedDocument ? "secondary" : "primary"}
+                  size="sm"
+                  loading={createDocumentMutation.isPending}
+                  disabled={Boolean(savedDocument)}
+                  onClick={() => {
+                    void handleSaveDraft();
+                  }}
+                >
+                  {savedDocument ? "Saved to Docs" : "Save to Docs"}
+                </Button>
+                <Button
+                  type="button"
                   variant="secondary"
                   size="sm"
                   leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
@@ -462,16 +524,23 @@ export function ProofWorkspace() {
                 >
                   {copied ? "Copied!" : "Copy summary"}
                 </Button>
-                <button
+                <Button
                   type="button"
+                  variant="utility"
+                  size="icon-sm"
                   onClick={handleClear}
-                  className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-4)] transition hover:border-[var(--border-1)] hover:text-[var(--text-2)]"
                   title="Clear results"
                 >
                   <XMarkIcon className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             </div>
+
+            {savedDocument ? (
+              <div className="mt-4 rounded-[12px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Saved as <span className="font-semibold">{savedDocument.title}</span>. It will now appear in Docs and can be linked to proposals.
+              </div>
+            ) : null}
 
             {/* Results grid */}
             <div className="mt-4 flex-1 space-y-4 overflow-auto">
