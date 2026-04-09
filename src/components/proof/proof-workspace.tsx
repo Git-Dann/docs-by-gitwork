@@ -138,8 +138,15 @@ const DEMO_ANALYSIS: BriefAnalysis = {
   confidence: "HIGH",
 };
 
-export function ProofWorkspace() {
-  const [brief, setBrief] = useState("");
+export function ProofWorkspace({
+  initialBrief,
+  initialScenario: _initialScenario,
+}: {
+  initialBrief?: string;
+  initialScenario?: string;
+}) {
+  const [brief, setBrief] = useState(initialBrief ?? "");
+  const [fromCodeClear] = useState(Boolean(initialBrief));
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
@@ -310,6 +317,15 @@ export function ProofWorkspace() {
           </p>
 
           <div className="mt-5 space-y-3">
+            {fromCodeClear ? (
+              <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--brand-200)] bg-[var(--surface-brand)] px-4 py-3">
+                <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                <p className="text-sm text-[var(--brand-700)]">
+                  Brief pre-filled from your CodeClear match. Review it below and run the analysis to continue.
+                </p>
+              </div>
+            ) : null}
+
             {/* File upload zone — Figma design 1175-100312 */}
             <input
               ref={fileInputRef}

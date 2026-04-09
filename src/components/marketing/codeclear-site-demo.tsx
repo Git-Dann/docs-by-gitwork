@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircleIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useState } from "react";
 
 type DemoState = "idle" | "loading" | "ready";
@@ -346,14 +347,12 @@ export function CodeClearSiteDemo() {
                   </li>
                 ))}
               </ul>
-              <a
-                href="https://calendly.com/gitworkgroup/30min"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href={`/app/proof?brief=${encodeURIComponent(result.brief)}&scenario=${result.id}`}
                 className="app-button app-button-primary app-button-md mt-7 w-full justify-center"
               >
-                Get started
-              </a>
+                Make Booking
+              </Link>
             </article>
           </div>
         </>
