@@ -6,11 +6,11 @@ import {
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import {
+  closestCenter,
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -18,8 +18,14 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +55,7 @@ import Link from "next/link";
 export function CodeClearPipelineWorkspace() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const router = useRouter();
   const pathname = usePathname();
@@ -65,10 +71,13 @@ export function CodeClearPipelineWorkspace() {
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
   const [optimisticCandidates, setOptimisticCandidates] = useState<CodeClearCandidateListItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-  const activeCandidate = useMemo(() => optimisticCandidates.find((c) => c.id === activeId) ?? null, [optimisticCandidates, activeId]);
+  const savedCandidates = useRef<CodeClearCandidateListItem[]>([]);
+  const activeCandidate = useMemo(
+    () => optimisticCandidates.find((c) => c.id === activeId) ?? null,
+    [optimisticCandidates, activeId],
+  );
+
   useEffect(() => {
-    // Don't reset while a drag is in flight — preserves optimistic ordering
     if (!activeId) setOptimisticCandidates(candidates);
   }, [candidates, activeId]);
 
@@ -106,63 +115,93 @@ export function CodeClearPipelineWorkspace() {
   }
 
   function handleDragStart(event: DragStartEvent) {
-    setActiveId(String(event.active.id));
-    setOverId(null);
+    const id = String(event.active.id);
+    setActiveId(id);
+    savedCandidates.current = optimisticCandidates;
   }
 
   function handleDragOver(event: DragOverEvent) {
-    setOverId(event.over ? String(event.over.id) : null);
-  }
+    const { active, over } = event;
+    if (!over || String(active.id) === String(over.id)) return;
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
-    setOverId(null);
-    const draggedId = String(event.active.id);
-    const rawOverId = event.over ? String(event.over.id) : null;
-    if (!rawOverId) return;
-
-    const dragged = optimisticCandidates.find((c) => c.id === draggedId);
-    if (!dragged) return;
-
-    const isOverColumn = PIPELINE_STATUSES.some((s) => s.value === rawOverId);
-    const overCard = isOverColumn ? null : optimisticCandidates.find((c) => c.id === rawOverId);
-    const targetStatus: PipelineStatus = isOverColumn
-      ? (rawOverId as PipelineStatus)
-      : (overCard?.status ?? dragged.status);
-
-    const updated = { ...dragged, status: targetStatus, updatedAt: new Date().toISOString() };
+    const draggedId = String(active.id);
+    const overId = String(over.id);
 
     setOptimisticCandidates((current) => {
-      // Remove dragged card from the flat list
-      const without = current.filter((c) => c.id !== draggedId);
+      const activeIndex = current.findIndex((c) => c.id === draggedId);
+      if (activeIndex === -1) return current;
 
-      if (overCard) {
-        // Insert before the card the cursor was over
-        const insertAt = without.findIndex((c) => c.id === rawOverId);
+      const activeCand = current[activeIndex];
+      const overIsColumn = PIPELINE_STATUSES.some((s) => s.value === overId);
+
+      if (overIsColumn) {
+        const targetStatus = overId as PipelineStatus;
+        // Already last in this column — skip
+        const colCards = current.filter((c) => c.status === targetStatus);
+        if (
+          activeCand.status === targetStatus &&
+          colCards[colCards.length - 1]?.id === draggedId
+        ) {
+          return current;
+        }
+        const without = current.filter((c) => c.id !== draggedId);
+        const lastInCol = without.reduce<number>(
+          (acc, c, i) => (c.status === targetStatus ? i : acc),
+          -1,
+        );
+        const insertAt = lastInCol === -1 ? without.length : lastInCol + 1;
+        const updated =
+          activeCand.status !== targetStatus
+            ? { ...activeCand, status: targetStatus, updatedAt: new Date().toISOString() }
+            : activeCand;
         const result = [...without];
-        result.splice(insertAt >= 0 ? insertAt : result.length, 0, updated);
+        result.splice(insertAt, 0, updated);
         return result;
       }
 
-      // Dropped on column — append after the last card in that column
-      const lastInColumn = [...without].reverse().findIndex((c) => c.status === targetStatus);
-      const insertAt = lastInColumn === -1 ? without.length : without.length - lastInColumn;
+      // Over is a card
+      const overIndex = current.findIndex((c) => c.id === overId);
+      if (overIndex === -1) return current;
+
+      const overCand = current[overIndex];
+      const targetStatus = overCand.status;
+
+      // Already directly before this card in same column — skip
+      if (activeIndex === overIndex - 1 && activeCand.status === targetStatus) return current;
+
+      const without = current.filter((c) => c.id !== draggedId);
+      const newOverIndex = without.findIndex((c) => c.id === overId);
+      const updated =
+        activeCand.status !== targetStatus
+          ? { ...activeCand, status: targetStatus, updatedAt: new Date().toISOString() }
+          : activeCand;
       const result = [...without];
-      result.splice(insertAt, 0, updated);
+      result.splice(newOverIndex >= 0 ? newOverIndex : result.length, 0, updated);
       return result;
     });
+  }
 
-    if (dragged.status !== targetStatus) {
+  function handleDragEnd(event: DragEndEvent) {
+    const { active } = event;
+    setActiveId(null);
+
+    const draggedId = String(active.id);
+    const finalCand = optimisticCandidates.find((c) => c.id === draggedId);
+    const originalCand = savedCandidates.current.find((c) => c.id === draggedId);
+
+    if (!finalCand || !originalCand) return;
+
+    if (finalCand.status !== originalCand.status) {
       bulkUpdate.mutate(
-        { action: "MOVE_STAGE", ids: [dragged.id], status: targetStatus },
-        { onError: () => setOptimisticCandidates(candidates) },
+        { action: "MOVE_STAGE", ids: [draggedId], status: finalCand.status },
+        { onError: () => setOptimisticCandidates(savedCandidates.current) },
       );
     }
   }
 
   function handleDragCancel() {
     setActiveId(null);
-    setOverId(null);
+    setOptimisticCandidates(savedCandidates.current);
   }
 
   return (
@@ -190,6 +229,7 @@ export function CodeClearPipelineWorkspace() {
       {candidates.length ? (
         <DndContext
           sensors={sensors}
+          collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -203,13 +243,12 @@ export function CodeClearPipelineWorkspace() {
                 label={column.label}
                 candidates={groups[column.value]}
                 activeId={activeId}
-                overId={overId}
                 onOpen={updateQuery}
               />
             ))}
           </div>
 
-          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.18,0.67,0.6,1.22)" }}>
+          <DragOverlay dropAnimation={null}>
             {activeCandidate ? (
               <PipelineCard candidate={activeCandidate} onOpen={() => {}} isOverlay />
             ) : null}
@@ -230,44 +269,27 @@ export function CodeClearPipelineWorkspace() {
   );
 }
 
-function DropLine() {
-  return (
-    <div className="flex items-center gap-1.5 py-0.5">
-      <div className="h-2 w-2 shrink-0 rounded-full bg-[var(--brand-500)]" />
-      <div className="h-0.5 flex-1 rounded-full bg-[var(--brand-500)]" />
-    </div>
-  );
-}
-
 function PipelineColumn({
   status,
   label,
   candidates,
   activeId,
-  overId,
   onOpen,
 }: {
   status: PipelineStatus;
   label: string;
   candidates: CodeClearCandidateListItem[];
   activeId: string | null;
-  overId: string | null;
   onOpen: (candidateId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
-  const isDraggingOver = isOver && !!activeId;
-
-  // overId matches a card in this column → show line before that card
-  // overId matches column status itself → show line at bottom
-  const overCardId = candidates.find((c) => c.id === overId)?.id ?? null;
-  const overColumn = overId === status;
 
   return (
     <section
       ref={setNodeRef}
       className={cn(
         "app-card min-h-[300px] p-4 transition-all duration-150",
-        isDraggingOver
+        isOver && activeId
           ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)] shadow-[0_0_0_2px_var(--brand-200)]"
           : "",
       )}
@@ -280,31 +302,21 @@ function PipelineColumn({
         <CodeClearStatusBadge status={status} />
       </div>
 
-      <div className="mt-4 space-y-1">
-        {candidates.map((candidate) => (
-          <div key={candidate.id}>
-            {overCardId === candidate.id && candidate.id !== activeId && <DropLine />}
-            <div className={overCardId === candidate.id && candidate.id !== activeId ? "pt-1" : "py-1"}>
-              <PipelineCard
-                candidate={candidate}
-                onOpen={onOpen}
-                isGhost={candidate.id === activeId}
-              />
+      <SortableContext items={candidates.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        <div className="mt-4 space-y-1">
+          {candidates.map((candidate) => (
+            <div key={candidate.id} className="py-1">
+              <PipelineCard candidate={candidate} onOpen={onOpen} />
             </div>
-          </div>
-        ))}
+          ))}
 
-        {/* Line at bottom when hovering column empty space, or empty column */}
-        {activeId && overColumn && !overCardId && (
-          candidates.length === 0 ? (
+          {activeId && isOver && candidates.length === 0 ? (
             <div className="flex h-20 items-center justify-center rounded-[14px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
               <p className="text-xs font-medium text-[var(--brand-600)]">Drop here</p>
             </div>
-          ) : (
-            <DropLine />
-          )
-        )}
-      </div>
+          ) : null}
+        </div>
+      </SortableContext>
     </section>
   );
 }
@@ -312,38 +324,35 @@ function PipelineColumn({
 function PipelineCard({
   candidate,
   onOpen,
-  isGhost = false,
   isOverlay = false,
 }: {
   candidate: CodeClearCandidateListItem;
   onOpen: (candidateId: string) => void;
-  isGhost?: boolean;
   isOverlay?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: candidate.id,
     disabled: isOverlay,
   });
-  const { setNodeRef: setDropRef } = useDroppable({
-    id: candidate.id,
-    disabled: isOverlay,
-  });
-  // Combined ref so hovering this card fires overId = card.id
-  const setNodeRef = (el: HTMLDivElement | null) => {
-    setDragRef(el);
-    setDropRef(el);
-  };
+
+  const style = isOverlay
+    ? undefined
+    : {
+        transform: CSS.Transform.toString(transform),
+        transition,
+      };
+
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
   const isRunning = candidate.analysisState === "RUNNING";
   const neverScanned = candidate.analysisState === "NEVER_RUN";
   const scanFailed = candidate.analysisState === "FAILED";
 
-  // Ghost: invisible placeholder left in the column while dragging
-  if (isGhost) {
+  if (isDragging && !isOverlay) {
     return (
       <div
-        className="rounded-[18px] border-2 border-dashed border-[var(--border-2)] bg-[var(--surface-2)] opacity-50"
-        style={{ height: 160 }}
+        ref={setNodeRef}
+        style={{ ...style, height: 160 }}
+        className="rounded-[18px] border-2 border-dashed border-[var(--border-2)] bg-[var(--surface-2)] opacity-40"
       />
     );
   }
@@ -351,7 +360,7 @@ function PipelineCard({
   return (
     <div
       ref={isOverlay ? undefined : setNodeRef}
-      style={isOverlay ? undefined : { transform: CSS.Translate.toString(transform) }}
+      style={style}
       className={cn(
         "rounded-[18px] border bg-white shadow-[var(--shadow-xs)] transition-shadow duration-150",
         isOverlay

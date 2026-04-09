@@ -100,6 +100,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                 : [...existing.signalSources, body.requestSignalSource],
             }
           : {}),
+        ...(body.scrapeSignalSource && body.signalSources === undefined
+          ? {
+              signalSources: existing.signalSources.includes(body.scrapeSignalSource)
+                ? existing.signalSources
+                : [...existing.signalSources, body.scrapeSignalSource],
+            }
+          : {}),
         ...(body.location !== undefined ? { location: body.location } : {}),
         ...(body.bio !== undefined ? { bio: body.bio } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
@@ -108,7 +115,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? { rateCardPersonId: body.rateCardPersonId }
           : {}),
         ...(body.recheckDueAt !== undefined ? { recheckDueAt: body.recheckDueAt } : {}),
-        ...((body.status && body.status !== existing.status) || body.requestSignalSource
+        ...((body.status && body.status !== existing.status) ||
+        body.requestSignalSource ||
+        body.scrapeSignalSource
           ? {
               activityLog: {
                 create: [
@@ -130,6 +139,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
                           eventType: "SIGNAL_REQUESTED",
                           metadata: {
                             source: body.requestSignalSource,
+                            by: user.name ?? user.email,
+                          } as Prisma.InputJsonValue,
+                        },
+                      ]
+                    : []),
+                  ...(body.scrapeSignalSource
+                    ? [
+                        {
+                          eventType: "SIGNAL_SCRAPED",
+                          metadata: {
+                            source: body.scrapeSignalSource,
                             by: user.name ?? user.email,
                           } as Prisma.InputJsonValue,
                         },

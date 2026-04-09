@@ -359,6 +359,7 @@ export async function updateCodeClearCandidate(
     rateCardPersonId: string | null;
     recheckDueAt: string | Date | null;
     requestSignalSource: CandidateSignalSource;
+    scrapeSignalSource: CandidateSignalSource;
   }>,
 ): Promise<{ candidate: CodeClearCandidateDetail }> {
   return apiFetch<{ candidate: CodeClearCandidateDetail }>(`/api/codeclear/candidates/${id}`, {

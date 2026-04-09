@@ -258,6 +258,7 @@ export const candidateUpdateSchema = z
     rateCardPersonId: z.string().cuid().nullable().optional(),
     recheckDueAt: z.coerce.date().nullable().optional(),
     requestSignalSource: candidateSignalSourceSchema.optional(),
+    scrapeSignalSource: candidateSignalSourceSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one candidate field is required.",

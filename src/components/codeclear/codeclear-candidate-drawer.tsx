@@ -3,6 +3,7 @@
 import {
   ArrowTopRightOnSquareIcon,
   BoltIcon,
+  CloudArrowDownIcon,
   DocumentArrowDownIcon,
   IdentificationIcon,
   LinkIcon,
@@ -47,6 +48,13 @@ import {
   SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
+
+// Sources that support automated scraping
+const SCRAPABLE_SOURCES: CandidateSignalSource[] = ["GITHUB", "LINKEDIN", "PORTFOLIO"];
+
+function toTitleCase(str: string) {
+  return str.charAt(0) + str.slice(1).toLowerCase();
+}
 
 export function CodeClearCandidateDrawer({
   candidateId,
@@ -128,6 +136,17 @@ export function CodeClearCandidateDrawer({
     return null;
   }
 
+  const previewScore =
+    scoreForm.technicalDepth || scoreForm.codeQuality || scoreForm.aiFluency || scoreForm.deliveryReadiness
+      ? Math.round(
+          (Number(scoreForm.technicalDepth || 0) +
+            Number(scoreForm.codeQuality || 0) +
+            Number(scoreForm.aiFluency || 0) +
+            Number(scoreForm.deliveryReadiness || 0)) /
+            4,
+        )
+      : null;
+
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
       <button
@@ -174,6 +193,7 @@ export function CodeClearCandidateDrawer({
             </div>
           ) : candidate ? (
             <div className="space-y-6">
+              {/* Profile header */}
               <section className="app-card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
@@ -267,7 +287,11 @@ export function CodeClearCandidateDrawer({
                   <SignalCard
                     icon={<IdentificationIcon className="h-4 w-4" />}
                     label="Identity confidence"
-                    value={candidate.score?.identityConfidence ?? scoreForm.identityConfidence}
+                    value={
+                      candidate.score?.identityConfidence
+                        ? toTitleCase(candidate.score.identityConfidence)
+                        : toTitleCase(scoreForm.identityConfidence)
+                    }
                   />
                   <SignalCard
                     icon={<BoltIcon className="h-4 w-4" />}
@@ -293,6 +317,7 @@ export function CodeClearCandidateDrawer({
                 </div>
               </section>
 
+              {/* Profile edit */}
               <section className="app-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -472,52 +497,57 @@ export function CodeClearCandidateDrawer({
                 </div>
               </section>
 
+              {/* Verification */}
               <section className="app-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-1)]">Verification</p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Finalize the draft into a CodeClear score.
+                      Score the candidate across key dimensions, then finalize as a CodeClear record.
                     </p>
                   </div>
-                  <CodeClearScoreBadge
-                    value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
+                  <div className="flex items-center gap-2">
+                    {previewScore !== null ? (
+                      <span className="text-xs text-[var(--text-4)]">Preview: {previewScore}/100</span>
+                    ) : null}
+                    <CodeClearScoreBadge
+                      value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <ScoreSlider
+                    label="Technical depth"
+                    value={Number(scoreForm.technicalDepth || 0)}
+                    onChange={(value) =>
+                      setScoreForm((current) => ({ ...current, technicalDepth: String(value) }))
+                    }
+                  />
+                  <ScoreSlider
+                    label="Code quality"
+                    value={Number(scoreForm.codeQuality || 0)}
+                    onChange={(value) =>
+                      setScoreForm((current) => ({ ...current, codeQuality: String(value) }))
+                    }
+                  />
+                  <ScoreSlider
+                    label="AI fluency"
+                    value={Number(scoreForm.aiFluency || 0)}
+                    onChange={(value) =>
+                      setScoreForm((current) => ({ ...current, aiFluency: String(value) }))
+                    }
+                  />
+                  <ScoreSlider
+                    label="Delivery readiness"
+                    value={Number(scoreForm.deliveryReadiness || 0)}
+                    onChange={(value) =>
+                      setScoreForm((current) => ({ ...current, deliveryReadiness: String(value) }))
+                    }
                   />
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <DrawerField
-                    label="Technical depth"
-                    type="number"
-                    value={scoreForm.technicalDepth}
-                    onChange={(value) =>
-                      setScoreForm((current) => ({ ...current, technicalDepth: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="Code quality"
-                    type="number"
-                    value={scoreForm.codeQuality}
-                    onChange={(value) =>
-                      setScoreForm((current) => ({ ...current, codeQuality: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="AI fluency"
-                    type="number"
-                    value={scoreForm.aiFluency}
-                    onChange={(value) =>
-                      setScoreForm((current) => ({ ...current, aiFluency: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="Delivery readiness"
-                    type="number"
-                    value={scoreForm.deliveryReadiness}
-                    onChange={(value) =>
-                      setScoreForm((current) => ({ ...current, deliveryReadiness: value }))
-                    }
-                  />
                   <DrawerSelect
                     label="Identity confidence"
                     value={scoreForm.identityConfidence}
@@ -529,20 +559,17 @@ export function CodeClearCandidateDrawer({
                     }
                     options={IDENTITY_CONFIDENCE_LEVELS.map((value) => ({
                       value,
-                      label: value,
+                      label: toTitleCase(value),
                     }))}
                   />
                   <DrawerField
-                    label="Task score"
+                    label="Task score (0–100)"
                     type="number"
                     value={scoreForm.taskScore}
                     onChange={(value) =>
                       setScoreForm((current) => ({ ...current, taskScore: value }))
                     }
                   />
-                </div>
-
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <DrawerField
                     label="Task time (seconds)"
                     type="number"
@@ -590,32 +617,65 @@ export function CodeClearCandidateDrawer({
                 </div>
               </section>
 
+              {/* Signals & Evidence */}
               <section className="app-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-1)]">Signals & evidence</p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Pull more evidence from multiple sources, then finalize the candidate score.
+                      Request or scrape evidence from multiple sources, then finalize the candidate score.
                     </p>
                   </div>
                   {latestRun ? <CodeClearAnalysisBadge state={candidate.analysisState} /> : null}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {CANDIDATE_SIGNAL_SOURCES.map((source) => (
-                    <Button
-                      key={source.value}
-                      type="button"
-                      variant={source.value === "GITHUB" ? "secondary" : "utility"}
-                      size="sm"
-                      onClick={() =>
-                        updateCandidate.mutate({ requestSignalSource: source.value })
-                      }
-                    >
-                      Request {source.label}
-                    </Button>
-                  ))}
-                  {latestRun?.status === "COMPLETED" ? (
+                <div className="mt-4 space-y-2">
+                  {CANDIDATE_SIGNAL_SOURCES.map((source) => {
+                    const canScrape = SCRAPABLE_SOURCES.includes(source.value);
+                    const isGitHub = source.value === "GITHUB";
+                    return (
+                      <div
+                        key={source.value}
+                        className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3"
+                      >
+                        <span className="text-sm font-medium text-[var(--text-2)]">
+                          {source.label}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {canScrape ? (
+                            <Button
+                              type="button"
+                              variant="utility"
+                              size="sm"
+                              leadingIcon={<CloudArrowDownIcon className="h-3.5 w-3.5" />}
+                              onClick={() =>
+                                isGitHub
+                                  ? runAnalysis.mutate()
+                                  : updateCandidate.mutate({ scrapeSignalSource: source.value })
+                              }
+                              loading={isGitHub ? runAnalysis.isPending : updateCandidate.isPending}
+                            >
+                              Scrape
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant={source.value === "GITHUB" ? "secondary" : "utility"}
+                            size="sm"
+                            onClick={() =>
+                              updateCandidate.mutate({ requestSignalSource: source.value })
+                            }
+                          >
+                            Request
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {latestRun?.status === "COMPLETED" ? (
+                  <div className="mt-3 flex justify-end">
                     <Button
                       type="button"
                       variant="secondary"
@@ -626,8 +686,8 @@ export function CodeClearCandidateDrawer({
                     >
                       Apply latest run
                     </Button>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
 
                 {latestRun ? (
                   <div className="mt-4 space-y-4">
@@ -687,12 +747,13 @@ export function CodeClearCandidateDrawer({
                       No repository signal captured yet.
                     </p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Request GitHub, LinkedIn, CV, interview, or portfolio evidence to make the record more complete before scoring.
+                      Request or scrape GitHub, LinkedIn, CV, interview, or portfolio evidence to make the record more complete before scoring.
                     </p>
                   </div>
                 )}
               </section>
 
+              {/* Notes */}
               <section className="app-card p-5">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-[var(--text-1)]">Notes</p>
@@ -812,6 +873,50 @@ export function CodeClearCandidateDrawer({
           </div>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function ScoreSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const clipped = Math.min(100, Math.max(0, value));
+  const barColor =
+    clipped >= 80
+      ? "bg-emerald-500"
+      : clipped >= 60
+        ? "bg-sky-500"
+        : clipped >= 40
+          ? "bg-amber-500"
+          : "bg-rose-400";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-32 overflow-hidden rounded-full bg-[var(--surface-2)]">
+            <div
+              className={`h-full rounded-full transition-all duration-200 ${barColor}`}
+              style={{ width: `${clipped}%` }}
+            />
+          </div>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-16 rounded-[8px] border border-[var(--border-2)] bg-white px-2 py-1 text-center text-sm font-semibold text-[var(--text-1)] focus:border-[var(--brand-500)] focus:outline-none"
+          />
+        </div>
+      </div>
     </div>
   );
 }
