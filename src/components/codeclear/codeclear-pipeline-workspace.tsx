@@ -15,6 +15,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -64,6 +65,7 @@ export function CodeClearPipelineWorkspace() {
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
   const [optimisticCandidates, setOptimisticCandidates] = useState<CodeClearCandidateListItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const activeCandidate = useMemo(() => optimisticCandidates.find((c) => c.id === activeId) ?? null, [optimisticCandidates, activeId]);
   useEffect(() => {
     setOptimisticCandidates(candidates);
@@ -104,19 +106,29 @@ export function CodeClearPipelineWorkspace() {
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
+    setOverId(null);
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setOverId(event.over ? String(event.over.id) : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null);
+    setOverId(null);
     const draggedId = String(event.active.id);
-    const overId = event.over ? String(event.over.id) : null;
-
-    if (!overId) return;
+    const rawOverId = event.over ? String(event.over.id) : null;
+    if (!rawOverId) return;
 
     const candidate = optimisticCandidates.find((item) => item.id === draggedId);
-    const targetStatus = PIPELINE_STATUSES.find((item) => item.value === overId)?.value;
+    if (!candidate) return;
 
-    if (!candidate || !targetStatus || candidate.status === targetStatus) return;
+    // overId could be a column status or a card ID — resolve to a column status
+    const targetStatus =
+      PIPELINE_STATUSES.find((s) => s.value === rawOverId)?.value ??
+      optimisticCandidates.find((c) => c.id === rawOverId)?.status;
+
+    if (!targetStatus || candidate.status === targetStatus) return;
 
     setOptimisticCandidates((current) =>
       current.map((item) =>
@@ -133,6 +145,7 @@ export function CodeClearPipelineWorkspace() {
 
   function handleDragCancel() {
     setActiveId(null);
+    setOverId(null);
   }
 
   return (
@@ -161,6 +174,7 @@ export function CodeClearPipelineWorkspace() {
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
@@ -172,6 +186,7 @@ export function CodeClearPipelineWorkspace() {
                 label={column.label}
                 candidates={groups[column.value]}
                 activeId={activeId}
+                overId={overId}
                 onOpen={updateQuery}
               />
             ))}
@@ -198,21 +213,37 @@ export function CodeClearPipelineWorkspace() {
   );
 }
 
+function DropLine() {
+  return (
+    <div className="flex items-center gap-1.5 py-0.5">
+      <div className="h-2 w-2 shrink-0 rounded-full bg-[var(--brand-500)]" />
+      <div className="h-0.5 flex-1 rounded-full bg-[var(--brand-500)]" />
+    </div>
+  );
+}
+
 function PipelineColumn({
   status,
   label,
   candidates,
   activeId,
+  overId,
   onOpen,
 }: {
   status: PipelineStatus;
   label: string;
   candidates: CodeClearCandidateListItem[];
   activeId: string | null;
+  overId: string | null;
   onOpen: (candidateId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
   const isDraggingOver = isOver && !!activeId;
+
+  // overId matches a card in this column → show line before that card
+  // overId matches column status itself → show line at bottom
+  const overCardId = candidates.find((c) => c.id === overId)?.id ?? null;
+  const overColumn = overId === status;
 
   return (
     <section
@@ -232,21 +263,29 @@ function PipelineColumn({
         <CodeClearStatusBadge status={status} />
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-1">
         {candidates.map((candidate) => (
-          <PipelineCard
-            key={candidate.id}
-            candidate={candidate}
-            onOpen={onOpen}
-            isGhost={candidate.id === activeId}
-          />
+          <div key={candidate.id}>
+            {overCardId === candidate.id && candidate.id !== activeId && <DropLine />}
+            <div className={overCardId === candidate.id && candidate.id !== activeId ? "pt-1" : "py-1"}>
+              <PipelineCard
+                candidate={candidate}
+                onOpen={onOpen}
+                isGhost={candidate.id === activeId}
+              />
+            </div>
+          </div>
         ))}
 
-        {/* Drop target hint when dragging over an empty column */}
-        {isDraggingOver && candidates.length === 0 && (
-          <div className="flex h-20 items-center justify-center rounded-[14px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
-            <p className="text-xs font-medium text-[var(--brand-600)]">Drop here</p>
-          </div>
+        {/* Line at bottom when hovering column empty space, or empty column */}
+        {activeId && overColumn && !overCardId && (
+          candidates.length === 0 ? (
+            <div className="flex h-20 items-center justify-center rounded-[14px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
+              <p className="text-xs font-medium text-[var(--brand-600)]">Drop here</p>
+            </div>
+          ) : (
+            <DropLine />
+          )
         )}
       </div>
     </section>
@@ -264,10 +303,19 @@ function PipelineCard({
   isGhost?: boolean;
   isOverlay?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
     id: candidate.id,
     disabled: isOverlay,
   });
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: candidate.id,
+    disabled: isOverlay,
+  });
+  // Combined ref so hovering this card fires overId = card.id
+  const setNodeRef = (el: HTMLDivElement | null) => {
+    setDragRef(el);
+    setDropRef(el);
+  };
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
   const isRunning = candidate.analysisState === "RUNNING";
   const neverScanned = candidate.analysisState === "NEVER_RUN";
