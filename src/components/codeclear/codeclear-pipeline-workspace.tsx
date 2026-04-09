@@ -7,12 +7,15 @@ import {
 } from "@heroicons/react/24/outline";
 import {
   DndContext,
+  DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
@@ -43,7 +46,10 @@ import { cn } from "@/lib/format";
 import Link from "next/link";
 
 export function CodeClearPipelineWorkspace() {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 2 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -57,6 +63,8 @@ export function CodeClearPipelineWorkspace() {
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
   const [optimisticCandidates, setOptimisticCandidates] = useState<CodeClearCandidateListItem[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeCandidate = useMemo(() => optimisticCandidates.find((c) => c.id === activeId) ?? null, [optimisticCandidates, activeId]);
   useEffect(() => {
     setOptimisticCandidates(candidates);
   }, [candidates]);
@@ -94,13 +102,18 @@ export function CodeClearPipelineWorkspace() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
   function handleDragEnd(event: DragEndEvent) {
-    const activeId = String(event.active.id);
+    setActiveId(null);
+    const draggedId = String(event.active.id);
     const overId = event.over ? String(event.over.id) : null;
 
     if (!overId) return;
 
-    const candidate = optimisticCandidates.find((item) => item.id === activeId);
+    const candidate = optimisticCandidates.find((item) => item.id === draggedId);
     const targetStatus = PIPELINE_STATUSES.find((item) => item.value === overId)?.value;
 
     if (!candidate || !targetStatus || candidate.status === targetStatus) return;
@@ -108,20 +121,18 @@ export function CodeClearPipelineWorkspace() {
     setOptimisticCandidates((current) =>
       current.map((item) =>
         item.id === candidate.id
-          ? {
-              ...item,
-              status: targetStatus,
-              updatedAt: new Date().toISOString(),
-            }
+          ? { ...item, status: targetStatus, updatedAt: new Date().toISOString() }
           : item,
       ),
     );
     bulkUpdate.mutate(
       { action: "MOVE_STAGE", ids: [candidate.id], status: targetStatus },
-      {
-        onError: () => setOptimisticCandidates(candidates),
-      },
+      { onError: () => setOptimisticCandidates(candidates) },
     );
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
   }
 
   return (
@@ -147,7 +158,12 @@ export function CodeClearPipelineWorkspace() {
       </div>
 
       {candidates.length ? (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
           <div className="grid gap-4 xl:grid-cols-3">
             {PIPELINE_STATUSES.map((column) => (
               <PipelineColumn
@@ -155,10 +171,17 @@ export function CodeClearPipelineWorkspace() {
                 status={column.value}
                 label={column.label}
                 candidates={groups[column.value]}
+                activeId={activeId}
                 onOpen={updateQuery}
               />
             ))}
           </div>
+
+          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.18,0.67,0.6,1.22)" }}>
+            {activeCandidate ? (
+              <PipelineCard candidate={activeCandidate} onOpen={() => {}} isOverlay />
+            ) : null}
+          </DragOverlay>
         </DndContext>
       ) : (
         <EmptyState
@@ -179,21 +202,26 @@ function PipelineColumn({
   status,
   label,
   candidates,
+  activeId,
   onOpen,
 }: {
   status: PipelineStatus;
   label: string;
   candidates: CodeClearCandidateListItem[];
+  activeId: string | null;
   onOpen: (candidateId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
+  const isDraggingOver = isOver && !!activeId;
 
   return (
     <section
       ref={setNodeRef}
       className={cn(
-        "app-card min-h-[300px] p-4 transition",
-        isOver ? "border-[var(--brand-600)] bg-[var(--surface-brand-soft)]" : "",
+        "app-card min-h-[300px] p-4 transition-all duration-150",
+        isDraggingOver
+          ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)] shadow-[0_0_0_2px_var(--brand-200)]"
+          : "",
       )}
     >
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] pb-3">
@@ -206,8 +234,20 @@ function PipelineColumn({
 
       <div className="mt-4 space-y-3">
         {candidates.map((candidate) => (
-          <PipelineCard key={candidate.id} candidate={candidate} onOpen={onOpen} />
+          <PipelineCard
+            key={candidate.id}
+            candidate={candidate}
+            onOpen={onOpen}
+            isGhost={candidate.id === activeId}
+          />
         ))}
+
+        {/* Drop target hint when dragging over an empty column */}
+        {isDraggingOver && candidates.length === 0 && (
+          <div className="flex h-20 items-center justify-center rounded-[14px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
+            <p className="text-xs font-medium text-[var(--brand-600)]">Drop here</p>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -216,28 +256,43 @@ function PipelineColumn({
 function PipelineCard({
   candidate,
   onOpen,
+  isGhost = false,
+  isOverlay = false,
 }: {
   candidate: CodeClearCandidateListItem;
   onOpen: (candidateId: string) => void;
+  isGhost?: boolean;
+  isOverlay?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: candidate.id,
+    disabled: isOverlay,
   });
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidate.id);
   const isRunning = candidate.analysisState === "RUNNING";
   const neverScanned = candidate.analysisState === "NEVER_RUN";
   const scanFailed = candidate.analysisState === "FAILED";
 
+  // Ghost: invisible placeholder left in the column while dragging
+  if (isGhost) {
+    return (
+      <div
+        className="rounded-[18px] border-2 border-dashed border-[var(--border-2)] bg-[var(--surface-2)] opacity-50"
+        style={{ height: 160 }}
+      />
+    );
+  }
+
   return (
     <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform) }}
+      ref={isOverlay ? undefined : setNodeRef}
+      style={isOverlay ? undefined : { transform: CSS.Translate.toString(transform) }}
       className={cn(
-        "rounded-[18px] border bg-white shadow-[var(--shadow-xs)] transition",
-        isDragging ? "opacity-70" : "",
-        isRunning
-          ? "border-sky-300 bg-sky-50/60"
-          : "border-[var(--border-2)]",
+        "rounded-[18px] border bg-white shadow-[var(--shadow-xs)] transition-shadow duration-150",
+        isOverlay
+          ? "rotate-1 scale-[1.02] shadow-[0_16px_48px_rgba(0,0,0,0.18)] ring-2 ring-[var(--brand-400)]/40"
+          : "",
+        isRunning ? "border-sky-300 bg-sky-50/60" : "border-[var(--border-2)]",
       )}
     >
       {isRunning ? (
@@ -253,9 +308,9 @@ function PipelineCard({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="inline-grid h-5 w-5 grid-cols-2 gap-0.5 text-[var(--border-1)]"
-                {...attributes}
-                {...listeners}
+                className="inline-grid h-6 w-5 cursor-grab grid-cols-2 gap-[3px] text-[var(--border-1)] active:cursor-grabbing"
+                {...(isOverlay ? {} : attributes)}
+                {...(isOverlay ? {} : listeners)}
                 title="Drag to move stage"
               >
                 {Array.from({ length: 6 }).map((_, index) => (
