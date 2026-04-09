@@ -40,7 +40,9 @@ import {
   CodeClearAnalysisBadge,
   CodeClearScoreBadge,
   CodeClearStatusBadge,
-  CodeClearTierBadge,
+  CodeClearTierPanel,
+  CandidateMeta,
+  SignalSourceIcons,
   SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
@@ -134,7 +136,7 @@ export function CodeClearCandidateDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative z-10 flex h-full w-full max-w-[720px] flex-col border-l border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]">
+      <aside className="relative z-10 flex h-full w-full max-w-[760px] flex-col border-l border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]">
         <div className="flex items-start justify-between border-b border-[var(--border-2)] px-6 pb-5 pt-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
@@ -146,7 +148,6 @@ export function CodeClearCandidateDrawer({
             {candidate ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <CodeClearStatusBadge status={candidate.status} />
-                <CodeClearTierBadge tier={candidate.tier} />
                 <CodeClearAnalysisBadge state={candidate.analysisState} />
                 <CodeClearScoreBadge
                   value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
@@ -174,71 +175,87 @@ export function CodeClearCandidateDrawer({
             <div className="space-y-6">
               <section className="app-card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-4">
-                    {candidate.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={candidate.avatarUrl}
-                        alt={candidate.name}
-                        className="h-14 w-14 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--surface-brand)] text-lg font-semibold text-[var(--brand-700)]">
-                        {candidate.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")
-                          .slice(0, 2)}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-lg font-semibold text-[var(--text-1)]">
-                        {candidate.name}
-                      </p>
-                      <a
-                        href={`https://github.com/${candidate.githubHandle}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-[var(--brand-700)]"
-                      >
-                        @{candidate.githubHandle}
-                        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                      </a>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {candidate.techStacks.slice(0, 4).map((stack) => (
-                          <StackPill key={stack} label={stack} tone="stack" />
-                        ))}
-                        {candidate.location ? <StackPill label={candidate.location} /> : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-4">
+                      {candidate.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={candidate.avatarUrl}
+                          alt={candidate.name}
+                          className="h-14 w-14 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--surface-brand)] text-lg font-semibold text-[var(--brand-700)]">
+                          {candidate.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-semibold text-[var(--text-1)]">
+                          {candidate.name}
+                        </p>
+                        <a
+                          href={`https://github.com/${candidate.githubHandle}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-[var(--brand-700)]"
+                        >
+                          @{candidate.githubHandle}
+                          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                        </a>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {candidate.primaryStack ? (
+                            <StackPill label={candidate.primaryStack} tone="stack" />
+                          ) : null}
+                          {candidate.location ? <StackPill label={candidate.location} /> : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      leadingIcon={<SparklesIcon className="h-4 w-4" />}
-                      onClick={() => runAnalysis.mutate()}
-                      loading={runAnalysis.isPending}
-                    >
-                      Run analysis
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      leadingIcon={<DocumentArrowDownIcon className="h-4 w-4" />}
-                      onClick={() => {
-                        window.open(
-                          getCodeClearScorecardUrl(candidate.id),
-                          "_blank",
-                          "noopener,noreferrer",
-                        );
-                      }}
-                    >
-                      Scorecard
-                    </Button>
+                    <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+                      <div className="space-y-3">
+                        <SignalSourceIcons sources={candidate.signalSources} />
+                        <CandidateMeta
+                          updatedAt={candidate.updatedAt}
+                          recheckDueAt={
+                            candidate.analysisState === "NEVER_RUN" ? null : candidate.recheckDueAt
+                          }
+                          prefix={candidate.analysisState === "NEVER_RUN" ? "Never run" : "Updated"}
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            leadingIcon={<SparklesIcon className="h-4 w-4" />}
+                            onClick={() => runAnalysis.mutate()}
+                            loading={runAnalysis.isPending}
+                          >
+                            Run analysis
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            leadingIcon={<DocumentArrowDownIcon className="h-4 w-4" />}
+                            onClick={() => {
+                              window.open(
+                                getCodeClearScorecardUrl(candidate.id),
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                            }}
+                          >
+                            Scorecard
+                          </Button>
+                        </div>
+                      </div>
+
+                      <CodeClearTierPanel tier={candidate.tier} className="shrink-0" />
+                    </div>
                   </div>
                 </div>
 

@@ -3,9 +3,12 @@
 import {
   CheckCircleIcon,
   ClockIcon,
+  DocumentTextIcon,
   ExclamationTriangleIcon,
+  GlobeAltIcon,
   PlayCircleIcon,
   SparklesIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -32,8 +35,8 @@ const statusTone: Record<PipelineStatus, string> = {
 
 const tierTone: Record<CodeClearTier, string> = {
   TIER_1: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  TIER_2: "border-sky-200 bg-sky-50 text-sky-700",
-  TIER_3: "border-zinc-200 bg-zinc-50 text-zinc-700",
+  TIER_2: "border-amber-200 bg-amber-50 text-amber-700",
+  TIER_3: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 const analysisTone: Record<
@@ -272,6 +275,90 @@ export function SignalSourcePill({
   );
 }
 
+export function CodeClearTierPanel({
+  tier,
+  className,
+}: {
+  tier: CodeClearTier;
+  className?: string;
+}) {
+  const tone =
+    tier === "TIER_1"
+      ? "border-emerald-300 bg-[linear-gradient(180deg,#f3fff7_0%,#dcfce7_100%)] text-emerald-700"
+      : tier === "TIER_2"
+        ? "border-amber-300 bg-[linear-gradient(180deg,#fffdf1_0%,#fef3c7_100%)] text-amber-700"
+        : "border-rose-300 bg-[linear-gradient(180deg,#fff5f5_0%,#ffe4e6_100%)] text-rose-700";
+
+  const number = tier === "TIER_1" ? "1" : tier === "TIER_2" ? "2" : "3";
+
+  return (
+    <div
+      className={cn(
+        "flex h-[132px] w-[132px] flex-col items-center justify-center rounded-[24px] border shadow-[var(--shadow-xs)]",
+        tone,
+        className,
+      )}
+    >
+      <p className="text-[15px] font-medium">Tier</p>
+      <p className="mt-1 text-[64px] font-semibold leading-none tracking-[-0.06em]">{number}</p>
+    </div>
+  );
+}
+
+export function SignalSourceIcons({
+  sources,
+  className,
+}: {
+  sources: CandidateSignalSource[];
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-2 text-[var(--text-4)]", className)}>
+      {sources.map((source) => (
+        <span
+          key={source}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-2)] bg-white"
+          title={CANDIDATE_SIGNAL_SOURCES.find((entry) => entry.value === source)?.label ?? source}
+        >
+          <SourceIcon source={source} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SourceIcon({ source }: { source: CandidateSignalSource }) {
+  if (source === "GITHUB") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 fill-current" aria-hidden="true">
+        <path d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.5 0-.24-.01-1.04-.01-1.88-2.78.62-3.37-1.2-3.37-1.2-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.84c.85 0 1.71.12 2.51.35 1.9-1.33 2.74-1.05 2.74-1.05.56 1.4.21 2.44.11 2.7.64.72 1.02 1.63 1.02 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.95.68 1.92 0 1.39-.01 2.5-.01 2.85 0 .28.18.61.69.5A10.17 10.17 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z" />
+      </svg>
+    );
+  }
+
+  if (source === "LINKEDIN") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 fill-current" aria-hidden="true">
+        <path d="M6.94 8.5H3.56V20h3.38V8.5ZM5.25 3A1.97 1.97 0 0 0 3.25 5c0 1.09.88 1.97 1.97 1.97h.03c1.1 0 2-.88 2-1.97A1.98 1.98 0 0 0 5.25 3ZM20.75 13.02c0-3.47-1.85-5.08-4.33-5.08-1.99 0-2.88 1.1-3.38 1.86V8.5H9.66c.05.86 0 11.5 0 11.5h3.38v-6.42c0-.34.02-.68.12-.92.27-.68.87-1.39 1.88-1.39 1.33 0 1.86 1.05 1.86 2.59V20h3.38v-6.98Z" />
+      </svg>
+    );
+  }
+
+  if (source === "PORTFOLIO") {
+    return <GlobeAltIcon className="h-4.5 w-4.5" />;
+  }
+
+  if (source === "CV") {
+    return <DocumentTextIcon className="h-4.5 w-4.5" />;
+  }
+
+  if (source === "REFERENCE") {
+    return <UserGroupIcon className="h-4.5 w-4.5" />;
+  }
+
+  return <SparklesIcon className="h-4.5 w-4.5" />;
+}
+
 export function EmptyState({
   title,
   body,
@@ -292,13 +379,17 @@ export function EmptyState({
 export function CandidateMeta({
   updatedAt,
   recheckDueAt,
+  prefix = "Updated",
 }: {
   updatedAt: string;
   recheckDueAt?: string | null;
+  prefix?: string;
 }) {
   return (
     <div className="space-y-1 text-xs text-[var(--text-4)]">
-      <p>Updated {formatDate(updatedAt)}</p>
+      <p>
+        {prefix === "Never run" ? "Never run" : `${prefix} ${formatDate(updatedAt)}`}
+      </p>
       {recheckDueAt ? <p>Re-check {formatDate(recheckDueAt)}</p> : null}
     </div>
   );

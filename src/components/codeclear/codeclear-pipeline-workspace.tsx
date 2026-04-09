@@ -2,9 +2,7 @@
 
 import {
   ArrowPathIcon,
-  Bars3Icon,
   DocumentTextIcon,
-  EyeIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import {
@@ -17,7 +15,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,21 +29,20 @@ import {
   type PipelineStatus,
 } from "@/types/codeclear";
 import {
-  CodeClearAnalysisBadge,
-  CodeClearScoreBadge,
+  CandidateMeta,
   CodeClearStatusBadge,
   CodeClearTabs,
-  CodeClearTierBadge,
+  CodeClearTierPanel,
   EmptyState,
-  SignalSourcePill,
+  SignalSourceIcons,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
-import { cn, formatDate } from "@/lib/format";
+import { cn } from "@/lib/format";
 import Link from "next/link";
 
 export function CodeClearPipelineWorkspace() {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 2 } }));
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -58,27 +55,32 @@ export function CodeClearPipelineWorkspace() {
   });
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
+  const [optimisticCandidates, setOptimisticCandidates] = useState<CodeClearCandidateListItem[]>([]);
+  useEffect(() => {
+    setOptimisticCandidates(candidates);
+  }, [candidates]);
+
   const scanningCount = useMemo(
-    () => candidates.filter((c) => c.analysisState === "RUNNING").length,
-    [candidates],
+    () => optimisticCandidates.filter((c) => c.analysisState === "RUNNING").length,
+    [optimisticCandidates],
   );
   const signalRequests = useMemo(
     () =>
-      candidates.reduce(
+      optimisticCandidates.reduce(
         (sum, candidate) => sum + Math.max(0, candidate.signalSources.length - 1),
         0,
       ),
-    [candidates],
+    [optimisticCandidates],
   );
 
   const groups = useMemo(() => {
     return Object.fromEntries(
       PIPELINE_STATUSES.map((status) => [
         status.value,
-        candidates.filter((candidate) => candidate.status === status.value),
+        optimisticCandidates.filter((candidate) => candidate.status === status.value),
       ]),
-    ) as Record<PipelineStatus, typeof candidates>;
-  }, [candidates]);
+    ) as Record<PipelineStatus, typeof optimisticCandidates>;
+  }, [optimisticCandidates]);
 
   function updateQuery(nextCandidateId: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -97,12 +99,28 @@ export function CodeClearPipelineWorkspace() {
 
     if (!overId) return;
 
-    const candidate = candidates.find((item) => item.id === activeId);
+    const candidate = optimisticCandidates.find((item) => item.id === activeId);
     const targetStatus = PIPELINE_STATUSES.find((item) => item.value === overId)?.value;
 
     if (!candidate || !targetStatus || candidate.status === targetStatus) return;
 
-    bulkUpdate.mutate({ action: "MOVE_STAGE", ids: [candidate.id], status: targetStatus });
+    setOptimisticCandidates((current) =>
+      current.map((item) =>
+        item.id === candidate.id
+          ? {
+              ...item,
+              status: targetStatus,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    );
+    bulkUpdate.mutate(
+      { action: "MOVE_STAGE", ids: [candidate.id], status: targetStatus },
+      {
+        onError: () => setOptimisticCandidates(candidates),
+      },
+    );
   }
 
   return (
@@ -231,97 +249,85 @@ function PipelineCard({
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
-            <p className="mt-1 truncate text-xs text-[var(--text-4)]">@{candidate.githubHandle}</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-grid h-5 w-5 grid-cols-2 gap-0.5 text-[var(--border-1)]"
+                {...attributes}
+                {...listeners}
+                title="Drag to move stage"
+              >
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <span key={index} className="h-1.5 w-1.5 rounded-full bg-current" />
+                ))}
+              </button>
+              <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
+            </div>
+            <p className="mt-1 truncate pl-7 text-xs text-[var(--text-4)]">@{candidate.githubHandle}</p>
           </div>
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--border-1)]"
-            {...attributes}
-            {...listeners}
-            title="Drag to move stage"
-          >
-            <Bars3Icon className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {candidate.techStacks.slice(0, 3).map((stack) => (
-            <StackPill key={stack} label={stack} tone="stack" />
-          ))}
-          <CodeClearTierBadge tier={candidate.tier} />
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {candidate.signalSources.slice(0, 3).map((source) => (
-            <SignalSourcePill key={source} source={source} />
-          ))}
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <CodeClearAnalysisBadge state={candidate.analysisState} />
-          <CodeClearScoreBadge
-            value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
-          />
-        </div>
-
-        <p className="mt-3 text-xs text-[var(--text-4)]">
-          Updated {formatDate(candidate.updatedAt)}
-        </p>
-
-        {/* Verified banner */}
-        {candidate.status === "CODECLEAR_COMPLETE" ? (
-          <div className="mt-3 flex items-center gap-1.5 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <SparklesIcon className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-            <p className="text-xs font-semibold text-emerald-700">Verified — ready to place</p>
-          </div>
-        ) : null}
-
-        {/* Action row */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Run / Re-run analysis button */}
-          {isRunning ? (
-            <span className="text-xs text-sky-600">Live update in ~4s</span>
-          ) : (
-            <Button
-              type="button"
-              variant={neverScanned || scanFailed ? "primary" : "secondary"}
-              size="sm"
-              leadingIcon={
-                runAnalysis.isPending ? (
-                  <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <SparklesIcon className="h-3.5 w-3.5" />
-                )
-              }
-              onClick={() => runAnalysis.mutate()}
-              loading={runAnalysis.isPending}
-              disabled={runAnalysis.isPending}
-            >
-              {scanFailed ? "Retry repo scan" : neverScanned ? "Run repo scan" : "Re-scan"}
-            </Button>
-          )}
-
           <Button
             type="button"
             variant="secondary"
             size="sm"
-            leadingIcon={<EyeIcon className="h-3.5 w-3.5" />}
             onClick={() => onOpen(candidate.id)}
           >
-            Open
+            View Profile
           </Button>
+        </div>
 
-          {candidate.status === "CODECLEAR_COMPLETE" ? (
+        <div className="mt-4">
+          {candidate.primaryStack ? (
+            <StackPill label={candidate.primaryStack} tone="stack" />
+          ) : null}
+        </div>
+
+        <div className="mt-8 flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <SignalSourceIcons sources={candidate.signalSources} />
+            <CandidateMeta
+              updatedAt={candidate.updatedAt}
+              prefix={candidate.analysisState === "NEVER_RUN" ? "Never run" : "Updated"}
+            />
+          </div>
+
+          <div className="flex flex-col items-end gap-3">
+            <CodeClearTierPanel tier={candidate.tier} className="h-[144px] w-[144px]" />
+            {isRunning ? (
+              <span className="text-xs text-sky-600">Live update in ~4s</span>
+            ) : (
+              <Button
+                type="button"
+                variant={neverScanned || scanFailed ? "primary" : "secondary"}
+                size="sm"
+                leadingIcon={
+                  runAnalysis.isPending ? (
+                    <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <SparklesIcon className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={() => runAnalysis.mutate()}
+                loading={runAnalysis.isPending}
+                disabled={runAnalysis.isPending}
+                className="min-w-[168px] justify-center"
+              >
+                {scanFailed ? "Retry CodeClear" : neverScanned ? "Run CodeClear" : "Re-run CodeClear"}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {candidate.status === "CODECLEAR_COMPLETE" ? (
+          <div className="mt-4 flex items-center justify-end">
             <Link
               href="/app/proposals?new=1"
-              className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--brand-600)] bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--brand-600)] bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
             >
               <DocumentTextIcon className="h-3.5 w-3.5" />
               Create Doc
             </Link>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

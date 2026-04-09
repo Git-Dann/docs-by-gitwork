@@ -297,7 +297,7 @@ export const CANDIDATE_SIGNAL_SOURCES: Array<{ value: CandidateSignalSource; lab
   { value: "GITHUB", label: "GitHub" },
   { value: "LINKEDIN", label: "LinkedIn" },
   { value: "CV", label: "CV" },
-  { value: "PORTFOLIO", label: "Portfolio" },
+  { value: "PORTFOLIO", label: "Website" },
   { value: "INTERVIEW", label: "Interview" },
   { value: "REFERENCE", label: "Reference" },
   { value: "ASSESSMENT", label: "Assessment" },
