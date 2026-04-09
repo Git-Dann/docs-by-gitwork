@@ -37,6 +37,7 @@ import {
   type PipelineStatus,
 } from "@/types/codeclear";
 import {
+  CodeClearActionButton,
   CodeClearAnalysisBadge,
   CodeClearScoreBadge,
   CodeClearStatusBadge,
@@ -226,16 +227,15 @@ export function CodeClearCandidateDrawer({
                           prefix={candidate.analysisState === "NEVER_RUN" ? "Never run" : "Updated"}
                         />
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button
+                          <CodeClearActionButton
                             type="button"
-                            variant="secondary"
-                            size="sm"
-                            leadingIcon={<SparklesIcon className="h-4 w-4" />}
+                            trailingIcon={<SparklesIcon className="h-4 w-4" />}
                             onClick={() => runAnalysis.mutate()}
                             loading={runAnalysis.isPending}
+                            className="min-w-[146px]"
                           >
-                            Run analysis
-                          </Button>
+                            {candidate.analysisState === "NEVER_RUN" ? "Run CodeClear" : "Re-run CodeClear"}
+                          </CodeClearActionButton>
                           <Button
                             type="button"
                             variant="secondary"

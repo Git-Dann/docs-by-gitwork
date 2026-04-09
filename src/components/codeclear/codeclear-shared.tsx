@@ -12,6 +12,8 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ComponentProps } from "react";
+import { Button } from "@/components/ui/button";
 import { cn, formatDate } from "@/lib/format";
 import {
   analysisStateLabel,
@@ -294,14 +296,34 @@ export function CodeClearTierPanel({
   return (
     <div
       className={cn(
-        "flex h-[132px] w-[132px] flex-col items-center justify-center rounded-[24px] border shadow-[var(--shadow-xs)]",
+        "flex h-[89px] w-[94px] flex-col items-center justify-center rounded-[10px] border px-3 py-1 shadow-[var(--shadow-xs)]",
         tone,
         className,
       )}
     >
-      <p className="text-[15px] font-medium">Tier</p>
-      <p className="mt-1 text-[64px] font-semibold leading-none tracking-[-0.06em]">{number}</p>
+      <p className="text-[12px] font-medium leading-[18px]">Tier</p>
+      <p className="mt-0.5 text-[48px] font-bold leading-[47px] tracking-[-0.96px]">{number}</p>
     </div>
+  );
+}
+
+export function CodeClearActionButton({
+  children,
+  className,
+  ...props
+}: ComponentProps<typeof Button>) {
+  return (
+    <Button
+      variant="primary"
+      size="sm"
+      className={cn(
+        "h-8 rounded-[8px] border border-[var(--border-1)] bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] px-[10px] py-[6px] text-[14px] font-semibold leading-[20px] text-white shadow-[var(--shadow-skeuomorphic)] hover:bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] hover:text-white",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </Button>
   );
 }
 

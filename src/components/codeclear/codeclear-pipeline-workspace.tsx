@@ -30,6 +30,7 @@ import {
 } from "@/types/codeclear";
 import {
   CandidateMeta,
+  CodeClearActionButton,
   CodeClearStatusBadge,
   CodeClearTabs,
   CodeClearTierPanel,
@@ -291,15 +292,13 @@ function PipelineCard({
           </div>
 
           <div className="flex flex-col items-end gap-3">
-            <CodeClearTierPanel tier={candidate.tier} className="h-[144px] w-[144px]" />
+            <CodeClearTierPanel tier={candidate.tier} />
             {isRunning ? (
               <span className="text-xs text-sky-600">Live update in ~4s</span>
             ) : (
-              <Button
+              <CodeClearActionButton
                 type="button"
-                variant={neverScanned || scanFailed ? "primary" : "secondary"}
-                size="sm"
-                leadingIcon={
+                trailingIcon={
                   runAnalysis.isPending ? (
                     <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
                   ) : (
@@ -309,10 +308,10 @@ function PipelineCard({
                 onClick={() => runAnalysis.mutate()}
                 loading={runAnalysis.isPending}
                 disabled={runAnalysis.isPending}
-                className="min-w-[168px] justify-center"
+                className="min-w-[146px] justify-center"
               >
                 {scanFailed ? "Retry CodeClear" : neverScanned ? "Run CodeClear" : "Re-run CodeClear"}
-              </Button>
+              </CodeClearActionButton>
             )}
           </div>
         </div>
