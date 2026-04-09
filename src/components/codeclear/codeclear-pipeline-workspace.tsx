@@ -68,8 +68,9 @@ export function CodeClearPipelineWorkspace() {
   const [overId, setOverId] = useState<string | null>(null);
   const activeCandidate = useMemo(() => optimisticCandidates.find((c) => c.id === activeId) ?? null, [optimisticCandidates, activeId]);
   useEffect(() => {
-    setOptimisticCandidates(candidates);
-  }, [candidates]);
+    // Don't reset while a drag is in flight — preserves optimistic ordering
+    if (!activeId) setOptimisticCandidates(candidates);
+  }, [candidates, activeId]);
 
   const scanningCount = useMemo(
     () => optimisticCandidates.filter((c) => c.analysisState === "RUNNING").length,
@@ -120,27 +121,43 @@ export function CodeClearPipelineWorkspace() {
     const rawOverId = event.over ? String(event.over.id) : null;
     if (!rawOverId) return;
 
-    const candidate = optimisticCandidates.find((item) => item.id === draggedId);
-    if (!candidate) return;
+    const dragged = optimisticCandidates.find((c) => c.id === draggedId);
+    if (!dragged) return;
 
-    // overId could be a column status or a card ID — resolve to a column status
-    const targetStatus =
-      PIPELINE_STATUSES.find((s) => s.value === rawOverId)?.value ??
-      optimisticCandidates.find((c) => c.id === rawOverId)?.status;
+    const isOverColumn = PIPELINE_STATUSES.some((s) => s.value === rawOverId);
+    const overCard = isOverColumn ? null : optimisticCandidates.find((c) => c.id === rawOverId);
+    const targetStatus: PipelineStatus = isOverColumn
+      ? (rawOverId as PipelineStatus)
+      : (overCard?.status ?? dragged.status);
 
-    if (!targetStatus || candidate.status === targetStatus) return;
+    const updated = { ...dragged, status: targetStatus, updatedAt: new Date().toISOString() };
 
-    setOptimisticCandidates((current) =>
-      current.map((item) =>
-        item.id === candidate.id
-          ? { ...item, status: targetStatus, updatedAt: new Date().toISOString() }
-          : item,
-      ),
-    );
-    bulkUpdate.mutate(
-      { action: "MOVE_STAGE", ids: [candidate.id], status: targetStatus },
-      { onError: () => setOptimisticCandidates(candidates) },
-    );
+    setOptimisticCandidates((current) => {
+      // Remove dragged card from the flat list
+      const without = current.filter((c) => c.id !== draggedId);
+
+      if (overCard) {
+        // Insert before the card the cursor was over
+        const insertAt = without.findIndex((c) => c.id === rawOverId);
+        const result = [...without];
+        result.splice(insertAt >= 0 ? insertAt : result.length, 0, updated);
+        return result;
+      }
+
+      // Dropped on column — append after the last card in that column
+      const lastInColumn = [...without].reverse().findIndex((c) => c.status === targetStatus);
+      const insertAt = lastInColumn === -1 ? without.length : without.length - lastInColumn;
+      const result = [...without];
+      result.splice(insertAt, 0, updated);
+      return result;
+    });
+
+    if (dragged.status !== targetStatus) {
+      bulkUpdate.mutate(
+        { action: "MOVE_STAGE", ids: [dragged.id], status: targetStatus },
+        { onError: () => setOptimisticCandidates(candidates) },
+      );
+    }
   }
 
   function handleDragCancel() {
@@ -409,7 +426,6 @@ function PipelineCard({
                   )
                 }
                 onClick={() => runAnalysis.mutate()}
-                loading={runAnalysis.isPending}
                 disabled={runAnalysis.isPending}
                 className="min-w-[146px] justify-center"
               >
