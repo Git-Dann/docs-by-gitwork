@@ -194,11 +194,12 @@ export function CodeClearSiteDemo() {
                 Build request
               </span>
               <textarea
+                name="buildRequest"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 rows={5}
-                className="mt-3 min-h-[168px] w-full resize-none rounded-[22px] border border-white/10 bg-[#101522] px-5 py-4 text-[16px] leading-7 text-white outline-none placeholder:text-white/28 focus:border-[#7c8cff]/54"
-                placeholder="Describe the team you need, the work to be done, and how long the engagement should run."
+                className="mt-3 min-h-[168px] w-full resize-none rounded-[22px] border border-white/10 bg-[#101522] px-5 py-4 text-[16px] leading-7 text-white outline-none placeholder:text-white/28 focus:border-[#7c8cff]/54 focus-visible:ring-4 focus-visible:ring-[#7c8cff]/18"
+                placeholder="Describe the team you need, the work to be done, and how long the engagement should run…"
               />
             </label>
 
@@ -246,7 +247,7 @@ export function CodeClearSiteDemo() {
               className="app-button app-button-primary app-button-md mt-5 w-full justify-center"
             >
               <SparklesIcon className="h-4 w-4" />
-              {state === "loading" ? "Matching team" : "Show top matches"}
+              {state === "loading" ? "Matching Team…" : "Show Top Matches"}
             </button>
           </div>
         </div>
@@ -268,7 +269,7 @@ export function CodeClearSiteDemo() {
             </p>
           </div>
 
-          <div className="mt-5 grid items-end gap-4 xl:grid-cols-3">
+          <div className="mt-5 grid items-end gap-4 xl:grid-cols-3" aria-live="polite">
             {/* Starter */}
             <article className="flex flex-col rounded-[26px] border border-white/8 bg-[#101522] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">Starter</p>
@@ -351,7 +352,7 @@ export function CodeClearSiteDemo() {
                 href={`/app/proof?brief=${encodeURIComponent(result.brief)}&scenario=${result.id}`}
                 className="app-button app-button-primary app-button-md mt-7 w-full justify-center"
               >
-                Make Booking
+                Create Brief
               </Link>
             </article>
           </div>
