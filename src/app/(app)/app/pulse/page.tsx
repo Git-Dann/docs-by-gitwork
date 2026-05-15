@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PlusIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";
-import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
+import { PulseOverview } from "@/components/pulse/pulse-overview";
 import { Button } from "@/components/ui/button";
 
 export default function PulsePage() {
@@ -19,7 +19,7 @@ export default function PulsePage() {
             </Button>
           </Link>
         </div>
-        <PulseScanListView />
+        <PulseOverview />
       </div>
     </AppShell>
   );

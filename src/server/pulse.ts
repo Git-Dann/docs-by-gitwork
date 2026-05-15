@@ -131,6 +131,96 @@ export async function deletePulseScan(id: string): Promise<void> {
   await prisma.pulseScan.delete({ where: { id } });
 }
 
+export interface PulseStatsResponse {
+  totalScans: number;
+  completedScans: number;
+  avgHealthScore: number | null;
+  proposalsGenerated: number;
+  totalCriticalGaps: number;
+  healthTiers: {
+    green: number;   // 75-100
+    amber: number;   // 50-74
+    red: number;     // 0-49
+  };
+  recentScans: PulseScanListItem[];
+}
+
+export async function getPulseStats(): Promise<PulseStatsResponse> {
+  const workspace = await prisma.workspace.findFirst({
+    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    select: { id: true },
+  });
+  if (!workspace) {
+    return {
+      totalScans: 0,
+      completedScans: 0,
+      avgHealthScore: null,
+      proposalsGenerated: 0,
+      totalCriticalGaps: 0,
+      healthTiers: { green: 0, amber: 0, red: 0 },
+      recentScans: [],
+    };
+  }
+
+  type ScanSummary = {
+    id: string;
+    status: string;
+    healthScore: number | null;
+    generatedProposalId: string | null;
+    llmAnalysis: Prisma.JsonValue;
+  };
+
+  const [allScans, recentScansRaw] = await Promise.all([
+    prisma.pulseScan.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        status: true,
+        healthScore: true,
+        generatedProposalId: true,
+        llmAnalysis: true,
+      },
+    }) as Promise<ScanSummary[]>,
+    prisma.pulseScan.findMany({
+      where: { workspaceId: workspace.id },
+      include: { client: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+  ]);
+
+  const completed = (allScans as ScanSummary[]).filter((s: ScanSummary) => s.status === "COMPLETED");
+  const withScore = completed.filter((s: ScanSummary) => s.healthScore !== null);
+
+  const avgHealthScore = withScore.length
+    ? Math.round(withScore.reduce((sum: number, s: ScanSummary) => sum + (s.healthScore ?? 0), 0) / withScore.length)
+    : null;
+
+  const healthTiers = { green: 0, amber: 0, red: 0 };
+  for (const scan of withScore) {
+    const score = scan.healthScore!;
+    if (score >= 75) healthTiers.green++;
+    else if (score >= 50) healthTiers.amber++;
+    else healthTiers.red++;
+  }
+
+  let totalCriticalGaps = 0;
+  for (const scan of completed) {
+    const analysis = asJson<PulseAnalysisOutput | null>(scan.llmAnalysis, null);
+    totalCriticalGaps += analysis?.criticalGaps?.filter((g) => g.urgency === "CRITICAL").length ?? 0;
+  }
+
+  return {
+    totalScans: allScans.length,
+    completedScans: completed.length,
+    avgHealthScore,
+    proposalsGenerated: (allScans as ScanSummary[]).filter((s: ScanSummary) => Boolean(s.generatedProposalId)).length,
+    totalCriticalGaps,
+    healthTiers,
+    recentScans: recentScansRaw.map(serializePulseScanListItem),
+  };
+}
+
 export async function createAndRunPulseScan(input: {
   projectName: string;
   inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";

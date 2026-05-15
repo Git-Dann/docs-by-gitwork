@@ -8,7 +8,16 @@ import {
   getPulseScan,
   deletePulseScan,
   generateProposalFromScan,
+  getPulseStats,
 } from "@/lib/api";
+
+export function usePulseStats() {
+  return useQuery({
+    queryKey: ["pulse-stats"],
+    queryFn: getPulseStats,
+    staleTime: 1000 * 15,
+  });
+}
 
 export function usePulseScans(params?: { clientId?: string }) {
   return useQuery({

@@ -516,3 +516,7 @@ export async function generateProposalFromScan(
     { method: "POST" },
   );
 }
+
+export async function getPulseStats(): Promise<import("@/server/pulse").PulseStatsResponse> {
+  return apiFetch<import("@/server/pulse").PulseStatsResponse>("/api/pulse/stats");
+}
