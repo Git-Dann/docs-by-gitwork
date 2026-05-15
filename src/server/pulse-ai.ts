@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 
+
 const pulseStrengthSchema = z.object({
   title: z.string(),
   detail: z.string(),
@@ -35,6 +36,13 @@ const pulseTechDebtSchema = z.object({
   severity: z.enum(["HIGH", "MEDIUM", "LOW"]),
 });
 
+const productionReadinessItemSchema = z.object({
+  category: z.string(),
+  item: z.string(),
+  status: z.enum(["DONE", "MISSING", "PARTIAL"]),
+  notes: z.string(),
+});
+
 const pulseAnalysisOutputSchema = z.object({
   executiveSummary: z.string(),
   healthNarrative: z.string(),
@@ -44,13 +52,23 @@ const pulseAnalysisOutputSchema = z.object({
   scalingRoadmap: z.array(pulseScalingPhaseSchema),
   techDebt: z.array(pulseTechDebtSchema),
   proposalHook: z.string(),
+  productionReadinessChecklist: z.array(productionReadinessItemSchema),
 });
 
-const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at a digital consultancy called Gitwork. You have been given structured scan results from an automated health check of a client's web application.
+const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
 
-Your job is to produce a structured, actionable gap analysis that the consulting team can use to scope a development engagement.
+Your clients are "vibe coders" — founders and makers who built their app using tools like Lovable, Bolt, v0, Cursor, Claude Code, Replit Agent, or similar AI coding assistants. These apps typically share a predictable set of gaps:
+- Legal pages missing (no Privacy Policy, Terms, Cookie consent)
+- No error monitoring, observability, or health checks
+- Auth is bolted on but missing edge cases (password reset, email verification, session management)
+- No onboarding flow, billing portal, or customer support channel
+- Payments exist but have no billing management for subscribers
+- No CI/CD, tests, or structured error handling
+- Missing standard trust-building pages (About, Contact, FAQ, Changelog)
+- Accessibility and mobile experience are afterthoughts
+- No social proof or conversion-focused copy
 
-The client is a "vibe coder" — someone who built their app using an AI coding tool (Claude Code, Bolt, Lovable, Codex, Cursor, etc.) and now needs professional help to take it to production quality. You are advising the consulting team, not the client directly. Be specific, commercially minded, and focus on what would make the biggest difference.
+You are briefing the Gitwork consulting team — not the client directly. Be specific, commercially minded, and prioritise what will have the biggest impact on getting this product to market and keeping users.
 
 You MUST respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.`;
 
@@ -143,8 +161,18 @@ Return a JSON object with this exact shape:
       "severity": "HIGH | MEDIUM | LOW"
     }
   ],
-  "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client."
-}`;
+  "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client.",
+  "productionReadinessChecklist": [
+    {
+      "category": "string — one of: Legal, Auth, Payments, Onboarding, Support, Trust, Observability, Performance, SEO, Accessibility",
+      "item": "string — specific thing that must be in place (e.g. 'Privacy Policy page', 'Password reset flow', 'Cookie consent banner')",
+      "status": "DONE | MISSING | PARTIAL",
+      "notes": "string — 1 sentence on current state or what's needed. Be specific about the vibe-coded context."
+    }
+  ]
+}
+
+Populate productionReadinessChecklist with 12–20 items covering the full prompt-to-production checklist for a SaaS product. Base status on the scan results — if a check passed, mark DONE; if failed, MISSING; if warn, PARTIAL. Include items from: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth provider), Payments (Pricing page, Payment processing, Billing portal, Subscription management), Onboarding (Welcome flow, Activation steps, Empty states), Support (Help page, Chat widget, FAQ), Trust (About page, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime monitoring), and any other gaps you identify from the scan.`;
 
   const client = new Anthropic({ apiKey });
 

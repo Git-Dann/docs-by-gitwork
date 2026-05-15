@@ -52,6 +52,15 @@ export interface PulseTechDebt {
   severity: PulseSeverity;
 }
 
+export type ProductionReadinessStatus = "DONE" | "MISSING" | "PARTIAL";
+
+export interface ProductionReadinessItem {
+  category: string;
+  item: string;
+  status: ProductionReadinessStatus;
+  notes: string;
+}
+
 export interface PulseAnalysisOutput {
   executiveSummary: string;
   healthNarrative: string;
@@ -61,6 +70,7 @@ export interface PulseAnalysisOutput {
   scalingRoadmap: PulseScalingPhase[];
   techDebt: PulseTechDebt[];
   proposalHook: string;
+  productionReadinessChecklist: ProductionReadinessItem[];
 }
 
 export interface PulseScanRecord {

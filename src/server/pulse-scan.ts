@@ -382,6 +382,259 @@ export async function runUrlChecks(url: string): Promise<PulseScanCheckInput[]> 
           ? "Health check endpoint found."
           : "No /health or /api/health endpoint detected.",
     });
+
+    // Legal & Compliance
+    const htmlLower = pageResult.html.toLowerCase();
+    const hasPrivacy = ["/privacy", "/privacy-policy", "/legal/privacy", "/legal"].some((p) =>
+      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
+      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
+    );
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "privacy_policy",
+      label: "Privacy Policy",
+      status: hasPrivacy ? "PASS" : "FAIL",
+      detail: hasPrivacy
+        ? "Privacy policy link detected."
+        : "No privacy policy link — required for GDPR, CCPA, and app store distribution.",
+    });
+
+    const hasToS = ["/terms", "/tos", "/terms-of-service", "/terms-and-conditions", "/legal/terms"].some((p) =>
+      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
+      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
+    );
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "terms_of_service",
+      label: "Terms of Service",
+      status: hasToS ? "PASS" : "FAIL",
+      detail: hasToS
+        ? "Terms of service link detected."
+        : "No terms of service — required for any product collecting payments or user data.",
+    });
+
+    const hasCookieBanner = ["cookiebot", "osano", "onetrust", "cookie-consent", "cookieconsent", "cookie_notice", "gdpr"].some((s) =>
+      htmlLower.includes(s),
+    );
+    const hasCookieLink = ["/cookie-policy", "/cookies", "/legal/cookies"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "cookie_consent",
+      label: "Cookie consent / GDPR",
+      status: hasCookieBanner || hasCookieLink ? "PASS" : "WARN",
+      detail: hasCookieBanner || hasCookieLink
+        ? "Cookie consent or GDPR compliance mechanism detected."
+        : "No cookie consent mechanism — required for EU/UK markets and ad platform compliance.",
+    });
+
+    const hasRefundPolicy = ["/refund", "/refund-policy", "/cancellation", "/money-back", "/return-policy"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "refund_policy",
+      label: "Refund / Cancellation policy",
+      status: hasRefundPolicy ? "PASS" : "WARN",
+      detail: hasRefundPolicy
+        ? "Refund or cancellation policy link detected."
+        : "No refund policy — recommended for payment processor compliance and reducing chargebacks.",
+    });
+
+    // Missing Pages — batch HEAD requests in parallel
+    const baseUrl = httpsUrl.replace(/\/$/, "");
+    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = await Promise.all([
+      headRequest(`${baseUrl}/about`),
+      headRequest(`${baseUrl}/contact`),
+      headRequest(`${baseUrl}/faq`),
+      headRequest(`${baseUrl}/status`),
+      headRequest(`${baseUrl}/changelog`),
+    ]);
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "about_page",
+      label: "About / Team page",
+      status: aboutStatus === 200 ? "PASS" : "WARN",
+      detail: aboutStatus === 200
+        ? "/about page found."
+        : "No /about page — builds team credibility and brand trust with prospects.",
+      evidence: `Status: ${aboutStatus || "no response"}`,
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "contact_page",
+      label: "Contact page",
+      status: contactStatus === 200 ? "PASS" : "WARN",
+      detail: contactStatus === 200
+        ? "/contact page found."
+        : "No /contact page — users need a way to reach you for support and sales inquiries.",
+      evidence: `Status: ${contactStatus || "no response"}`,
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "faq_page",
+      label: "FAQ / Help page",
+      status: faqStatus === 200 ? "PASS" : "WARN",
+      detail: faqStatus === 200
+        ? "/faq page found."
+        : "No /faq page — reduces support burden and improves onboarding.",
+      evidence: `Status: ${faqStatus || "no response"}`,
+    });
+
+    const hasStatusSignals = htmlLower.includes("statuspage") || htmlLower.includes("status.io") ||
+      htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "status_page",
+      label: "Status / uptime page",
+      status: statusPageStatus === 200 || hasStatusSignals ? "PASS" : "WARN",
+      detail: statusPageStatus === 200 || hasStatusSignals
+        ? "Status page or uptime monitoring tool detected."
+        : "No status page — needed to communicate incidents and build operational trust.",
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "changelog",
+      label: "Changelog / What's new",
+      status: changelogStatus === 200 ? "PASS" : "WARN",
+      detail: changelogStatus === 200
+        ? "/changelog page found."
+        : "No changelog — users want to know what's shipping; important for retention and credibility.",
+      evidence: `Status: ${changelogStatus || "no response"}`,
+    });
+
+    // SaaS Readiness
+    const hasBillingPortal = ["/billing", "/billing-portal", "/subscription", "/manage-subscription"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "billing_portal",
+      label: "Billing / subscription management",
+      status: hasBillingPortal ? "PASS" : "WARN",
+      detail: hasBillingPortal
+        ? "Billing or subscription management link found."
+        : "No billing portal detected — users need self-service subscription management to reduce churn.",
+    });
+
+    const hasAccountSettings = ["/account", "/settings", "/profile", "/dashboard/settings", "/app/settings"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "account_settings",
+      label: "Account settings",
+      status: hasAccountSettings ? "PASS" : "WARN",
+      detail: hasAccountSettings
+        ? "Account settings page link found."
+        : "No account settings page — users need to manage their profile and preferences.",
+    });
+
+    const hasPasswordReset = ["/forgot-password", "/reset-password", "/auth/forgot", "/forgot", "/password-reset"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "password_reset",
+      label: "Password reset",
+      status: hasPasswordReset ? "PASS" : "WARN",
+      detail: hasPasswordReset
+        ? "Password reset flow link detected."
+        : "No password reset — essential for user account recovery; absence increases churn.",
+    });
+
+    const hasSupportWidget = ["intercom", "crisp.chat", "zendesk", "freshdesk", "tawk.to", "chatwoot"].some((s) =>
+      htmlLower.includes(s),
+    );
+    const hasSupportLink = ["/support", "/help", "/help-center", "/helpdesk"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "support_channel",
+      label: "Support channel",
+      status: hasSupportWidget || hasSupportLink ? "PASS" : "WARN",
+      detail: hasSupportWidget || hasSupportLink
+        ? "Support page or live chat widget detected."
+        : "No support channel found — users with no help path will churn silently.",
+    });
+
+    const hasSocialProof = ["testimonial", "review", "customer stor", "case stud", "trusted by", "loved by", "join thousands", "rating"].some((s) =>
+      htmlLower.includes(s),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "social_proof",
+      label: "Social proof / testimonials",
+      status: hasSocialProof ? "PASS" : "WARN",
+      detail: hasSocialProof
+        ? "Social proof signals detected (testimonials, reviews, customer stories)."
+        : "No social proof found — critical for conversion and buyer confidence.",
+    });
+
+    const hasOnboarding = ["/onboarding", "/welcome", "/get-started", "/setup", "/tour", "/quickstart"].some((p) =>
+      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
+    );
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "onboarding_flow",
+      label: "Onboarding flow",
+      status: hasOnboarding ? "PASS" : "WARN",
+      detail: hasOnboarding
+        ? "Onboarding or welcome flow link detected."
+        : "No onboarding flow — most vibe-coded apps skip this; it's the #1 activation lever.",
+    });
+
+    // Mobile & Accessibility
+    const hasViewport = /name=["']viewport["']/i.test(pageResult.html);
+    checks.push({
+      category: "Mobile & Accessibility",
+      checkKey: "viewport_meta",
+      label: "Viewport meta tag",
+      status: hasViewport ? "PASS" : "FAIL",
+      detail: hasViewport
+        ? "Viewport meta tag found — site is mobile-aware."
+        : "No viewport meta tag — site will not render correctly on mobile devices.",
+    });
+
+    const hasHtmlLang = /<html[^>]+lang=/i.test(pageResult.html);
+    checks.push({
+      category: "Mobile & Accessibility",
+      checkKey: "html_lang",
+      label: "HTML language attribute",
+      status: hasHtmlLang ? "PASS" : "WARN",
+      detail: hasHtmlLang
+        ? "HTML lang attribute found — correct for screen readers and SEO."
+        : "No lang attribute on <html> element — required for screen reader accessibility.",
+    });
+
+    const hasAriaAttributes = /aria-[a-z]+=/i.test(pageResult.html);
+    checks.push({
+      category: "Mobile & Accessibility",
+      checkKey: "aria_attributes",
+      label: "ARIA accessibility attributes",
+      status: hasAriaAttributes ? "PASS" : "WARN",
+      detail: hasAriaAttributes
+        ? "ARIA attributes detected — indicates accessibility consideration in markup."
+        : "No ARIA attributes found — site may not be usable by screen reader users.",
+    });
+
+    const hasResponsiveImages = pageResult.html.includes("srcset") || pageResult.html.includes("<picture") ||
+      pageResult.html.includes('loading="lazy"') || pageResult.html.includes("loading='lazy'");
+    checks.push({
+      category: "Mobile & Accessibility",
+      checkKey: "responsive_images",
+      label: "Responsive / optimised images",
+      status: hasResponsiveImages ? "PASS" : "WARN",
+      detail: hasResponsiveImages
+        ? "Responsive image patterns detected (srcset, lazy loading, picture element)."
+        : "No responsive image patterns — may cause poor performance and layout issues on mobile.",
+    });
   } else {
     // Site unreachable — mark remaining checks as FAIL
     const failedChecks: Array<[string, string, string]> = [
@@ -411,6 +664,25 @@ export async function runUrlChecks(url: string): Promise<PulseScanCheckInput[]> 
       ["Observability", "error_monitoring", "Error monitoring"],
       ["Observability", "analytics_present", "Analytics"],
       ["Observability", "health_endpoint", "/health endpoint"],
+      ["Legal & Compliance", "privacy_policy", "Privacy Policy"],
+      ["Legal & Compliance", "terms_of_service", "Terms of Service"],
+      ["Legal & Compliance", "cookie_consent", "Cookie consent / GDPR"],
+      ["Legal & Compliance", "refund_policy", "Refund / Cancellation policy"],
+      ["Missing Pages", "about_page", "About / Team page"],
+      ["Missing Pages", "contact_page", "Contact page"],
+      ["Missing Pages", "faq_page", "FAQ / Help page"],
+      ["Missing Pages", "status_page", "Status / uptime page"],
+      ["Missing Pages", "changelog", "Changelog / What's new"],
+      ["SaaS Readiness", "billing_portal", "Billing / subscription management"],
+      ["SaaS Readiness", "account_settings", "Account settings"],
+      ["SaaS Readiness", "password_reset", "Password reset"],
+      ["SaaS Readiness", "support_channel", "Support channel"],
+      ["SaaS Readiness", "social_proof", "Social proof / testimonials"],
+      ["SaaS Readiness", "onboarding_flow", "Onboarding flow"],
+      ["Mobile & Accessibility", "viewport_meta", "Viewport meta tag"],
+      ["Mobile & Accessibility", "html_lang", "HTML language attribute"],
+      ["Mobile & Accessibility", "aria_attributes", "ARIA accessibility attributes"],
+      ["Mobile & Accessibility", "responsive_images", "Responsive / optimised images"],
     ];
     for (const [category, checkKey, label] of failedChecks) {
       checks.push({ category, checkKey, label, status: "FAIL", detail: "Could not reach the site." });
@@ -621,6 +893,25 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["Code Quality", "has_env_example", ".env.example"],
     ["Code Quality", "ci_cd_present", "CI/CD pipeline"],
     ["Code Quality", "has_license", "License file"],
+    ["Legal & Compliance", "privacy_policy", "Privacy Policy"],
+    ["Legal & Compliance", "terms_of_service", "Terms of Service"],
+    ["Legal & Compliance", "cookie_consent", "Cookie consent / GDPR"],
+    ["Legal & Compliance", "refund_policy", "Refund / Cancellation policy"],
+    ["Missing Pages", "about_page", "About / Team page"],
+    ["Missing Pages", "contact_page", "Contact page"],
+    ["Missing Pages", "faq_page", "FAQ / Help page"],
+    ["Missing Pages", "status_page", "Status / uptime page"],
+    ["Missing Pages", "changelog", "Changelog / What's new"],
+    ["SaaS Readiness", "billing_portal", "Billing / subscription management"],
+    ["SaaS Readiness", "account_settings", "Account settings"],
+    ["SaaS Readiness", "password_reset", "Password reset"],
+    ["SaaS Readiness", "support_channel", "Support channel"],
+    ["SaaS Readiness", "social_proof", "Social proof / testimonials"],
+    ["SaaS Readiness", "onboarding_flow", "Onboarding flow"],
+    ["Mobile & Accessibility", "viewport_meta", "Viewport meta tag"],
+    ["Mobile & Accessibility", "html_lang", "HTML language attribute"],
+    ["Mobile & Accessibility", "aria_attributes", "ARIA accessibility attributes"],
+    ["Mobile & Accessibility", "responsive_images", "Responsive / optimised images"],
   ] as const;
 
   return skippedChecks.map(([category, checkKey, label], i) => ({

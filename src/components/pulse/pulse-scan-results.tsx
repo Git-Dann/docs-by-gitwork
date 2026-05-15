@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRightIcon,
+  CheckCircleIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
+  MinusCircleIcon,
+  XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useGeneratePulseProposal } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -37,7 +40,23 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
   return Math.round((passing / applicable.length) * 100);
 }
 
-type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap";
+type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness";
+
+function ReadinessStatusIcon({ status }: { status: ProductionReadinessItem["status"] }) {
+  if (status === "DONE") return <CheckCircleIcon className="h-4 w-4 text-emerald-500" />;
+  if (status === "PARTIAL") return <MinusCircleIcon className="h-4 w-4 text-amber-500" />;
+  return <XCircleIcon className="h-4 w-4 text-red-500" />;
+}
+
+function groupReadinessByCategory(items: ProductionReadinessItem[]) {
+  const map = new Map<string, ProductionReadinessItem[]>();
+  for (const item of items) {
+    const list = map.get(item.category) ?? [];
+    list.push(item);
+    map.set(item.category, list);
+  }
+  return map;
+}
 
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
@@ -58,8 +77,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     }
   }
 
+  const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
+  const missingCount = llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0;
+
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
     { id: "overview", label: "Overview" },
+    { id: "readiness", label: "Readiness", count: missingCount },
     { id: "checks", label: "Health Checks", count: scan.checks.filter((c) => c.status !== "SKIPPED").length },
     { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
@@ -277,6 +300,53 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {activeTab === "readiness" && llm && (
+        <div className="space-y-6">
+          {(!llm.productionReadinessChecklist || llm.productionReadinessChecklist.length === 0) && (
+            <p className="text-sm text-[var(--text-3)]">No readiness checklist available.</p>
+          )}
+          {Array.from(readinessByCategory.entries()).map(([category, items]) => {
+            const done = items.filter((item: ProductionReadinessItem) => item.status === "DONE").length;
+            return (
+              <div key={category}>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-[var(--text-1)]">{category}</p>
+                  <span className="text-xs text-[var(--text-4)]">{done}/{items.length} done</span>
+                </div>
+                <div className="divide-y divide-[var(--border-2)] rounded-[12px] border border-[var(--border-2)]">
+                  {(items as ProductionReadinessItem[]).map((item: ProductionReadinessItem, i: number) => (
+                    <div key={i} className="flex items-start gap-3 px-4 py-3">
+                      <span className="mt-0.5 shrink-0">
+                        <ReadinessStatusIcon status={item.status} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn(
+                          "text-sm font-medium",
+                          item.status === "DONE" ? "text-[var(--text-2)]" : "text-[var(--text-1)]",
+                        )}>
+                          {item.item}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--text-3)]">{item.notes}</p>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                        item.status === "DONE"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : item.status === "PARTIAL"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-red-50 text-red-700",
+                      )}>
+                        {item.status === "DONE" ? "Done" : item.status === "PARTIAL" ? "Partial" : "Missing"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
