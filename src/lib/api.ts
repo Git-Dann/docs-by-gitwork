@@ -1,4 +1,5 @@
 import type { ClientDetailRecord, ClientListItem } from "@/types/client";
+import type { PulseScanRecord, PulseScanListItem } from "@/types/pulse";
 import type {
   CandidateListParams,
   CandidateListResponse,
@@ -471,4 +472,47 @@ export async function updateProofDocument(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function listPulseScans(params?: {
+  clientId?: string;
+}): Promise<{ scans: PulseScanListItem[] }> {
+  const query = new URLSearchParams();
+  if (params?.clientId) query.set("clientId", params.clientId);
+  const qs = query.toString();
+  return apiFetch<{ scans: PulseScanListItem[] }>(`/api/pulse/scans${qs ? `?${qs}` : ""}`);
+}
+
+export async function createPulseScan(input: {
+  projectName: string;
+  inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";
+  inputUrl?: string;
+  inputGithubRepo?: string;
+  inputDescription?: string;
+  clientId?: string;
+}): Promise<{ scan: PulseScanRecord }> {
+  return apiFetch<{ scan: PulseScanRecord }>("/api/pulse/scans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getPulseScan(scanId: string): Promise<{ scan: PulseScanRecord }> {
+  return apiFetch<{ scan: PulseScanRecord }>(`/api/pulse/scans/${scanId}`);
+}
+
+export async function deletePulseScan(scanId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/pulse/scans/${scanId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function generateProposalFromScan(
+  scanId: string,
+): Promise<{ proposalId: string }> {
+  return apiFetch<{ proposalId: string }>(
+    `/api/pulse/scans/${scanId}/generate-proposal`,
+    { method: "POST" },
+  );
 }

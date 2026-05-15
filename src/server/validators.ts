@@ -354,3 +354,24 @@ export const proposalExportSchema = z.object({
   format: z.enum(["PRINT", "PDF", "SHARE_LINK"]).default("PRINT"),
   settings: z.record(z.string(), z.unknown()).optional(),
 });
+
+export const pulseScanInputTypeSchema = z.enum(["URL", "GITHUB_REPO", "FREE_TEXT"]);
+
+export const pulseScanCreateSchema = z
+  .object({
+    projectName: z.string().trim().min(1).max(200),
+    inputType: pulseScanInputTypeSchema,
+    inputUrl: z.string().url().optional(),
+    inputGithubRepo: z.string().trim().optional(),
+    inputDescription: z.string().max(10000).optional(),
+    clientId: z.string().cuid().optional(),
+  })
+  .refine(
+    (d) => {
+      if (d.inputType === "URL") return Boolean(d.inputUrl);
+      if (d.inputType === "GITHUB_REPO") return Boolean(d.inputGithubRepo);
+      if (d.inputType === "FREE_TEXT") return Boolean(d.inputDescription);
+      return false;
+    },
+    { message: "Input data must match inputType." },
+  );

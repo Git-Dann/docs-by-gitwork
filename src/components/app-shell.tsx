@@ -8,6 +8,7 @@ import {
   Cog8ToothIcon,
   DocumentTextIcon,
   MagnifyingGlassIcon,
+  SignalIcon,
   Squares2X2Icon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
@@ -57,6 +58,11 @@ export function AppShell({
         href: "/app/proposals",
         label: "Docs",
         icon: ChartBarSquareIcon,
+      },
+      {
+        href: "/app/pulse",
+        label: "Pulse",
+        icon: SignalIcon,
       },
       {
         href: "/app/codeclear",

@@ -142,6 +142,7 @@ model Workspace {
   rateCardPeople RateCardPerson[]
   proofDocuments ProofDocument[]
   candidates  Candidate[]
+  pulseScans  PulseScan[]
 }
 
 model WorkspaceMember {
@@ -231,14 +232,15 @@ model ProofDocument {
 }
 
 model WorkspaceClient {
-  id          String    @id @default(cuid())
+  id          String      @id @default(cuid())
   workspaceId String
   name        String
   slug        String
   logoUrl     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pulseScans  PulseScan[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -515,4 +517,70 @@ model RateCardPerson {
   @@unique([workspaceId, seedIdentifier])
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, archivedAt])
+}
+
+enum PulseScanStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum PulseScanInputType {
+  URL
+  GITHUB_REPO
+  FREE_TEXT
+}
+
+enum PulseCheckStatus {
+  PASS
+  WARN
+  FAIL
+  SKIPPED
+}
+
+model PulseScan {
+  id                  String             @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId            String?
+  client              WorkspaceClient?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectName         String
+  inputType           PulseScanInputType
+  inputUrl            String?
+  inputGithubRepo     String?
+  inputDescription    String?
+  status              PulseScanStatus    @default(RUNNING)
+  scanVersion         String
+  startedAt           DateTime           @default(now())
+  completedAt         DateTime?
+  healthScore         Int?
+  techStack           Json?
+  llmAnalysis         Json?
+  errorCode           String?
+  errorMessage        String?
+  generatedProposalId String?
+  checks              PulseScanCheck[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+  @@index([clientId, createdAt])
+}
+
+model PulseScanCheck {
+  id        String           @id @default(cuid())
+  scanId    String
+  scan      PulseScan        @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  category  String
+  checkKey  String
+  label     String
+  status    PulseCheckStatus
+  detail    String?
+  evidence  String?
+  sortOrder Int
+  createdAt DateTime         @default(now())
+
+  @@index([scanId, category])
+  @@index([scanId, sortOrder])
 }

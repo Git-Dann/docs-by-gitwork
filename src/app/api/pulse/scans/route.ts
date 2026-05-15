@@ -1,0 +1,33 @@
+import { NextRequest } from "next/server";
+import { apiOk, fromError } from "@/lib/api-response";
+import { pulseScanCreateSchema } from "@/server/validators";
+import { createAndRunPulseScan, listPulseScans } from "@/server/pulse";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  try {
+    const clientId = request.nextUrl.searchParams.get("clientId") ?? undefined;
+    const scans = await listPulseScans({ clientId });
+    return apiOk({ scans });
+  } catch (error) {
+    return fromError(error);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = pulseScanCreateSchema.parse(await request.json());
+    const scan = await createAndRunPulseScan({
+      projectName: body.projectName,
+      inputType: body.inputType,
+      inputUrl: body.inputUrl,
+      inputGithubRepo: body.inputGithubRepo,
+      inputDescription: body.inputDescription,
+      clientId: body.clientId,
+    });
+    return apiOk({ scan }, { status: 201 });
+  } catch (error) {
+    return fromError(error);
+  }
+}
