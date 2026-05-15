@@ -86,10 +86,8 @@ function detectTechStack(headers: Record<string, string>, html: string): string[
   return [...new Set(stack)];
 }
 
-export async function runUrlChecks(url: string): Promise<PulseScanCheckInput[]> {
+export async function runUrlChecks(url: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
   const checks: PulseScanCheckInput[] = [];
-  let sortOrder = 0;
-  const nextOrder = () => sortOrder++;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
   const httpUrl = httpsUrl.replace("https://", "http://");
@@ -764,6 +762,180 @@ export async function runUrlChecks(url: string): Promise<PulseScanCheckInput[]> 
         : "No Stripe webhook detected — subscription upgrades, failures, and cancellations won't be handled automatically.",
       evidence: stripeWebhookStatus ? `Status: ${stripeWebhookStatus}` : undefined,
     });
+
+    // App Store & Mobile Distribution — batch deep-link file checks
+    const [aasaStatus, assetLinksStatus] = await Promise.all([
+      headRequest(`${baseUrl}/.well-known/apple-app-site-association`),
+      headRequest(`${baseUrl}/.well-known/assetlinks.json`),
+    ]);
+
+    const hasAppleTouchIcon = /rel=["']apple-touch-icon["']/i.test(pageResult.html);
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "apple_touch_icon",
+      label: "Apple touch icon",
+      status: hasAppleTouchIcon ? "PASS" : "WARN",
+      detail: hasAppleTouchIcon
+        ? "Apple touch icon found — app can be pinned to iOS home screen with correct branding."
+        : "No apple-touch-icon — required for iOS home screen install and Apple App Store submission.",
+    });
+
+    const hasAppleSmartBanner = /name=["']apple-itunes-app["']/i.test(pageResult.html);
+    const hasAppStoreLink = htmlLower.includes("apps.apple.com") || htmlLower.includes("itunes.apple.com");
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "apple_app_store",
+      label: "Apple App Store presence",
+      status: hasAppleSmartBanner || hasAppStoreLink ? "PASS" : "WARN",
+      detail: hasAppleSmartBanner || hasAppStoreLink
+        ? "Apple App Store link or Smart App Banner detected."
+        : "No Apple App Store signals — if targeting iOS users, consider a native app or PWA submission.",
+    });
+
+    const hasGooglePlayLink = htmlLower.includes("play.google.com/store/apps");
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "google_play_store",
+      label: "Google Play Store presence",
+      status: hasGooglePlayLink ? "PASS" : "WARN",
+      detail: hasGooglePlayLink
+        ? "Google Play Store link detected."
+        : "No Google Play Store link — Android distribution via Play Store or TWA (Trusted Web Activity) not detected.",
+    });
+
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "universal_links",
+      label: "Universal Links (iOS deep linking)",
+      status: aasaStatus === 200 ? "PASS" : "WARN",
+      detail: aasaStatus === 200
+        ? "apple-app-site-association file found — iOS Universal Links configured for app/web handoff."
+        : "No apple-app-site-association — Universal Links not set up (required for App Clips and native app ↔ web routing).",
+      evidence: `Status: ${aasaStatus || "no response"}`,
+    });
+
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "android_asset_links",
+      label: "Android App Links (deep linking)",
+      status: assetLinksStatus === 200 ? "PASS" : "WARN",
+      detail: assetLinksStatus === 200
+        ? "assetlinks.json found — Android App Links configured."
+        : "No assetlinks.json — Android deep linking not set up (required for Play Store TWA submission).",
+      evidence: `Status: ${assetLinksStatus || "no response"}`,
+    });
+
+    const hasApplePaySignals = htmlLower.includes("applepaysession") || htmlLower.includes("apple-pay-sdk") || htmlLower.includes("apple_pay");
+    const hasGooglePaySignals = htmlLower.includes("pay.google.com") || htmlLower.includes("google.payments") || htmlLower.includes("googlepay");
+    const hasAmazonPaySignals = htmlLower.includes("pay.amazon.com") || htmlLower.includes("amazonpay") || htmlLower.includes("amazon_pay");
+    const hasWalletPayments = hasApplePaySignals || hasGooglePaySignals || hasAmazonPaySignals;
+    const walletNames = [hasApplePaySignals && "Apple Pay", hasGooglePaySignals && "Google Pay", hasAmazonPaySignals && "Amazon Pay"].filter(Boolean).join(", ");
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "wallet_payments",
+      label: "Apple Pay / Google Pay / Amazon Pay",
+      status: hasWalletPayments ? "PASS" : "WARN",
+      detail: hasWalletPayments
+        ? `Wallet payment detected (${walletNames}) — mobile checkout optimised.`
+        : "No wallet payments detected — Apple Pay, Google Pay, and Amazon Pay dramatically improve mobile conversion rates.",
+    });
+
+    // Global Distribution & Localisation
+    const hasHreflang = htmlLower.includes("hreflang");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "hreflang_tags",
+      label: "hreflang tags (multi-region SEO)",
+      status: hasHreflang ? "PASS" : "WARN",
+      detail: hasHreflang
+        ? "hreflang tags found — search engines will serve the correct regional version to each country."
+        : "No hreflang tags — Google won't know which language/region version to surface to international users.",
+    });
+
+    const hasCharsetUtf8 = /charset=["']?utf-8/i.test(pageResult.html) || pageResult.headers["content-type"]?.toLowerCase().includes("utf-8");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "charset_utf8",
+      label: "UTF-8 character encoding",
+      status: hasCharsetUtf8 ? "PASS" : "WARN",
+      detail: hasCharsetUtf8
+        ? "UTF-8 charset declared — supports all international character sets."
+        : "No UTF-8 charset — Chinese, Japanese, Arabic, and other non-Latin characters may render incorrectly.",
+    });
+
+    const hasCcpaSignal = htmlLower.includes("do not sell") || htmlLower.includes("your privacy choices") || htmlLower.includes("opt-out of sale") || htmlLower.includes("ccpa");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "ccpa_compliance",
+      label: "CCPA (California privacy rights)",
+      status: hasCcpaSignal ? "PASS" : "WARN",
+      detail: hasCcpaSignal
+        ? "CCPA compliance signals detected — California consumer privacy rights addressed."
+        : "No CCPA signals — required for California users (40M people). Must include a &lsquo;Do Not Sell&rsquo; opt-out link.",
+    });
+
+    const currencySymbols = ["€", "£", "¥", "₹", "kr ", "chf", "sgd", "aud", "cad", "r$"];
+    const hasMultiCurrency = currencySymbols.some((s) => pageResult.html.toLowerCase().includes(s));
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "multi_currency",
+      label: "Multi-currency pricing",
+      status: hasMultiCurrency ? "PASS" : "WARN",
+      detail: hasMultiCurrency
+        ? "Multiple currency symbols detected — product appears to support international pricing."
+        : "USD-only pricing detected — EU (€), UK (£), and Asian markets expect local currency; USD-only loses 20–40% of international revenue.",
+    });
+
+    const hasRtlSupport = /dir=["']rtl["']/i.test(pageResult.html) || htmlLower.includes(":dir(rtl)") || htmlLower.includes("[dir=rtl]");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "rtl_support",
+      label: "RTL language support",
+      status: hasRtlSupport ? "PASS" : "WARN",
+      detail: hasRtlSupport
+        ? "Right-to-left layout support detected — Arabic, Hebrew, and Persian markets accessible."
+        : "No RTL support detected — required for Arabic (420M speakers), Hebrew, Farsi, and Urdu-speaking markets.",
+    });
+
+    const hasLanguageSwitcher = /href=["'][^"']*\/(en|de|fr|es|ja|zh|ko|ar|pt|nl|it|pl|sv)[\/"']/i.test(pageResult.html) ||
+      htmlLower.includes('hreflang="x-default"') ||
+      htmlLower.includes("language-selector") ||
+      htmlLower.includes("lang-switcher") ||
+      htmlLower.includes("locale-switcher");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "language_switcher",
+      label: "Language / region switcher",
+      status: hasLanguageSwitcher ? "PASS" : "WARN",
+      detail: hasLanguageSwitcher
+        ? "Language or region selector detected."
+        : "No language switcher found — international users cannot switch to their preferred language.",
+    });
+
+    const hasInternationalPayments = htmlLower.includes("paypal") || htmlLower.includes("klarna") ||
+      htmlLower.includes("afterpay") || htmlLower.includes("ideal") || htmlLower.includes("sofort") ||
+      htmlLower.includes("alipay") || htmlLower.includes("wechat pay") || htmlLower.includes("paytm") ||
+      htmlLower.includes("upi") || htmlLower.includes("sepa");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "international_payments",
+      label: "International payment methods",
+      status: hasInternationalPayments ? "PASS" : "WARN",
+      detail: hasInternationalPayments
+        ? "International payment methods detected (PayPal, Klarna, iDEAL, Alipay, etc.)."
+        : "Card-only payments detected — EU (iDEAL, SEPA, Klarna), Asia (Alipay, WeChat Pay, UPI), and LATAM markets expect local options.",
+    });
+
+    const hasEuVatSignal = htmlLower.includes(" vat") || htmlLower.includes("value added tax") || htmlLower.includes("tax invoice") || htmlLower.includes("ust-idnr") || htmlLower.includes("mwst");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "eu_vat",
+      label: "EU VAT / tax handling",
+      status: hasEuVatSignal ? "PASS" : "WARN",
+      detail: hasEuVatSignal
+        ? "VAT or tax handling signals detected — EU digital services tax compliance appears considered."
+        : "No VAT signals detected — EU DST regulations require VAT collection and invoicing for European B2C customers.",
+    });
   } else {
     // Site unreachable — mark remaining checks as FAIL
     const failedChecks: Array<[string, string, string]> = [
@@ -822,13 +994,28 @@ export async function runUrlChecks(url: string): Promise<PulseScanCheckInput[]> 
       ["Mobile & Accessibility", "favicon", "Favicon / app icon"],
       ["Mobile & Accessibility", "pwa_manifest", "Web App Manifest (PWA)"],
       ["Payments", "stripe_webhook", "Stripe webhook endpoint"],
+      ["App Store & Mobile", "apple_touch_icon", "Apple touch icon"],
+      ["App Store & Mobile", "apple_app_store", "Apple App Store presence"],
+      ["App Store & Mobile", "google_play_store", "Google Play Store presence"],
+      ["App Store & Mobile", "universal_links", "Universal Links (iOS deep linking)"],
+      ["App Store & Mobile", "android_asset_links", "Android App Links (deep linking)"],
+      ["App Store & Mobile", "wallet_payments", "Apple Pay / Google Pay / Amazon Pay"],
+      ["Global Distribution", "hreflang_tags", "hreflang tags (multi-region SEO)"],
+      ["Global Distribution", "charset_utf8", "UTF-8 character encoding"],
+      ["Global Distribution", "ccpa_compliance", "CCPA (California privacy rights)"],
+      ["Global Distribution", "multi_currency", "Multi-currency pricing"],
+      ["Global Distribution", "rtl_support", "RTL language support"],
+      ["Global Distribution", "language_switcher", "Language / region switcher"],
+      ["Global Distribution", "international_payments", "International payment methods"],
+      ["Global Distribution", "eu_vat", "EU VAT / tax handling"],
     ];
     for (const [category, checkKey, label] of failedChecks) {
       checks.push({ category, checkKey, label, status: "FAIL", detail: "Could not reach the site." });
     }
   }
 
-  return checks.map((check, i) => ({ ...check, sortOrder: i }));
+  const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html) : [];
+  return { checks: checks.map((check, i) => ({ ...check, sortOrder: i })), techStack };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
@@ -1061,6 +1248,20 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["Mobile & Accessibility", "favicon", "Favicon / app icon"],
     ["Mobile & Accessibility", "pwa_manifest", "Web App Manifest (PWA)"],
     ["Payments", "stripe_webhook", "Stripe webhook endpoint"],
+    ["App Store & Mobile", "apple_touch_icon", "Apple touch icon"],
+    ["App Store & Mobile", "apple_app_store", "Apple App Store presence"],
+    ["App Store & Mobile", "google_play_store", "Google Play Store presence"],
+    ["App Store & Mobile", "universal_links", "Universal Links (iOS deep linking)"],
+    ["App Store & Mobile", "android_asset_links", "Android App Links (deep linking)"],
+    ["App Store & Mobile", "wallet_payments", "Apple Pay / Google Pay / Amazon Pay"],
+    ["Global Distribution", "hreflang_tags", "hreflang tags (multi-region SEO)"],
+    ["Global Distribution", "charset_utf8", "UTF-8 character encoding"],
+    ["Global Distribution", "ccpa_compliance", "CCPA (California privacy rights)"],
+    ["Global Distribution", "multi_currency", "Multi-currency pricing"],
+    ["Global Distribution", "rtl_support", "RTL language support"],
+    ["Global Distribution", "language_switcher", "Language / region switcher"],
+    ["Global Distribution", "international_payments", "International payment methods"],
+    ["Global Distribution", "eu_vat", "EU VAT / tax handling"],
   ] as const;
 
   return skippedChecks.map(([category, checkKey, label], i) => ({

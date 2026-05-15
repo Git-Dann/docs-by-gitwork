@@ -288,8 +288,9 @@ async function runAnalysis(
     let techStack: string[] = [];
 
     if (input.inputType === "URL" && input.inputUrl) {
-      urlChecks = await runUrlChecks(input.inputUrl);
-      techStack = detectTechStackFromChecks(urlChecks);
+      const urlResult = await runUrlChecks(input.inputUrl);
+      urlChecks = urlResult.checks;
+      techStack = urlResult.techStack;
     } else if (input.inputType === "GITHUB_REPO" && input.inputGithubRepo) {
       const githubResult = await runGithubChecks(input.inputGithubRepo);
       githubChecks = githubResult.checks;
@@ -347,15 +348,6 @@ async function runAnalysis(
   }
 }
 
-function detectTechStackFromChecks(checks: PulseScanCheckInput[]): string[] {
-  const stack: string[] = [];
-  for (const check of checks) {
-    if (check.status === "PASS" && check.checkKey === "cdn_detected" && check.evidence?.includes("x-vercel-id")) {
-      stack.push("Vercel");
-    }
-  }
-  return stack;
-}
 
 export async function generateProposalFromScan(scanId: string): Promise<string> {
   const scan = await prisma.pulseScan.findUnique({

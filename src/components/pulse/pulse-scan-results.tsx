@@ -237,7 +237,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {llm.proposalHook && (
             <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
               <p className="app-eyebrow mb-2">Discovery call opener</p>
-              <p className="text-sm italic leading-7 text-[var(--text-1)]">"{llm.proposalHook}"</p>
+              <p className="text-sm italic leading-7 text-[var(--text-1)]">&ldquo;{llm.proposalHook}&rdquo;</p>
             </div>
           )}
         </div>
