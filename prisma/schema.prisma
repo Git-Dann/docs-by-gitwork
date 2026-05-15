@@ -554,6 +554,7 @@ model PulseScan {
   startedAt           DateTime           @default(now())
   completedAt         DateTime?
   healthScore         Int?
+  previousHealthScore Int?
   techStack           Json?
   llmAnalysis         Json?
   errorCode           String?

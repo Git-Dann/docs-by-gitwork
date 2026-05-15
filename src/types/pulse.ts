@@ -88,6 +88,7 @@ export interface PulseScanRecord {
   startedAt: string;
   completedAt: string | null;
   healthScore: number | null;
+  previousHealthScore: number | null;
   techStack: string[] | null;
   llmAnalysis: PulseAnalysisOutput | null;
   errorCode: string | null;

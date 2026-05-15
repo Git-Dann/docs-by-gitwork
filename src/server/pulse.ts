@@ -53,6 +53,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     startedAt: record.startedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
     healthScore: record.healthScore,
+    previousHealthScore: record.previousHealthScore ?? null,
     techStack: asJson<string[] | null>(record.techStack, null),
     llmAnalysis: asJson<PulseAnalysisOutput | null>(record.llmAnalysis, null),
     errorCode: record.errorCode,
@@ -231,6 +232,20 @@ export async function createAndRunPulseScan(input: {
 }): Promise<PulseScanRecord> {
   const { workspace } = await ensureBaseRecords();
 
+  // Look up the most recent completed scan for the same URL/repo to track score delta
+  const previousScan = input.inputType !== "FREE_TEXT"
+    ? await prisma.pulseScan.findFirst({
+        where: {
+          workspaceId: workspace.id,
+          status: "COMPLETED",
+          ...(input.inputType === "URL" && input.inputUrl ? { inputUrl: input.inputUrl } : {}),
+          ...(input.inputType === "GITHUB_REPO" && input.inputGithubRepo ? { inputGithubRepo: input.inputGithubRepo } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: { healthScore: true },
+      })
+    : null;
+
   // Create the scan record in RUNNING state
   const scan = await prisma.pulseScan.create({
     data: {
@@ -243,6 +258,7 @@ export async function createAndRunPulseScan(input: {
       inputDescription: input.inputDescription ?? null,
       status: "RUNNING",
       scanVersion: SCAN_VERSION,
+      previousHealthScore: previousScan?.healthScore ?? null,
     },
     include: pulseInclude,
   });

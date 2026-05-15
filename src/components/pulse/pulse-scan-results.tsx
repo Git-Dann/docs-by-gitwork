@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRightIcon,
+  ArrowPathIcon,
   CheckCircleIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
@@ -12,7 +13,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useGeneratePulseProposal } from "@/hooks/use-pulse";
+import { useGeneratePulseProposal, useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem } from "@/types/pulse";
 import {
@@ -61,11 +62,24 @@ function groupReadinessByCategory(items: ProductionReadinessItem[]) {
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
+  const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const llm = scan.llmAnalysis;
   const checksByCategory = groupChecksByCategory(scan.checks);
+
+  async function handleRescan() {
+    const result = await createScan({
+      projectName: scan.projectName,
+      inputType: scan.inputType,
+      inputUrl: scan.inputUrl ?? undefined,
+      inputGithubRepo: scan.inputGithubRepo ?? undefined,
+      inputDescription: scan.inputDescription ?? undefined,
+      clientId: scan.clientId ?? undefined,
+    });
+    router.push(`/app/pulse/${result.scan.id}`);
+  }
 
   async function handleGenerateProposal() {
     setGenerateError(null);
@@ -94,7 +108,21 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-5">
-          {scan.healthScore !== null && <ScoreRing score={scan.healthScore} size={100} />}
+          {scan.healthScore !== null && (
+            <div className="relative">
+              <ScoreRing score={scan.healthScore} size={100} />
+              {scan.previousHealthScore !== null && scan.healthScore !== scan.previousHealthScore && (
+                <span className={cn(
+                  "absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                  scan.healthScore > scan.previousHealthScore
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-red-100 text-red-700",
+                )}>
+                  {scan.healthScore > scan.previousHealthScore ? "+" : ""}{scan.healthScore - scan.previousHealthScore}
+                </span>
+              )}
+            </div>
+          )}
           <div>
             <h2 className="text-xl font-semibold text-[var(--text-1)]">{scan.projectName}</h2>
             {scan.inputUrl && (
@@ -126,6 +154,15 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
 
         <div className="flex flex-col items-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRescan}
+            loading={rescanning}
+            leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
+          >
+            Re-scan
+          </Button>
           {scan.generatedProposalId ? (
             <Link href={`/app/proposals/${scan.generatedProposalId}`}>
               <Button variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
