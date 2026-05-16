@@ -263,7 +263,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
         <div className="flex flex-col items-end gap-2">
           <Button
-            variant="ghost"
+            variant="tertiary"
             size="sm"
             onClick={handleRescan}
             loading={rescanning}
