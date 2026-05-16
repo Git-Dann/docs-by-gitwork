@@ -5,6 +5,21 @@ export type PulseUrgency = "CRITICAL" | "HIGH" | "MEDIUM";
 export type PulseEffort = "S" | "M" | "L" | "XL";
 export type PulseBusinessValue = "HIGH" | "MEDIUM" | "LOW";
 export type PulseSeverity = "HIGH" | "MEDIUM" | "LOW";
+export type TechStackPriority = "HIGH" | "MEDIUM" | "LOW";
+
+export interface TechStackRecommendation {
+  area: string;
+  current: string | null;
+  recommended: string;
+  reason: string;
+  priority: TechStackPriority;
+}
+
+export interface PulseTechStackAnalysis {
+  assessment: string;
+  recommendations: TechStackRecommendation[];
+  missingForProduction: string[];
+}
 
 export interface PulseScanCheckRecord {
   id: string;
@@ -71,6 +86,7 @@ export interface PulseAnalysisOutput {
   techDebt: PulseTechDebt[];
   proposalHook: string;
   productionReadinessChecklist: ProductionReadinessItem[];
+  techStackAnalysis: PulseTechStackAnalysis;
 }
 
 export interface PulseScanRecord {

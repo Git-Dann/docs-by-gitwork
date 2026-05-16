@@ -936,6 +936,769 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? "VAT or tax handling signals detected — EU digital services tax compliance appears considered."
         : "No VAT signals detected — EU DST regulations require VAT collection and invoicing for European B2C customers.",
     });
+
+    // ─── Additional SEO ────────────────────────────────────────────────────────
+    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "structured_data",
+      label: "JSON-LD structured data",
+      status: hasStructuredData ? "PASS" : "WARN",
+      detail: hasStructuredData
+        ? "JSON-LD structured data found — rich results eligible in Google Search."
+        : "No JSON-LD structured data — add schema.org markup to enable rich snippets (reviews, FAQs, product details).",
+    });
+
+    const hasPreloadLinks = /<link[^>]+rel=["']preload["']/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "preload_hints",
+      label: "Resource preload hints",
+      status: hasPreloadLinks ? "PASS" : "WARN",
+      detail: hasPreloadLinks
+        ? "Resource preload hints detected — critical resources load earlier."
+        : "No preload hints — add <link rel=preload> for fonts, hero images, and critical JS/CSS.",
+    });
+
+    const hasVerificationMeta = /name=["'](google-site-verification|msvalidate\.01|yandex-verification)["']/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "search_engine_verified",
+      label: "Search engine verification",
+      status: hasVerificationMeta ? "PASS" : "WARN",
+      detail: hasVerificationMeta
+        ? "Search Console / Bing Webmaster verification meta tag found."
+        : "No search engine verification — link Google Search Console to monitor indexing and search performance.",
+    });
+
+    const hasMetaRobots = /name=["']robots["']/i.test(pageResult.html);
+    const blocksIndexing = hasMetaRobots && /content=["'][^"']*noindex/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "meta_robots",
+      label: "Robots meta tag",
+      status: blocksIndexing ? "FAIL" : hasMetaRobots ? "PASS" : "WARN",
+      detail: blocksIndexing
+        ? "noindex robots meta tag detected — search engines will not index this page."
+        : hasMetaRobots
+          ? "Robots meta tag found."
+          : "No robots meta tag — add one to control indexing behaviour per page.",
+    });
+
+    const hasOgSiteName = /property=["']og:site_name["']/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "og_site_name",
+      label: "og:site_name (brand in shares)",
+      status: hasOgSiteName ? "PASS" : "WARN",
+      detail: hasOgSiteName
+        ? "og:site_name found — brand name will appear in social shares."
+        : "No og:site_name — add it so your brand name appears consistently when links are shared on social.",
+    });
+
+    // ─── Additional Security ───────────────────────────────────────────────────
+    const hasSri = /integrity=["'][a-z0-9+/=\-]+["']/i.test(pageResult.html);
+    checks.push({
+      category: "Security",
+      checkKey: "subresource_integrity",
+      label: "Subresource Integrity (SRI)",
+      status: hasSri ? "PASS" : "WARN",
+      detail: hasSri
+        ? "SRI hashes found on external scripts — supply-chain injection attacks mitigated."
+        : "No SRI hashes — a compromised CDN could inject malicious code into your app.",
+    });
+
+    const setCookieHeader = pageResult.headers["set-cookie"] ?? "";
+    const hasSecureCookieAttrs = setCookieHeader.toLowerCase().includes("secure") && setCookieHeader.toLowerCase().includes("samesite");
+    checks.push({
+      category: "Security",
+      checkKey: "secure_cookie_attributes",
+      label: "Secure cookie attributes",
+      status: hasSecureCookieAttrs ? "PASS" : setCookieHeader ? "WARN" : "WARN",
+      detail: hasSecureCookieAttrs
+        ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
+        : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
+    });
+
+    const corsHeader = pageResult.headers["access-control-allow-origin"];
+    const hasWildcardCors = corsHeader === "*";
+    checks.push({
+      category: "Security",
+      checkKey: "cors_policy",
+      label: "CORS policy",
+      status: hasWildcardCors ? "WARN" : corsHeader ? "PASS" : "WARN",
+      detail: hasWildcardCors
+        ? "CORS allows all origins (*) — restrict to trusted domains in production."
+        : corsHeader
+          ? `CORS header configured (${corsHeader}).`
+          : "No CORS header — verify cross-origin policy is correctly configured for API routes.",
+    });
+
+    const securityTxtStatus = await headRequest(`${baseUrl}/.well-known/security.txt`);
+    checks.push({
+      category: "Security",
+      checkKey: "security_txt",
+      label: "security.txt (responsible disclosure)",
+      status: securityTxtStatus === 200 ? "PASS" : "WARN",
+      detail: securityTxtStatus === 200
+        ? "security.txt found — responsible disclosure channel available for security researchers."
+        : "No security.txt — security researchers have no official path to report vulnerabilities (RFC 9116).",
+    });
+
+    const serverHeader = pageResult.headers["server"] ?? "";
+    const exposesVersion = /\d+\.\d+/.test(serverHeader) && serverHeader.length > 3;
+    checks.push({
+      category: "Security",
+      checkKey: "server_header_leakage",
+      label: "Server version not exposed",
+      status: exposesVersion ? "WARN" : "PASS",
+      detail: exposesVersion
+        ? `Server header exposes version (${serverHeader}) — attackers can target known CVEs for this version.`
+        : "Server header does not expose detailed version information.",
+    });
+
+    const hasMixedContent = /http:\/\/[^"'\s>]+\.(js|css|woff2?|svg)/i.test(pageResult.html);
+    checks.push({
+      category: "Security",
+      checkKey: "no_mixed_content",
+      label: "No mixed HTTP/HTTPS content",
+      status: hasMixedContent ? "WARN" : "PASS",
+      detail: hasMixedContent
+        ? "HTTP (non-HTTPS) resource URLs found in page — mixed content triggers browser security warnings."
+        : "No obvious mixed content — resource references appear to be HTTPS.",
+    });
+
+    // ─── Additional Performance ─────────────────────────────────────────────────
+    const hasPreconnect = /<link[^>]+rel=["']preconnect["']/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "preconnect_hints",
+      label: "Preconnect / DNS prefetch hints",
+      status: hasPreconnect ? "PASS" : "WARN",
+      detail: hasPreconnect
+        ? "Preconnect hints found — third-party connections warm up before they are needed."
+        : "No preconnect hints — add <link rel=preconnect> for fonts, CDN, and analytics origins.",
+    });
+
+    const hasNativeLazy = /loading=["']lazy["']/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "native_lazy_loading",
+      label: "Native image lazy loading",
+      status: hasNativeLazy ? "PASS" : "WARN",
+      detail: hasNativeLazy
+        ? "loading=lazy detected — images below the fold load on demand, reducing initial page weight."
+        : "No native lazy loading — add loading=lazy to below-the-fold images to improve LCP.",
+    });
+
+    const hasFontDisplaySwap = /font-display:\s*swap/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "font_display_swap",
+      label: "Font display optimisation",
+      status: hasFontDisplaySwap ? "PASS" : "WARN",
+      detail: hasFontDisplaySwap
+        ? "font-display: swap found — text visible during web font loading (no FOIT)."
+        : "No font-display: swap — web fonts may block text render, contributing to poor CLS/LCP scores.",
+    });
+
+    const varyHeader = pageResult.headers["vary"];
+    checks.push({
+      category: "Performance",
+      checkKey: "vary_header",
+      label: "Vary header (content negotiation)",
+      status: varyHeader ? "PASS" : "WARN",
+      detail: varyHeader
+        ? `Vary: ${varyHeader} — CDN caches serve the correct variant per request.`
+        : "No Vary header — CDN may serve wrong compression type to some clients.",
+    });
+
+    const serverTimingHeader = pageResult.headers["server-timing"];
+    checks.push({
+      category: "Performance",
+      checkKey: "server_timing",
+      label: "Server-Timing header",
+      status: serverTimingHeader ? "PASS" : "WARN",
+      detail: serverTimingHeader
+        ? "Server-Timing header present — backend performance metrics exposed to browser DevTools."
+        : "No Server-Timing header — add it to expose database/cache timings for performance diagnostics.",
+    });
+
+    // ─── Additional Authentication ──────────────────────────────────────────────
+    const hasMfa = ["two-factor", "2fa", "authenticator app", "totp", "multi-factor", "mfa"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Authentication",
+      checkKey: "mfa_signals",
+      label: "Multi-factor authentication (MFA)",
+      status: hasMfa ? "PASS" : "WARN",
+      detail: hasMfa
+        ? "MFA / 2FA signals detected — account security hardened."
+        : "No MFA/2FA signals — enterprise buyers require MFA; absence blocks B2B deals.",
+    });
+
+    const hasEmailVerification = ["verify your email", "confirm your email", "email verification", "activate your account", "check your inbox"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Authentication",
+      checkKey: "email_verification_flow",
+      label: "Email verification flow",
+      status: hasEmailVerification ? "PASS" : "WARN",
+      detail: hasEmailVerification
+        ? "Email verification signals detected — user email addresses are validated on sign-up."
+        : "No email verification signals — unverified accounts lead to spam, poor deliverability, and bounce rates.",
+    });
+
+    const hasMagicLink = ["magic link", "passwordless", "sign in with email", "email link", "one-time link"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Authentication",
+      checkKey: "magic_link_auth",
+      label: "Magic link / passwordless login",
+      status: hasMagicLink ? "PASS" : "WARN",
+      detail: hasMagicLink
+        ? "Passwordless/magic link login detected — frictionless auth available."
+        : "No passwordless auth — magic links improve sign-up conversion by removing password friction.",
+    });
+
+    const hasSso = ["single sign-on", "saml", "okta", "azure ad", "active directory", "enterprise sso", "sso login"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Authentication",
+      checkKey: "enterprise_sso",
+      label: "Enterprise SSO / SAML",
+      status: hasSso ? "PASS" : "WARN",
+      detail: hasSso
+        ? "Enterprise SSO signals detected — enterprise deals enabled."
+        : "No SSO/SAML signals — enterprise buyers mandate SSO; absence is a deal-breaker for mid-market procurement.",
+    });
+
+    // ─── Additional Legal & Compliance ──────────────────────────────────────────
+    const hasDataDeletion = ["delete my account", "delete account", "right to erasure", "delete your data", "close account", "request deletion"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "data_deletion_right",
+      label: "Data deletion / right to erasure (GDPR Art. 17)",
+      status: hasDataDeletion ? "PASS" : "WARN",
+      detail: hasDataDeletion
+        ? "Account or data deletion mechanism detected — GDPR Art. 17 compliance supported."
+        : "No account deletion option visible — GDPR Art. 17 requires users can request erasure of all personal data.",
+    });
+
+    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = await Promise.all([
+      headRequest(`${baseUrl}/accessibility`),
+      headRequest(`${baseUrl}/dpa`),
+      headRequest(`${baseUrl}/cookie-policy`),
+    ]);
+    const accessibilityAltStatus = accessibilityStatus !== 200 ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
+    const dpaAltStatus = dpaStatus !== 200 ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
+    const cookiePolicyAltStatus = cookiePolicyStatus !== 200 ? await headRequest(`${baseUrl}/cookies`) : 200;
+
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "accessibility_statement",
+      label: "Accessibility statement",
+      status: accessibilityStatus === 200 || accessibilityAltStatus === 200 ? "PASS" : "WARN",
+      detail: accessibilityStatus === 200 || accessibilityAltStatus === 200
+        ? "Accessibility statement page found — EU Web Accessibility Directive compliance documented."
+        : "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
+    });
+
+    const hasCoppaSignals = ["under 13", "13 years", "children's privacy", "coppa", "child-directed", "parental consent", "age gate", "age verification"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "coppa_signals",
+      label: "COPPA / children's privacy",
+      status: hasCoppaSignals ? "PASS" : "WARN",
+      detail: hasCoppaSignals
+        ? "COPPA compliance signals detected — children's privacy handling addressed."
+        : "No COPPA signals — if any users could be under 13 (US) or 16 (EU), additional parental consent is legally required.",
+    });
+
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "dpa_available",
+      label: "Data Processing Agreement (GDPR Art. 28)",
+      status: dpaStatus === 200 || dpaAltStatus === 200 ? "PASS" : "WARN",
+      detail: dpaStatus === 200 || dpaAltStatus === 200
+        ? "DPA page found — GDPR Art. 28 processor obligations documented."
+        : "No DPA available — required for B2B enterprise customers under GDPR; absence blocks EU procurement.",
+    });
+
+    const hasIcpLicense = htmlLower.includes("icp备") || htmlLower.includes("备案号") || htmlLower.includes("icp证") || /[京沪粤]icp/i.test(pageResult.html);
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "icp_license",
+      label: "China ICP license (for CN market)",
+      status: hasIcpLicense ? "PASS" : "WARN",
+      detail: hasIcpLicense
+        ? "ICP license number detected — China internet content hosting compliance addressed."
+        : "No ICP license — required for websites serving users in China; absence means ISPs can block access.",
+    });
+
+    const hasPrivacyLastUpdated = htmlLower.includes("last updated") || htmlLower.includes("last revised") || htmlLower.includes("effective date") || htmlLower.includes("last modified");
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "privacy_last_updated",
+      label: "Privacy policy maintenance date",
+      status: hasPrivacyLastUpdated ? "PASS" : "WARN",
+      detail: hasPrivacyLastUpdated
+        ? "Policy maintenance date detected — shows the privacy policy is actively maintained."
+        : "No 'last updated' date in policy — regulators and users expect visible evidence of ongoing policy maintenance.",
+    });
+
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "cookie_policy_page",
+      label: "Dedicated cookie policy page",
+      status: cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200 ? "PASS" : "WARN",
+      detail: cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200
+        ? "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met."
+        : "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
+    });
+
+    const hasDpoContact = htmlLower.includes("dpo@") || htmlLower.includes("privacy@") || htmlLower.includes("data protection officer") || htmlLower.includes("data-protection@");
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "gdpr_dpo_contact",
+      label: "GDPR privacy contact (DPO)",
+      status: hasDpoContact ? "PASS" : "WARN",
+      detail: hasDpoContact
+        ? "Privacy/DPO contact email detected — data subject requests can be handled."
+        : "No DPO or privacy contact visible — GDPR requires a designated privacy contact for data subject requests.",
+    });
+
+    // ─── Additional Missing Pages (batch) ─────────────────────────────────────
+    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = await Promise.all([
+      headRequest(`${baseUrl}/blog`),
+      headRequest(`${baseUrl}/careers`),
+      headRequest(`${baseUrl}/press`),
+      headRequest(`${baseUrl}/docs`),
+      headRequest(`${baseUrl}/integrations`),
+      headRequest(`${baseUrl}/media-kit`),
+    ]);
+    const blogAltStatus = blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
+    const careersAltStatus = careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
+    const pressAltStatus = pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
+    const docsAltStatus = docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
+    const integrationsAltStatus = integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
+    const brandKitStatus = mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "blog_resources",
+      label: "Blog / resources hub",
+      status: blogStatus === 200 || blogAltStatus === 200 ? "PASS" : "WARN",
+      detail: blogStatus === 200 || blogAltStatus === 200
+        ? "Blog or resources page found — content marketing enabled."
+        : "No blog or resources section — content marketing drives 3× more leads than outbound for SaaS.",
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "careers_page",
+      label: "Careers / jobs page",
+      status: careersStatus === 200 || careersAltStatus === 200 ? "PASS" : "WARN",
+      detail: careersStatus === 200 || careersAltStatus === 200
+        ? "Careers page found."
+        : "No careers page — even a simple 'we're hiring' page signals momentum and attracts talent.",
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "press_media",
+      label: "Press / media page",
+      status: pressStatus === 200 || pressAltStatus === 200 ? "PASS" : "WARN",
+      detail: pressStatus === 200 || pressAltStatus === 200
+        ? "Press or media page found."
+        : "No press page — journalists need a media kit (logo, screenshots, founder bio) to write about you.",
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "documentation",
+      label: "Documentation / developer docs",
+      status: docsStatus === 200 || docsAltStatus === 200 ? "PASS" : "WARN",
+      detail: docsStatus === 200 || docsAltStatus === 200
+        ? "Documentation page found."
+        : "No docs page — users and developers need documentation to onboard and integrate successfully.",
+    });
+
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "integrations_page",
+      label: "Integrations / partners page",
+      status: integrationsStatus === 200 || integrationsAltStatus === 200 ? "PASS" : "WARN",
+      detail: integrationsStatus === 200 || integrationsAltStatus === 200
+        ? "Integrations or partners page found."
+        : "No integrations page — listing integrations (Zapier, Slack, Make.com) is a top buying signal for SaaS.",
+    });
+
+    let has404Page = false;
+    try {
+      const notFoundResponse = await fetchWithTimeout(`${baseUrl}/this-page-does-not-exist-pulse-check`, {
+        headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+        redirect: "follow",
+      });
+      if (notFoundResponse.status === 404) {
+        const notFoundHtml = await notFoundResponse.text().catch(() => "");
+        has404Page = notFoundHtml.length > 200 && !notFoundHtml.toLowerCase().includes("cannot get");
+      }
+    } catch {
+      // ignore
+    }
+    checks.push({
+      category: "Missing Pages",
+      checkKey: "custom_404_page",
+      label: "Custom 404 error page",
+      status: has404Page ? "PASS" : "WARN",
+      detail: has404Page
+        ? "Custom 404 page detected — broken links lead to a branded error experience."
+        : "No custom 404 page — broken links dump users on a raw error; a custom 404 with navigation retains them.",
+    });
+
+    // ─── Additional SaaS Readiness ─────────────────────────────────────────────
+    const hasDemoBooking = ["book a demo", "schedule a demo", "request a demo", "calendly.com", "savvycal.com", "cal.com"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "demo_booking",
+      label: "Demo booking / discovery call",
+      status: hasDemoBooking ? "PASS" : "WARN",
+      detail: hasDemoBooking
+        ? "Demo booking link or scheduling widget detected."
+        : "No demo booking — high-ACV SaaS needs a 'book a demo' CTA to capture enterprise leads.",
+    });
+
+    const hasFreeTrial = ["free trial", "start for free", "get started free", "try for free", "free plan", "no credit card required"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "free_trial_cta",
+      label: "Free trial / free plan CTA",
+      status: hasFreeTrial ? "PASS" : "WARN",
+      detail: hasFreeTrial
+        ? "Free trial or free plan CTA detected — reduces purchase friction."
+        : "No free trial signal — freemium or free trial converts 3–5× better than paid-only for early SaaS.",
+    });
+
+    const [apiStatus, affiliateStatus, securityPageStatus] = await Promise.all([
+      headRequest(`${baseUrl}/api`),
+      headRequest(`${baseUrl}/affiliate`),
+      headRequest(`${baseUrl}/security`),
+    ]);
+    const apiAltStatus = apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
+    const affiliateAltStatus = affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
+    const trustPageStatus = securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
+
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "api_availability",
+      label: "Public API / developer access",
+      status: apiStatus === 200 || apiAltStatus === 200 ? "PASS" : "WARN",
+      detail: apiStatus === 200 || apiAltStatus === 200
+        ? "API endpoint or documentation found."
+        : "No public API detected — an API unlocks integrations, Zapier/Make.com workflows, and developer-led growth.",
+    });
+
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "affiliate_program",
+      label: "Affiliate / referral program",
+      status: affiliateStatus === 200 || affiliateAltStatus === 200 ? "PASS" : "WARN",
+      detail: affiliateStatus === 200 || affiliateAltStatus === 200
+        ? "Affiliate or referral program page found — word-of-mouth growth enabled."
+        : "No affiliate or referral program — referral programs can generate 15–30% of SaaS revenue.",
+    });
+
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "security_trust_page",
+      label: "Security / trust page",
+      status: securityPageStatus === 200 || trustPageStatus === 200 ? "PASS" : "WARN",
+      detail: securityPageStatus === 200 || trustPageStatus === 200
+        ? "Security or trust page found — enterprise procurement friction reduced."
+        : "No security page — enterprise buyers complete security questionnaires; a /security page pre-empts them.",
+    });
+
+    const hasNotificationSignals = ["notification-center", "notification bell", "unread messages", "inbox notifications"].some((s) => htmlLower.includes(s)) ||
+      /class=["'][^"']*notif[^"']*["']/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "in_app_notifications",
+      label: "In-app notification system",
+      status: hasNotificationSignals ? "PASS" : "WARN",
+      detail: hasNotificationSignals
+        ? "In-app notification signals detected."
+        : "No notification system — in-app notifications drive feature adoption and reduce churn.",
+    });
+
+    // ─── Additional Observability ──────────────────────────────────────────────
+    const uptimeSignals = ["statuspage.io", "betteruptime.com", "uptimerobot", "pingdom", "freshping", "checkly", "hyperping"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Observability",
+      checkKey: "uptime_monitoring",
+      label: "External uptime monitoring",
+      status: uptimeSignals ? "PASS" : "WARN",
+      detail: uptimeSignals
+        ? "External uptime monitoring service detected."
+        : "No uptime monitoring — you won't know about outages before users tweet about them.",
+    });
+
+    const logAggregationSignals = ["papertrail", "logtail", "logflare", "axiom", "betterstack", "baselime"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Observability",
+      checkKey: "log_aggregation",
+      label: "Centralised log aggregation",
+      status: logAggregationSignals ? "PASS" : "WARN",
+      detail: logAggregationSignals
+        ? "Log aggregation service detected."
+        : "No log aggregation — debugging production issues without centralised logs takes 10× longer.",
+    });
+
+    const apmSignals = ["newrelic", "dynatrace", "appdynamics", "elastic apm", "scout apm", "sentry performance"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Observability",
+      checkKey: "apm_signals",
+      label: "Application Performance Monitoring (APM)",
+      status: apmSignals ? "PASS" : "WARN",
+      detail: apmSignals
+        ? "APM tool detected — transaction tracing and performance insights available."
+        : "No APM detected — without transaction-level data, slow queries and N+1 problems go undetected.",
+    });
+
+    const rumSignals = ["speedcurve", "web-vitals", "lux.speedcurve", "perfume.js"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Observability",
+      checkKey: "real_user_monitoring",
+      label: "Real User Monitoring (RUM)",
+      status: rumSignals ? "PASS" : "WARN",
+      detail: rumSignals
+        ? "Real User Monitoring signals detected — field Core Web Vitals being collected."
+        : "No RUM detected — lab performance data doesn't reflect real-world Core Web Vitals across user devices.",
+    });
+
+    // ─── Additional Payments ──────────────────────────────────────────────────
+    const hasPciTrustBadge = ["pci dss", "pci-dss", "payment security", "256-bit encryption", "ssl secured checkout"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Payments",
+      checkKey: "payment_trust_badges",
+      label: "Payment trust badges",
+      status: hasPciTrustBadge ? "PASS" : "WARN",
+      detail: hasPciTrustBadge
+        ? "Payment security trust signals detected — checkout conversion improved."
+        : "No payment trust badges near checkout — SSL/PCI badges reduce cart abandonment by up to 30%.",
+    });
+
+    const hasBnpl = ["klarna", "afterpay", "affirm", "clearpay", "laybuy", "zip pay", "sezzle", "buy now pay later"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Payments",
+      checkKey: "bnpl_options",
+      label: "Buy Now Pay Later (BNPL)",
+      status: hasBnpl ? "PASS" : "WARN",
+      detail: hasBnpl
+        ? "BNPL option detected — large purchase friction reduced."
+        : "No BNPL option — Klarna/Afterpay increases average order value by up to 45% for higher-priced products.",
+    });
+
+    const hasCryptoPayments = ["bitcoin", "ethereum", " usdc", "coinbase commerce", "bitpay", "nowpayments", "crypto payment"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Payments",
+      checkKey: "crypto_payments",
+      label: "Cryptocurrency payment option",
+      status: hasCryptoPayments ? "PASS" : "WARN",
+      detail: hasCryptoPayments
+        ? "Cryptocurrency payment option detected."
+        : "No crypto payments — a growing segment prefers crypto; easy to add via Coinbase Commerce.",
+    });
+
+    // ─── Additional App Store & Mobile ─────────────────────────────────────────
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "smart_app_banner_meta",
+      label: "Smart App Banner (iOS web-to-app)",
+      status: hasAppleSmartBanner ? "PASS" : "WARN",
+      detail: hasAppleSmartBanner
+        ? "apple-itunes-app meta tag found — iOS users see a Smart App Banner to download the native app."
+        : "No Smart App Banner — add <meta name=apple-itunes-app> to drive web-to-native app installs on iOS.",
+    });
+
+    const hasAmazonAppStore = htmlLower.includes("amazon.com/apps") || htmlLower.includes("amazon appstore") || htmlLower.includes("amazon underground");
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "amazon_app_store",
+      label: "Amazon Appstore / Fire TV presence",
+      status: hasAmazonAppStore ? "PASS" : "WARN",
+      detail: hasAmazonAppStore
+        ? "Amazon Appstore link detected — Fire tablet and Fire TV market addressed."
+        : "No Amazon Appstore link — consider Amazon Appstore for Fire tablet reach and LATAM/emerging market Android users.",
+    });
+
+    const multipleOgImages = (pageResult.html.match(/property=["']og:image["']/gi) ?? []).length > 1;
+    const hasScreenshotAssets = multipleOgImages || htmlLower.includes("app-screenshot") || /class=["'][^"']*screenshot[^"']*["']/i.test(pageResult.html);
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "app_listing_screenshots",
+      label: "App screenshots / listing assets",
+      status: hasScreenshotAssets ? "PASS" : "WARN",
+      detail: hasScreenshotAssets
+        ? "Multiple OG images or screenshot assets detected — store listing quality enhanced."
+        : "No dedicated screenshot assets — App Store and Play Store listings require 3–8 high-quality screenshots.",
+    });
+
+    const appleTouchIconCount = (pageResult.html.match(/apple-touch-icon/gi) ?? []).length;
+    checks.push({
+      category: "App Store & Mobile",
+      checkKey: "app_icon_sizes",
+      label: "App icon multiple resolutions",
+      status: appleTouchIconCount >= 2 ? "PASS" : appleTouchIconCount === 1 ? "WARN" : "WARN",
+      detail: appleTouchIconCount >= 2
+        ? `${appleTouchIconCount} Apple touch icon sizes detected — iOS device resolutions covered.`
+        : appleTouchIconCount === 1
+          ? "Only one Apple touch icon size — add 60×60, 76×76, 120×120, and 180×180 variants for full iOS support."
+          : "No Apple touch icon — required for iOS home screen installation and App Store submission.",
+    });
+
+    // ─── Additional Global Distribution ────────────────────────────────────────
+    const hasCountrySelector = /country[\s-]?selector|region[\s-]?selector|select[\s\S]{0,200}country/i.test(pageResult.html) || htmlLower.includes("country-dropdown");
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "country_region_selector",
+      label: "Country / region selector",
+      status: hasCountrySelector ? "PASS" : "WARN",
+      detail: hasCountrySelector
+        ? "Country or region selector detected — users can choose their market."
+        : "No country/region selector — global users expect to set their region for localised pricing and content.",
+    });
+
+    const hasComplianceBadge = ["soc 2", "soc2", "iso 27001", "iso27001", "gdpr compliant", "hipaa compliant", "pci dss certified"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "compliance_certifications",
+      label: "Compliance certifications (SOC 2, ISO 27001)",
+      status: hasComplianceBadge ? "PASS" : "WARN",
+      detail: hasComplianceBadge
+        ? "Compliance certification badge detected — enterprise trust signals present."
+        : "No compliance certifications visible — SOC 2 Type II is the minimum bar for enterprise B2B SaaS sales.",
+    });
+
+    const hasEuHostingSignal = htmlLower.includes("eu-west") || htmlLower.includes("eu-central") || htmlLower.includes("europe-west") || (htmlLower.includes("gdpr") && htmlLower.includes("eu data"));
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "eu_data_residency",
+      label: "EU data residency signals",
+      status: hasEuHostingSignal ? "PASS" : "WARN",
+      detail: hasEuHostingSignal
+        ? "EU data residency signals detected — GDPR data sovereignty requirements may be met."
+        : "No EU data residency signals — EU enterprise buyers require data to stay within the EU under GDPR.",
+    });
+
+    const hasCompanyRegistration = /company (number|reg|registration)|registered in|vat number|registered company|\b(ltd|llc|inc|gmbh|bv|ab)\b/i.test(pageResult.html);
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "company_registration_info",
+      label: "Company registration info",
+      status: hasCompanyRegistration ? "PASS" : "WARN",
+      detail: hasCompanyRegistration
+        ? "Company registration details detected in page — legal entity transparency confirmed."
+        : "No company registration visible — EU regulations require displaying registered company name and number in footer.",
+    });
+
+    const hasTimezoneAware = ["timezone", "time zone", "local time", "utc offset", "intl.datetimeformat"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Global Distribution",
+      checkKey: "timezone_locale_support",
+      label: "Timezone / locale-aware content",
+      status: hasTimezoneAware ? "PASS" : "WARN",
+      detail: hasTimezoneAware
+        ? "Timezone or locale-aware content signals detected."
+        : "No timezone handling — dates and times should display in the user's local timezone for a global product.",
+    });
+
+    // ─── Trust & Brand ─────────────────────────────────────────────────────────
+    const hasSocialLinks = ["twitter.com/", "x.com/", "linkedin.com/company", "github.com/", "instagram.com/", "youtube.com/"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "social_media_links",
+      label: "Social media presence",
+      status: hasSocialLinks ? "PASS" : "WARN",
+      detail: hasSocialLinks
+        ? "Social media links detected — brand is findable and building a public presence."
+        : "No social media links — add Twitter/X, LinkedIn, and GitHub in the footer for brand credibility.",
+    });
+
+    const hasThirdPartyReviews = ["trustpilot", "g2.com", "capterra", "producthunt.com", "getapp.com", "software advice"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "third_party_reviews",
+      label: "Third-party review platform",
+      status: hasThirdPartyReviews ? "PASS" : "WARN",
+      detail: hasThirdPartyReviews
+        ? "Third-party review platform link or widget detected."
+        : "No review platform links — Trustpilot or G2 badges add verifiable social proof; 72% of buyers trust reviews.",
+    });
+
+    const hasPressCoverage = ["as seen in", "featured in", "as featured in", "press coverage", "in the press", "media coverage"].some((s) => htmlLower.includes(s));
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "press_coverage",
+      label: "Press / media coverage section",
+      status: hasPressCoverage ? "PASS" : "WARN",
+      detail: hasPressCoverage
+        ? "Press or media coverage section detected."
+        : "No press coverage section — even one article mention adds significant credibility.",
+    });
+
+    const hasTeamPresence = (["founder", "our team", "meet the team", "co-founder"].some((s) => htmlLower.includes(s))) &&
+      /<img[^>]+src=["'][^"']+["'][^>]*>/i.test(pageResult.html);
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "team_presence",
+      label: "Founder / team bio with photo",
+      status: hasTeamPresence ? "PASS" : "WARN",
+      detail: hasTeamPresence
+        ? "Team or founder presence with images detected — human accountability builds trust."
+        : "No visible founder or team bio — vibe-coded apps feel anonymous; a human face increases conversion.",
+    });
+
+    const hasProductHunt = htmlLower.includes("producthunt.com") || htmlLower.includes("product hunt") || htmlLower.includes("ph-badge");
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "product_hunt_badge",
+      label: "Product Hunt launch presence",
+      status: hasProductHunt ? "PASS" : "WARN",
+      detail: hasProductHunt
+        ? "Product Hunt badge or link detected — launch community engaged."
+        : "No Product Hunt presence — a PH launch generates early adopters, press, and social proof.",
+    });
+
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "media_kit",
+      label: "Media kit / brand assets",
+      status: mediaKitStatus === 200 || brandKitStatus === 200 ? "PASS" : "WARN",
+      detail: mediaKitStatus === 200 || brandKitStatus === 200
+        ? "Media kit or brand assets page found — journalists and partners have correct branding."
+        : "No media kit — journalists and partners need logo files and brand guidelines at /media-kit.",
+    });
+
+    // ─── Code Quality (URL-detectable) ─────────────────────────────────────────
+    const hasPlaceholderText = pageResult.html.toLowerCase().includes("lorem ipsum") || pageResult.html.toLowerCase().includes("placeholder text here");
+    checks.push({
+      category: "Code Quality",
+      checkKey: "no_placeholder_text",
+      label: "No placeholder / lorem ipsum content",
+      status: hasPlaceholderText ? "FAIL" : "PASS",
+      detail: hasPlaceholderText
+        ? "Lorem ipsum or placeholder text detected — vibe-coded apps often ship with unfilled copy blocks."
+        : "No placeholder text detected in page source.",
+    });
+
+    const hasHashRouting = /#\/[a-z]/i.test(pageResult.html) || htmlLower.includes("hashrouter") || htmlLower.includes("hash-router");
+    checks.push({
+      category: "Code Quality",
+      checkKey: "no_hash_routing",
+      label: "Clean URL routing (no hash routes)",
+      status: hasHashRouting ? "WARN" : "PASS",
+      detail: hasHashRouting
+        ? "Hash-based routing detected (#/path) — search engines cannot index hash routes; use HTML5 history API routing."
+        : "No hash routing detected — URL structure appears SEO-friendly.",
+    });
+
   } else {
     // Site unreachable — mark remaining checks as FAIL
     const failedChecks: Array<[string, string, string]> = [
@@ -1008,6 +1771,83 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
       ["Global Distribution", "language_switcher", "Language / region switcher"],
       ["Global Distribution", "international_payments", "International payment methods"],
       ["Global Distribution", "eu_vat", "EU VAT / tax handling"],
+      // Additional SEO
+      ["SEO", "structured_data", "JSON-LD structured data"],
+      ["SEO", "preload_hints", "Resource preload hints"],
+      ["SEO", "search_engine_verified", "Search engine verification"],
+      ["SEO", "meta_robots", "Robots meta tag"],
+      ["SEO", "og_site_name", "og:site_name (brand in shares)"],
+      // Additional Security
+      ["Security", "subresource_integrity", "Subresource Integrity (SRI)"],
+      ["Security", "secure_cookie_attributes", "Secure cookie attributes"],
+      ["Security", "cors_policy", "CORS policy"],
+      ["Security", "security_txt", "security.txt (responsible disclosure)"],
+      ["Security", "server_header_leakage", "Server version not exposed"],
+      ["Security", "no_mixed_content", "No mixed HTTP/HTTPS content"],
+      // Additional Performance
+      ["Performance", "preconnect_hints", "Preconnect / DNS prefetch hints"],
+      ["Performance", "native_lazy_loading", "Native image lazy loading"],
+      ["Performance", "font_display_swap", "Font display optimisation"],
+      ["Performance", "vary_header", "Vary header (content negotiation)"],
+      ["Performance", "server_timing", "Server-Timing header"],
+      // Additional Authentication
+      ["Authentication", "mfa_signals", "Multi-factor authentication (MFA)"],
+      ["Authentication", "email_verification_flow", "Email verification flow"],
+      ["Authentication", "magic_link_auth", "Magic link / passwordless login"],
+      ["Authentication", "enterprise_sso", "Enterprise SSO / SAML"],
+      // Additional Legal
+      ["Legal & Compliance", "data_deletion_right", "Data deletion / right to erasure (GDPR Art. 17)"],
+      ["Legal & Compliance", "accessibility_statement", "Accessibility statement"],
+      ["Legal & Compliance", "coppa_signals", "COPPA / children's privacy"],
+      ["Legal & Compliance", "dpa_available", "Data Processing Agreement (GDPR Art. 28)"],
+      ["Legal & Compliance", "icp_license", "China ICP license (for CN market)"],
+      ["Legal & Compliance", "privacy_last_updated", "Privacy policy maintenance date"],
+      ["Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page"],
+      ["Legal & Compliance", "gdpr_dpo_contact", "GDPR privacy contact (DPO)"],
+      // Additional Missing Pages
+      ["Missing Pages", "blog_resources", "Blog / resources hub"],
+      ["Missing Pages", "careers_page", "Careers / jobs page"],
+      ["Missing Pages", "press_media", "Press / media page"],
+      ["Missing Pages", "documentation", "Documentation / developer docs"],
+      ["Missing Pages", "integrations_page", "Integrations / partners page"],
+      ["Missing Pages", "custom_404_page", "Custom 404 error page"],
+      // Additional SaaS Readiness
+      ["SaaS Readiness", "demo_booking", "Demo booking / discovery call"],
+      ["SaaS Readiness", "free_trial_cta", "Free trial / free plan CTA"],
+      ["SaaS Readiness", "api_availability", "Public API / developer access"],
+      ["SaaS Readiness", "affiliate_program", "Affiliate / referral program"],
+      ["SaaS Readiness", "security_trust_page", "Security / trust page"],
+      ["SaaS Readiness", "in_app_notifications", "In-app notification system"],
+      // Additional Observability
+      ["Observability", "uptime_monitoring", "External uptime monitoring"],
+      ["Observability", "log_aggregation", "Centralised log aggregation"],
+      ["Observability", "apm_signals", "Application Performance Monitoring (APM)"],
+      ["Observability", "real_user_monitoring", "Real User Monitoring (RUM)"],
+      // Additional Payments
+      ["Payments", "payment_trust_badges", "Payment trust badges"],
+      ["Payments", "bnpl_options", "Buy Now Pay Later (BNPL)"],
+      ["Payments", "crypto_payments", "Cryptocurrency payment option"],
+      // Additional App Store & Mobile
+      ["App Store & Mobile", "smart_app_banner_meta", "Smart App Banner (iOS web-to-app)"],
+      ["App Store & Mobile", "amazon_app_store", "Amazon Appstore / Fire TV presence"],
+      ["App Store & Mobile", "app_listing_screenshots", "App screenshots / listing assets"],
+      ["App Store & Mobile", "app_icon_sizes", "App icon multiple resolutions"],
+      // Additional Global Distribution
+      ["Global Distribution", "country_region_selector", "Country / region selector"],
+      ["Global Distribution", "compliance_certifications", "Compliance certifications (SOC 2, ISO 27001)"],
+      ["Global Distribution", "eu_data_residency", "EU data residency signals"],
+      ["Global Distribution", "company_registration_info", "Company registration info"],
+      ["Global Distribution", "timezone_locale_support", "Timezone / locale-aware content"],
+      // Trust & Brand (new category)
+      ["Trust & Brand", "social_media_links", "Social media presence"],
+      ["Trust & Brand", "third_party_reviews", "Third-party review platform"],
+      ["Trust & Brand", "press_coverage", "Press / media coverage section"],
+      ["Trust & Brand", "team_presence", "Founder / team bio with photo"],
+      ["Trust & Brand", "product_hunt_badge", "Product Hunt launch presence"],
+      ["Trust & Brand", "media_kit", "Media kit / brand assets"],
+      // Code Quality (URL-detectable)
+      ["Code Quality", "no_placeholder_text", "No placeholder / lorem ipsum content"],
+      ["Code Quality", "no_hash_routing", "Clean URL routing (no hash routes)"],
     ];
     for (const [category, checkKey, label] of failedChecks) {
       checks.push({ category, checkKey, label, status: "FAIL", detail: "Could not reach the site." });
@@ -1130,6 +1970,78 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
       label: "Dockerfile / Docker Compose",
       status: hasDockerfile ? "PASS" : "WARN",
       detail: hasDockerfile ? "Docker configuration found." : "No Docker configuration detected.",
+    },
+  );
+
+  // Additional Code Quality checks
+  const hasContributing = names.some((n) => n.startsWith("contributing"));
+  const hasCodeOfConduct = names.some((n) => n.startsWith("code_of_conduct") || n.startsWith("code-of-conduct"));
+  const hasSecurityMd = names.some((n) => n === "security.md");
+  const hasDependabot = names.includes(".github") && (() => {
+    const githubDir = entries.find((e) => e.name === ".github" && e.type === "dir");
+    return Boolean(githubDir);
+  })();
+  const hasChangelogFile = names.some((n) => n.startsWith("changelog") || n === "history.md");
+  const hasOpenApiSpec = names.some((n) => ["openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.json"].includes(n));
+  const hasEditorConfig = names.includes(".editorconfig");
+  const hasGitignore = names.includes(".gitignore");
+
+  checks.push(
+    {
+      category: "Code Quality",
+      checkKey: "has_contributing",
+      label: "CONTRIBUTING.md",
+      status: hasContributing ? "PASS" : "WARN",
+      detail: hasContributing ? "CONTRIBUTING.md found — contributor guidelines documented." : "No CONTRIBUTING.md — makes open-source contributions and team onboarding harder.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_code_of_conduct",
+      label: "Code of Conduct",
+      status: hasCodeOfConduct ? "PASS" : "WARN",
+      detail: hasCodeOfConduct ? "Code of Conduct found." : "No Code of Conduct — required for GitHub marketplace listings and professional open-source projects.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_security_md",
+      label: "SECURITY.md (vulnerability disclosure)",
+      status: hasSecurityMd ? "PASS" : "WARN",
+      detail: hasSecurityMd ? "SECURITY.md found — responsible disclosure policy documented." : "No SECURITY.md — GitHub recommends this for all repos to guide vulnerability reporting.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_dependabot",
+      label: "Dependabot / automated dependency updates",
+      status: hasDependabot ? "PASS" : "WARN",
+      detail: hasDependabot ? ".github directory found — check for dependabot.yml for automated updates." : "No Dependabot configuration — unpatched dependencies are the #1 source of supply-chain vulnerabilities.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_changelog_file",
+      label: "CHANGELOG.md",
+      status: hasChangelogFile ? "PASS" : "WARN",
+      detail: hasChangelogFile ? "CHANGELOG.md found — release history documented." : "No CHANGELOG.md — users and contributors can't track what changed between versions.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_openapi_spec",
+      label: "OpenAPI / Swagger spec",
+      status: hasOpenApiSpec ? "PASS" : "WARN",
+      detail: hasOpenApiSpec ? "OpenAPI/Swagger spec found — API is documented and machine-readable." : "No OpenAPI spec — an openapi.yaml enables auto-generated SDKs, Postman collections, and API docs.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_editorconfig",
+      label: ".editorconfig (consistent formatting)",
+      status: hasEditorConfig ? "PASS" : "WARN",
+      detail: hasEditorConfig ? ".editorconfig found — consistent code style across editors." : "No .editorconfig — without it, tabs vs spaces and line endings vary by contributor.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_gitignore",
+      label: ".gitignore",
+      status: hasGitignore ? "PASS" : "FAIL",
+      detail: hasGitignore ? ".gitignore found — build artifacts and secrets excluded from version control." : "No .gitignore — secrets and build artifacts may be accidentally committed.",
     },
   );
 
@@ -1262,6 +2174,83 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["Global Distribution", "language_switcher", "Language / region switcher"],
     ["Global Distribution", "international_payments", "International payment methods"],
     ["Global Distribution", "eu_vat", "EU VAT / tax handling"],
+    // Additional SEO
+    ["SEO", "structured_data", "JSON-LD structured data"],
+    ["SEO", "preload_hints", "Resource preload hints"],
+    ["SEO", "search_engine_verified", "Search engine verification"],
+    ["SEO", "meta_robots", "Robots meta tag"],
+    ["SEO", "og_site_name", "og:site_name (brand in shares)"],
+    // Additional Security
+    ["Security", "subresource_integrity", "Subresource Integrity (SRI)"],
+    ["Security", "secure_cookie_attributes", "Secure cookie attributes"],
+    ["Security", "cors_policy", "CORS policy"],
+    ["Security", "security_txt", "security.txt (responsible disclosure)"],
+    ["Security", "server_header_leakage", "Server version not exposed"],
+    ["Security", "no_mixed_content", "No mixed HTTP/HTTPS content"],
+    // Additional Performance
+    ["Performance", "preconnect_hints", "Preconnect / DNS prefetch hints"],
+    ["Performance", "native_lazy_loading", "Native image lazy loading"],
+    ["Performance", "font_display_swap", "Font display optimisation"],
+    ["Performance", "vary_header", "Vary header (content negotiation)"],
+    ["Performance", "server_timing", "Server-Timing header"],
+    // Additional Authentication
+    ["Authentication", "mfa_signals", "Multi-factor authentication (MFA)"],
+    ["Authentication", "email_verification_flow", "Email verification flow"],
+    ["Authentication", "magic_link_auth", "Magic link / passwordless login"],
+    ["Authentication", "enterprise_sso", "Enterprise SSO / SAML"],
+    // Additional Legal
+    ["Legal & Compliance", "data_deletion_right", "Data deletion / right to erasure (GDPR Art. 17)"],
+    ["Legal & Compliance", "accessibility_statement", "Accessibility statement"],
+    ["Legal & Compliance", "coppa_signals", "COPPA / children's privacy"],
+    ["Legal & Compliance", "dpa_available", "Data Processing Agreement (GDPR Art. 28)"],
+    ["Legal & Compliance", "icp_license", "China ICP license (for CN market)"],
+    ["Legal & Compliance", "privacy_last_updated", "Privacy policy maintenance date"],
+    ["Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page"],
+    ["Legal & Compliance", "gdpr_dpo_contact", "GDPR privacy contact (DPO)"],
+    // Additional Missing Pages
+    ["Missing Pages", "blog_resources", "Blog / resources hub"],
+    ["Missing Pages", "careers_page", "Careers / jobs page"],
+    ["Missing Pages", "press_media", "Press / media page"],
+    ["Missing Pages", "documentation", "Documentation / developer docs"],
+    ["Missing Pages", "integrations_page", "Integrations / partners page"],
+    ["Missing Pages", "custom_404_page", "Custom 404 error page"],
+    // Additional SaaS Readiness
+    ["SaaS Readiness", "demo_booking", "Demo booking / discovery call"],
+    ["SaaS Readiness", "free_trial_cta", "Free trial / free plan CTA"],
+    ["SaaS Readiness", "api_availability", "Public API / developer access"],
+    ["SaaS Readiness", "affiliate_program", "Affiliate / referral program"],
+    ["SaaS Readiness", "security_trust_page", "Security / trust page"],
+    ["SaaS Readiness", "in_app_notifications", "In-app notification system"],
+    // Additional Observability
+    ["Observability", "uptime_monitoring", "External uptime monitoring"],
+    ["Observability", "log_aggregation", "Centralised log aggregation"],
+    ["Observability", "apm_signals", "Application Performance Monitoring (APM)"],
+    ["Observability", "real_user_monitoring", "Real User Monitoring (RUM)"],
+    // Additional Payments
+    ["Payments", "payment_trust_badges", "Payment trust badges"],
+    ["Payments", "bnpl_options", "Buy Now Pay Later (BNPL)"],
+    ["Payments", "crypto_payments", "Cryptocurrency payment option"],
+    // Additional App Store & Mobile
+    ["App Store & Mobile", "smart_app_banner_meta", "Smart App Banner (iOS web-to-app)"],
+    ["App Store & Mobile", "amazon_app_store", "Amazon Appstore / Fire TV presence"],
+    ["App Store & Mobile", "app_listing_screenshots", "App screenshots / listing assets"],
+    ["App Store & Mobile", "app_icon_sizes", "App icon multiple resolutions"],
+    // Additional Global Distribution
+    ["Global Distribution", "country_region_selector", "Country / region selector"],
+    ["Global Distribution", "compliance_certifications", "Compliance certifications (SOC 2, ISO 27001)"],
+    ["Global Distribution", "eu_data_residency", "EU data residency signals"],
+    ["Global Distribution", "company_registration_info", "Company registration info"],
+    ["Global Distribution", "timezone_locale_support", "Timezone / locale-aware content"],
+    // Trust & Brand (new category)
+    ["Trust & Brand", "social_media_links", "Social media presence"],
+    ["Trust & Brand", "third_party_reviews", "Third-party review platform"],
+    ["Trust & Brand", "press_coverage", "Press / media coverage section"],
+    ["Trust & Brand", "team_presence", "Founder / team bio with photo"],
+    ["Trust & Brand", "product_hunt_badge", "Product Hunt launch presence"],
+    ["Trust & Brand", "media_kit", "Media kit / brand assets"],
+    // Code Quality (URL-detectable)
+    ["Code Quality", "no_placeholder_text", "No placeholder / lorem ipsum content"],
+    ["Code Quality", "no_hash_routing", "Clean URL routing (no hash routes)"],
   ] as const;
 
   return skippedChecks.map(([category, checkKey, label], i) => ({

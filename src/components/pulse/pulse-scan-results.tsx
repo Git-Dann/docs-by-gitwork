@@ -7,6 +7,8 @@ import {
   ArrowRightIcon,
   ArrowPathIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
   MinusCircleIcon,
@@ -15,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useGeneratePulseProposal, useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -41,7 +43,7 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
   return Math.round((passing / applicable.length) * 100);
 }
 
-type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness";
+type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack";
 
 function ReadinessStatusIcon({ status }: { status: ProductionReadinessItem["status"] }) {
   if (status === "DONE") return <CheckCircleIcon className="h-4 w-4 text-emerald-500" />;
@@ -59,12 +61,117 @@ function groupReadinessByCategory(items: ProductionReadinessItem[]) {
   return map;
 }
 
+function StackPriorityBadge({ priority }: { priority: TechStackRecommendation["priority"] }) {
+  const styles =
+    priority === "HIGH"
+      ? "bg-red-50 text-red-700"
+      : priority === "MEDIUM"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-50 text-slate-600";
+  return (
+    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", styles)}>
+      {priority}
+    </span>
+  );
+}
+
+function StackTab({
+  analysis,
+  detectedStack,
+}: {
+  analysis: NonNullable<import("@/types/pulse").PulseAnalysisOutput["techStackAnalysis"]>;
+  detectedStack: string[];
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Detected stack */}
+      {detectedStack.length > 0 && (
+        <div className="rounded-[12px] border border-[var(--border-2)] p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Detected stack</p>
+          <div className="flex flex-wrap gap-2">
+            {detectedStack.map((tech) => (
+              <span
+                key={tech}
+                className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]"
+              >
+                {tech}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Assessment */}
+      <div className="rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Stack assessment</p>
+        <p className="text-sm leading-relaxed text-[var(--text-2)]">{analysis.assessment}</p>
+      </div>
+
+      {/* Missing for production */}
+      {analysis.missingForProduction.length > 0 && (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Missing for production</p>
+          <div className="flex flex-wrap gap-2">
+            {analysis.missingForProduction.map((item, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700"
+              >
+                <XCircleIcon className="h-3 w-3" />
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {analysis.recommendations.length > 0 && (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Stack recommendations</p>
+          <div className="space-y-3">
+            {analysis.recommendations.map((rec, i) => (
+              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-[var(--text-1)]">{rec.area}</p>
+                      {rec.current && (
+                        <span className="rounded border border-[var(--border-2)] px-1.5 py-0.5 text-xs text-[var(--text-4)]">
+                          current: {rec.current}
+                        </span>
+                      )}
+                      <span className="text-xs text-[var(--brand-600)]">→ {rec.recommended}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-[var(--text-3)]">{rec.reason}</p>
+                  </div>
+                  <StackPriorityBadge priority={rec.priority} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  function toggleCategory(category: string) {
+    setExpandedCategories((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
 
   const llm = scan.llmAnalysis;
   const checksByCategory = groupChecksByCategory(scan.checks);
@@ -101,6 +208,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
+    { id: "stack", label: "Tech Stack", count: llm?.techStackAnalysis?.recommendations.length },
   ];
 
   return (
@@ -244,39 +352,63 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       )}
 
       {activeTab === "checks" && (
-        <div className="space-y-6">
+        <div className="space-y-2">
           {Array.from(checksByCategory.entries()).map(([category, checks]) => {
             const applicable = checks.filter((c) => c.status !== "SKIPPED");
             if (!applicable.length) return null;
             const score = categoryScore(checks);
             const failed = checks.filter((c) => c.status === "FAIL").length;
             const warned = checks.filter((c) => c.status === "WARN").length;
+            const passed = checks.filter((c) => c.status === "PASS").length;
+            const isExpanded = expandedCategories.has(category);
+            const hasIssues = failed > 0 || warned > 0;
 
             return (
-              <div key={category}>
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-[var(--text-1)]">{category}</p>
-                  <div className="flex items-center gap-3">
-                    {failed > 0 && <span className="text-xs font-medium text-red-600">{failed} failed</span>}
-                    {warned > 0 && <span className="text-xs font-medium text-amber-600">{warned} warnings</span>}
-                    <span className="text-xs text-[var(--text-4)]">{score}%</span>
+              <div key={category} className="rounded-[12px] border border-[var(--border-2)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface-1)] transition-colors"
+                >
+                  <span className="text-[var(--text-4)]">
+                    {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+                  </span>
+                  <span className="flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
+                  <div className="flex items-center gap-2">
+                    {failed > 0 && (
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{failed} failed</span>
+                    )}
+                    {warned > 0 && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{warned} warn</span>
+                    )}
+                    {!hasIssues && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{passed} passed</span>
+                    )}
+                    <span className={cn(
+                      "text-xs font-semibold tabular-nums",
+                      score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600",
+                    )}>
+                      {score}%
+                    </span>
                   </div>
-                </div>
-                <div className="divide-y divide-[var(--border-2)] rounded-[12px] border border-[var(--border-2)]">
-                  {checks.filter((c) => c.status !== "SKIPPED").map((check) => (
-                    <div key={check.id} className="flex items-start gap-3 px-4 py-3">
-                      <span className="mt-0.5 text-base">
-                        <PulseCheckStatusIcon status={check.status} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
-                        {check.detail && (
-                          <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
-                        )}
+                </button>
+                {isExpanded && (
+                  <div className="divide-y divide-[var(--border-2)] border-t border-[var(--border-2)]">
+                    {checks.filter((c) => c.status !== "SKIPPED").map((check) => (
+                      <div key={check.id} className="flex items-start gap-3 bg-[var(--surface-1)] px-4 py-3">
+                        <span className="mt-0.5 text-base">
+                          <PulseCheckStatusIcon status={check.status} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
+                          {check.detail && (
+                            <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -385,6 +517,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             );
           })}
         </div>
+      )}
+
+      {activeTab === "stack" && llm?.techStackAnalysis && (
+        <StackTab analysis={llm.techStackAnalysis} detectedStack={scan.techStack ?? []} />
       )}
 
       {activeTab === "roadmap" && llm && (

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 
 
+
 const pulseStrengthSchema = z.object({
   title: z.string(),
   detail: z.string(),
@@ -43,6 +44,20 @@ const productionReadinessItemSchema = z.object({
   notes: z.string(),
 });
 
+const techStackRecommendationSchema = z.object({
+  area: z.string(),
+  current: z.string().nullable(),
+  recommended: z.string(),
+  reason: z.string(),
+  priority: z.enum(["HIGH", "MEDIUM", "LOW"]),
+});
+
+const pulseTechStackAnalysisSchema = z.object({
+  assessment: z.string(),
+  recommendations: z.array(techStackRecommendationSchema),
+  missingForProduction: z.array(z.string()),
+});
+
 const pulseAnalysisOutputSchema = z.object({
   executiveSummary: z.string(),
   healthNarrative: z.string(),
@@ -53,6 +68,7 @@ const pulseAnalysisOutputSchema = z.object({
   techDebt: z.array(pulseTechDebtSchema),
   proposalHook: z.string(),
   productionReadinessChecklist: z.array(productionReadinessItemSchema),
+  techStackAnalysis: pulseTechStackAnalysisSchema,
 });
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
@@ -169,10 +185,25 @@ Return a JSON object with this exact shape:
       "status": "DONE | MISSING | PARTIAL",
       "notes": "string — 1 sentence on current state or what's needed. Be specific about the vibe-coded context."
     }
-  ]
+  ],
+  "techStackAnalysis": {
+    "assessment": "string — 2–3 sentence paragraph assessing the detected tech stack from a production-readiness standpoint. Is it appropriate for the product's scale? What are the risks of the current stack choices?",
+    "recommendations": [
+      {
+        "area": "string — e.g. Database, Auth, Email, Monitoring, Testing, Deployment, Caching, CDN, Search",
+        "current": "string or null — what's detected in the stack (null if nothing detected)",
+        "recommended": "string — specific tool/service to add or switch to",
+        "reason": "string — why this recommendation matters for production readiness",
+        "priority": "HIGH | MEDIUM | LOW"
+      }
+    ],
+    "missingForProduction": ["string — list of production-critical components not detected in the stack, e.g. 'Background job queue', 'Rate limiting', 'Database connection pooling', 'Secrets management'"]
+  }
 }
 
-Populate productionReadinessChecklist with 12–20 items covering the full prompt-to-production checklist for a SaaS product. Base status on the scan results — if a check passed, mark DONE; if failed, MISSING; if warn, PARTIAL. Include items from: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth provider), Payments (Pricing page, Payment processing, Billing portal, Subscription management), Onboarding (Welcome flow, Activation steps, Empty states), Support (Help page, Chat widget, FAQ), Trust (About page, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime monitoring), and any other gaps you identify from the scan.`;
+Populate productionReadinessChecklist with 12–20 items covering the full prompt-to-production checklist for a SaaS product. Base status on the scan results — if a check passed, mark DONE; if failed, MISSING; if warn, PARTIAL. Include items from: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth provider), Payments (Pricing page, Payment processing, Billing portal, Subscription management), Onboarding (Welcome flow, Activation steps, Empty states), Support (Help page, Chat widget, FAQ), Trust (About page, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime monitoring), and any other gaps you identify from the scan.
+
+For techStackAnalysis: base the assessment and recommendations on the detected tech stack (${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from scan signals"}). Give 3–8 recommendations covering areas like database, caching, email delivery, background jobs, monitoring, CDN, and testing. Identify 3–6 production-critical components that are likely missing based on typical vibe-coded app patterns.`;
 
   const client = new Anthropic({ apiKey });
 
