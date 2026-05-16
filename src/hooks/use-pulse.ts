@@ -7,6 +7,7 @@ import {
   createPulseScan,
   getPulseScan,
   deletePulseScan,
+  cancelPulseScan,
   generateProposalFromScan,
   getPulseStats,
 } from "@/lib/api";
@@ -55,6 +56,18 @@ export function useDeletePulseScan() {
   return useMutation({
     mutationFn: deletePulseScan,
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+    },
+  });
+}
+
+export function useCancelPulseScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: cancelPulseScan,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });

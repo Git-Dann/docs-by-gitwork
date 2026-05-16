@@ -509,6 +509,12 @@ export async function deletePulseScan(scanId: string): Promise<{ deleted: boolea
   });
 }
 
+export async function cancelPulseScan(scanId: string): Promise<{ cancelled: boolean }> {
+  return apiFetch<{ cancelled: boolean }>(`/api/pulse/scans/${scanId}/cancel`, {
+    method: "POST",
+  });
+}
+
 export async function generateProposalFromScan(
   scanId: string,
 ): Promise<{ proposalId: string }> {

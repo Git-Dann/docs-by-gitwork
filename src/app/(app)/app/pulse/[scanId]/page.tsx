@@ -4,9 +4,10 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";
-import { usePulseScan } from "@/hooks/use-pulse";
+import { usePulseScan, useCancelPulseScan } from "@/hooks/use-pulse";
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
+import { Button } from "@/components/ui/button";
 
 const STAGES = [
   { label: "Connecting to project",    from: 0  },
@@ -27,7 +28,8 @@ function easedProgress(elapsedMs: number, capPct = 96, totalMs = 45000): number 
   return Math.min(eased * capPct, capPct);
 }
 
-function ScanRunningState({ startedAt }: { startedAt: string }) {
+function ScanRunningState({ startedAt, scanId }: { startedAt: string; scanId: string }) {
+  const { mutate: cancel, isPending: cancelling } = useCancelPulseScan();
   const [pct, setPct] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
 
@@ -84,16 +86,30 @@ function ScanRunningState({ startedAt }: { startedAt: string }) {
             Taking longer than usual — complex sites or large repos can take up to 90 seconds.
           </p>
         )}
+
+        <Button
+          variant="tertiary"
+          size="sm"
+          onClick={() => cancel(scanId)}
+          loading={cancelling}
+        >
+          Cancel scan
+        </Button>
       </div>
     </div>
   );
 }
 
-function ScanFailedState({ errorMessage }: { errorMessage: string | null }) {
+function ScanFailedState({ errorMessage, errorCode }: { errorMessage: string | null; errorCode: string | null }) {
+  const cancelled = errorCode === "USER_CANCELLED";
   return (
-    <div className="rounded-[14px] border border-red-200 bg-red-50 p-6">
-      <p className="text-sm font-medium text-red-800">Scan failed</p>
-      <p className="mt-1 text-sm text-red-700">{errorMessage ?? "An unexpected error occurred."}</p>
+    <div className={`rounded-[14px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50"}`}>
+      <p className={`text-sm font-medium ${cancelled ? "text-[var(--text-1)]" : "text-red-800"}`}>
+        {cancelled ? "Scan cancelled" : "Scan failed"}
+      </p>
+      <p className={`mt-1 text-sm ${cancelled ? "text-[var(--text-3)]" : "text-red-700"}`}>
+        {cancelled ? "You cancelled this scan. Start a new scan when ready." : (errorMessage ?? "An unexpected error occurred.")}
+      </p>
     </div>
   );
 }
@@ -135,11 +151,11 @@ export default function PulseScanDetailPage({
         )}
 
         {!isLoading && scan?.status === "RUNNING" && (
-          <ScanRunningState startedAt={scan.startedAt} />
+          <ScanRunningState startedAt={scan.startedAt} scanId={scanId} />
         )}
 
         {!isLoading && scan?.status === "FAILED" && (
-          <ScanFailedState errorMessage={scan.errorMessage} />
+          <ScanFailedState errorMessage={scan.errorMessage} errorCode={scan.errorCode} />
         )}
 
         {!isLoading && scan?.status === "COMPLETED" && (

@@ -222,7 +222,7 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
   };
 }
 
-export async function createAndRunPulseScan(input: {
+export async function createPulseScanRecord(input: {
   projectName: string;
   inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";
   inputUrl?: string;
@@ -230,7 +230,7 @@ export async function createAndRunPulseScan(input: {
   inputDescription?: string;
   platform?: string;
   clientId?: string;
-}): Promise<PulseScanRecord> {
+}): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
   const { workspace } = await ensureBaseRecords();
   const aiConfig = {
     provider: (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL",
@@ -250,7 +250,6 @@ export async function createAndRunPulseScan(input: {
              null,
   };
 
-  // Look up the most recent completed scan for the same URL/repo to track score delta
   const previousScan = input.inputType !== "FREE_TEXT"
     ? await prisma.pulseScan.findFirst({
         where: {
@@ -264,7 +263,6 @@ export async function createAndRunPulseScan(input: {
       })
     : null;
 
-  // Create the scan record in RUNNING state
   const scan = await prisma.pulseScan.create({
     data: {
       workspaceId: workspace.id,
@@ -282,15 +280,22 @@ export async function createAndRunPulseScan(input: {
     include: pulseInclude,
   });
 
-  // Run analysis — errors update the record to FAILED
-  runAnalysis(scan.id, input, aiConfig).catch(() => {
-    // Error is handled inside runAnalysis
-  });
-
-  return serializePulseScan(scan);
+  return { scan: serializePulseScan(scan), aiConfig };
 }
 
-async function runAnalysis(
+export async function cancelPulseScan(scanId: string): Promise<void> {
+  await prisma.pulseScan.update({
+    where: { id: scanId },
+    data: {
+      status: "FAILED",
+      completedAt: new Date(),
+      errorCode: "USER_CANCELLED",
+      errorMessage: "Scan was cancelled.",
+    },
+  });
+}
+
+export async function runAnalysis(
   scanId: string,
   input: {
     inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";
@@ -336,6 +341,10 @@ async function runAnalysis(
       aiConfig,
     );
 
+    // Don't overwrite a user cancellation
+    const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
+    if (current?.status !== "RUNNING") return;
+
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: {
@@ -358,6 +367,8 @@ async function runAnalysis(
       },
     });
   } catch (error) {
+    const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
+    if (current?.status !== "RUNNING") return;
     const message = error instanceof Error ? error.message : "Unknown error";
     await prisma.pulseScan.update({
       where: { id: scanId },
