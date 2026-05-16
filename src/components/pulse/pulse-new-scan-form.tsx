@@ -10,7 +10,7 @@ const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder
   {
     value: "URL",
     label: "URL",
-    placeholder: "https://myapp.com  ·  apps.apple.com/…  ·  play.google.com/…",
+    placeholder: "https://myapp.com",
     description: "Web app, SaaS, marketing site, App Store listing, or Google Play listing — any live URL",
   },
   {
