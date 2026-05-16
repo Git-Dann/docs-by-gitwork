@@ -243,7 +243,8 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
 }
 
 // Shared grid template — header and every row use the same columns so they align exactly.
-const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem auto";
+// Actions column is fixed (not auto) so the empty header spacer matches the row's buttons.
+const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem 4rem";
 
 // ── Scan row ──────────────────────────────────────────────────────────────────
 
