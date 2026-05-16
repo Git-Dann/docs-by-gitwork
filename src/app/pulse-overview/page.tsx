@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function PulseOverviewPage() {
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+    <div className="pulse-overview min-h-screen bg-white" style={{ fontFamily: "var(--font-inter, ui-sans-serif, system-ui, sans-serif)" }}>
 
       {/* Nav */}
       <header style={{ borderBottom: "1px solid #e5e7eb", background: "white", position: "sticky", top: 0, zIndex: 50 }}>
