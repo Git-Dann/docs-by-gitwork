@@ -278,9 +278,14 @@ function ScanRow({
 
       {/* Name + URL + mobile meta */}
       <Link href={`/app/pulse/${scan.id}`} className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]">
-          {scan.projectName}
-        </p>
+        <div className="flex items-center gap-1.5 truncate">
+          <p className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]">
+            {scan.projectName}
+          </p>
+          {scan.generatedProposalId && (
+            <DocumentTextIcon className="h-3.5 w-3.5 shrink-0 text-[var(--brand-400)]" title="Proposal generated" />
+          )}
+        </div>
         <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
@@ -289,21 +294,15 @@ function ScanRow({
         <div className="mt-1.5 flex items-center gap-2 sm:hidden">
           <HealthPill score={scan.healthScore} />
           <PulseScanStatusBadge status={scan.status} />
-          {scan.generatedProposalId && (
-            <DocumentTextIcon className="h-3.5 w-3.5 text-[var(--brand-400)]" title="Proposal generated" />
-          )}
         </div>
       </Link>
 
-      {/* Meta — desktop only */}
-      <div className="hidden items-center gap-3 sm:flex">
-        <InputTypePill type={scan.inputType} />
-        <HealthPill score={scan.healthScore} />
-        <PulseScanStatusBadge status={scan.status} />
-        {scan.generatedProposalId && (
-          <DocumentTextIcon className="h-4 w-4 text-[var(--brand-400)]" title="Proposal generated" />
-        )}
-        <span className="w-20 text-right text-xs text-[var(--text-4)]">{formatDate(scan.createdAt)}</span>
+      {/* Meta — desktop only, each cell matches the header column width */}
+      <div className="hidden items-center gap-4 sm:flex">
+        <div className="w-16"><InputTypePill type={scan.inputType} /></div>
+        <div className="w-20"><HealthPill score={scan.healthScore} /></div>
+        <div className="w-24"><PulseScanStatusBadge status={scan.status} /></div>
+        <span className="w-24 text-right text-xs text-[var(--text-4)]">{formatDate(scan.createdAt)}</span>
       </div>
 
       {/* Actions */}
@@ -445,7 +444,7 @@ export function PulseScanListView() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           {/* Filters dropdown */}
           <FiltersDropdown
             statusFilter={statusFilter}
@@ -459,7 +458,7 @@ export function PulseScanListView() {
 
           {/* Sort */}
           <select
-            className="app-select text-sm"
+            className="app-select-compact flex-1 text-sm sm:flex-none sm:w-36"
             value={sort}
             onChange={(e) => setSort(e.target.value as SortKey)}
           >
@@ -571,11 +570,11 @@ export function PulseScanListView() {
               onChange={toggleAll}
             />
             <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Project</span>
-            <div className="hidden items-center gap-12 pr-8 sm:flex">
-              <span className="w-20 text-xs font-medium text-[var(--text-4)]">Type</span>
-              <span className="w-16 text-xs font-medium text-[var(--text-4)]">Score</span>
-              <span className="w-20 text-xs font-medium text-[var(--text-4)]">Status</span>
-              <span className="w-20 text-right text-xs font-medium text-[var(--text-4)]">Date</span>
+            <div className="hidden items-center gap-4 pr-8 sm:flex">
+              <span className="w-16 text-xs font-medium text-[var(--text-4)]">Type</span>
+              <span className="w-20 text-xs font-medium text-[var(--text-4)]">Score</span>
+              <span className="w-24 text-xs font-medium text-[var(--text-4)]">Status</span>
+              <span className="w-24 text-right text-xs font-medium text-[var(--text-4)]">Date</span>
             </div>
           </div>
 
