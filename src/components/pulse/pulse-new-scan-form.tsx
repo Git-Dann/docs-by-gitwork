@@ -53,10 +53,15 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
     }
 
     try {
+      let resolvedUrl = inputType === "URL" ? inputValue.trim() : undefined;
+      if (resolvedUrl && !/^https?:\/\//i.test(resolvedUrl)) {
+        resolvedUrl = `https://${resolvedUrl}`;
+      }
+
       const result = await mutateAsync({
         projectName: projectName.trim(),
         inputType,
-        inputUrl: inputType === "URL" ? inputValue.trim() : undefined,
+        inputUrl: resolvedUrl,
         inputGithubRepo: inputType === "GITHUB_REPO" ? inputValue.trim() : undefined,
         inputDescription: inputType === "FREE_TEXT" ? inputValue.trim() : undefined,
         clientId: clientId || undefined,
