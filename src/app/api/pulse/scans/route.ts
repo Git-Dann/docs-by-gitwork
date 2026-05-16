@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       inputGithubRepo: body.inputGithubRepo,
       inputDescription: body.inputDescription,
       clientId: body.clientId,
+      aiProvider: body.aiProvider,
     });
 
     // after() keeps the serverless function alive after the response is sent.

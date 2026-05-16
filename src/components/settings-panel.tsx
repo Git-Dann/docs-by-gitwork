@@ -881,7 +881,7 @@ function ModelPicker({
       </div>
       {loaded && models.length > 0 ? (
         <select
-          className="app-input text-sm"
+          className="app-select text-sm"
           value={selectedModel || currentModel}
           onChange={(e) => onSelect(e.target.value)}
           disabled={disabled}

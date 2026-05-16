@@ -15,8 +15,26 @@ export interface TechStackRecommendation {
   priority: TechStackPriority;
 }
 
+export interface InfrastructureStack {
+  frontend: string | null;
+  backend: string | null;
+  database: string | null;
+  hosting: string | null;
+  auth: string | null;
+  payments: string | null;
+  email: string | null;
+  storage: string | null;
+  caching: string | null;
+  search: string | null;
+  backgroundJobs: string | null;
+  monitoring: string | null;
+  analytics: string | null;
+  cicd: string | null;
+}
+
 export interface PulseTechStackAnalysis {
   assessment: string;
+  detectedStack: InfrastructureStack;
   recommendations: TechStackRecommendation[];
   missingForProduction: string[];
 }

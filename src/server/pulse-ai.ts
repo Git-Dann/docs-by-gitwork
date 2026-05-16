@@ -52,8 +52,26 @@ const techStackRecommendationSchema = z.object({
   priority: z.enum(["HIGH", "MEDIUM", "LOW"]),
 });
 
+const infrastructureStackSchema = z.object({
+  frontend: z.string().nullable(),
+  backend: z.string().nullable(),
+  database: z.string().nullable(),
+  hosting: z.string().nullable(),
+  auth: z.string().nullable(),
+  payments: z.string().nullable(),
+  email: z.string().nullable(),
+  storage: z.string().nullable(),
+  caching: z.string().nullable(),
+  search: z.string().nullable(),
+  backgroundJobs: z.string().nullable(),
+  monitoring: z.string().nullable(),
+  analytics: z.string().nullable(),
+  cicd: z.string().nullable(),
+});
+
 const pulseTechStackAnalysisSchema = z.object({
   assessment: z.string(),
+  detectedStack: infrastructureStackSchema,
   recommendations: z.array(techStackRecommendationSchema),
   missingForProduction: z.array(z.string()),
 });
@@ -194,7 +212,23 @@ function getMockAnalysis(input: { projectName: string; healthScore: number }): P
       { category: "Support", item: "Help / FAQ page", status: "MISSING", notes: "No help or support link detected." },
     ],
     techStackAnalysis: {
-      assessment: "[Mock] Based on the scan signals, this appears to be a modern JavaScript/TypeScript application. The stack is appropriate for an early-stage product but will need hardening for production scale. Key gaps are likely in background processing and observability.",
+      assessment: "[Mock] Configure an AI key to get a real infrastructure assessment. This placeholder shows the structure of what you'll receive after a live scan.",
+      detectedStack: {
+        frontend: null,
+        backend: null,
+        database: null,
+        hosting: null,
+        auth: null,
+        payments: null,
+        email: null,
+        storage: null,
+        caching: null,
+        search: null,
+        backgroundJobs: null,
+        monitoring: null,
+        analytics: null,
+        cicd: null,
+      },
       recommendations: [
         { area: "Error monitoring", current: null, recommended: "Sentry", reason: "Critical for catching production errors before users do.", priority: "HIGH" },
         { area: "Email delivery", current: null, recommended: "Resend", reason: "Reliable transactional email is required for auth and notifications.", priority: "HIGH" },
@@ -204,6 +238,22 @@ function getMockAnalysis(input: { projectName: string; healthScore: number }): P
       missingForProduction: ["Background job queue", "Transactional email provider", "Rate limiting", "Database connection pooling"],
     },
   };
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = (err as { status?: number })?.status;
+      if (status !== 429 || attempt >= maxAttempts - 1) throw err;
+      // Exponential backoff: 3s, 6s, 12s
+      await new Promise((r) => setTimeout(r, 3000 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError;
 }
 
 function extractJson(raw: string): string {
@@ -309,34 +359,52 @@ Return a JSON object with this exact shape:
     }
   ],
   "techStackAnalysis": {
-    "assessment": "string — 2–3 sentence paragraph assessing the detected tech stack from a production-readiness standpoint. Is it appropriate for the product's scale? What are the risks of the current stack choices?",
+    "assessment": "string — 2–3 sentence paragraph assessing the full infrastructure from a production-readiness standpoint. Comment on the hosting choice, database tier, and any obvious scaling risks.",
+    "detectedStack": {
+      "frontend": "string or null — detected frontend framework/library, e.g. 'Next.js 14', 'React + Vite', 'Vue 3', 'SvelteKit', null if not detectable",
+      "backend": "string or null — detected backend runtime/framework, e.g. 'Next.js API routes', 'Express.js', 'FastAPI', 'Rails', 'Laravel', null if unknown",
+      "database": "string or null — detected database, e.g. 'PostgreSQL (Supabase)', 'PlanetScale (MySQL)', 'MongoDB Atlas', 'Neon Postgres', null if unknown",
+      "hosting": "string or null — detected hosting/infra, e.g. 'Vercel', 'Railway', 'AWS (CloudFront + ECS)', 'Netlify', null if unknown",
+      "auth": "string or null — detected auth solution, e.g. 'Clerk', 'NextAuth.js', 'Supabase Auth', 'Auth0', null if not detected",
+      "payments": "string or null — detected payments, e.g. 'Stripe', 'Paddle', 'LemonSqueezy', null if not detected",
+      "email": "string or null — detected transactional email, e.g. 'Resend', 'SendGrid', 'Postmark', null if not detected",
+      "storage": "string or null — detected file storage, e.g. 'Cloudinary', 'Uploadthing', 'AWS S3', 'Supabase Storage', null if not detected",
+      "caching": "string or null — detected caching layer, e.g. 'Upstash Redis', 'Vercel KV', 'Redis', null if not detected",
+      "search": "string or null — detected search, e.g. 'Algolia', 'Typesense', 'Meilisearch', 'Postgres full-text', null if not detected",
+      "backgroundJobs": "string or null — detected async job processing, e.g. 'Inngest', 'Trigger.dev', 'BullMQ', 'Vercel Cron', null if not detected",
+      "monitoring": "string or null — detected error/APM monitoring, e.g. 'Sentry', 'Datadog', 'Highlight.io', null if not detected",
+      "analytics": "string or null — detected analytics, e.g. 'PostHog', 'Plausible', 'Google Analytics 4', null if not detected",
+      "cicd": "string or null — detected CI/CD pipeline, e.g. 'GitHub Actions', 'CircleCI', 'Vercel automatic deploys', null if not detected"
+    },
     "recommendations": [
       {
-        "area": "string — e.g. Database, Auth, Email, Monitoring, Testing, Deployment, Caching, CDN, Search",
-        "current": "string or null — what's detected in the stack (null if nothing detected)",
-        "recommended": "string — specific tool/service to add or switch to",
-        "reason": "string — why this recommendation matters for production readiness",
+        "area": "string — infrastructure area, e.g. Database, Caching, Email, Background Jobs, Monitoring, Storage, Search, CDN, Rate Limiting, Secrets Management, Testing, Connection Pooling",
+        "current": "string or null — what's currently in use or null if nothing",
+        "recommended": "string — specific named tool/service to adopt",
+        "reason": "string — why this matters for production: concrete business or operational impact",
         "priority": "HIGH | MEDIUM | LOW"
       }
     ],
-    "missingForProduction": ["string — list of production-critical components not detected in the stack, e.g. 'Background job queue', 'Rate limiting', 'Database connection pooling', 'Secrets management'"]
+    "missingForProduction": ["string — production-critical infrastructure components not detected, e.g. 'Database connection pooling', 'Rate limiting / DDoS protection', 'Secrets manager (not .env files)', 'Background job queue', 'Transactional email provider', 'File storage CDN', 'Database backups / PITR'"]
   }
 }
 
-Populate productionReadinessChecklist with 12–20 items covering the full prompt-to-production checklist for a SaaS product. Base status on the scan results — if a check passed, mark DONE; if failed, MISSING; if warn, PARTIAL. Include items from: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth provider), Payments (Pricing page, Payment processing, Billing portal, Subscription management), Onboarding (Welcome flow, Activation steps, Empty states), Support (Help page, Chat widget, FAQ), Trust (About page, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime monitoring), and any other gaps you identify from the scan.
+Populate productionReadinessChecklist with 12–20 items. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. Cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime), and any other gaps from the scan.
 
-For techStackAnalysis: base the assessment and recommendations on the detected tech stack (${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from scan signals"}). Give 3–8 recommendations covering areas like database, caching, email delivery, background jobs, monitoring, CDN, and testing. Identify 3–6 production-critical components that are likely missing based on typical vibe-coded app patterns.`;
+For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type.`;
 
   let rawContent: string;
 
   if (aiConfig.provider === "ANTHROPIC") {
     const client = new Anthropic({ apiKey: aiConfig.apiKey });
-    const message = await client.messages.create({
-      model: aiConfig.model,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMessage }],
-    });
+    const message = await withRetry(() =>
+      client.messages.create({
+        model: aiConfig.model,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      })
+    );
     const block = message.content[0];
     if (!block || block.type !== "text") throw new Error("Unexpected response format from AI.");
     rawContent = block.text.trim();
@@ -347,14 +415,16 @@ For techStackAnalysis: base the assessment and recommendations on the detected t
       apiKey: aiConfig.apiKey ?? "local",
       ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
     });
-    const completion = await client.chat.completions.create({
-      model: aiConfig.model,
-      max_tokens: 4096,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMessage },
-      ],
-    });
+    const completion = await withRetry(() =>
+      client.chat.completions.create({
+        model: aiConfig.model,
+        max_tokens: 4096,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+      })
+    );
     rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
   }
 

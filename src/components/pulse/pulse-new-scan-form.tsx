@@ -41,7 +41,17 @@ const PLATFORMS = [
   { value: "OTHER", label: "Other" },
 ];
 
-export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; name: string }> }) {
+type AiProviderId = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+
+export function PulseNewScanForm({
+  clients,
+  configuredProviders,
+  activeProvider,
+}: {
+  clients: Array<{ id: string; name: string }>;
+  configuredProviders: Array<{ id: AiProviderId; label: string }>;
+  activeProvider: AiProviderId;
+}) {
   const router = useRouter();
   const { mutateAsync, isPending } = useCreatePulseScan();
 
@@ -50,9 +60,11 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
   const [inputValue, setInputValue] = useState("");
   const [platform, setPlatform] = useState("WEB_APP");
   const [clientId, setClientId] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<AiProviderId>(activeProvider);
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
+  const showProviderPicker = configuredProviders.length > 1;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,6 +93,7 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
         inputDescription: inputType === "FREE_TEXT" ? inputValue.trim() : undefined,
         platform,
         clientId: clientId || undefined,
+        aiProvider: selectedProvider,
       });
       router.push(`/app/pulse/${result.scan.id}`);
     } catch (err) {
@@ -105,7 +118,7 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
         <div className="space-y-1.5">
           <label className="app-field-label">Client (optional)</label>
           <select
-            className="app-input"
+            className="app-select"
             value={clientId}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setClientId(e.target.value)}
             disabled={isPending}
@@ -148,7 +161,7 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
       <div className="space-y-1.5">
         <label className="app-field-label">Platform</label>
         <select
-          className="app-input"
+          className="app-select"
           value={platform}
           onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
           disabled={isPending}
@@ -179,6 +192,32 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
           />
         )}
       </div>
+
+      {showProviderPicker && (
+        <div className="space-y-2">
+          <label className="app-field-label">AI provider for this scan</label>
+          <div className="flex flex-wrap gap-2">
+            {configuredProviders.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setSelectedProvider(p.id)}
+                disabled={isPending}
+                className={
+                  selectedProvider === p.id
+                    ? "rounded-[10px] border border-[var(--brand-500)] bg-[var(--brand-50)] px-3 py-2 text-sm font-medium text-[var(--brand-700)]"
+                    : "rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                }
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--text-4)]">
+            Default is {configuredProviders.find((p) => p.id === activeProvider)?.label ?? activeProvider} — override per scan here.
+          </p>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">

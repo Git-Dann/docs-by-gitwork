@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -75,6 +75,23 @@ function StackPriorityBadge({ priority }: { priority: TechStackRecommendation["p
   );
 }
 
+const INFRA_LABELS: { key: keyof InfrastructureStack; label: string }[] = [
+  { key: "frontend",       label: "Frontend" },
+  { key: "backend",        label: "Backend" },
+  { key: "database",       label: "Database" },
+  { key: "hosting",        label: "Hosting" },
+  { key: "auth",           label: "Auth" },
+  { key: "payments",       label: "Payments" },
+  { key: "email",          label: "Email" },
+  { key: "storage",        label: "Storage" },
+  { key: "caching",        label: "Caching" },
+  { key: "backgroundJobs", label: "Background jobs" },
+  { key: "search",         label: "Search" },
+  { key: "monitoring",     label: "Monitoring" },
+  { key: "analytics",      label: "Analytics" },
+  { key: "cicd",           label: "CI/CD" },
+];
+
 function StackTab({
   analysis,
   detectedStack,
@@ -84,10 +101,40 @@ function StackTab({
 }) {
   return (
     <div className="space-y-6">
-      {/* Detected stack */}
-      {detectedStack.length > 0 && (
+      {/* Infrastructure map */}
+      {analysis.detectedStack && (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Infrastructure map</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {INFRA_LABELS.map(({ key, label }) => {
+              const value = analysis.detectedStack[key];
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    "flex items-center justify-between gap-3 rounded-[10px] border px-3 py-2.5",
+                    value
+                      ? "border-[var(--border-2)] bg-white"
+                      : "border-dashed border-[var(--border-2)] bg-[var(--surface-1)]",
+                  )}
+                >
+                  <span className="text-xs font-medium text-[var(--text-3)]">{label}</span>
+                  {value ? (
+                    <span className="text-xs font-semibold text-[var(--text-1)]">{value}</span>
+                  ) : (
+                    <span className="text-xs text-[var(--text-4)]">Not detected</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Detected raw signals (fallback for old scans) */}
+      {!analysis.detectedStack && detectedStack.length > 0 && (
         <div className="rounded-[12px] border border-[var(--border-2)] p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Detected stack</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Detected signals</p>
           <div className="flex flex-wrap gap-2">
             {detectedStack.map((tech) => (
               <span
@@ -128,7 +175,7 @@ function StackTab({
       {/* Recommendations */}
       {analysis.recommendations.length > 0 && (
         <div>
-          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Stack recommendations</p>
+          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Recommendations</p>
           <div className="space-y-3">
             {analysis.recommendations.map((rec, i) => (
               <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
@@ -141,7 +188,7 @@ function StackTab({
                           current: {rec.current}
                         </span>
                       )}
-                      <span className="text-xs text-[var(--brand-600)]">→ {rec.recommended}</span>
+                      <span className="text-xs font-medium text-[var(--brand-600)]">→ {rec.recommended}</span>
                     </div>
                     <p className="mt-1 text-sm text-[var(--text-3)]">{rec.reason}</p>
                   </div>

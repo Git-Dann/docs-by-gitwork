@@ -230,23 +230,25 @@ export async function createPulseScanRecord(input: {
   inputDescription?: string;
   platform?: string;
   clientId?: string;
+  aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
   const { workspace } = await ensureBaseRecords();
+  // Use the per-scan override if provided, otherwise fall back to the workspace default
+  const p = (input.aiProvider ?? workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
-    provider: (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL",
+    provider: p,
     apiKey: (() => {
-      const p = workspace.aiProvider ?? "ANTHROPIC";
       if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
       if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
       if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
-    model: workspace.aiProvider === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           workspace.aiProvider === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
-           workspace.aiProvider === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
+    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
+           p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
            (workspace.anthropicModel ?? "claude-opus-4-6"),
-    baseUrl: workspace.aiProvider === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
-             workspace.aiProvider === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
+    baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
+             p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
   };
 

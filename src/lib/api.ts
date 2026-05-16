@@ -491,6 +491,7 @@ export async function createPulseScan(input: {
   inputDescription?: string;
   platform?: string;
   clientId?: string;
+  aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 }): Promise<{ scan: PulseScanRecord }> {
   return apiFetch<{ scan: PulseScanRecord }>("/api/pulse/scans", {
     method: "POST",
