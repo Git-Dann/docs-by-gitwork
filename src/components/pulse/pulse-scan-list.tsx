@@ -558,7 +558,7 @@ export function PulseScanListView() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-[16px] border border-[var(--border-2)]">
-          {/* Table header */}
+          {/* Table header — structure mirrors ScanRow exactly */}
           <div className="flex items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5">
             <input
               type="checkbox"
@@ -569,13 +569,17 @@ export function PulseScanListView() {
               }}
               onChange={toggleAll}
             />
+            {/* Icon column spacer — matches the w-8 icon in each row */}
+            <div className="hidden w-8 shrink-0 sm:block" />
             <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Project</span>
-            <div className="hidden items-center gap-4 pr-8 sm:flex">
+            <div className="hidden items-center gap-4 sm:flex">
               <span className="w-16 text-xs font-medium text-[var(--text-4)]">Type</span>
               <span className="w-20 text-xs font-medium text-[var(--text-4)]">Score</span>
               <span className="w-24 text-xs font-medium text-[var(--text-4)]">Status</span>
               <span className="w-24 text-right text-xs font-medium text-[var(--text-4)]">Date</span>
             </div>
+            {/* Actions column spacer — matches the arrow + delete buttons in each row */}
+            <div className="hidden w-[60px] shrink-0 sm:block" />
           </div>
 
           {/* Rows */}
