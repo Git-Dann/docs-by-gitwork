@@ -57,6 +57,7 @@ export function useDeletePulseScan() {
     mutationFn: deletePulseScan,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
     },
   });
 }
