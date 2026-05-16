@@ -364,6 +364,7 @@ export const pulseScanCreateSchema = z
     inputUrl: z.string().trim().optional(),
     inputGithubRepo: z.string().trim().optional(),
     inputDescription: z.string().max(10000).optional(),
+    platform: z.string().trim().max(50).optional(),
     clientId: z.string().cuid().optional(),
   })
   .refine(

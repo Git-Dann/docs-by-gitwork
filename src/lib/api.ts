@@ -489,6 +489,7 @@ export async function createPulseScan(input: {
   inputUrl?: string;
   inputGithubRepo?: string;
   inputDescription?: string;
+  platform?: string;
   clientId?: string;
 }): Promise<{ scan: PulseScanRecord }> {
   return apiFetch<{ scan: PulseScanRecord }>("/api/pulse/scans", {
@@ -521,17 +522,42 @@ export async function getPulseStats(): Promise<import("@/server/pulse").PulseSta
   return apiFetch<import("@/server/pulse").PulseStatsResponse>("/api/pulse/stats");
 }
 
-export async function getIntegrations(): Promise<{
-  anthropicKeySource: "env" | "database" | null;
+export interface IntegrationsResponse {
+  aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicKeyMasked: string | null;
-}> {
+  anthropicKeySource: "env" | "database" | null;
+  openaiKeyMasked: string | null;
+  openaiKeySource: "env" | "database" | null;
+  openaiModel: string;
+  geminiKeyMasked: string | null;
+  geminiKeySource: "env" | "database" | null;
+  geminiModel: string;
+  localLlmUrl: string;
+  localLlmModel: string;
+}
+
+export async function getIntegrations(): Promise<IntegrationsResponse> {
   return apiFetch("/api/settings/integrations");
 }
 
-export async function saveAnthropicKey(anthropicApiKey: string): Promise<{ saved: boolean }> {
+export async function saveIntegrations(data: {
+  aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  anthropicApiKey?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
+  localLlmUrl?: string;
+  localLlmModel?: string;
+}): Promise<{ saved: boolean }> {
   return apiFetch("/api/settings/integrations", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ anthropicApiKey }),
+    body: JSON.stringify(data),
   });
+}
+
+// Keep for backwards compat
+export async function saveAnthropicKey(anthropicApiKey: string): Promise<{ saved: boolean }> {
+  return saveIntegrations({ anthropicApiKey });
 }

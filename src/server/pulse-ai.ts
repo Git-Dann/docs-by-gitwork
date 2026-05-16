@@ -173,9 +173,9 @@ export async function analyseWithClaude(
     techStack: string[];
     checks: PulseScanCheckInput[];
   },
-  apiKey: string | null,
+  aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ): Promise<PulseAnalysisOutput> {
-  if (!apiKey) {
+  if (!aiConfig.apiKey) {
     return getMockAnalysis({ projectName: input.projectName, healthScore: input.healthScore });
   }
 
@@ -262,21 +262,36 @@ Populate productionReadinessChecklist with 12–20 items covering the full promp
 
 For techStackAnalysis: base the assessment and recommendations on the detected tech stack (${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from scan signals"}). Give 3–8 recommendations covering areas like database, caching, email delivery, background jobs, monitoring, CDN, and testing. Identify 3–6 production-critical components that are likely missing based on typical vibe-coded app patterns.`;
 
-  const client = new Anthropic({ apiKey: apiKey });
+  let rawContent: string;
 
-  const message = await client.messages.create({
-    model: "claude-opus-4-6",
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const block = message.content[0];
-  if (!block || block.type !== "text") {
-    throw new Error("Unexpected response format from AI.");
+  if (aiConfig.provider === "ANTHROPIC") {
+    const client = new Anthropic({ apiKey: aiConfig.apiKey });
+    const message = await client.messages.create({
+      model: aiConfig.model,
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userMessage }],
+    });
+    const block = message.content[0];
+    if (!block || block.type !== "text") throw new Error("Unexpected response format from AI.");
+    rawContent = block.text.trim();
+  } else {
+    // OpenAI SDK handles OpenAI, Gemini (via compatible endpoint), and local/Ollama
+    const { default: OpenAI } = await import("openai");
+    const client = new OpenAI({
+      apiKey: aiConfig.apiKey ?? "local",
+      ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
+    });
+    const completion = await client.chat.completions.create({
+      model: aiConfig.model,
+      max_tokens: 4096,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+    });
+    rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
   }
-
-  const rawContent = block.text.trim();
 
   let parsed: unknown;
   try {

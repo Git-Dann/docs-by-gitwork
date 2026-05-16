@@ -228,10 +228,27 @@ export async function createAndRunPulseScan(input: {
   inputUrl?: string;
   inputGithubRepo?: string;
   inputDescription?: string;
+  platform?: string;
   clientId?: string;
 }): Promise<PulseScanRecord> {
   const { workspace } = await ensureBaseRecords();
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+  const aiConfig = {
+    provider: (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL",
+    apiKey: (() => {
+      const p = workspace.aiProvider ?? "ANTHROPIC";
+      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+    })(),
+    model: workspace.aiProvider === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
+           workspace.aiProvider === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-pro") :
+           workspace.aiProvider === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
+           "claude-opus-4-6",
+    baseUrl: workspace.aiProvider === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
+             workspace.aiProvider === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
+             null,
+  };
 
   // Look up the most recent completed scan for the same URL/repo to track score delta
   const previousScan = input.inputType !== "FREE_TEXT"
@@ -257,6 +274,7 @@ export async function createAndRunPulseScan(input: {
       inputUrl: input.inputUrl ?? null,
       inputGithubRepo: input.inputGithubRepo ?? null,
       inputDescription: input.inputDescription ?? null,
+      platform: input.platform ?? null,
       status: "RUNNING",
       scanVersion: SCAN_VERSION,
       previousHealthScore: previousScan?.healthScore ?? null,
@@ -265,7 +283,7 @@ export async function createAndRunPulseScan(input: {
   });
 
   // Run analysis — errors update the record to FAILED
-  runAnalysis(scan.id, input, anthropicApiKey).catch(() => {
+  runAnalysis(scan.id, input, aiConfig).catch(() => {
     // Error is handled inside runAnalysis
   });
 
@@ -282,7 +300,7 @@ async function runAnalysis(
     projectName: string;
     clientId?: string;
   },
-  anthropicApiKey: string | null,
+  aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
   try {
     let urlChecks: PulseScanCheckInput[] = [];
@@ -315,7 +333,7 @@ async function runAnalysis(
         techStack,
         checks: allChecks,
       },
-      anthropicApiKey,
+      aiConfig,
     );
 
     await prisma.pulseScan.update({

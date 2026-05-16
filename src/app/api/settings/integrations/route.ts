@@ -8,22 +8,41 @@ export const dynamic = "force-dynamic";
 
 function maskKey(key: string): string {
   if (key.length <= 8) return "••••••••";
-  return `${key.slice(0, 7)}${"•".repeat(Math.min(20, key.length - 11))}${key.slice(-4)}`;
+  return `${key.slice(0, 7)}${"•".repeat(Math.min(16, key.length - 11))}${key.slice(-4)}`;
 }
 
 export async function GET() {
   try {
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      select: { anthropicApiKey: true },
+      select: {
+        aiProvider: true,
+        anthropicApiKey: true,
+        openaiApiKey: true,
+        openaiModel: true,
+        geminiApiKey: true,
+        geminiModel: true,
+        localLlmUrl: true,
+        localLlmModel: true,
+      },
     });
 
-    const key = workspace?.anthropicApiKey ?? null;
-    const envKey = process.env.ANTHROPIC_API_KEY ?? null;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
+    const openaiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
+    const geminiKey = process.env.GEMINI_API_KEY ?? workspace?.geminiApiKey ?? null;
 
     return apiOk({
-      anthropicKeySource: envKey ? "env" : key ? "database" : null,
-      anthropicKeyMasked: envKey ? maskKey(envKey) : key ? maskKey(key) : null,
+      aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
+      anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
+      anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
+      openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
+      openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
+      openaiModel: workspace?.openaiModel ?? "gpt-4o",
+      geminiKeyMasked: geminiKey ? maskKey(geminiKey) : null,
+      geminiKeySource: process.env.GEMINI_API_KEY ? "env" : workspace?.geminiApiKey ? "database" : null,
+      geminiModel: workspace?.geminiModel ?? "gemini-1.5-pro",
+      localLlmUrl: workspace?.localLlmUrl ?? "",
+      localLlmModel: workspace?.localLlmModel ?? "llama3.1",
     });
   } catch (error) {
     return fromError(error);
@@ -31,16 +50,35 @@ export async function GET() {
 }
 
 const updateSchema = z.object({
-  anthropicApiKey: z.string().trim().min(1),
+  aiProvider: z.enum(["ANTHROPIC", "OPENAI", "GEMINI", "LOCAL"]).optional(),
+  anthropicApiKey: z.string().trim().optional(),
+  openaiApiKey: z.string().trim().optional(),
+  openaiModel: z.string().trim().optional(),
+  geminiApiKey: z.string().trim().optional(),
+  geminiModel: z.string().trim().optional(),
+  localLlmUrl: z.string().trim().optional(),
+  localLlmModel: z.string().trim().optional(),
 });
 
 export async function PUT(request: NextRequest) {
   try {
     const body = updateSchema.parse(await request.json());
 
+    const data: Record<string, string> = {};
+    if (body.aiProvider) data.aiProvider = body.aiProvider;
+    if (body.anthropicApiKey) data.anthropicApiKey = body.anthropicApiKey;
+    if (body.openaiApiKey) data.openaiApiKey = body.openaiApiKey;
+    if (body.openaiModel) data.openaiModel = body.openaiModel;
+    if (body.geminiApiKey) data.geminiApiKey = body.geminiApiKey;
+    if (body.geminiModel) data.geminiModel = body.geminiModel;
+    if (body.localLlmUrl) data.localLlmUrl = body.localLlmUrl;
+    if (body.localLlmModel) data.localLlmModel = body.localLlmModel;
+
+    if (Object.keys(data).length === 0) return apiOk({ saved: false });
+
     await prisma.workspace.updateMany({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      data: { anthropicApiKey: body.anthropicApiKey },
+      data,
     });
 
     return apiOk({ saved: true });

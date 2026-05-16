@@ -10,7 +10,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveAnthropicKey } from "@/lib/api";
+import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveIntegrations, type IntegrationsResponse } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
@@ -808,10 +808,31 @@ function RateCardTab() {
   );
 }
 
+type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+
+const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string }[] = [
+  { id: "ANTHROPIC", label: "Claude (Anthropic)", hint: "Recommended. claude-opus-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY" },
+  { id: "OPENAI", label: "OpenAI", hint: "Uses gpt-4o by default. Any OpenAI model name is accepted.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY" },
+  { id: "GEMINI", label: "Gemini (Google)", hint: "Uses gemini-1.5-pro by default via the OpenAI-compatible endpoint.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY" },
+  { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server running locally or on-prem.", keyPlaceholder: "(optional API key)", envVar: "" },
+];
+
+function KeyStatus({ source, masked }: { source: "env" | "database" | null; masked: string | null }) {
+  if (source === "env") return (
+    <span className="text-xs font-medium text-green-700">
+      ✓ Set via environment variable — <span className="font-mono">{masked}</span>
+    </span>
+  );
+  if (source === "database") return (
+    <span className="text-xs font-medium text-green-700">✓ Saved — <span className="font-mono">{masked}</span></span>
+  );
+  return <span className="text-xs text-[var(--text-4)]">Not configured</span>;
+}
+
 function IntegrationsTab() {
-  const [keySource, setKeySource] = useState<"env" | "database" | null | undefined>(undefined);
-  const [maskedKey, setMaskedKey] = useState<string | null>(null);
-  const [inputKey, setInputKey] = useState("");
+  const [config, setConfig] = useState<IntegrationsResponse | null>(null);
+  const [activeProvider, setActiveProvider] = useState<AiProvider>("ANTHROPIC");
+  const [inputs, setInputs] = useState({ key: "", model: "", url: "", localModel: "" });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -819,22 +840,35 @@ function IntegrationsTab() {
   useEffect(() => {
     getIntegrations()
       .then((data) => {
-        setKeySource(data.anthropicKeySource);
-        setMaskedKey(data.anthropicKeyMasked);
+        setConfig(data);
+        setActiveProvider(data.aiProvider);
       })
-      .catch(() => setKeySource(null));
+      .catch(() => {});
   }, []);
 
   async function handleSave() {
-    if (!inputKey.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      await saveAnthropicKey(inputKey.trim());
+      const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: activeProvider };
+      if (activeProvider === "ANTHROPIC" && inputs.key) payload.anthropicApiKey = inputs.key;
+      if (activeProvider === "OPENAI") {
+        if (inputs.key) payload.openaiApiKey = inputs.key;
+        if (inputs.model) payload.openaiModel = inputs.model;
+      }
+      if (activeProvider === "GEMINI") {
+        if (inputs.key) payload.geminiApiKey = inputs.key;
+        if (inputs.model) payload.geminiModel = inputs.model;
+      }
+      if (activeProvider === "LOCAL") {
+        if (inputs.url) payload.localLlmUrl = inputs.url;
+        if (inputs.localModel) payload.localLlmModel = inputs.localModel;
+      }
+      await saveIntegrations(payload);
       setSaved(true);
-      setMaskedKey(inputKey.trim().slice(0, 7) + "•".repeat(16) + inputKey.trim().slice(-4));
-      setKeySource("database");
-      setInputKey("");
+      setInputs({ key: "", model: "", url: "", localModel: "" });
+      const updated = await getIntegrations();
+      setConfig(updated);
       setTimeout(() => setSaved(false), 3000);
     } catch {
       setError("Failed to save. Please try again.");
@@ -843,68 +877,162 @@ function IntegrationsTab() {
     }
   }
 
+  const provider = PROVIDERS.find((p) => p.id === activeProvider)!;
+  const isActive = config?.aiProvider === activeProvider;
+  const keySource = activeProvider === "ANTHROPIC" ? config?.anthropicKeySource
+    : activeProvider === "OPENAI" ? config?.openaiKeySource
+    : activeProvider === "GEMINI" ? config?.geminiKeySource
+    : null;
+  const maskedKey = activeProvider === "ANTHROPIC" ? config?.anthropicKeyMasked
+    : activeProvider === "OPENAI" ? config?.openaiKeyMasked
+    : activeProvider === "GEMINI" ? config?.geminiKeyMasked
+    : null;
+
   return (
     <div className="space-y-6">
       <section className="app-card p-6">
-        <p className="app-eyebrow">AI</p>
+        <p className="app-eyebrow">AI provider</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Anthropic API key
+          AI analysis engine
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-          Used by Pulse to generate gap analysis, build opportunities, and the scaling roadmap.
-          Without a key, Pulse still runs all automated checks but returns mock AI analysis so you
-          can test every flow.
+          Pulse uses AI to generate gap analysis, build opportunities, and the scaling roadmap. Choose
+          your provider. Without any key, Pulse still runs all automated checks and returns mock analysis.
         </p>
 
-        <div className="mt-6 max-w-xl space-y-4">
-          {keySource === undefined ? (
-            <p className="text-sm text-[var(--text-4)]">Loading…</p>
-          ) : keySource === "env" ? (
-            <div className="rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              Key configured via environment variable (<code className="font-mono">ANTHROPIC_API_KEY</code>).
-              {maskedKey ? <span className="ml-2 font-mono text-green-700">{maskedKey}</span> : null}
+        {!config ? (
+          <p className="mt-6 text-sm text-[var(--text-4)]">Loading…</p>
+        ) : (
+          <div className="mt-6 space-y-5">
+            {/* Provider selector */}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {PROVIDERS.map((p) => {
+                const pKeySource = p.id === "ANTHROPIC" ? config.anthropicKeySource
+                  : p.id === "OPENAI" ? config.openaiKeySource
+                  : p.id === "GEMINI" ? config.geminiKeySource
+                  : null;
+                const configured = Boolean(pKeySource) || (p.id === "LOCAL" && Boolean(config.localLlmUrl));
+                const isSelected = activeProvider === p.id;
+                const isCurrentActive = config.aiProvider === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setActiveProvider(p.id)}
+                    className={cn(
+                      "relative rounded-[12px] border p-4 text-left transition",
+                      isSelected
+                        ? "border-[var(--brand-500)] bg-[var(--brand-50)]"
+                        : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    {isCurrentActive && (
+                      <span className="absolute right-3 top-3 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">ACTIVE</span>
+                    )}
+                    <p className={cn("text-sm font-semibold", isSelected ? "text-[var(--brand-700)]" : "text-[var(--text-1)]")}>{p.label}</p>
+                    <p className="mt-1 text-xs text-[var(--text-4)]">{configured ? "✓ Configured" : "Not configured"}</p>
+                  </button>
+                );
+              })}
             </div>
-          ) : keySource === "database" ? (
-            <div className="rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              Key saved. Current: <span className="font-mono">{maskedKey}</span>
-            </div>
-          ) : (
-            <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              No API key configured. Pulse will return mock analysis until you add one below.
-            </div>
-          )}
 
-          {keySource !== "env" && (
-            <div className="space-y-2">
-              <FieldLabel>{keySource === "database" ? "Replace key" : "Add key"}</FieldLabel>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  className="app-input flex-1 font-mono text-sm"
-                  placeholder="sk-ant-api03-…"
-                  value={inputKey}
-                  onChange={(e) => setInputKey(e.target.value)}
-                  disabled={saving}
-                />
+            {/* Selected provider config */}
+            <div className="rounded-[14px] border border-[var(--border-2)] p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-3)]">{provider.hint}</p>
+                </div>
+                {isActive && (
+                  <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Currently active</span>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {activeProvider !== "LOCAL" && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel>API key</FieldLabel>
+                      <KeyStatus source={keySource ?? null} masked={maskedKey ?? null} />
+                    </div>
+                    {keySource !== "env" && (
+                      <input
+                        type="password"
+                        className="app-input font-mono text-sm"
+                        placeholder={provider.keyPlaceholder}
+                        value={inputs.key}
+                        onChange={(e) => setInputs((s) => ({ ...s, key: e.target.value }))}
+                        disabled={saving}
+                      />
+                    )}
+                    {provider.envVar && (
+                      <p className="text-xs text-[var(--text-4)]">
+                        Or set <code className="font-mono">{provider.envVar}</code> as an environment variable (takes precedence).
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {(activeProvider === "OPENAI" || activeProvider === "GEMINI") && (
+                  <div className="space-y-1.5">
+                    <FieldLabel>Model override (optional)</FieldLabel>
+                    <input
+                      className="app-input text-sm"
+                      placeholder={activeProvider === "OPENAI" ? "gpt-4o" : "gemini-1.5-pro"}
+                      value={inputs.model}
+                      onChange={(e) => setInputs((s) => ({ ...s, model: e.target.value }))}
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-[var(--text-4)]">
+                      Current: {activeProvider === "OPENAI" ? config.openaiModel : config.geminiModel}
+                    </p>
+                  </div>
+                )}
+
+                {activeProvider === "LOCAL" && (
+                  <>
+                    <div className="space-y-1.5">
+                      <FieldLabel>Base URL</FieldLabel>
+                      <input
+                        className="app-input font-mono text-sm"
+                        placeholder="http://localhost:11434/v1"
+                        value={inputs.url}
+                        onChange={(e) => setInputs((s) => ({ ...s, url: e.target.value }))}
+                        disabled={saving}
+                      />
+                      <p className="text-xs text-[var(--text-4)]">
+                        Current: {config.localLlmUrl || "not set"} — Ollama, LM Studio, and any OpenAI-compatible server work.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <FieldLabel>Model name</FieldLabel>
+                      <input
+                        className="app-input text-sm"
+                        placeholder="llama3.1"
+                        value={inputs.localModel}
+                        onChange={(e) => setInputs((s) => ({ ...s, localModel: e.target.value }))}
+                        disabled={saving}
+                      />
+                      <p className="text-xs text-[var(--text-4)]">Current: {config.localLlmModel}</p>
+                    </div>
+                  </>
+                )}
+
+                {error && <p className="text-sm text-red-600">{error}</p>}
+
                 <Button
                   type="button"
                   variant="primary"
                   size="sm"
                   onClick={handleSave}
                   loading={saving}
-                  disabled={!inputKey.trim()}
                 >
-                  {saved ? "Saved" : "Save"}
+                  {saved ? "Saved ✓" : isActive ? "Save changes" : `Save and switch to ${provider.label}`}
                 </Button>
               </div>
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <p className="text-xs text-[var(--text-4)]">
-                Keys are stored in the workspace database record. For production deployments, prefer
-                setting <code className="font-mono">ANTHROPIC_API_KEY</code> as an environment variable.
-              </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );

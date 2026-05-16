@@ -134,6 +134,13 @@ model Workspace {
   name            String
   slug            String            @unique
   anthropicApiKey String?
+  aiProvider      String   @default("ANTHROPIC")
+  openaiApiKey    String?
+  openaiModel     String?
+  geminiApiKey    String?
+  geminiModel     String?
+  localLlmUrl     String?
+  localLlmModel   String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]
@@ -550,6 +557,7 @@ model PulseScan {
   inputUrl            String?
   inputGithubRepo     String?
   inputDescription    String?
+  platform            String?
   status              PulseScanStatus    @default(RUNNING)
   scanVersion         String
   startedAt           DateTime           @default(now())

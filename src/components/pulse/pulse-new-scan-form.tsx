@@ -27,6 +27,20 @@ const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder
   },
 ];
 
+const PLATFORMS = [
+  { value: "WEB_APP", label: "Web app" },
+  { value: "SAAS", label: "SaaS" },
+  { value: "MARKETING_SITE", label: "Marketing site" },
+  { value: "IOS_APP", label: "iOS app" },
+  { value: "ANDROID_APP", label: "Android app" },
+  { value: "CROSS_PLATFORM_MOBILE", label: "React Native / Flutter" },
+  { value: "DESKTOP_APP", label: "Desktop app" },
+  { value: "CHROME_EXTENSION", label: "Chrome extension" },
+  { value: "API_BACKEND", label: "API / backend" },
+  { value: "CLI_TOOL", label: "CLI tool" },
+  { value: "OTHER", label: "Other" },
+];
+
 export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; name: string }> }) {
   const router = useRouter();
   const { mutateAsync, isPending } = useCreatePulseScan();
@@ -34,6 +48,7 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
   const [projectName, setProjectName] = useState("");
   const [inputType, setInputType] = useState<PulseScanInputType>("URL");
   const [inputValue, setInputValue] = useState("");
+  const [platform, setPlatform] = useState("WEB_APP");
   const [clientId, setClientId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +79,7 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
         inputUrl: resolvedUrl,
         inputGithubRepo: inputType === "GITHUB_REPO" ? inputValue.trim() : undefined,
         inputDescription: inputType === "FREE_TEXT" ? inputValue.trim() : undefined,
+        platform,
         clientId: clientId || undefined,
       });
       router.push(`/app/pulse/${result.scan.id}`);
@@ -127,6 +143,20 @@ export function PulseNewScanForm({ clients }: { clients: Array<{ id: string; nam
           ))}
         </div>
         <p className="text-xs text-[var(--text-4)]">{selectedType.description}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="app-field-label">Platform</label>
+        <select
+          className="app-input"
+          value={platform}
+          onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
+          disabled={isPending}
+        >
+          {PLATFORMS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-1.5">
