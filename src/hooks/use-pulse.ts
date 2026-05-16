@@ -8,6 +8,7 @@ import {
   getPulseScan,
   deletePulseScan,
   cancelPulseScan,
+  retryPulseScan,
   generateProposalFromScan,
   getPulseStats,
 } from "@/lib/api";
@@ -67,6 +68,18 @@ export function useCancelPulseScan() {
 
   return useMutation({
     mutationFn: cancelPulseScan,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+    },
+  });
+}
+
+export function useRetryPulseScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: retryPulseScan,
     onSuccess: (_data, scanId) => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });

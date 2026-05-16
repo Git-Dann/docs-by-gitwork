@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";
-import { usePulseScan, useCancelPulseScan } from "@/hooks/use-pulse";
+import { usePulseScan, useCancelPulseScan, useRetryPulseScan } from "@/hooks/use-pulse";
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
@@ -100,16 +100,41 @@ function ScanRunningState({ startedAt, scanId }: { startedAt: string; scanId: st
   );
 }
 
-function ScanFailedState({ errorMessage, errorCode }: { errorMessage: string | null; errorCode: string | null }) {
+function ScanFailedState({
+  scanId,
+  errorMessage,
+  errorCode,
+}: {
+  scanId: string;
+  errorMessage: string | null;
+  errorCode: string | null;
+}) {
   const cancelled = errorCode === "USER_CANCELLED";
+  const { mutate: retry, isPending: retrying } = useRetryPulseScan();
+
   return (
     <div className={`rounded-[14px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50"}`}>
       <p className={`text-sm font-medium ${cancelled ? "text-[var(--text-1)]" : "text-red-800"}`}>
         {cancelled ? "Scan cancelled" : "Scan failed"}
       </p>
-      <p className={`mt-1 text-sm ${cancelled ? "text-[var(--text-3)]" : "text-red-700"}`}>
-        {cancelled ? "You cancelled this scan. Start a new scan when ready." : (errorMessage ?? "An unexpected error occurred.")}
+      <p className={`mt-2 text-sm ${cancelled ? "text-[var(--text-3)]" : "text-red-700"}`}>
+        {cancelled ? "You cancelled this scan." : (errorMessage ?? "An unexpected error occurred.")}
       </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {!cancelled && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => retry(scanId)}
+            loading={retrying}
+          >
+            Retry scan
+          </Button>
+        )}
+        <Link href="/app/pulse/new">
+          <Button variant="tertiary" size="sm">New scan</Button>
+        </Link>
+      </div>
     </div>
   );
 }
@@ -155,7 +180,7 @@ export default function PulseScanDetailPage({
         )}
 
         {!isLoading && scan?.status === "FAILED" && (
-          <ScanFailedState errorMessage={scan.errorMessage} errorCode={scan.errorCode} />
+          <ScanFailedState scanId={scanId} errorMessage={scan.errorMessage} errorCode={scan.errorCode} />
         )}
 
         {!isLoading && scan?.status === "COMPLETED" && (

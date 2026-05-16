@@ -244,7 +244,7 @@ export async function createPulseScanRecord(input: {
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
            (workspace.anthropicModel ?? "claude-opus-4-6"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
@@ -295,6 +295,55 @@ export async function cancelPulseScan(scanId: string): Promise<void> {
       errorMessage: "Scan was cancelled.",
     },
   });
+}
+
+export async function retryPulseScan(scanId: string): Promise<{
+  scan: PulseScanRecord;
+  aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
+}> {
+  const existing = await prisma.pulseScan.findUnique({ where: { id: scanId } });
+  if (!existing || existing.status !== "FAILED") {
+    throw new Error("Only failed scans can be retried.");
+  }
+
+  const { workspace } = await ensureBaseRecords();
+  const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  const aiConfig = {
+    provider: p,
+    apiKey: (() => {
+      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+    })(),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
+           p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
+           (workspace.anthropicModel ?? "claude-opus-4-6"),
+    baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
+             p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
+             null,
+  };
+
+  // Delete old checks so they get recreated cleanly
+  await prisma.pulseScanCheck.deleteMany({ where: { scanId } });
+
+  const scan = await prisma.pulseScan.update({
+    where: { id: scanId },
+    data: {
+      status: "RUNNING",
+      startedAt: new Date(),
+      completedAt: null,
+      healthScore: null,
+      techStack: Prisma.JsonNull,
+      llmAnalysis: Prisma.JsonNull,
+      errorCode: null,
+      errorMessage: null,
+    },
+    include: pulseInclude,
+  });
+
+  return { scan: serializePulseScan(scan), aiConfig };
 }
 
 export async function runAnalysis(

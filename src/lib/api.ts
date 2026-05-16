@@ -516,6 +516,12 @@ export async function cancelPulseScan(scanId: string): Promise<{ cancelled: bool
   });
 }
 
+export async function retryPulseScan(scanId: string): Promise<{ scan: import("@/types/pulse").PulseScanRecord }> {
+  return apiFetch<{ scan: import("@/types/pulse").PulseScanRecord }>(`/api/pulse/scans/${scanId}/retry`, {
+    method: "POST",
+  });
+}
+
 export async function generateProposalFromScan(
   scanId: string,
 ): Promise<{ proposalId: string }> {
