@@ -907,55 +907,72 @@ function ModelPicker({
   );
 }
 
-function IntegrationsTab() {
-  const [config, setConfig] = useState<IntegrationsResponse | null>(null);
-  const [activeProvider, setActiveProvider] = useState<AiProvider>("ANTHROPIC");
+function ProviderRow({
+  provider,
+  config,
+  onSaved,
+}: {
+  provider: typeof PROVIDERS[number];
+  config: IntegrationsResponse;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [editing, setEditing] = useState(false);
   const [inputs, setInputs] = useState({ key: "", model: "", url: "", localModel: "" });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getIntegrations()
-      .then((data) => {
-        setConfig(data);
-        setActiveProvider(data.aiProvider);
-      })
-      .catch(() => {});
-  }, []);
+  const keySource = provider.id === "ANTHROPIC" ? config.anthropicKeySource
+    : provider.id === "OPENAI" ? config.openaiKeySource
+    : provider.id === "GEMINI" ? config.geminiKeySource
+    : null;
+  const maskedKey = provider.id === "ANTHROPIC" ? config.anthropicKeyMasked
+    : provider.id === "OPENAI" ? config.openaiKeyMasked
+    : provider.id === "GEMINI" ? config.geminiKeyMasked
+    : null;
+  const currentModel = provider.id === "ANTHROPIC" ? (config.anthropicModel ?? "claude-opus-4-6")
+    : provider.id === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
+    : provider.id === "GEMINI" ? (config.geminiModel ?? "gemini-2.0-flash")
+    : (config.localLlmModel ?? "llama3.1");
+  const configured = Boolean(keySource) || (provider.id === "LOCAL" && Boolean(config.localLlmUrl));
+  const isActive = config.aiProvider === provider.id;
 
-  // Reset model input when switching providers
-  useEffect(() => {
+  function openEdit() {
     setInputs({ key: "", model: "", url: "", localModel: "" });
-  }, [activeProvider]);
+    setError(null);
+    setSaved(false);
+    setEditing(true);
+  }
 
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
-      const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: activeProvider };
-      if (activeProvider === "ANTHROPIC") {
+      const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: provider.id };
+      if (provider.id === "ANTHROPIC") {
         if (inputs.key) payload.anthropicApiKey = inputs.key;
         if (inputs.model) payload.anthropicModel = inputs.model;
       }
-      if (activeProvider === "OPENAI") {
+      if (provider.id === "OPENAI") {
         if (inputs.key) payload.openaiApiKey = inputs.key;
         if (inputs.model) payload.openaiModel = inputs.model;
       }
-      if (activeProvider === "GEMINI") {
+      if (provider.id === "GEMINI") {
         if (inputs.key) payload.geminiApiKey = inputs.key;
         if (inputs.model) payload.geminiModel = inputs.model;
       }
-      if (activeProvider === "LOCAL") {
+      if (provider.id === "LOCAL") {
         if (inputs.url) payload.localLlmUrl = inputs.url;
         if (inputs.localModel) payload.localLlmModel = inputs.localModel;
       }
       await saveIntegrations(payload);
-      setSaved(true);
-      setInputs({ key: "", model: "", url: "", localModel: "" });
       const updated = await getIntegrations();
-      setConfig(updated);
-      setTimeout(() => setSaved(false), 3000);
+      onSaved(updated);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        setEditing(false);
+      }, 1200);
     } catch {
       setError("Failed to save. Please try again.");
     } finally {
@@ -963,20 +980,135 @@ function IntegrationsTab() {
     }
   }
 
-  const provider = PROVIDERS.find((p) => p.id === activeProvider)!;
-  const isActive = config?.aiProvider === activeProvider;
-  const keySource = activeProvider === "ANTHROPIC" ? config?.anthropicKeySource
-    : activeProvider === "OPENAI" ? config?.openaiKeySource
-    : activeProvider === "GEMINI" ? config?.geminiKeySource
-    : null;
-  const maskedKey = activeProvider === "ANTHROPIC" ? config?.anthropicKeyMasked
-    : activeProvider === "OPENAI" ? config?.openaiKeyMasked
-    : activeProvider === "GEMINI" ? config?.geminiKeyMasked
-    : null;
-  const currentModel = activeProvider === "ANTHROPIC" ? (config?.anthropicModel ?? "claude-opus-4-6")
-    : activeProvider === "OPENAI" ? (config?.openaiModel ?? "gpt-4o")
-    : activeProvider === "GEMINI" ? (config?.geminiModel ?? "gemini-2.0-flash")
-    : (config?.localLlmModel ?? "llama3.1");
+  return (
+    <div className="rounded-[14px] border border-[var(--border-2)] bg-white">
+      {/* Row summary — always visible */}
+      <div className="flex items-center gap-4 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
+            {isActive && (
+              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">ACTIVE</span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-[var(--text-4)]">
+            {configured
+              ? keySource === "env"
+                ? `Key set via environment variable — ${maskedKey}`
+                : maskedKey
+                  ? `Key saved — ${maskedKey} · Model: ${currentModel}`
+                  : `Configured · Model: ${currentModel}`
+              : provider.id === "LOCAL"
+                ? "Not configured — add a base URL to enable"
+                : "Not configured"}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={editing ? () => setEditing(false) : openEdit}
+        >
+          {editing ? "Cancel" : "Edit"}
+        </Button>
+      </div>
+
+      {/* Inline edit panel */}
+      {editing && (
+        <div className="border-t border-[var(--border-2)] px-5 pb-5 pt-4 space-y-3">
+          {provider.id !== "LOCAL" && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <FieldLabel>API key</FieldLabel>
+                <KeyStatus source={keySource ?? null} masked={maskedKey ?? null} />
+              </div>
+              {keySource !== "env" && (
+                <input
+                  type="password"
+                  className="app-input font-mono text-sm"
+                  placeholder={provider.keyPlaceholder}
+                  value={inputs.key}
+                  onChange={(e) => setInputs((s) => ({ ...s, key: e.target.value }))}
+                  disabled={saving}
+                />
+              )}
+              {provider.envVar && (
+                <p className="text-xs text-[var(--text-4)]">
+                  Or set <code className="font-mono">{provider.envVar}</code> as an environment variable (takes precedence).
+                </p>
+              )}
+            </div>
+          )}
+
+          {provider.id !== "LOCAL" ? (
+            <ModelPicker
+              key={provider.id}
+              provider={provider.id}
+              currentModel={currentModel}
+              selectedModel={inputs.model}
+              onSelect={(m) => setInputs((s) => ({ ...s, model: m }))}
+              disabled={saving}
+            />
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <FieldLabel>Base URL</FieldLabel>
+                <input
+                  className="app-input font-mono text-sm"
+                  placeholder="http://localhost:11434/v1"
+                  value={inputs.url}
+                  onChange={(e) => setInputs((s) => ({ ...s, url: e.target.value }))}
+                  disabled={saving}
+                />
+                <p className="text-xs text-[var(--text-4)]">
+                  Current: {config.localLlmUrl || "not set"} — Ollama, LM Studio, and any OpenAI-compatible server work.
+                </p>
+              </div>
+              <ModelPicker
+                key="LOCAL"
+                provider="LOCAL"
+                currentModel={currentModel}
+                selectedModel={inputs.localModel}
+                onSelect={(m) => setInputs((s) => ({ ...s, localModel: m }))}
+                disabled={saving}
+              />
+            </>
+          )}
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              loading={saving}
+            >
+              {saved ? "Saved ✓" : isActive ? "Save changes" : `Save & set as active`}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const [config, setConfig] = useState<IntegrationsResponse | null>(null);
+
+  useEffect(() => {
+    getIntegrations().then(setConfig).catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -986,132 +1118,23 @@ function IntegrationsTab() {
           AI analysis engine
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-          Pulse uses AI to generate gap analysis, build opportunities, and the scaling roadmap. Choose
-          your provider and model. Without any key, Pulse still runs all automated checks and returns mock analysis.
+          Pulse uses AI to generate gap analysis, build opportunities, and scaling roadmaps. Click{" "}
+          <strong>Edit</strong> on any provider to add a key or change the model. The active provider
+          is used for all new scans by default.
         </p>
 
         {!config ? (
           <p className="mt-6 text-sm text-[var(--text-4)]">Loading…</p>
         ) : (
-          <div className="mt-6 space-y-5">
-            {/* Provider selector */}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {PROVIDERS.map((p) => {
-                const pKeySource = p.id === "ANTHROPIC" ? config.anthropicKeySource
-                  : p.id === "OPENAI" ? config.openaiKeySource
-                  : p.id === "GEMINI" ? config.geminiKeySource
-                  : null;
-                const configured = Boolean(pKeySource) || (p.id === "LOCAL" && Boolean(config.localLlmUrl));
-                const isSelected = activeProvider === p.id;
-                const isCurrentActive = config.aiProvider === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setActiveProvider(p.id)}
-                    className={cn(
-                      "relative rounded-[12px] border p-4 text-left transition",
-                      isSelected
-                        ? "border-[var(--brand-500)] bg-[var(--brand-50)]"
-                        : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
-                    )}
-                  >
-                    {isCurrentActive && (
-                      <span className="absolute right-3 top-3 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">ACTIVE</span>
-                    )}
-                    <p className={cn("text-sm font-semibold", isSelected ? "text-[var(--brand-700)]" : "text-[var(--text-1)]")}>{p.label}</p>
-                    <p className="mt-1 text-xs text-[var(--text-4)]">{configured ? "✓ Configured" : "Not configured"}</p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Selected provider config */}
-            <div className="rounded-[14px] border border-[var(--border-2)] p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
-                  <p className="mt-0.5 text-xs text-[var(--text-3)]">{provider.hint}</p>
-                </div>
-                {isActive && (
-                  <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Currently active</span>
-                )}
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {activeProvider !== "LOCAL" && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel>API key</FieldLabel>
-                      <KeyStatus source={keySource ?? null} masked={maskedKey ?? null} />
-                    </div>
-                    {keySource !== "env" && (
-                      <input
-                        type="password"
-                        className="app-input font-mono text-sm"
-                        placeholder={provider.keyPlaceholder}
-                        value={inputs.key}
-                        onChange={(e) => setInputs((s) => ({ ...s, key: e.target.value }))}
-                        disabled={saving}
-                      />
-                    )}
-                    {provider.envVar && (
-                      <p className="text-xs text-[var(--text-4)]">
-                        Or set <code className="font-mono">{provider.envVar}</code> as an environment variable (takes precedence).
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Model picker for all providers */}
-                {activeProvider !== "LOCAL" ? (
-                  <ModelPicker
-                    key={activeProvider}
-                    provider={activeProvider}
-                    currentModel={currentModel}
-                    selectedModel={inputs.model}
-                    onSelect={(m) => setInputs((s) => ({ ...s, model: m }))}
-                    disabled={saving}
-                  />
-                ) : (
-                  <>
-                    <div className="space-y-1.5">
-                      <FieldLabel>Base URL</FieldLabel>
-                      <input
-                        className="app-input font-mono text-sm"
-                        placeholder="http://localhost:11434/v1"
-                        value={inputs.url}
-                        onChange={(e) => setInputs((s) => ({ ...s, url: e.target.value }))}
-                        disabled={saving}
-                      />
-                      <p className="text-xs text-[var(--text-4)]">
-                        Current: {config.localLlmUrl || "not set"} — Ollama, LM Studio, and any OpenAI-compatible server work.
-                      </p>
-                    </div>
-                    <ModelPicker
-                      key="LOCAL"
-                      provider="LOCAL"
-                      currentModel={currentModel}
-                      selectedModel={inputs.localModel}
-                      onSelect={(m) => setInputs((s) => ({ ...s, localModel: m }))}
-                      disabled={saving}
-                    />
-                  </>
-                )}
-
-                {error && <p className="text-sm text-red-600">{error}</p>}
-
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSave}
-                  loading={saving}
-                >
-                  {saved ? "Saved ✓" : isActive ? "Save changes" : `Save and switch to ${provider.label}`}
-                </Button>
-              </div>
-            </div>
+          <div className="mt-6 space-y-3">
+            {PROVIDERS.map((p) => (
+              <ProviderRow
+                key={p.id}
+                provider={p}
+                config={config}
+                onSaved={setConfig}
+              />
+            ))}
           </div>
         )}
       </section>
