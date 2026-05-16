@@ -126,7 +126,7 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
     <button
       type="button"
       onClick={handleDelete}
-      className="rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
+      className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
       title="Delete scan"
     >
       <TrashIcon className="h-4 w-4" />
@@ -168,11 +168,8 @@ function ScanRow({
         <SignalIcon className="h-4 w-4 text-[var(--text-4)]" />
       </div>
 
-      {/* Name + URL */}
-      <Link
-        href={`/app/pulse/${scan.id}`}
-        className="min-w-0 flex-1"
-      >
+      {/* Name + URL + mobile meta */}
+      <Link href={`/app/pulse/${scan.id}`} className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]">
           {scan.projectName}
         </p>
@@ -180,9 +177,17 @@ function ScanRow({
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
         </p>
+        {/* Score + status visible on mobile only */}
+        <div className="mt-1.5 flex items-center gap-2 sm:hidden">
+          <HealthPill score={scan.healthScore} />
+          <PulseScanStatusBadge status={scan.status} />
+          {scan.generatedProposalId && (
+            <DocumentTextIcon className="h-3.5 w-3.5 text-[var(--brand-400)]" title="Proposal generated" />
+          )}
+        </div>
       </Link>
 
-      {/* Meta */}
+      {/* Meta — desktop only */}
       <div className="hidden items-center gap-3 sm:flex">
         <InputTypePill type={scan.inputType} />
         <HealthPill score={scan.healthScore} />
@@ -197,7 +202,7 @@ function ScanRow({
       <div className="flex items-center gap-1">
         <Link
           href={`/app/pulse/${scan.id}`}
-          className="rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--text-1)]"
+          className="hidden rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--text-1)] sm:block"
         >
           <ArrowRightIcon className="h-4 w-4" />
         </Link>
@@ -351,15 +356,15 @@ export function PulseScanListView() {
         </select>
 
         {/* New scan */}
-        <Link href="/app/pulse/new">
-          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
+        <Link href="/app/pulse/new" className="sm:shrink-0">
+          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="w-full sm:w-auto">
             New scan
           </Button>
         </Link>
       </div>
 
-      {/* Filter chips */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Filter chips — horizontally scrollable on mobile */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <FunnelIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
 
         <FilterChip active={statusFilter === "ALL"} onClick={() => setStatusFilter("ALL")}>All statuses</FilterChip>
@@ -367,14 +372,14 @@ export function PulseScanListView() {
         <FilterChip active={statusFilter === "RUNNING"} onClick={() => setStatusFilter("RUNNING")}>Running</FilterChip>
         <FilterChip active={statusFilter === "FAILED"} onClick={() => setStatusFilter("FAILED")}>Failed</FilterChip>
 
-        <span className="text-[var(--border-2)]">|</span>
+        <span className="shrink-0 text-[var(--border-2)]">|</span>
 
         <FilterChip active={healthFilter === "ALL"} onClick={() => setHealthFilter("ALL")}>All scores</FilterChip>
         <FilterChip active={healthFilter === "GREEN"} onClick={() => setHealthFilter("GREEN")}>Healthy 75+</FilterChip>
         <FilterChip active={healthFilter === "AMBER"} onClick={() => setHealthFilter("AMBER")}>Moderate 50–74</FilterChip>
         <FilterChip active={healthFilter === "RED"} onClick={() => setHealthFilter("RED")}>At risk &lt;50</FilterChip>
 
-        <span className="text-[var(--border-2)]">|</span>
+        <span className="shrink-0 text-[var(--border-2)]">|</span>
 
         <FilterChip active={inputFilter === "ALL"} onClick={() => setInputFilter("ALL")}>All types</FilterChip>
         <FilterChip active={inputFilter === "URL"} onClick={() => setInputFilter("URL")}>URL</FilterChip>
@@ -385,30 +390,30 @@ export function PulseScanListView() {
           <button
             type="button"
             onClick={clearFilters}
-            className="ml-1 text-xs text-[var(--text-4)] hover:text-red-600 underline"
+            className="ml-1 shrink-0 text-xs text-[var(--text-4)] underline hover:text-red-600"
           >
-            Clear filters
+            Clear
           </button>
         )}
       </div>
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex items-center justify-between rounded-[12px] border border-[var(--brand-200)] bg-[var(--brand-50)] px-4 py-2.5">
+        <div className="flex flex-col gap-2 rounded-[12px] border border-[var(--brand-200)] bg-[var(--brand-50)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2.5">
           <p className="text-sm font-medium text-[var(--brand-700)]">
             {selected.size} scan{selected.size !== 1 ? "s" : ""} selected
           </p>
           <div className="flex items-center gap-2">
             {confirmingBulkDelete ? (
               <>
-                <span className="text-xs text-red-700">Delete {selected.size} scans?</span>
+                <span className="text-xs text-red-700">Delete {selected.size} scan{selected.size !== 1 ? "s" : ""}?</span>
                 <button
                   type="button"
                   onClick={handleBulkDelete}
                   disabled={bulkDeleting}
                   className="rounded-[8px] bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {bulkDeleting ? "Deleting…" : "Yes, delete all"}
+                  {bulkDeleting ? "Deleting…" : "Yes, delete"}
                 </button>
                 <button
                   type="button"
