@@ -371,13 +371,27 @@ export async function runAnalysis(
   } catch (error) {
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
     if (current?.status !== "RUNNING") return;
-    const message = error instanceof Error ? error.message : "Unknown error";
+
+    const httpStatus = (error as { status?: number })?.status;
+    let errorCode = "ANALYSIS_FAILED";
+    let message: string;
+
+    if (httpStatus === 429) {
+      errorCode = "RATE_LIMITED";
+      message = "AI rate limit hit — your API quota is exhausted. Wait a minute and try again, or switch to a different AI provider in Settings.";
+    } else if (httpStatus === 401 || httpStatus === 403) {
+      errorCode = "AUTH_FAILED";
+      message = "AI authentication failed — check your API key in Settings → Integrations.";
+    } else {
+      message = error instanceof Error ? error.message : "Unknown error";
+    }
+
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: {
         status: "FAILED",
         completedAt: new Date(),
-        errorCode: "ANALYSIS_FAILED",
+        errorCode,
         errorMessage: message,
       },
     });

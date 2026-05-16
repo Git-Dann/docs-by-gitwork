@@ -240,7 +240,7 @@ function getMockAnalysis(input: { projectName: string; healthScore: number }): P
   };
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -249,8 +249,8 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
       lastError = err;
       const status = (err as { status?: number })?.status;
       if (status !== 429 || attempt >= maxAttempts - 1) throw err;
-      // Exponential backoff: 3s, 6s, 12s
-      await new Promise((r) => setTimeout(r, 3000 * Math.pow(2, attempt)));
+      // Wait 5s before one retry — enough for per-second rate limits
+      await new Promise((r) => setTimeout(r, 5000));
     }
   }
   throw lastError;
