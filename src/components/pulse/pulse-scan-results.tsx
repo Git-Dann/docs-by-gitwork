@@ -220,7 +220,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
           <div>
-            <h2 className="text-xl font-semibold text-[var(--text-1)]">{scan.projectName}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold text-[var(--text-1)]">{scan.projectName}</h2>
+              {llm?.projectClassification && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-500)] bg-[var(--surface-brand)] px-2.5 py-0.5 text-xs font-semibold text-[var(--brand-700)]">
+                  {llm.projectClassification.type}
+                  {llm.projectClassification.subtype && (
+                    <span className="font-normal opacity-70">· {llm.projectClassification.subtype}</span>
+                  )}
+                </span>
+              )}
+            </div>
             {scan.inputUrl && (
               <a
                 href={scan.inputUrl}
@@ -296,6 +306,60 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {/* Tab content */}
       {activeTab === "overview" && llm && (
         <div className="space-y-6">
+
+          {/* Project classification */}
+          {llm.projectClassification && (
+            <div className="rounded-[14px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="app-eyebrow mb-0.5">Project type detected</p>
+                  <p className="text-base font-semibold text-[var(--text-1)]">
+                    {llm.projectClassification.type}
+                    {llm.projectClassification.subtype && (
+                      <span className="ml-2 text-sm font-normal text-[var(--text-3)]">
+                        — {llm.projectClassification.subtype}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <span className={cn(
+                  "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                  llm.projectClassification.confidence === "HIGH"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : llm.projectClassification.confidence === "MEDIUM"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-600"
+                )}>
+                  {llm.projectClassification.confidence} confidence
+                </span>
+              </div>
+              {llm.projectClassification.verticalInsights.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--brand-700)]">
+                    Vertical-specific recommendations
+                  </p>
+                  <ul className="space-y-1.5">
+                    {llm.projectClassification.verticalInsights.map((insight, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                        <ArrowRightIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-500)]" />
+                        {insight}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {llm.projectClassification.signals.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--brand-500)] border-opacity-20 pt-3">
+                  {llm.projectClassification.signals.map((signal, i) => (
+                    <span key={i} className="rounded-full border border-[var(--brand-500)] border-opacity-30 bg-white px-2 py-0.5 text-xs text-[var(--brand-700)]">
+                      {signal}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-[14px] border border-[var(--border-2)] p-5">
             <p className="app-eyebrow mb-2">Executive summary</p>
             <p className="text-sm leading-7 text-[var(--text-2)]">{llm.executiveSummary}</p>

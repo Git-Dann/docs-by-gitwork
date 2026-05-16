@@ -58,7 +58,16 @@ const pulseTechStackAnalysisSchema = z.object({
   missingForProduction: z.array(z.string()),
 });
 
+const pulseProjectClassificationSchema = z.object({
+  type: z.string(),
+  subtype: z.string().nullable(),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+  signals: z.array(z.string()),
+  verticalInsights: z.array(z.string()),
+});
+
 const pulseAnalysisOutputSchema = z.object({
+  projectClassification: pulseProjectClassificationSchema,
   executiveSummary: z.string(),
   healthNarrative: z.string(),
   strengths: z.array(pulseStrengthSchema),
@@ -73,18 +82,40 @@ const pulseAnalysisOutputSchema = z.object({
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
 
-Your clients are "vibe coders" — founders and makers who built their app using tools like Lovable, Bolt, v0, Cursor, Claude Code, Replit Agent, or similar AI coding assistants. These apps typically share a predictable set of gaps:
-- Legal pages missing (no Privacy Policy, Terms, Cookie consent)
-- No error monitoring, observability, or health checks
-- Auth is bolted on but missing edge cases (password reset, email verification, session management)
-- No onboarding flow, billing portal, or customer support channel
-- Payments exist but have no billing management for subscribers
-- No CI/CD, tests, or structured error handling
-- Missing standard trust-building pages (About, Contact, FAQ, Changelog)
-- Accessibility and mobile experience are afterthoughts
-- No social proof or conversion-focused copy
+Your clients are "vibe coders" — founders and makers who built their app using tools like Lovable, Bolt, v0, Cursor, Claude Code, Replit Agent, or similar AI coding assistants.
 
-You are briefing the Gitwork consulting team — not the client directly. Be specific, commercially minded, and prioritise what will have the biggest impact on getting this product to market and keeping users.
+STEP 1 — CLASSIFY THE PROJECT VERTICAL FIRST.
+Before making any recommendations, determine exactly what type of product this is. Your classification drives everything: the gaps you flag, the opportunities you surface, and the roadmap you recommend. Think like a consultant who has seen hundreds of projects — the vertical shapes the entire engagement.
+
+Supported project types (use the closest match, be specific in subtype):
+- E-commerce: online shop, D2C brand, dropshipping, print-on-demand
+- SaaS: B2B, B2C, vertical SaaS (e.g. "SaaS / Legal tech", "SaaS / HR platform")
+- Marketplace: two-sided (buyers + sellers/providers), e.g. "Marketplace / Freelance platform"
+- Service Business: agency, consulting, trades, local service, booking, quotes
+- Mobile App: consumer app with a marketing landing page (App Store / Play Store focus)
+- Content / Media: blog, newsletter, video platform, podcast, creator tools
+- Internal Tool: admin panel, ops dashboard, back-office — no public signup
+- Developer Tool: API, SDK, CLI, developer platform
+- Healthcare / Wellbeing: health tracking, telemedicine, mental health, fitness
+- Fintech: payments infrastructure, invoicing, budgeting, trading, crypto
+- Education / EdTech: courses, LMS, tutoring, student dashboard
+- Automotive / Aftermarket: car sales, caravan/RV, vehicle aftermarket, parts
+- Hospitality / Travel: hotels, rentals, experiences, tour operators
+- Social / Community: user profiles, feeds, forums, membership platforms
+- IoT / Hardware: device management, firmware, sensor dashboards
+- Other: describe specifically
+
+STEP 2 — TAILOR ALL RECOMMENDATIONS TO THAT VERTICAL.
+Once you know the vertical, every gap, opportunity, and roadmap phase should be specific to that type of product. Do not give generic SaaS advice to an e-commerce store. Do not recommend a subscription billing portal to a caravan aftermarket parts shop. Think: what does this specific type of business actually need to grow and retain customers?
+
+Vibe-coded apps across all verticals share common gaps:
+- Legal pages missing (Privacy Policy, Terms, Cookie consent)
+- No error monitoring, observability, or health checks
+- Auth missing edge cases (password reset, email verification)
+- No CI/CD, tests, or structured error handling
+- Missing trust-building pages (About, Contact, FAQ, Changelog)
+
+You are briefing the Gitwork consulting team — not the client directly. Be specific, commercially minded, and prioritise what will have the biggest impact on getting this product to market.
 
 You MUST respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.`;
 
@@ -109,6 +140,19 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
 
 function getMockAnalysis(input: { projectName: string; healthScore: number }): PulseAnalysisOutput {
   return {
+    projectClassification: {
+      type: "SaaS",
+      subtype: "[Mock] Configure an AI key to detect the real project type",
+      confidence: "LOW",
+      signals: ["[Mock data — no real analysis performed]"],
+      verticalInsights: [
+        "[Mock] Add a free trial or freemium tier to reduce friction to signup",
+        "[Mock] Implement in-app onboarding with activation milestones",
+        "[Mock] Build a billing portal so subscribers can manage their own plans",
+        "[Mock] Add usage-based limits and upgrade prompts at natural friction points",
+        "[Mock] Set up a demo booking flow for enterprise prospects",
+      ],
+    },
     executiveSummary: `[Mock data] ${input.projectName} has a health score of ${input.healthScore}/100. This is simulated analysis — configure an Anthropic API key in Settings → Integrations to generate real gap analysis.`,
     healthNarrative: `[Mock data] The automated checks found a mix of passing and failing signals for ${input.projectName}. With a score of ${input.healthScore}/100 this project is in the typical early-stage vibe-coded range. Real analysis will identify specific production gaps and opportunities.`,
     strengths: [
@@ -199,6 +243,13 @@ ${formatChecksForPrompt(input.checks)}
 Return a JSON object with this exact shape:
 
 {
+  "projectClassification": {
+    "type": "string — one of the supported project types listed in the system prompt (e.g. 'E-commerce', 'SaaS', 'Marketplace', 'Automotive / Aftermarket')",
+    "subtype": "string or null — a more specific description e.g. 'B2B SaaS', 'Caravan / RV aftermarket parts', 'Freelance marketplace', 'D2C fashion brand'",
+    "confidence": "HIGH | MEDIUM | LOW — how confident you are in this classification based on scan signals",
+    "signals": ["array of strings — specific things in the scan that point to this classification, e.g. 'Stripe detected', 'Product listing pages found', 'App Store link present', '/caravan path found in sitemap'"],
+    "verticalInsights": ["array of 4–6 strings — specific, actionable recommendations that apply to THIS type of business, not generic SaaS advice. E.g. for e-commerce: 'Abandoned cart email flow', 'Product schema markup for Google Shopping', 'Returns/refund policy page'. For caravan aftermarket: 'VIN/reg lookup tool', 'Fitment guide per vehicle', 'Trade account portal'"]
+  },
   "executiveSummary": "2–3 sentence summary of the project's current state and biggest risks. Write as if briefing the consulting team before a discovery call.",
   "healthNarrative": "A paragraph explaining the health score in plain language — what's working, what's at risk, and the overall maturity level.",
   "strengths": [{ "title": "string", "detail": "string" }],

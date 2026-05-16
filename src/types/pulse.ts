@@ -76,7 +76,16 @@ export interface ProductionReadinessItem {
   notes: string;
 }
 
+export interface PulseProjectClassification {
+  type: string;           // e.g. "E-commerce", "SaaS", "Marketplace", "Service Business"
+  subtype: string | null; // e.g. "B2B SaaS", "Caravan / RV aftermarket", "Booking platform"
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  signals: string[];          // scan signals that led to this classification
+  verticalInsights: string[]; // 3–5 vertical-specific recommendations for this project type
+}
+
 export interface PulseAnalysisOutput {
+  projectClassification: PulseProjectClassification;
   executiveSummary: string;
   healthNarrative: string;
   strengths: PulseStrength[];
