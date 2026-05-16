@@ -86,6 +86,60 @@ function detectTechStack(headers: Record<string, string>, html: string): string[
   return [...new Set(stack)];
 }
 
+type ProjectContext = {
+  isPaymentEnabled: boolean;
+  isAuthEnabled: boolean;
+  isSaas: boolean;
+  isMobileApp: boolean;
+  hasBackend: boolean;
+};
+
+function detectProjectContext(html: string, headers: Record<string, string>): ProjectContext {
+  const lower = html.toLowerCase();
+
+  const isPaymentEnabled =
+    lower.includes("js.stripe.com") || lower.includes("stripe") || lower.includes("paddle") ||
+    lower.includes("lemon squeezy") ||
+    ["/pricing", "/billing", "/checkout", "/subscribe", "/plans"].some(
+      (p) => lower.includes(`href="${p}`) || lower.includes(`href='${p}`),
+    );
+
+  const isAuthEnabled =
+    ["/login", "/signin", "/sign-in", "/signup", "/sign-up", "/auth", "/register"].some(
+      (p) => lower.includes(`href="${p}`) || lower.includes(`href='${p}`),
+    ) || ["clerk", "next-auth", "nextauth", "supabase", "auth0", "lucia", "kinde"].some((p) => lower.includes(p));
+
+  const isSaas =
+    (isPaymentEnabled || isAuthEnabled) &&
+    (lower.includes("subscription") || lower.includes("/mo") || lower.includes("per month") ||
+      lower.includes("free trial") || lower.includes("dashboard") || lower.includes("/app/") ||
+      lower.includes(`href="/app"`) || lower.includes("upgrade") || lower.includes("pricing plan") ||
+      lower.includes("your account"));
+
+  const isMobileApp =
+    lower.includes("apps.apple.com") || lower.includes("play.google.com/store/apps") ||
+    /rel=["']apple-touch-icon["']/i.test(html) || lower.includes("app store") ||
+    lower.includes("google play") || lower.includes("download the app") ||
+    lower.includes("download on the") || /name=["']apple-itunes-app["']/i.test(html);
+
+  const hasBackend =
+    !!headers["x-powered-by"] || !!headers["x-vercel-id"] || !!headers["cf-ray"] ||
+    lower.includes("/api/") || isAuthEnabled || isPaymentEnabled;
+
+  return { isPaymentEnabled, isAuthEnabled, isSaas, isMobileApp, hasBackend };
+}
+
+function skipChecks(
+  checks: PulseScanCheckInput[],
+  category: string,
+  entries: Array<[string, string]>,
+  reason: string,
+): void {
+  for (const [checkKey, label] of entries) {
+    checks.push({ category, checkKey, label, status: "SKIPPED", detail: reason });
+  }
+}
+
 export async function runUrlChecks(url: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
   const checks: PulseScanCheckInput[] = [];
 
@@ -105,6 +159,7 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
   });
 
   if (pageResult) {
+    const ctx = detectProjectContext(pageResult.html, pageResult.headers);
     const redir = await headRequest(httpUrl);
     checks.push({
       category: "Infrastructure",
@@ -719,12 +774,15 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         : "No AI platform watermarks detected in page source.",
     });
 
-    // Parallel batch: favicon, PWA manifest, Stripe webhook
-    const [faviconStatus, manifestStatus, stripeWebhookStatus] = await Promise.all([
+    // Parallel batch: favicon, PWA manifest
+    const [faviconStatus, manifestStatus] = await Promise.all([
       headRequest(`${baseUrl}/favicon.ico`),
       headRequest(`${baseUrl}/manifest.json`),
-      headRequest(`${baseUrl}/api/webhooks/stripe`),
     ]);
+    // Stripe webhook — only fetch if payment signals detected, saves a network round-trip for non-commerce sites
+    const stripeWebhookStatus = ctx.isPaymentEnabled
+      ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
+      : 0;
 
     const hasFaviconLink = /rel=["'](shortcut icon|icon)["']/i.test(pageResult.html);
     checks.push({
@@ -750,24 +808,38 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
       evidence: !hasManifestLink ? `Status: ${manifestStatus || "no response"}` : undefined,
     });
 
-    // Non-zero and non-5xx = endpoint exists (even 401/405 confirms a handler is registered)
-    const stripeWebhookExists = stripeWebhookStatus > 0 && stripeWebhookStatus < 500;
-    checks.push({
-      category: "Payments",
-      checkKey: "stripe_webhook",
-      label: "Stripe webhook endpoint",
-      status: stripeWebhookExists ? "PASS" : "WARN",
-      detail: stripeWebhookExists
-        ? "Stripe webhook endpoint found — subscription lifecycle events will be processed."
-        : "No Stripe webhook detected — subscription upgrades, failures, and cancellations won't be handled automatically.",
-      evidence: stripeWebhookStatus ? `Status: ${stripeWebhookStatus}` : undefined,
-    });
+    if (ctx.isPaymentEnabled) {
+      const stripeWebhookExists = stripeWebhookStatus > 0 && stripeWebhookStatus < 500;
+      checks.push({
+        category: "Payments",
+        checkKey: "stripe_webhook",
+        label: "Stripe webhook endpoint",
+        status: stripeWebhookExists ? "PASS" : "WARN",
+        detail: stripeWebhookExists
+          ? "Stripe webhook endpoint found — subscription lifecycle events will be processed."
+          : "No Stripe webhook detected — subscription upgrades, failures, and cancellations won't be handled automatically.",
+        evidence: stripeWebhookStatus ? `Status: ${stripeWebhookStatus}` : undefined,
+      });
+    } else {
+      checks.push({ category: "Payments", checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Skipped — no payment integration detected on this project." });
+    }
 
-    // App Store & Mobile Distribution — batch deep-link file checks
-    const [aasaStatus, assetLinksStatus] = await Promise.all([
+    // App Store & Mobile Distribution — skip entirely (including the .well-known/ HEAD requests) if no mobile signals
+    const [aasaStatus, assetLinksStatus] = ctx.isMobileApp ? await Promise.all([
       headRequest(`${baseUrl}/.well-known/apple-app-site-association`),
       headRequest(`${baseUrl}/.well-known/assetlinks.json`),
-    ]);
+    ]) : [0, 0];
+    const hasAppleSmartBanner = /name=["']apple-itunes-app["']/i.test(pageResult.html);
+    if (!ctx.isMobileApp) {
+      skipChecks(checks, "App Store & Mobile", [
+        ["apple_touch_icon", "Apple touch icon"],
+        ["apple_app_store", "Apple App Store presence"],
+        ["google_play_store", "Google Play Store presence"],
+        ["universal_links", "Universal Links (iOS deep linking)"],
+        ["android_asset_links", "Android App Links (deep linking)"],
+        ["wallet_payments", "Apple Pay / Google Pay / Amazon Pay"],
+      ], "Skipped — no mobile app signals detected on this project.");
+    } else {
 
     const hasAppleTouchIcon = /rel=["']apple-touch-icon["']/i.test(pageResult.html);
     checks.push({
@@ -780,7 +852,6 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         : "No apple-touch-icon — required for iOS home screen install and Apple App Store submission.",
     });
 
-    const hasAppleSmartBanner = /name=["']apple-itunes-app["']/i.test(pageResult.html);
     const hasAppStoreLink = htmlLower.includes("apps.apple.com") || htmlLower.includes("itunes.apple.com");
     checks.push({
       category: "App Store & Mobile",
@@ -839,6 +910,7 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? `Wallet payment detected (${walletNames}) — mobile checkout optimised.`
         : "No wallet payments detected — Apple Pay, Google Pay, and Amazon Pay dramatically improve mobile conversion rates.",
     });
+    } // end if (ctx.isMobileApp)
 
     // Global Distribution & Localisation
     const hasHreflang = htmlLower.includes("hreflang");
@@ -1125,6 +1197,14 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
     });
 
     // ─── Additional Authentication ──────────────────────────────────────────────
+    if (!ctx.isAuthEnabled) {
+      skipChecks(checks, "Authentication", [
+        ["mfa_signals", "Multi-factor authentication (MFA)"],
+        ["email_verification_flow", "Email verification flow"],
+        ["magic_link_auth", "Magic link / passwordless login"],
+        ["enterprise_sso", "Enterprise SSO / SAML"],
+      ], "Skipped — no authentication system detected on this project.");
+    } else {
     const hasMfa = ["two-factor", "2fa", "authenticator app", "totp", "multi-factor", "mfa"].some((s) => htmlLower.includes(s));
     checks.push({
       category: "Authentication",
@@ -1168,6 +1248,7 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? "Enterprise SSO signals detected — enterprise deals enabled."
         : "No SSO/SAML signals — enterprise buyers mandate SSO; absence is a deal-breaker for mid-market procurement.",
     });
+    } // end if (ctx.isAuthEnabled)
 
     // ─── Additional Legal & Compliance ──────────────────────────────────────────
     const hasDataDeletion = ["delete my account", "delete account", "right to erasure", "delete your data", "close account", "request deletion"].some((s) => htmlLower.includes(s));
@@ -1354,6 +1435,16 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
     });
 
     // ─── Additional SaaS Readiness ─────────────────────────────────────────────
+    if (!ctx.isSaas) {
+      skipChecks(checks, "SaaS Readiness", [
+        ["demo_booking", "Demo booking / discovery call"],
+        ["free_trial_cta", "Free trial / free plan CTA"],
+        ["api_availability", "Public API / developer access"],
+        ["affiliate_program", "Affiliate / referral program"],
+        ["security_trust_page", "Security / trust page"],
+        ["in_app_notifications", "In-app notification system"],
+      ], "Skipped — no SaaS product signals detected on this project.");
+    } else {
     const hasDemoBooking = ["book a demo", "schedule a demo", "request a demo", "calendly.com", "savvycal.com", "cal.com"].some((s) => htmlLower.includes(s));
     checks.push({
       category: "SaaS Readiness",
@@ -1426,8 +1517,17 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? "In-app notification signals detected."
         : "No notification system — in-app notifications drive feature adoption and reduce churn.",
     });
+    } // end if (ctx.isSaas)
 
     // ─── Additional Observability ──────────────────────────────────────────────
+    if (!ctx.hasBackend) {
+      skipChecks(checks, "Observability", [
+        ["uptime_monitoring", "External uptime monitoring"],
+        ["log_aggregation", "Centralised log aggregation"],
+        ["apm_signals", "Application Performance Monitoring (APM)"],
+        ["real_user_monitoring", "Real User Monitoring (RUM)"],
+      ], "Skipped — no backend or server-side signals detected on this project.");
+    } else {
     const uptimeSignals = ["statuspage.io", "betteruptime.com", "uptimerobot", "pingdom", "freshping", "checkly", "hyperping"].some((s) => htmlLower.includes(s));
     checks.push({
       category: "Observability",
@@ -1471,8 +1571,16 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? "Real User Monitoring signals detected — field Core Web Vitals being collected."
         : "No RUM detected — lab performance data doesn't reflect real-world Core Web Vitals across user devices.",
     });
+    } // end if (ctx.hasBackend)
 
     // ─── Additional Payments ──────────────────────────────────────────────────
+    if (!ctx.isPaymentEnabled) {
+      skipChecks(checks, "Payments", [
+        ["payment_trust_badges", "Payment trust badges"],
+        ["bnpl_options", "Buy Now Pay Later (BNPL)"],
+        ["crypto_payments", "Cryptocurrency payment option"],
+      ], "Skipped — no payment integration detected on this project.");
+    } else {
     const hasPciTrustBadge = ["pci dss", "pci-dss", "payment security", "256-bit encryption", "ssl secured checkout"].some((s) => htmlLower.includes(s));
     checks.push({
       category: "Payments",
@@ -1505,8 +1613,17 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         ? "Cryptocurrency payment option detected."
         : "No crypto payments — a growing segment prefers crypto; easy to add via Coinbase Commerce.",
     });
+    } // end if (ctx.isPaymentEnabled)
 
     // ─── Additional App Store & Mobile ─────────────────────────────────────────
+    if (!ctx.isMobileApp) {
+      skipChecks(checks, "App Store & Mobile", [
+        ["smart_app_banner_meta", "Smart App Banner (iOS web-to-app)"],
+        ["amazon_app_store", "Amazon Appstore / Fire TV presence"],
+        ["app_listing_screenshots", "App screenshots / listing assets"],
+        ["app_icon_sizes", "App icon multiple resolutions"],
+      ], "Skipped — no mobile app signals detected on this project.");
+    } else {
     checks.push({
       category: "App Store & Mobile",
       checkKey: "smart_app_banner_meta",
@@ -1552,6 +1669,7 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
           ? "Only one Apple touch icon size — add 60×60, 76×76, 120×120, and 180×180 variants for full iOS support."
           : "No Apple touch icon — required for iOS home screen installation and App Store submission.",
     });
+    } // end if (ctx.isMobileApp) — additional App Store section
 
     // ─── Additional Global Distribution ────────────────────────────────────────
     const hasCountrySelector = /country[\s-]?selector|region[\s-]?selector|select[\s\S]{0,200}country/i.test(pageResult.html) || htmlLower.includes("country-dropdown");
