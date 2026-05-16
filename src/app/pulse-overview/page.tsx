@@ -66,7 +66,7 @@ export default function PulseOverviewPage() {
                   </div>
                 ))}
               </div>
-              <div style={{ space: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
                 {[
                   ["✗", "No error monitoring", "#dc2626"],
                   ["✗", "Missing HSTS header", "#dc2626"],
