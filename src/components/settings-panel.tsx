@@ -938,7 +938,12 @@ function ProviderRow({
   const isActive = config.aiProvider === provider.id;
 
   function openEdit() {
-    setInputs({ key: "", model: "", url: "", localModel: "" });
+    setInputs({
+      key: maskedKey ?? "",
+      model: currentModel,
+      url: config.localLlmUrl ?? "",
+      localModel: currentModel,
+    });
     setError(null);
     setSaved(false);
     setEditing(true);
@@ -948,17 +953,20 @@ function ProviderRow({
     setSaving(true);
     setError(null);
     try {
+      // A key is "changed" only if it's non-empty and contains no masking bullets (•).
+      // Masked values like "AIzaSyC•••••••••3tc8" must never be written back to the DB.
+      const keyChanged = inputs.key.length > 0 && !inputs.key.includes("•");
       const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: provider.id };
       if (provider.id === "ANTHROPIC") {
-        if (inputs.key) payload.anthropicApiKey = inputs.key;
+        if (keyChanged) payload.anthropicApiKey = inputs.key;
         if (inputs.model) payload.anthropicModel = inputs.model;
       }
       if (provider.id === "OPENAI") {
-        if (inputs.key) payload.openaiApiKey = inputs.key;
+        if (keyChanged) payload.openaiApiKey = inputs.key;
         if (inputs.model) payload.openaiModel = inputs.model;
       }
       if (provider.id === "GEMINI") {
-        if (inputs.key) payload.geminiApiKey = inputs.key;
+        if (keyChanged) payload.geminiApiKey = inputs.key;
         if (inputs.model) payload.geminiModel = inputs.model;
       }
       if (provider.id === "LOCAL") {
@@ -1020,13 +1028,14 @@ function ProviderRow({
         <div className="border-t border-[var(--border-2)] px-5 pb-5 pt-4 space-y-3">
           {provider.id !== "LOCAL" && (
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <FieldLabel>API key</FieldLabel>
-                <KeyStatus source={keySource ?? null} masked={maskedKey ?? null} />
-              </div>
-              {keySource !== "env" && (
+              <FieldLabel>API key</FieldLabel>
+              {keySource === "env" ? (
+                <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-xs text-[var(--text-3)]">
+                  {maskedKey} — set via environment variable, cannot be overridden here
+                </p>
+              ) : (
                 <input
-                  type="password"
+                  type="text"
                   className="app-input font-mono text-sm"
                   placeholder={provider.keyPlaceholder}
                   value={inputs.key}
@@ -1034,7 +1043,7 @@ function ProviderRow({
                   disabled={saving}
                 />
               )}
-              {provider.envVar && (
+              {provider.envVar && keySource !== "env" && (
                 <p className="text-xs text-[var(--text-4)]">
                   Or set <code className="font-mono">{provider.envVar}</code> as an environment variable (takes precedence).
                 </p>
