@@ -2,6 +2,7 @@
 
 import {
   ArrowRightOnRectangleIcon,
+  Bars3Icon,
   ChartBarSquareIcon,
   CheckCircleIcon,
   ChevronUpDownIcon,
@@ -11,6 +12,7 @@ import {
   SignalIcon,
   Squares2X2Icon,
   UsersIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -42,6 +44,23 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
   const primaryNav = useMemo<NavItem[]>(
     () => [
       {
@@ -102,6 +121,22 @@ export function AppShell({
         </aside>
 
         <div className="flex min-h-0 flex-col bg-white">
+          {/* Mobile top bar */}
+          <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
+            <div className="flex items-center gap-2.5">
+              <BrandGlyph className="h-7 w-7 shrink-0" />
+              <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              aria-label="Open menu"
+            >
+              <Bars3Icon className="h-5 w-5" />
+            </button>
+          </div>
+
           {hideContentHeader ? null : (
             <header className="border-b border-[var(--border-2)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
@@ -128,6 +163,54 @@ export function AppShell({
           </main>
         </div>
       </div>
+
+      {/* Mobile drawer overlay */}
+      {mobileMenuOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="absolute inset-y-0 left-0 flex w-[280px] flex-col bg-[var(--surface-0)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-2)] px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <BrandGlyph className="h-7 w-7 shrink-0" />
+                <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                aria-label="Close menu"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
+              <nav className="space-y-1">
+                {primaryNav.map((item) => (
+                  <SidebarNavItem
+                    key={item.label}
+                    item={item}
+                    active={Boolean(item.href && isActivePath(pathname, item.href))}
+                  />
+                ))}
+              </nav>
+
+              <div className="mt-auto space-y-2 pt-4">
+                <SidebarNavItem
+                  item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
+                  active={Boolean(isActivePath(pathname, "/app/settings"))}
+                />
+                <ProfileMenu account={settings.account} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
