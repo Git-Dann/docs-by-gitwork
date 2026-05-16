@@ -242,6 +242,9 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
   );
 }
 
+// Shared grid template — header and every row use the same columns so they align exactly.
+const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem auto";
+
 // ── Scan row ──────────────────────────────────────────────────────────────────
 
 function ScanRow({
@@ -261,8 +264,11 @@ function ScanRow({
         : "Free-text description";
 
   return (
-    <div className={cn("group flex items-center gap-3 px-4 py-3.5 transition", selected && "bg-[var(--brand-50)]")}>
-      {/* Checkbox */}
+    <div
+      className={cn("group flex sm:grid items-center gap-3 px-4 py-3.5 transition", selected && "bg-[var(--brand-50)]")}
+      style={{ gridTemplateColumns: GRID_COLS }}
+    >
+      {/* Col 1 — Checkbox */}
       <input
         type="checkbox"
         checked={selected}
@@ -271,12 +277,12 @@ function ScanRow({
         onClick={(e) => e.stopPropagation()}
       />
 
-      {/* Icon */}
+      {/* Col 2 — Icon */}
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)]">
         <SignalIcon className="h-4 w-4 text-[var(--text-4)]" />
       </div>
 
-      {/* Name + URL + mobile meta */}
+      {/* Col 3 — Project name + URL + mobile meta */}
       <Link href={`/app/pulse/${scan.id}`} className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 truncate">
           <p className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]">
@@ -290,22 +296,33 @@ function ScanRow({
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
         </p>
-        {/* Score + status visible on mobile only */}
         <div className="mt-1.5 flex items-center gap-2 sm:hidden">
           <HealthPill score={scan.healthScore} />
           <PulseScanStatusBadge status={scan.status} />
         </div>
       </Link>
 
-      {/* Meta — desktop only, each cell matches the header column width */}
-      <div className="hidden items-center gap-4 sm:flex">
-        <div className="w-16"><InputTypePill type={scan.inputType} /></div>
-        <div className="w-20"><HealthPill score={scan.healthScore} /></div>
-        <div className="w-24"><PulseScanStatusBadge status={scan.status} /></div>
-        <span className="w-24 text-right text-xs text-[var(--text-4)]">{formatDate(scan.createdAt)}</span>
+      {/* Col 4 — Type (desktop only) */}
+      <div className="hidden sm:flex sm:items-center">
+        <InputTypePill type={scan.inputType} />
       </div>
 
-      {/* Actions */}
+      {/* Col 5 — Score (desktop only) */}
+      <div className="hidden sm:flex sm:items-center">
+        <HealthPill score={scan.healthScore} />
+      </div>
+
+      {/* Col 6 — Status (desktop only) */}
+      <div className="hidden sm:flex sm:items-center">
+        <PulseScanStatusBadge status={scan.status} />
+      </div>
+
+      {/* Col 7 — Date (desktop only) */}
+      <span className="hidden sm:block text-right text-xs text-[var(--text-4)]">
+        {formatDate(scan.createdAt)}
+      </span>
+
+      {/* Col 8 — Actions */}
       <div className="flex items-center gap-1">
         <Link
           href={`/app/pulse/${scan.id}`}
@@ -558,8 +575,12 @@ export function PulseScanListView() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-[16px] border border-[var(--border-2)]">
-          {/* Table header — structure mirrors ScanRow exactly */}
-          <div className="flex items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5">
+          {/* Table header — uses the same grid template as ScanRow for exact alignment */}
+          <div
+            className="flex sm:grid items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5"
+            style={{ gridTemplateColumns: GRID_COLS }}
+          >
+            {/* Col 1 — Checkbox */}
             <input
               type="checkbox"
               className="app-checkbox shrink-0"
@@ -569,17 +590,20 @@ export function PulseScanListView() {
               }}
               onChange={toggleAll}
             />
-            {/* Icon column spacer — matches the w-8 icon in each row */}
-            <div className="hidden w-8 shrink-0 sm:block" />
+            {/* Col 2 — Icon spacer */}
+            <div className="hidden sm:block" />
+            {/* Col 3 — Project */}
             <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Project</span>
-            <div className="hidden items-center gap-4 sm:flex">
-              <span className="w-16 text-xs font-medium text-[var(--text-4)]">Type</span>
-              <span className="w-20 text-xs font-medium text-[var(--text-4)]">Score</span>
-              <span className="w-24 text-xs font-medium text-[var(--text-4)]">Status</span>
-              <span className="w-24 text-right text-xs font-medium text-[var(--text-4)]">Date</span>
-            </div>
-            {/* Actions column spacer — matches the arrow + delete buttons in each row */}
-            <div className="hidden w-[60px] shrink-0 sm:block" />
+            {/* Col 4 — Type */}
+            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Type</span>
+            {/* Col 5 — Score */}
+            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Score</span>
+            {/* Col 6 — Status */}
+            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Status</span>
+            {/* Col 7 — Date */}
+            <span className="hidden sm:block text-right text-xs font-medium text-[var(--text-4)]">Date</span>
+            {/* Col 8 — Actions spacer */}
+            <div className="hidden sm:block" />
           </div>
 
           {/* Rows */}
