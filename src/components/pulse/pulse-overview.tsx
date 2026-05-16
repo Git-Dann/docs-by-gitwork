@@ -178,9 +178,10 @@ export function PulseOverview() {
           tone={stats.totalCriticalGaps > 10 ? "red" : stats.totalCriticalGaps > 4 ? "amber" : "neutral"}
         />
         <StatCard
-          label="Proposals drafted"
-          value={String(stats.proposalsGenerated)}
-          caption={stats.proposalsGenerated > 0 ? "Auto-generated from scans" : "None yet"}
+          label="Awaiting follow-up"
+          value={String(stats.awaitingFollowUp)}
+          caption={stats.awaitingFollowUp > 0 ? "Completed scans with no proposal" : "All scans actioned"}
+          tone={stats.awaitingFollowUp > 0 ? "amber" : "neutral"}
         />
       </div>
 

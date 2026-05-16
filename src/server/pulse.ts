@@ -136,7 +136,7 @@ export interface PulseStatsResponse {
   totalScans: number;
   completedScans: number;
   avgHealthScore: number | null;
-  proposalsGenerated: number;
+  awaitingFollowUp: number;
   totalCriticalGaps: number;
   healthTiers: {
     green: number;   // 75-100
@@ -156,7 +156,7 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
       totalScans: 0,
       completedScans: 0,
       avgHealthScore: null,
-      proposalsGenerated: 0,
+      awaitingFollowUp: 0,
       totalCriticalGaps: 0,
       healthTiers: { green: 0, amber: 0, red: 0 },
       recentScans: [],
@@ -215,7 +215,7 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     totalScans: allScans.length,
     completedScans: completed.length,
     avgHealthScore,
-    proposalsGenerated: (allScans as ScanSummary[]).filter((s: ScanSummary) => Boolean(s.generatedProposalId)).length,
+    awaitingFollowUp: completed.filter((s: ScanSummary) => !s.generatedProposalId).length,
     totalCriticalGaps,
     healthTiers,
     recentScans: recentScansRaw.map(serializePulseScanListItem),
