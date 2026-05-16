@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not configured. Add it to your environment variables to enable brief analysis." },
+      { error: "AI key is not configured. Add ANTHROPIC_API_KEY to your environment variables to enable brief analysis." },
       { status: 503 },
     );
   }

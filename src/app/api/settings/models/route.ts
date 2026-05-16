@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
 
     if (provider === "ANTHROPIC") {
       const key = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
-      if (!key) return apiError("No Anthropic API key configured", 400);
+      if (!key) return apiError("No Claude API key configured", 400);
       models = await fetchAnthropicModels(key);
     } else if (provider === "OPENAI") {
       const key = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;

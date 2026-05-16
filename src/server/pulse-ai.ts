@@ -171,7 +171,7 @@ function getMockAnalysis(input: { projectName: string; healthScore: number }): P
         "[Mock] Set up a demo booking flow for enterprise prospects",
       ],
     },
-    executiveSummary: `[Mock data] ${input.projectName} has a health score of ${input.healthScore}/100. This is simulated analysis — configure an Anthropic API key in Settings → Integrations to generate real gap analysis.`,
+    executiveSummary: `[Mock data] ${input.projectName} has a health score of ${input.healthScore}/100. This is simulated analysis — configure an AI key in Settings → Integrations to generate real gap analysis.`,
     healthNarrative: `[Mock data] The automated checks found a mix of passing and failing signals for ${input.projectName}. With a score of ${input.healthScore}/100 this project is in the typical early-stage vibe-coded range. Real analysis will identify specific production gaps and opportunities.`,
     strengths: [
       { title: "Mock: Core product exists", detail: "The project is deployed and responding, which is the critical first step." },
