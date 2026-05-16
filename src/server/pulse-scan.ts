@@ -5,6 +5,15 @@ export const SCAN_VERSION = "pulse-v1";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+type UrlType = "web" | "app_store" | "play_store";
+
+function detectUrlType(url: string): UrlType {
+  const lower = url.toLowerCase();
+  if (lower.includes("apps.apple.com") || lower.includes("itunes.apple.com")) return "app_store";
+  if (lower.includes("play.google.com/store/apps")) return "play_store";
+  return "web";
+}
+
 type FetchResult = {
   ok: boolean;
   status: number;
@@ -140,7 +149,220 @@ function skipChecks(
   }
 }
 
+async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_store"): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+  const checks: PulseScanCheckInput[] = [];
+  const pageResult = await fetchPage(url);
+
+  const html = pageResult?.html ?? "";
+  const lower = html.toLowerCase();
+  const isAppStore = storeType === "app_store";
+  const storeLabel = isAppStore ? "App Store" : "Google Play";
+
+  // App listed + reachable
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_page_live",
+    label: `${storeLabel} listing is live`,
+    status: pageResult && pageResult.status < 400 ? "PASS" : "FAIL",
+    detail: pageResult && pageResult.status < 400
+      ? `${storeLabel} listing is publicly accessible.`
+      : `${storeLabel} listing returned ${pageResult?.status ?? "no response"} — app may be unlisted or removed.`,
+  });
+
+  if (!pageResult || pageResult.status >= 400) {
+    return { checks: checks.map((c, i) => ({ ...c, sortOrder: i })), techStack: [] };
+  }
+
+  // App name / title
+  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1];
+  const hasTitle = Boolean(ogTitle && ogTitle.length > 2);
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_app_title",
+    label: "App name / title",
+    status: hasTitle ? "PASS" : "WARN",
+    detail: hasTitle ? `App title detected: "${ogTitle}".` : "Could not detect app title in store listing.",
+    evidence: ogTitle ?? undefined,
+  });
+
+  // Description quality
+  const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{20,})["']/i)?.[1]
+    ?? html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{20,})["']/i)?.[1];
+  const descLength = ogDesc?.length ?? 0;
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_description",
+    label: "App description",
+    status: descLength > 200 ? "PASS" : descLength > 50 ? "WARN" : "FAIL",
+    detail: descLength > 200
+      ? "App description is detailed and complete."
+      : descLength > 50
+        ? "App description is short — a longer description improves store discovery."
+        : "No meaningful app description detected — required for store approval and discoverability.",
+  });
+
+  // Screenshots (og:image count as a signal)
+  const ogImages = (html.match(/<meta[^>]+property=["']og:image["']/gi) ?? []).length;
+  const hasScreenshots = isAppStore
+    ? lower.includes("screenshot") || lower.includes("preview") || ogImages >= 1
+    : lower.includes("screenshot") || ogImages >= 1;
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_screenshots",
+    label: "Screenshots / preview assets",
+    status: hasScreenshots ? "PASS" : "FAIL",
+    detail: hasScreenshots
+      ? "Screenshot or preview assets detected in the listing."
+      : "No screenshot assets detected — stores require at least 3–4 screenshots.",
+  });
+
+  // Ratings / reviews
+  const hasRating = lower.includes("rating") || lower.includes("stars") || lower.includes("reviews")
+    || lower.includes("rated") || /\d+(\.\d)?\s*(out of|\/)\s*5/i.test(html);
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_ratings",
+    label: "Ratings & reviews",
+    status: hasRating ? "PASS" : "WARN",
+    detail: hasRating
+      ? "Rating or review data detected — social proof is present."
+      : "No ratings detected. New apps won't have ratings, but they drive conversion significantly.",
+  });
+
+  // Privacy policy
+  const hasPrivacy = lower.includes("privacy policy") || lower.includes("privacy-policy")
+    || lower.includes("privacypolicy") || lower.includes("privacy_policy")
+    || /privacy/i.test(html) && /policy/i.test(html);
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_privacy_policy",
+    label: "Privacy policy linked",
+    status: hasPrivacy ? "PASS" : "FAIL",
+    detail: hasPrivacy
+      ? "Privacy policy reference detected — required by both stores."
+      : "No privacy policy detected. Both Apple and Google require a privacy policy URL — this will block publishing.",
+  });
+
+  // Age / content rating
+  const hasAgeRating = isAppStore
+    ? lower.includes("rated") || lower.includes("age") || lower.includes("4+") || lower.includes("17+") || lower.includes("12+")
+    : lower.includes("pegi") || lower.includes("rated for") || lower.includes("content rating") || lower.includes("everyone");
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_age_rating",
+    label: "Age / content rating",
+    status: hasAgeRating ? "PASS" : "WARN",
+    detail: hasAgeRating
+      ? "Age/content rating detected in the listing."
+      : "No content rating signals found — required by both stores and affects discoverability filters.",
+  });
+
+  // In-app purchases disclosure
+  const hasIAP = lower.includes("in-app purchase") || lower.includes("in app purchase")
+    || lower.includes("subscription") || lower.includes("offers in-app");
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_iap_disclosed",
+    label: "In-app purchases disclosed",
+    status: "PASS", // presence or absence are both valid; just noting the state
+    detail: hasIAP
+      ? "In-app purchases or subscriptions are disclosed in the listing."
+      : "No in-app purchase disclosures detected — if the app monetises, ensure this is declared.",
+  });
+
+  // App preview video (Apple) / promo video (Play)
+  const hasVideo = lower.includes("preview") && (lower.includes("video") || lower.includes("mp4"))
+    || lower.includes("app preview") || lower.includes("promo video");
+  checks.push({
+    category: "Store Listing",
+    checkKey: "store_preview_video",
+    label: isAppStore ? "App preview video" : "Promo video",
+    status: hasVideo ? "PASS" : "WARN",
+    detail: hasVideo
+      ? "App preview/promo video detected — video significantly improves conversion."
+      : "No preview video detected — a 15–30s video can increase install rates by 20–35%.",
+  });
+
+  if (isAppStore) {
+    // App Store: subtitle (shown under title in search)
+    const hasSubtitle = lower.includes("subtitle") || (ogTitle && ogTitle.includes(" - "));
+    checks.push({
+      category: "Store Listing",
+      checkKey: "appstore_subtitle",
+      label: "App subtitle (keyword field)",
+      status: hasSubtitle ? "PASS" : "WARN",
+      detail: hasSubtitle
+        ? "App subtitle detected — this 30-character field is a key keyword placement."
+        : "No subtitle detected — the App Store subtitle is valuable keyword real-estate for search ranking.",
+    });
+
+    // Apple privacy nutrition label
+    const hasNutritionLabel = lower.includes("data used") || lower.includes("data not collected")
+      || lower.includes("privacy practices") || lower.includes("data linked to you");
+    checks.push({
+      category: "Store Listing",
+      checkKey: "appstore_privacy_label",
+      label: "Apple privacy nutrition label",
+      status: hasNutritionLabel ? "PASS" : "FAIL",
+      detail: hasNutritionLabel
+        ? "Privacy nutrition label sections detected — Apple requires this before publishing."
+        : "No privacy nutrition label detected — Apple requires you to declare all data collection. Missing this will block App Review.",
+    });
+  } else {
+    // Play Store: data safety section
+    const hasDataSafety = lower.includes("data safety") || lower.includes("data shared")
+      || lower.includes("data collected") || lower.includes("safety section");
+    checks.push({
+      category: "Store Listing",
+      checkKey: "playstore_data_safety",
+      label: "Data Safety section",
+      status: hasDataSafety ? "PASS" : "FAIL",
+      detail: hasDataSafety
+        ? "Data Safety section detected — Google requires this to publish."
+        : "No Data Safety section detected — Google Play requires all apps to declare data collection practices. Missing this blocks publishing.",
+    });
+
+    // Play Store: content rating (IARC)
+    const hasIARC = lower.includes("iarc") || lower.includes("everyone") || lower.includes("teen")
+      || lower.includes("mature 17+") || lower.includes("rated for 3+");
+    checks.push({
+      category: "Store Listing",
+      checkKey: "playstore_content_rating",
+      label: "IARC content rating",
+      status: hasIARC ? "PASS" : "WARN",
+      detail: hasIARC
+        ? "Content rating detected — IARC questionnaire completed."
+        : "No IARC content rating detected. Google Play requires a content rating questionnaire before the app can go live.",
+    });
+  }
+
+  // Tech stack inference for mobile
+  const techStack: string[] = [];
+  if (isAppStore) {
+    techStack.push("iOS");
+    if (lower.includes("flutter")) techStack.push("Flutter");
+    else if (lower.includes("react native")) techStack.push("React Native");
+    else techStack.push("Swift / SwiftUI");
+  } else {
+    techStack.push("Android");
+    if (lower.includes("flutter")) techStack.push("Flutter");
+    else if (lower.includes("react native")) techStack.push("React Native");
+    else techStack.push("Kotlin");
+  }
+
+  return {
+    checks: checks.map((c, i) => ({ ...c, sortOrder: i })),
+    techStack: [...new Set(techStack)],
+  };
+}
+
 export async function runUrlChecks(url: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+  const urlType = detectUrlType(url);
+  if (urlType === "app_store" || urlType === "play_store") {
+    return runMobileStoreChecks(url, urlType);
+  }
+
   const checks: PulseScanCheckInput[] = [];
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;

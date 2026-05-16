@@ -9,21 +9,21 @@ import type { PulseScanInputType } from "@/types/pulse";
 const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder: string; description: string }> = [
   {
     value: "URL",
-    label: "Live URL",
-    placeholder: "https://myapp.com",
-    description: "Deployed web app or SaaS product URL",
+    label: "URL",
+    placeholder: "https://myapp.com  ·  apps.apple.com/…  ·  play.google.com/…",
+    description: "Web app, SaaS, marketing site, App Store listing, or Google Play listing — any live URL",
   },
   {
     value: "GITHUB_REPO",
     label: "GitHub Repo",
     placeholder: "owner/repo or https://github.com/owner/repo",
-    description: "GitHub repository to analyse",
+    description: "Any codebase — Next.js, React Native, Flutter, Python, mobile, or full-stack",
   },
   {
     value: "FREE_TEXT",
     label: "Description",
-    placeholder: "Describe the project — what it does, the tech stack, current state…",
-    description: "Free-text description when no URL or repo is available",
+    placeholder: "Describe the project — what it does, platform (web / iOS / Android), tech stack, current state…",
+    description: "Use this for APK / IPA builds, internal tools, or any project without a public URL",
   },
 ];
 

@@ -15,7 +15,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useGeneratePulseProposal, useCreatePulseScan } from "@/hooks/use-pulse";
+import { useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation } from "@/types/pulse";
 import {
@@ -158,10 +158,8 @@ function StackTab({
 
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
-  const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   function toggleCategory(category: string) {
@@ -186,16 +184,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       clientId: scan.clientId ?? undefined,
     });
     router.push(`/app/pulse/${result.scan.id}`);
-  }
-
-  async function handleGenerateProposal() {
-    setGenerateError(null);
-    try {
-      const result = await generateProposal(scan.id);
-      router.push(`/app/proposals/${result.proposalId}`);
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : "Failed to generate proposal.");
-    }
   }
 
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
@@ -271,26 +259,11 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           >
             Re-scan
           </Button>
-          {scan.generatedProposalId ? (
-            <Link href={`/app/proposals/${scan.generatedProposalId}`}>
-              <Button variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
-                View proposal
-              </Button>
-            </Link>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleGenerateProposal}
-              loading={generatingProposal}
-              leadingIcon={<DocumentTextIcon className="h-4 w-4" />}
-            >
-              Generate proposal
+          <Link href={`/app/pulse/${scan.id}/report`} target="_blank" rel="noopener noreferrer">
+            <Button variant="primary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
+              Download report
             </Button>
-          )}
-          {generateError && (
-            <p className="text-xs text-red-600">{generateError}</p>
-          )}
+          </Link>
         </div>
       </div>
 
