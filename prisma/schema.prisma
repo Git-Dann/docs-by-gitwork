@@ -130,19 +130,20 @@ model User {
 }
 
 model Workspace {
-  id          String            @id @default(cuid())
-  name        String
-  slug        String            @unique
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  members     WorkspaceMember[]
-  documents   Document[]
-  templates   DocumentTemplate[]
-  clients     WorkspaceClient[]
-  rateCardPeople RateCardPerson[]
-  proofDocuments ProofDocument[]
-  candidates  Candidate[]
-  pulseScans  PulseScan[]
+  id              String            @id @default(cuid())
+  name            String
+  slug            String            @unique
+  anthropicApiKey String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  members         WorkspaceMember[]
+  documents       Document[]
+  templates       DocumentTemplate[]
+  clients         WorkspaceClient[]
+  rateCardPeople  RateCardPerson[]
+  proofDocuments  ProofDocument[]
+  candidates      Candidate[]
+  pulseScans      PulseScan[]
 }
 
 model WorkspaceMember {

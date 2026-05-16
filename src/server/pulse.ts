@@ -231,6 +231,7 @@ export async function createAndRunPulseScan(input: {
   clientId?: string;
 }): Promise<PulseScanRecord> {
   const { workspace } = await ensureBaseRecords();
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
 
   // Look up the most recent completed scan for the same URL/repo to track score delta
   const previousScan = input.inputType !== "FREE_TEXT"
@@ -264,7 +265,7 @@ export async function createAndRunPulseScan(input: {
   });
 
   // Run analysis — errors update the record to FAILED
-  runAnalysis(scan.id, input).catch(() => {
+  runAnalysis(scan.id, input, anthropicApiKey).catch(() => {
     // Error is handled inside runAnalysis
   });
 
@@ -281,6 +282,7 @@ async function runAnalysis(
     projectName: string;
     clientId?: string;
   },
+  anthropicApiKey: string | null,
 ) {
   try {
     let urlChecks: PulseScanCheckInput[] = [];
@@ -302,16 +304,19 @@ async function runAnalysis(
     const allChecks = [...urlChecks, ...githubChecks];
     const healthScore = calculateHealthScore(allChecks);
 
-    const llmAnalysis = await analyseWithClaude({
-      projectName: input.projectName,
-      inputType: input.inputType,
-      inputUrl: input.inputUrl ?? null,
-      inputGithubRepo: input.inputGithubRepo ?? null,
-      inputDescription: input.inputDescription ?? null,
-      healthScore,
-      techStack,
-      checks: allChecks,
-    });
+    const llmAnalysis = await analyseWithClaude(
+      {
+        projectName: input.projectName,
+        inputType: input.inputType,
+        inputUrl: input.inputUrl ?? null,
+        inputGithubRepo: input.inputGithubRepo ?? null,
+        inputDescription: input.inputDescription ?? null,
+        healthScore,
+        techStack,
+        checks: allChecks,
+      },
+      anthropicApiKey,
+    );
 
     await prisma.pulseScan.update({
       where: { id: scanId },

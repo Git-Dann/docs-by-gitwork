@@ -520,3 +520,18 @@ export async function generateProposalFromScan(
 export async function getPulseStats(): Promise<import("@/server/pulse").PulseStatsResponse> {
   return apiFetch<import("@/server/pulse").PulseStatsResponse>("/api/pulse/stats");
 }
+
+export async function getIntegrations(): Promise<{
+  anthropicKeySource: "env" | "database" | null;
+  anthropicKeyMasked: string | null;
+}> {
+  return apiFetch("/api/settings/integrations");
+}
+
+export async function saveAnthropicKey(anthropicApiKey: string): Promise<{ saved: boolean }> {
+  return apiFetch("/api/settings/integrations", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ anthropicApiKey }),
+  });
+}

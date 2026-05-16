@@ -10,14 +10,14 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson } from "@/lib/api";
+import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveAnthropicKey } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 
-type TabId = "general" | "branding" | "content" | "people" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "integrations" | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -32,6 +32,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "branding", label: "Branding" },
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
+  { id: "integrations", label: "Integrations" },
   { id: "developer", label: "Developer" },
 ];
 
@@ -71,6 +72,7 @@ export function SettingsPanel({
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
+      {activeTab === "integrations" && <IntegrationsTab />}
       {activeTab === "developer" && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
@@ -800,6 +802,108 @@ function RateCardTab() {
               </p>
             ) : null}
           </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const [keySource, setKeySource] = useState<"env" | "database" | null | undefined>(undefined);
+  const [maskedKey, setMaskedKey] = useState<string | null>(null);
+  const [inputKey, setInputKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getIntegrations()
+      .then((data) => {
+        setKeySource(data.anthropicKeySource);
+        setMaskedKey(data.anthropicKeyMasked);
+      })
+      .catch(() => setKeySource(null));
+  }, []);
+
+  async function handleSave() {
+    if (!inputKey.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveAnthropicKey(inputKey.trim());
+      setSaved(true);
+      setMaskedKey(inputKey.trim().slice(0, 7) + "•".repeat(16) + inputKey.trim().slice(-4));
+      setKeySource("database");
+      setInputKey("");
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError("Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">AI</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Anthropic API key
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+          Used by Pulse to generate gap analysis, build opportunities, and the scaling roadmap.
+          Without a key, Pulse still runs all automated checks but returns mock AI analysis so you
+          can test every flow.
+        </p>
+
+        <div className="mt-6 max-w-xl space-y-4">
+          {keySource === undefined ? (
+            <p className="text-sm text-[var(--text-4)]">Loading…</p>
+          ) : keySource === "env" ? (
+            <div className="rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Key configured via environment variable (<code className="font-mono">ANTHROPIC_API_KEY</code>).
+              {maskedKey ? <span className="ml-2 font-mono text-green-700">{maskedKey}</span> : null}
+            </div>
+          ) : keySource === "database" ? (
+            <div className="rounded-[10px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Key saved. Current: <span className="font-mono">{maskedKey}</span>
+            </div>
+          ) : (
+            <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              No API key configured. Pulse will return mock analysis until you add one below.
+            </div>
+          )}
+
+          {keySource !== "env" && (
+            <div className="space-y-2">
+              <FieldLabel>{keySource === "database" ? "Replace key" : "Add key"}</FieldLabel>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  className="app-input flex-1 font-mono text-sm"
+                  placeholder="sk-ant-api03-…"
+                  value={inputKey}
+                  onChange={(e) => setInputKey(e.target.value)}
+                  disabled={saving}
+                />
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSave}
+                  loading={saving}
+                  disabled={!inputKey.trim()}
+                >
+                  {saved ? "Saved" : "Save"}
+                </Button>
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <p className="text-xs text-[var(--text-4)]">
+                Keys are stored in the workspace database record. For production deployments, prefer
+                setting <code className="font-mono">ANTHROPIC_API_KEY</code> as an environment variable.
+              </p>
+            </div>
+          )}
         </div>
       </section>
     </div>

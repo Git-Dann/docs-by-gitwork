@@ -107,19 +107,76 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   return lines.join("\n");
 }
 
-export async function analyseWithClaude(input: {
-  projectName: string;
-  inputType: PulseScanInputType;
-  inputUrl: string | null;
-  inputGithubRepo: string | null;
-  inputDescription: string | null;
-  healthScore: number;
-  techStack: string[];
-  checks: PulseScanCheckInput[];
-}): Promise<PulseAnalysisOutput> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+function getMockAnalysis(input: { projectName: string; healthScore: number }): PulseAnalysisOutput {
+  return {
+    executiveSummary: `[Mock data] ${input.projectName} has a health score of ${input.healthScore}/100. This is simulated analysis — configure an Anthropic API key in Settings → Integrations to generate real gap analysis.`,
+    healthNarrative: `[Mock data] The automated checks found a mix of passing and failing signals for ${input.projectName}. With a score of ${input.healthScore}/100 this project is in the typical early-stage vibe-coded range. Real analysis will identify specific production gaps and opportunities.`,
+    strengths: [
+      { title: "Mock: Core product exists", detail: "The project is deployed and responding, which is the critical first step." },
+      { title: "Mock: Modern stack signals", detail: "Tech stack signals suggest a contemporary approach suitable for scaling." },
+    ],
+    criticalGaps: [
+      { category: "Observability", gap: "No error monitoring detected", impact: "Production errors go undetected until users report them.", urgency: "CRITICAL" },
+      { category: "Security", gap: "Missing security headers", impact: "Exposes the app to common web vulnerabilities.", urgency: "HIGH" },
+      { category: "Auth", gap: "No email verification flow detected", impact: "Allows unverified accounts, increasing fraud risk.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Error monitoring", description: "Integrate Sentry or Highlight.io for real-time error tracking.", estimatedEffort: "S", businessValue: "HIGH", category: "Observability" },
+      { title: "Transactional email", description: "Set up Resend or Postmark for auth flows and notifications.", estimatedEffort: "S", businessValue: "HIGH", category: "Infrastructure" },
+      { title: "Analytics pipeline", description: "Add PostHog or Plausible to understand user behaviour.", estimatedEffort: "S", businessValue: "MEDIUM", category: "Analytics" },
+      { title: "Background jobs", description: "Add a job queue (Inngest / Trigger.dev) for async processing.", estimatedEffort: "M", businessValue: "MEDIUM", category: "Infrastructure" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Stabilise", duration: "2 weeks", goals: ["Add error monitoring", "Fix critical security headers", "Set up transactional email"] },
+      { phase: 2, title: "Productionise", duration: "4 weeks", goals: ["Implement billing portal", "Add email verification", "Set up CI/CD pipeline"] },
+      { phase: 3, title: "Scale", duration: "6 weeks", goals: ["Performance optimisation", "CDN configuration", "Database connection pooling", "Rate limiting"] },
+    ],
+    techDebt: [
+      { area: "Testing", description: "No automated test suite detected. All changes carry regression risk.", severity: "HIGH" },
+      { area: "CI/CD", description: "No pipeline detected. Deployments are manual and error-prone.", severity: "MEDIUM" },
+      { area: "Documentation", description: "No README or developer documentation found in the repo.", severity: "LOW" },
+    ],
+    proposalHook: `[Mock] ${input.projectName} is a solid concept that needs production hardening before it can scale — we can get it there in 6–8 weeks.`,
+    productionReadinessChecklist: [
+      { category: "Legal", item: "Privacy Policy page", status: "MISSING", notes: "No privacy policy link detected in the scan." },
+      { category: "Legal", item: "Terms of Service page", status: "MISSING", notes: "No terms of service detected." },
+      { category: "Legal", item: "Cookie consent banner", status: "MISSING", notes: "No cookie consent mechanism detected." },
+      { category: "Auth", item: "Login / signup flow", status: "PARTIAL", notes: "Auth signals detected but completeness unverified." },
+      { category: "Auth", item: "Password reset flow", status: "MISSING", notes: "No password reset signals found in scan." },
+      { category: "Payments", item: "Pricing page", status: "PARTIAL", notes: "Pricing signals detected but no dedicated page confirmed." },
+      { category: "Observability", item: "Error monitoring", status: "MISSING", notes: "No Sentry, Bugsnag, or similar tool detected." },
+      { category: "Observability", item: "Analytics", status: "MISSING", notes: "No analytics provider detected in page HTML." },
+      { category: "Performance", item: "CDN / edge delivery", status: "PARTIAL", notes: "Hosting provider detected but CDN config unverified." },
+      { category: "Support", item: "Help / FAQ page", status: "MISSING", notes: "No help or support link detected." },
+    ],
+    techStackAnalysis: {
+      assessment: "[Mock] Based on the scan signals, this appears to be a modern JavaScript/TypeScript application. The stack is appropriate for an early-stage product but will need hardening for production scale. Key gaps are likely in background processing and observability.",
+      recommendations: [
+        { area: "Error monitoring", current: null, recommended: "Sentry", reason: "Critical for catching production errors before users do.", priority: "HIGH" },
+        { area: "Email delivery", current: null, recommended: "Resend", reason: "Reliable transactional email is required for auth and notifications.", priority: "HIGH" },
+        { area: "Background jobs", current: null, recommended: "Inngest", reason: "Async processing prevents timeout errors on long operations.", priority: "MEDIUM" },
+        { area: "Caching", current: null, recommended: "Upstash Redis", reason: "Session and data caching significantly improves response times.", priority: "MEDIUM" },
+      ],
+      missingForProduction: ["Background job queue", "Transactional email provider", "Rate limiting", "Database connection pooling"],
+    },
+  };
+}
+
+export async function analyseWithClaude(
+  input: {
+    projectName: string;
+    inputType: PulseScanInputType;
+    inputUrl: string | null;
+    inputGithubRepo: string | null;
+    inputDescription: string | null;
+    healthScore: number;
+    techStack: string[];
+    checks: PulseScanCheckInput[];
+  },
+  apiKey: string | null,
+): Promise<PulseAnalysisOutput> {
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
+    return getMockAnalysis({ projectName: input.projectName, healthScore: input.healthScore });
   }
 
   const inputRef =
@@ -205,7 +262,7 @@ Populate productionReadinessChecklist with 12–20 items covering the full promp
 
 For techStackAnalysis: base the assessment and recommendations on the detected tech stack (${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from scan signals"}). Give 3–8 recommendations covering areas like database, caching, email delivery, background jobs, monitoring, CDN, and testing. Identify 3–6 production-critical components that are likely missing based on typical vibe-coded app patterns.`;
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey: apiKey });
 
   const message = await client.messages.create({
     model: "claude-opus-4-6",
