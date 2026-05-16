@@ -813,7 +813,7 @@ type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string }[] = [
   { id: "ANTHROPIC", label: "Claude (Anthropic)", hint: "Recommended. claude-opus-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY" },
   { id: "OPENAI", label: "OpenAI", hint: "Uses gpt-4o by default. Any OpenAI model name is accepted.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY" },
-  { id: "GEMINI", label: "Gemini (Google)", hint: "Uses gemini-1.5-pro by default via the OpenAI-compatible endpoint.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY" },
+  { id: "GEMINI", label: "Gemini (Google)", hint: "Uses gemini-2.0-flash by default via the OpenAI-compatible endpoint.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY" },
   { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server running locally or on-prem.", keyPlaceholder: "(optional API key)", envVar: "" },
 ];
 
@@ -978,7 +978,7 @@ function IntegrationsTab() {
                     <FieldLabel>Model override (optional)</FieldLabel>
                     <input
                       className="app-input text-sm"
-                      placeholder={activeProvider === "OPENAI" ? "gpt-4o" : "gemini-1.5-pro"}
+                      placeholder={activeProvider === "OPENAI" ? "gpt-4o" : "gemini-2.0-flash"}
                       value={inputs.model}
                       onChange={(e) => setInputs((s) => ({ ...s, model: e.target.value }))}
                       disabled={saving}

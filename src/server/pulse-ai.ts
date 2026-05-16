@@ -206,6 +206,20 @@ function getMockAnalysis(input: { projectName: string; healthScore: number }): P
   };
 }
 
+function extractJson(raw: string): string {
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch?.[1]) return fenceMatch[1].trim();
+  // If the response starts with { or [ treat it as raw JSON
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return trimmed;
+  // Last resort: find the first { and last } to extract a JSON object
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) return raw.slice(start, end + 1);
+  return raw;
+}
+
 export async function analyseWithClaude(
   input: {
     projectName: string;
@@ -344,11 +358,15 @@ For techStackAnalysis: base the assessment and recommendations on the detected t
     rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
   }
 
+  // Gemini and some local models wrap JSON in markdown code fences.
+  // Strip ```json ... ``` or ``` ... ``` wrappers before parsing.
+  const extracted = extractJson(rawContent);
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawContent);
+    parsed = JSON.parse(extracted);
   } catch {
-    throw new Error("AI returned invalid JSON.");
+    throw new Error(`AI returned invalid JSON. Raw response started with: ${rawContent.slice(0, 120)}`);
   }
 
   const result = pulseAnalysisOutputSchema.safeParse(parsed);

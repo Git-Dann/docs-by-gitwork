@@ -100,7 +100,7 @@ export default function PulseOverviewPage() {
                 Millions of products built with AI. Almost none of them production-ready.
               </h2>
               <p style={{ fontSize: 16, color: "#475569", lineHeight: 1.8, margin: "0 0 16px" }}>
-                Every week, developers and founders use Claude, Bolt, Lovable, and Cursor to ship products they couldn&apos;t build before. The code runs. The product works. But it&apos;s nowhere near ready to handle real users, real money, or real security requirements.
+                Every week, developers and founders use Bolt, Lovable, Cursor, and other AI tools to ship products they couldn&apos;t build before. The code runs. The product works. But it&apos;s nowhere near ready to handle real users, real money, or real security requirements.
               </p>
               <p style={{ fontSize: 16, color: "#475569", lineHeight: 1.8, margin: 0 }}>
                 That gap — between &quot;it works on my machine&quot; and &quot;production-ready&quot; — is Gitwork&apos;s market. Pulse is the tool that lets us <strong style={{ color: "#0f172a" }}>quantify it, prove it, and sell the fix.</strong>
@@ -284,7 +284,7 @@ export default function PulseOverviewPage() {
               {[
                 { name: "Claude (Anthropic)", model: "claude-opus-4-6", note: "Default. Best for structured gap analysis.", bg: "#fff7ed", border: "#fed7aa", badge: "#ea580c" },
                 { name: "GPT-4o (OpenAI)", model: "gpt-4o", note: "Any OpenAI model. Model name is configurable.", bg: "#f0fdf4", border: "#bbf7d0", badge: "#16a34a" },
-                { name: "Gemini (Google)", model: "gemini-1.5-pro", note: "Via OpenAI-compatible endpoint. No extra SDK needed.", bg: "#eff6ff", border: "#bfdbfe", badge: "#2563eb" },
+                { name: "Gemini (Google)", model: "gemini-2.0-flash", note: "Via OpenAI-compatible endpoint. No extra SDK needed.", bg: "#eff6ff", border: "#bfdbfe", badge: "#2563eb" },
                 { name: "Local LLM", model: "Ollama / LM Studio", note: "Point at any OpenAI-compatible server. Zero API cost.", bg: "#f8fafc", border: "#e2e8f0", badge: "#475569" },
               ].map(({ name, model, note, bg, border, badge }) => (
                 <div key={name} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: "18px 20px" }}>

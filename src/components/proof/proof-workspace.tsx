@@ -489,7 +489,7 @@ export function ProofWorkspace({
               </h4>
               <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
                 {mutation.isPending
-                  ? "Claude is reading the brief and extracting key information. This usually takes a few seconds."
+                  ? "AI is reading the brief and extracting key information. This usually takes a few seconds."
                   : "We'll extract goals, deliverables, timeline, budget, and more — laid out clearly for your team."}
               </p>
               {mutation.isPending ? (
