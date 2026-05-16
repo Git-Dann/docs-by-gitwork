@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowRightIcon,
@@ -58,30 +58,138 @@ function InputTypePill({ type }: { type: PulseScanInputType }) {
   );
 }
 
-// ── Filter/sort toolbar ────────────────────────────────────────────────────────
+// ── Filters dropdown ──────────────────────────────────────────────────────────
 
-function FilterChip({
+function FilterOption<T extends string>({
+  value,
   active,
-  children,
   onClick,
+  children,
 }: {
+  value: T;
   active: boolean;
+  onClick: (v: T) => void;
   children: React.ReactNode;
-  onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onClick(value)}
       className={cn(
-        "rounded-full border px-3 py-1 text-xs font-medium transition",
+        "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
         active
-          ? "border-[var(--brand-500)] bg-[var(--brand-50)] text-[var(--brand-700)]"
-          : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+          ? "bg-[var(--brand-50)] font-medium text-[var(--brand-700)]"
+          : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
       )}
     >
+      <span
+        className={cn(
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition",
+          active ? "border-[var(--brand-500)] bg-[var(--brand-500)]" : "border-[var(--border-2)]",
+        )}
+      >
+        {active && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+      </span>
       {children}
     </button>
+  );
+}
+
+function FiltersDropdown({
+  statusFilter,
+  healthFilter,
+  inputFilter,
+  onStatusChange,
+  onHealthChange,
+  onInputChange,
+  onClear,
+}: {
+  statusFilter: StatusFilter;
+  healthFilter: HealthFilter;
+  inputFilter: InputFilter;
+  onStatusChange: (v: StatusFilter) => void;
+  onHealthChange: (v: HealthFilter) => void;
+  onInputChange: (v: InputFilter) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const activeCount = [
+    statusFilter !== "ALL",
+    healthFilter !== "ALL",
+    inputFilter !== "ALL",
+  ].filter(Boolean).length;
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-sm font-medium transition",
+          activeCount > 0
+            ? "border-[var(--brand-400)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+            : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+        )}
+      >
+        <FunnelIcon className="h-4 w-4 shrink-0" />
+        <span>Filters</span>
+        {activeCount > 0 && (
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--brand-500)] text-[10px] font-bold text-white">
+            {activeCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1.5 w-56 rounded-[14px] border border-[var(--border-2)] bg-white p-3 shadow-lg">
+          <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Status</p>
+          <FilterOption value={"ALL" as StatusFilter} active={statusFilter === "ALL"} onClick={onStatusChange}>All statuses</FilterOption>
+          <FilterOption value={"COMPLETED" as StatusFilter} active={statusFilter === "COMPLETED"} onClick={onStatusChange}>Completed</FilterOption>
+          <FilterOption value={"RUNNING" as StatusFilter} active={statusFilter === "RUNNING"} onClick={onStatusChange}>Running</FilterOption>
+          <FilterOption value={"FAILED" as StatusFilter} active={statusFilter === "FAILED"} onClick={onStatusChange}>Failed</FilterOption>
+
+          <div className="my-2 border-t border-[var(--border-2)]" />
+
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Health score</p>
+          <FilterOption value={"ALL" as HealthFilter} active={healthFilter === "ALL"} onClick={onHealthChange}>All scores</FilterOption>
+          <FilterOption value={"GREEN" as HealthFilter} active={healthFilter === "GREEN"} onClick={onHealthChange}>Healthy 75+</FilterOption>
+          <FilterOption value={"AMBER" as HealthFilter} active={healthFilter === "AMBER"} onClick={onHealthChange}>Moderate 50–74</FilterOption>
+          <FilterOption value={"RED" as HealthFilter} active={healthFilter === "RED"} onClick={onHealthChange}>At risk &lt;50</FilterOption>
+
+          <div className="my-2 border-t border-[var(--border-2)]" />
+
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Input type</p>
+          <FilterOption value={"ALL" as InputFilter} active={inputFilter === "ALL"} onClick={onInputChange}>All types</FilterOption>
+          <FilterOption value={"URL" as InputFilter} active={inputFilter === "URL"} onClick={onInputChange}>URL</FilterOption>
+          <FilterOption value={"GITHUB_REPO" as InputFilter} active={inputFilter === "GITHUB_REPO"} onClick={onInputChange}>GitHub repo</FilterOption>
+          <FilterOption value={"FREE_TEXT" as InputFilter} active={inputFilter === "FREE_TEXT"} onClick={onInputChange}>Description</FilterOption>
+
+          {activeCount > 0 && (
+            <>
+              <div className="my-2 border-t border-[var(--border-2)]" />
+              <button
+                type="button"
+                onClick={() => { onClear(); setOpen(false); }}
+                className="w-full rounded-[8px] px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
+              >
+                Clear all filters
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -265,12 +373,6 @@ export function PulseScanListView() {
     return list;
   }, [allScans, search, statusFilter, healthFilter, inputFilter, sort]);
 
-  const activeFilterCount = [
-    statusFilter !== "ALL",
-    healthFilter !== "ALL",
-    inputFilter !== "ALL",
-  ].filter(Boolean).length;
-
   function toggleAll() {
     if (selected.size === filtered.length) {
       setSelected(new Set());
@@ -343,58 +445,37 @@ export function PulseScanListView() {
           )}
         </div>
 
-        {/* Sort */}
-        <select
-          className="app-select w-full text-sm sm:w-auto"
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-        >
-          <option value="NEWEST">Newest first</option>
-          <option value="OLDEST">Oldest first</option>
-          <option value="SCORE_HIGH">Score: high → low</option>
-          <option value="SCORE_LOW">Score: low → high</option>
-        </select>
+        <div className="flex items-center gap-2">
+          {/* Filters dropdown */}
+          <FiltersDropdown
+            statusFilter={statusFilter}
+            healthFilter={healthFilter}
+            inputFilter={inputFilter}
+            onStatusChange={setStatusFilter}
+            onHealthChange={setHealthFilter}
+            onInputChange={setInputFilter}
+            onClear={clearFilters}
+          />
 
-        {/* New scan */}
-        <Link href="/app/pulse/new" className="sm:shrink-0">
-          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="w-full sm:w-auto">
-            New scan
-          </Button>
-        </Link>
-      </div>
-
-      {/* Filter chips — horizontally scrollable on mobile */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        <FunnelIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-
-        <FilterChip active={statusFilter === "ALL"} onClick={() => setStatusFilter("ALL")}>All statuses</FilterChip>
-        <FilterChip active={statusFilter === "COMPLETED"} onClick={() => setStatusFilter("COMPLETED")}>Completed</FilterChip>
-        <FilterChip active={statusFilter === "RUNNING"} onClick={() => setStatusFilter("RUNNING")}>Running</FilterChip>
-        <FilterChip active={statusFilter === "FAILED"} onClick={() => setStatusFilter("FAILED")}>Failed</FilterChip>
-
-        <span className="shrink-0 text-[var(--border-2)]">|</span>
-
-        <FilterChip active={healthFilter === "ALL"} onClick={() => setHealthFilter("ALL")}>All scores</FilterChip>
-        <FilterChip active={healthFilter === "GREEN"} onClick={() => setHealthFilter("GREEN")}>Healthy 75+</FilterChip>
-        <FilterChip active={healthFilter === "AMBER"} onClick={() => setHealthFilter("AMBER")}>Moderate 50–74</FilterChip>
-        <FilterChip active={healthFilter === "RED"} onClick={() => setHealthFilter("RED")}>At risk &lt;50</FilterChip>
-
-        <span className="shrink-0 text-[var(--border-2)]">|</span>
-
-        <FilterChip active={inputFilter === "ALL"} onClick={() => setInputFilter("ALL")}>All types</FilterChip>
-        <FilterChip active={inputFilter === "URL"} onClick={() => setInputFilter("URL")}>URL</FilterChip>
-        <FilterChip active={inputFilter === "GITHUB_REPO"} onClick={() => setInputFilter("GITHUB_REPO")}>GitHub</FilterChip>
-        <FilterChip active={inputFilter === "FREE_TEXT"} onClick={() => setInputFilter("FREE_TEXT")}>Description</FilterChip>
-
-        {activeFilterCount > 0 && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="ml-1 shrink-0 text-xs text-[var(--text-4)] underline hover:text-red-600"
+          {/* Sort */}
+          <select
+            className="app-select text-sm"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
           >
-            Clear
-          </button>
-        )}
+            <option value="NEWEST">Newest first</option>
+            <option value="OLDEST">Oldest first</option>
+            <option value="SCORE_HIGH">Score: high → low</option>
+            <option value="SCORE_LOW">Score: low → high</option>
+          </select>
+
+          {/* New scan */}
+          <Link href="/app/pulse/new" className="shrink-0">
+            <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
+              New scan
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Bulk action bar */}
