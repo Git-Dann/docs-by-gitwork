@@ -10,7 +10,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveIntegrations, type IntegrationsResponse } from "@/lib/api";
+import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveIntegrations, fetchProviderModels, type IntegrationsResponse, type ModelOption } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
@@ -810,11 +810,11 @@ function RateCardTab() {
 
 type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 
-const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string }[] = [
-  { id: "ANTHROPIC", label: "Claude (Anthropic)", hint: "Recommended. claude-opus-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY" },
-  { id: "OPENAI", label: "OpenAI", hint: "Uses gpt-4o by default. Any OpenAI model name is accepted.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY" },
-  { id: "GEMINI", label: "Gemini (Google)", hint: "Uses gemini-2.0-flash by default via the OpenAI-compatible endpoint.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY" },
-  { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server running locally or on-prem.", keyPlaceholder: "(optional API key)", envVar: "" },
+const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string; defaultModel: string }[] = [
+  { id: "ANTHROPIC", label: "Claude (Anthropic)", hint: "claude-opus-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY", defaultModel: "claude-opus-4-6" },
+  { id: "OPENAI", label: "OpenAI", hint: "gpt-4o by default.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY", defaultModel: "gpt-4o" },
+  { id: "GEMINI", label: "Gemini (Google)", hint: "gemini-2.0-flash by default.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY", defaultModel: "gemini-2.0-flash" },
+  { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server.", keyPlaceholder: "(optional API key)", envVar: "", defaultModel: "llama3.1" },
 ];
 
 function KeyStatus({ source, masked }: { source: "env" | "database" | null; masked: string | null }) {
@@ -827,6 +827,84 @@ function KeyStatus({ source, masked }: { source: "env" | "database" | null; mask
     <span className="text-xs font-medium text-green-700">✓ Saved — <span className="font-mono">{masked}</span></span>
   );
   return <span className="text-xs text-[var(--text-4)]">Not configured</span>;
+}
+
+function ModelPicker({
+  provider,
+  currentModel,
+  selectedModel,
+  onSelect,
+  disabled,
+}: {
+  provider: AiProvider;
+  currentModel: string;
+  selectedModel: string;
+  onSelect: (model: string) => void;
+  disabled: boolean;
+}) {
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  async function loadModels() {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const list = await fetchProviderModels(provider);
+      setModels(list);
+      setLoaded(true);
+      // If the current model exists in the list, pre-select it
+      if (!selectedModel && currentModel) {
+        onSelect(currentModel);
+      }
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load models");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <FieldLabel>Model</FieldLabel>
+        <button
+          type="button"
+          onClick={loadModels}
+          disabled={loading || disabled}
+          className="flex items-center gap-1 text-xs text-[var(--brand-600)] hover:text-[var(--brand-700)] disabled:opacity-50"
+        >
+          <ArrowPathIcon className={cn("h-3 w-3", loading && "animate-spin")} />
+          {loading ? "Loading…" : loaded ? "Refresh" : "Load models"}
+        </button>
+      </div>
+      {loaded && models.length > 0 ? (
+        <select
+          className="app-input text-sm"
+          value={selectedModel || currentModel}
+          onChange={(e) => onSelect(e.target.value)}
+          disabled={disabled}
+        >
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="app-input text-sm"
+          placeholder={currentModel}
+          value={selectedModel}
+          onChange={(e) => onSelect(e.target.value)}
+          disabled={disabled}
+        />
+      )}
+      {loadError && <p className="text-xs text-amber-600">{loadError}</p>}
+      <p className="text-xs text-[var(--text-4)]">Active: {currentModel}</p>
+    </div>
+  );
 }
 
 function IntegrationsTab() {
@@ -846,12 +924,20 @@ function IntegrationsTab() {
       .catch(() => {});
   }, []);
 
+  // Reset model input when switching providers
+  useEffect(() => {
+    setInputs({ key: "", model: "", url: "", localModel: "" });
+  }, [activeProvider]);
+
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
       const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: activeProvider };
-      if (activeProvider === "ANTHROPIC" && inputs.key) payload.anthropicApiKey = inputs.key;
+      if (activeProvider === "ANTHROPIC") {
+        if (inputs.key) payload.anthropicApiKey = inputs.key;
+        if (inputs.model) payload.anthropicModel = inputs.model;
+      }
       if (activeProvider === "OPENAI") {
         if (inputs.key) payload.openaiApiKey = inputs.key;
         if (inputs.model) payload.openaiModel = inputs.model;
@@ -887,6 +973,10 @@ function IntegrationsTab() {
     : activeProvider === "OPENAI" ? config?.openaiKeyMasked
     : activeProvider === "GEMINI" ? config?.geminiKeyMasked
     : null;
+  const currentModel = activeProvider === "ANTHROPIC" ? (config?.anthropicModel ?? "claude-opus-4-6")
+    : activeProvider === "OPENAI" ? (config?.openaiModel ?? "gpt-4o")
+    : activeProvider === "GEMINI" ? (config?.geminiModel ?? "gemini-2.0-flash")
+    : (config?.localLlmModel ?? "llama3.1");
 
   return (
     <div className="space-y-6">
@@ -897,7 +987,7 @@ function IntegrationsTab() {
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
           Pulse uses AI to generate gap analysis, build opportunities, and the scaling roadmap. Choose
-          your provider. Without any key, Pulse still runs all automated checks and returns mock analysis.
+          your provider and model. Without any key, Pulse still runs all automated checks and returns mock analysis.
         </p>
 
         {!config ? (
@@ -973,23 +1063,17 @@ function IntegrationsTab() {
                   </div>
                 )}
 
-                {(activeProvider === "OPENAI" || activeProvider === "GEMINI") && (
-                  <div className="space-y-1.5">
-                    <FieldLabel>Model override (optional)</FieldLabel>
-                    <input
-                      className="app-input text-sm"
-                      placeholder={activeProvider === "OPENAI" ? "gpt-4o" : "gemini-2.0-flash"}
-                      value={inputs.model}
-                      onChange={(e) => setInputs((s) => ({ ...s, model: e.target.value }))}
-                      disabled={saving}
-                    />
-                    <p className="text-xs text-[var(--text-4)]">
-                      Current: {activeProvider === "OPENAI" ? config.openaiModel : config.geminiModel}
-                    </p>
-                  </div>
-                )}
-
-                {activeProvider === "LOCAL" && (
+                {/* Model picker for all providers */}
+                {activeProvider !== "LOCAL" ? (
+                  <ModelPicker
+                    key={activeProvider}
+                    provider={activeProvider}
+                    currentModel={currentModel}
+                    selectedModel={inputs.model}
+                    onSelect={(m) => setInputs((s) => ({ ...s, model: m }))}
+                    disabled={saving}
+                  />
+                ) : (
                   <>
                     <div className="space-y-1.5">
                       <FieldLabel>Base URL</FieldLabel>
@@ -1004,17 +1088,14 @@ function IntegrationsTab() {
                         Current: {config.localLlmUrl || "not set"} — Ollama, LM Studio, and any OpenAI-compatible server work.
                       </p>
                     </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel>Model name</FieldLabel>
-                      <input
-                        className="app-input text-sm"
-                        placeholder="llama3.1"
-                        value={inputs.localModel}
-                        onChange={(e) => setInputs((s) => ({ ...s, localModel: e.target.value }))}
-                        disabled={saving}
-                      />
-                      <p className="text-xs text-[var(--text-4)]">Current: {config.localLlmModel}</p>
-                    </div>
+                    <ModelPicker
+                      key="LOCAL"
+                      provider="LOCAL"
+                      currentModel={currentModel}
+                      selectedModel={inputs.localModel}
+                      onSelect={(m) => setInputs((s) => ({ ...s, localModel: m }))}
+                      disabled={saving}
+                    />
                   </>
                 )}
 

@@ -18,6 +18,7 @@ export async function GET() {
       select: {
         aiProvider: true,
         anthropicApiKey: true,
+        anthropicModel: true,
         openaiApiKey: true,
         openaiModel: true,
         geminiApiKey: true,
@@ -35,12 +36,13 @@ export async function GET() {
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
       anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
       anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
+      anthropicModel: workspace?.anthropicModel ?? "claude-opus-4-6",
       openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
       openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
       openaiModel: workspace?.openaiModel ?? "gpt-4o",
       geminiKeyMasked: geminiKey ? maskKey(geminiKey) : null,
       geminiKeySource: process.env.GEMINI_API_KEY ? "env" : workspace?.geminiApiKey ? "database" : null,
-      geminiModel: workspace?.geminiModel ?? "gemini-1.5-pro",
+      geminiModel: workspace?.geminiModel ?? "gemini-2.0-flash",
       localLlmUrl: workspace?.localLlmUrl ?? "",
       localLlmModel: workspace?.localLlmModel ?? "llama3.1",
     });
@@ -52,6 +54,7 @@ export async function GET() {
 const updateSchema = z.object({
   aiProvider: z.enum(["ANTHROPIC", "OPENAI", "GEMINI", "LOCAL"]).optional(),
   anthropicApiKey: z.string().trim().optional(),
+  anthropicModel: z.string().trim().optional(),
   openaiApiKey: z.string().trim().optional(),
   openaiModel: z.string().trim().optional(),
   geminiApiKey: z.string().trim().optional(),
@@ -67,6 +70,7 @@ export async function PUT(request: NextRequest) {
     const data: Record<string, string> = {};
     if (body.aiProvider) data.aiProvider = body.aiProvider;
     if (body.anthropicApiKey) data.anthropicApiKey = body.anthropicApiKey;
+    if (body.anthropicModel) data.anthropicModel = body.anthropicModel;
     if (body.openaiApiKey) data.openaiApiKey = body.openaiApiKey;
     if (body.openaiModel) data.openaiModel = body.openaiModel;
     if (body.geminiApiKey) data.geminiApiKey = body.geminiApiKey;

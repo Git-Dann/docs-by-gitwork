@@ -244,7 +244,7 @@ export async function createPulseScanRecord(input: {
     model: workspace.aiProvider === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
            workspace.aiProvider === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            workspace.aiProvider === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           "claude-opus-4-6",
+           (workspace.anthropicModel ?? "claude-opus-4-6"),
     baseUrl: workspace.aiProvider === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              workspace.aiProvider === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,

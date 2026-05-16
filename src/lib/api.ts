@@ -532,6 +532,7 @@ export interface IntegrationsResponse {
   aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicKeyMasked: string | null;
   anthropicKeySource: "env" | "database" | null;
+  anthropicModel: string;
   openaiKeyMasked: string | null;
   openaiKeySource: "env" | "database" | null;
   openaiModel: string;
@@ -542,6 +543,20 @@ export interface IntegrationsResponse {
   localLlmModel: string;
 }
 
+export interface ModelOption {
+  id: string;
+  name: string;
+}
+
+export async function fetchProviderModels(
+  provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL",
+): Promise<ModelOption[]> {
+  const data = await apiFetch<{ models: ModelOption[] }>(
+    `/api/settings/models?provider=${provider}`,
+  );
+  return data.models;
+}
+
 export async function getIntegrations(): Promise<IntegrationsResponse> {
   return apiFetch("/api/settings/integrations");
 }
@@ -549,6 +564,7 @@ export async function getIntegrations(): Promise<IntegrationsResponse> {
 export async function saveIntegrations(data: {
   aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicApiKey?: string;
+  anthropicModel?: string;
   openaiApiKey?: string;
   openaiModel?: string;
   geminiApiKey?: string;

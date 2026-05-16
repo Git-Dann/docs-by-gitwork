@@ -134,6 +134,7 @@ model Workspace {
   name            String
   slug            String            @unique
   anthropicApiKey String?
+  anthropicModel  String?
   aiProvider      String   @default("ANTHROPIC")
   openaiApiKey    String?
   openaiModel     String?
