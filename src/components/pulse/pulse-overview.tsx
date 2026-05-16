@@ -1,11 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRightIcon, DocumentTextIcon, SignalIcon } from "@heroicons/react/24/outline";
+import { SignalIcon } from "@heroicons/react/24/outline";
 import { usePulseStats } from "@/hooks/use-pulse";
-import { cn, formatDate } from "@/lib/format";
-import type { PulseScanListItem } from "@/types/pulse";
-import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
+import { cn } from "@/lib/format";
 
 function StatCard({
   label,
@@ -70,48 +67,6 @@ function HealthBar({ green, amber, red }: { green: number; amber: number; red: n
   );
 }
 
-function RecentScanRow({ scan }: { scan: PulseScanListItem }) {
-  const healthColor =
-    scan.healthScore === null
-      ? "text-[var(--text-4)]"
-      : scan.healthScore >= 75
-        ? "text-emerald-600"
-        : scan.healthScore >= 50
-          ? "text-amber-600"
-          : "text-red-600";
-
-  return (
-    <Link
-      href={`/app/pulse/${scan.id}`}
-      className="flex items-center gap-4 px-5 py-3.5 hover:bg-[var(--surface-1)] transition"
-    >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)]">
-        <SignalIcon className="h-4 w-4 text-[var(--text-4)]" />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-[var(--text-1)]">{scan.projectName}</p>
-        {scan.clientName && (
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">{scan.clientName}</p>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3">
-        {scan.healthScore !== null && (
-          <span className={cn("text-sm font-semibold tabular-nums", healthColor)}>
-            {scan.healthScore}
-          </span>
-        )}
-        <PulseScanStatusBadge status={scan.status} />
-        {scan.generatedProposalId && (
-          <DocumentTextIcon className="h-4 w-4 text-[var(--brand-500)]" title="Proposal generated" />
-        )}
-        <span className="hidden text-xs text-[var(--text-4)] sm:block">{formatDate(scan.createdAt)}</span>
-        <ArrowRightIcon className="h-4 w-4 text-[var(--text-4)]" />
-      </div>
-    </Link>
-  );
-}
 
 export function PulseOverview() {
   const { data, isLoading } = usePulseStats();
@@ -125,28 +80,13 @@ export function PulseOverview() {
           ))}
         </div>
         <div className="h-16 animate-pulse rounded-[14px] bg-[var(--surface-1)]" />
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-14 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
-          ))}
-        </div>
       </div>
     );
   }
 
   const stats = data;
 
-  if (!stats || stats.totalScans === 0) {
-    return (
-      <div className="rounded-[16px] border border-dashed border-[var(--border-2)] py-20 text-center">
-        <SignalIcon className="mx-auto mb-3 h-9 w-9 text-[var(--text-4)]" />
-        <p className="text-sm font-medium text-[var(--text-2)]">No scans yet</p>
-        <p className="mt-1 text-sm text-[var(--text-4)]">
-          Run your first Pulse scan to start validating client projects.
-        </p>
-      </div>
-    );
-  }
+  if (!stats || stats.totalScans === 0) return null;
 
   return (
     <div className="space-y-6">
@@ -191,29 +131,6 @@ export function PulseOverview() {
         amber={stats.healthTiers.amber}
         red={stats.healthTiers.red}
       />
-
-      {/* Recent scans */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-[var(--text-1)]">Recent scans</p>
-          <Link
-            href="/app/pulse/all"
-            className="text-xs text-[var(--brand-600)] hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-
-        {stats.recentScans.length === 0 ? (
-          <p className="text-sm text-[var(--text-4)]">No scans yet.</p>
-        ) : (
-          <div className="overflow-hidden rounded-[16px] border border-[var(--border-2)] divide-y divide-[var(--border-2)]">
-            {stats.recentScans.map((scan) => (
-              <RecentScanRow key={scan.id} scan={scan} />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
