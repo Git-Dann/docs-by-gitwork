@@ -28,7 +28,7 @@ async function getPageData() {
   const configuredProviders: Provider[] = [];
 
   if (process.env.ANTHROPIC_API_KEY || workspace?.anthropicApiKey) {
-    configuredProviders.push({ id: "ANTHROPIC", label: "Claude (Anthropic)" });
+    configuredProviders.push({ id: "ANTHROPIC", label: "Claude" });
   }
   if (process.env.OPENAI_API_KEY || workspace?.openaiApiKey) {
     configuredProviders.push({ id: "OPENAI", label: "OpenAI" });
