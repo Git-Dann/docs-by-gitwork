@@ -23,7 +23,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
@@ -615,6 +615,233 @@ function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
   );
 }
 
+type AgentStatus = "completed" | "running" | "available" | "error" | "na";
+
+interface AgentSlot {
+  id: string;
+  label: string;
+  description: string;
+  status: AgentStatus;
+  summary?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  loading?: boolean;
+}
+
+function AgentStatusBadge({ status }: { status: AgentStatus }) {
+  const config = {
+    completed: { label: "Completed", className: "bg-emerald-100 text-emerald-700" },
+    running:   { label: "Running…",  className: "bg-blue-100 text-blue-700" },
+    available: { label: "Not run",   className: "bg-[var(--surface-2)] text-[var(--text-3)]" },
+    error:     { label: "Error",     className: "bg-red-100 text-red-700" },
+    na:        { label: "N/A",       className: "bg-[var(--surface-1)] text-[var(--text-4)]" },
+  }[status];
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", config.className)}>
+      {config.label}
+    </span>
+  );
+}
+
+function AgentCard({ slot }: { slot: AgentSlot }) {
+  return (
+    <div className={cn(
+      "flex flex-col gap-2 rounded-[12px] border p-4 transition-colors",
+      slot.status === "completed" ? "border-[var(--border-2)] bg-white"
+      : slot.status === "error"     ? "border-red-200 bg-red-50"
+      : slot.status === "na"        ? "border-[var(--border-1)] bg-[var(--surface-1)] opacity-60"
+      : "border-[var(--border-2)] bg-[var(--surface-1)]",
+    )}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[var(--text-1)]">{slot.label}</p>
+        <AgentStatusBadge status={slot.status} />
+      </div>
+      <p className="text-xs text-[var(--text-3)]">{slot.summary ?? slot.description}</p>
+      {slot.actionLabel && slot.onAction && slot.status !== "na" && slot.status !== "running" && (
+        <button
+          type="button"
+          onClick={slot.onAction}
+          disabled={slot.loading}
+          className="mt-auto self-start rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+        >
+          {slot.loading ? "Running…" : slot.actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AgentPanel({
+  scan,
+  fixResult,
+  onAutoFix,
+  fixing,
+  onMonitor,
+  creatingMonitor,
+  monitorWebhookUrl,
+}: {
+  scan: PulseScanRecord;
+  fixResult: FixAgentResult | null;
+  onAutoFix: () => void;
+  fixing: boolean;
+  onMonitor: () => void;
+  creatingMonitor: boolean;
+  monitorWebhookUrl: string | null;
+}) {
+  const { mutateAsync: runBrowser, isPending: runningBrowser } = useRunBrowserAgent();
+  const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
+
+  const checksTotal = scan.checks.filter((c) => c.status !== "SKIPPED").length;
+  const checksFail = scan.checks.filter((c) => c.status === "FAIL").length;
+  const checksPass = scan.checks.filter((c) => c.status === "PASS").length;
+
+  const slots: AgentSlot[] = [
+    // Infrastructure
+    {
+      id: "infra",
+      label: "Infrastructure",
+      description: "HTTP checks, security headers, SEO, and platform signals",
+      status: "completed",
+      summary: `${checksTotal} checks — ${checksPass} passed, ${checksFail} failed`,
+    },
+    // Code Intelligence
+    {
+      id: "code",
+      label: "Code Intelligence",
+      description: "GitHub GraphQL — vulnerabilities, branch protection, PR culture",
+      status: scan.inputType === "GITHUB_REPO"
+        ? (scan.codeInsights ? "completed" : "error")
+        : "na",
+      summary: scan.codeInsights
+        ? `${scan.codeInsights.vulnerabilities.length === 0 ? "No vulnerabilities" : `${scan.codeInsights.vulnerabilities.length} vuln${scan.codeInsights.vulnerabilities.length !== 1 ? "s" : ""}`} · ${scan.codeInsights.commitVelocity !== null ? `${scan.codeInsights.commitVelocity} commits/wk` : "commit data"}`
+        : scan.inputType === "GITHUB_REPO" ? "GraphQL query failed" : "GitHub repo scans only",
+    },
+    // Browser & Performance
+    {
+      id: "browser",
+      label: "Browser & Performance",
+      description: "Lighthouse via PageSpeed Insights — Core Web Vitals, accessibility, SEO scores",
+      status: scan.browserInsights
+        ? "completed"
+        : (scan.inputType === "URL" || (scan.inputType === "GITHUB_REPO" && scan.codeInsights?.homepageUrl))
+          ? "available"
+          : "na",
+      summary: scan.browserInsights
+        ? `Performance ${scan.browserInsights.performanceScore ?? "?"}  ·  Accessibility ${scan.browserInsights.accessibilityScore ?? "?"}  ·  SEO ${scan.browserInsights.seoScore ?? "?"}`
+        : scan.inputType === "URL" || (scan.inputType === "GITHUB_REPO" && scan.codeInsights?.homepageUrl)
+          ? "Run Lighthouse analysis on the live site"
+          : "No URL available for this scan",
+      actionLabel: scan.browserInsights ? "Re-run analysis" : "Run analysis",
+      onAction: () => runBrowser(scan.id),
+      loading: runningBrowser,
+    },
+    // Deploy Intelligence
+    {
+      id: "deploy",
+      label: "Deploy Intelligence",
+      description: "Vercel deployment logs — build time, success rate, warnings",
+      status: scan.deployInsights?.platform
+        ? "completed"
+        : "na",
+      summary: scan.deployInsights?.platform
+        ? `${scan.deployInsights.platform} · ${scan.deployInsights.recentDeployments ?? 0} deployments · ${scan.deployInsights.avgBuildMs !== null ? `${Math.round(scan.deployInsights.avgBuildMs / 1000)}s avg build` : "build data unavailable"}`
+        : "Not a Vercel-hosted project",
+    },
+    // AI Synthesis
+    {
+      id: "ai",
+      label: "AI Synthesis",
+      description: "LLM analysis — project classification, gaps, roadmap",
+      status: scan.llmAnalysis ? "completed" : scan.aiError ? "error" : "available",
+      summary: scan.llmAnalysis
+        ? `${scan.llmAnalysis.projectClassification.type}${scan.llmAnalysis.projectClassification.subtype ? ` · ${scan.llmAnalysis.projectClassification.subtype}` : ""} · ${scan.llmAnalysis.criticalGaps.length} critical gap${scan.llmAnalysis.criticalGaps.length !== 1 ? "s" : ""}`
+        : scan.aiError ?? "AI synthesis did not run",
+    },
+    // Discovery Prep
+    {
+      id: "discovery",
+      label: "Discovery Prep",
+      description: "AI-generated call guide — questions, objections, pricing anchor",
+      status: scan.discoveryKit
+        ? "completed"
+        : scan.llmAnalysis && scan.inputType !== "FREE_TEXT"
+          ? "available"
+          : "na",
+      summary: scan.discoveryKit
+        ? `${scan.discoveryKit.questions.length} questions · pricing £${scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£${scan.discoveryKit.pricingAnchor.high.toLocaleString()}`
+        : scan.llmAnalysis && scan.inputType !== "FREE_TEXT"
+          ? "Generate a tailored discovery call briefing"
+          : "Requires AI synthesis to complete first",
+      actionLabel: scan.discoveryKit ? "Regenerate" : "Generate",
+      onAction: () => runDiscovery(scan.id),
+      loading: runningDiscovery,
+    },
+    // Auto-fix
+    {
+      id: "fix",
+      label: "Auto-fix",
+      description: "AI reads your repo files and opens a GitHub PR with targeted fixes",
+      status: fixResult
+        ? "completed"
+        : scan.inputType === "GITHUB_REPO"
+          ? "available"
+          : "na",
+      summary: fixResult
+        ? fixResult.summary
+        : scan.inputType === "GITHUB_REPO"
+          ? `Fix the ${scan.checks.filter((c) => c.status === "FAIL").length} failing checks automatically`
+          : "GitHub repo scans only",
+      actionLabel: fixResult ? "View PR" : "Run fix agent",
+      onAction: fixResult?.prUrl ? () => window.open(fixResult.prUrl!, "_blank") : onAutoFix,
+      loading: fixing,
+    },
+    // Monitor
+    {
+      id: "monitor",
+      label: "Monitor",
+      description: "Webhook triggered re-scan on every new deployment — alerts on score drops",
+      status: monitorWebhookUrl ? "completed" : "available",
+      summary: monitorWebhookUrl
+        ? `Webhook active — register in your CI/CD pipeline`
+        : "Get alerted when your health score drops after a deploy",
+      actionLabel: monitorWebhookUrl ? undefined : "Set up monitor",
+      onAction: onMonitor,
+      loading: creatingMonitor,
+    },
+  ];
+
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-semibold text-[var(--text-1)]">Scan agents</p>
+        <span className="text-xs text-[var(--text-4)]">
+          {slots.filter((s) => s.status === "completed").length}/{slots.filter((s) => s.status !== "na").length} completed
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {slots.map((slot) => (
+          <AgentCard key={slot.id} slot={slot} />
+        ))}
+      </div>
+      {monitorWebhookUrl && (
+        <div className="mt-4 flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-3">
+          <span className="text-xs text-[var(--text-3)]">Webhook URL:</span>
+          <code className="flex-1 truncate rounded bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-2)]">
+            {monitorWebhookUrl}
+          </code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(monitorWebhookUrl)}
+            className="text-xs text-[var(--brand-600)] hover:underline"
+          >
+            Copy
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiUnavailable({ aiError }: { aiError: string | null }) {
   return (
     <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-8 text-center">
@@ -799,28 +1026,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 Report
               </Button>
             </Link>
-            {scan.status === "COMPLETED" && scan.inputType === "GITHUB_REPO" && !fixResult && (
-              <Button
-                variant="tertiary"
-                size="sm"
-                onClick={handleAutoFix}
-                loading={fixing}
-                leadingIcon={<WrenchScrewdriverIcon className="h-4 w-4" />}
-              >
-                {fixing ? "Fixing…" : "Auto-fix"}
-              </Button>
-            )}
-            {scan.status === "COMPLETED" && !monitorWebhookUrl && (
-              <Button
-                variant="tertiary"
-                size="sm"
-                onClick={handleMonitor}
-                loading={creatingMonitor}
-                leadingIcon={<BellIcon className="h-4 w-4" />}
-              >
-                Monitor
-              </Button>
-            )}
             {scan.status === "COMPLETED" && (
               isShared ? (
                 <Button
@@ -859,70 +1064,20 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               </button>
             </div>
           )}
-          {monitorWebhookUrl && (
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
-                GitHub webhook URL
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="max-w-[260px] truncate font-mono text-[10px] text-[var(--text-3)]">
-                  {monitorWebhookUrl}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(monitorWebhookUrl)}
-                  className="shrink-0 text-[10px] text-[var(--brand-600)] hover:underline"
-                >
-                  Copy
-                </button>
-              </div>
-              <p className="mt-1 text-[10px] text-[var(--text-4)]">
-                Add to GitHub → Settings → Webhooks. Send push events. Score drops &gt;10 pts create a GitHub Issue.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Fix agent result banner */}
-      {fixResult && (
-        <div className={cn(
-          "rounded-[14px] border p-4",
-          fixResult.prUrl ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50",
-        )}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className={cn("text-sm font-semibold", fixResult.prUrl ? "text-emerald-800" : "text-amber-800")}>
-                {fixResult.prUrl ? "Pull request created" : "Fix agent complete"}
-              </p>
-              <p className={cn("mt-0.5 text-sm", fixResult.prUrl ? "text-emerald-700" : "text-amber-700")}>
-                {fixResult.summary}
-              </p>
-            </div>
-            {fixResult.prUrl && (
-              <a
-                href={fixResult.prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 rounded-[8px] bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
-              >
-                View PR →
-              </a>
-            )}
-          </div>
-          {fixResult.proposedFixes.length > 0 && (
-            <ul className="mt-3 space-y-1">
-              {fixResult.proposedFixes.map((f, i) => (
-                <li key={i} className="flex items-center gap-2 text-xs text-emerald-700">
-                  <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                  <code className="font-mono">{f.filePath}</code>
-                  <span className="text-emerald-500">—</span>
-                  <span className="truncate">{f.explanation}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {/* Agent panel */}
+      {scan.status === "COMPLETED" && (
+        <AgentPanel
+          scan={scan}
+          fixResult={fixResult}
+          onAutoFix={handleAutoFix}
+          fixing={fixing}
+          onMonitor={handleMonitor}
+          creatingMonitor={creatingMonitor}
+          monitorWebhookUrl={monitorWebhookUrl}
+        />
       )}
 
       {/* Tabs */}

@@ -15,6 +15,8 @@ import {
   sharePulseScan,
   unsharePulseScan,
   triggerFixAgent,
+  triggerBrowserAgent,
+  triggerDiscoveryKit,
   listMonitors,
   createMonitor,
   deleteMonitor,
@@ -176,6 +178,26 @@ export function useGeneratePulseProposal() {
 export function useRunFixAgent() {
   return useMutation({
     mutationFn: triggerFixAgent,
+  });
+}
+
+export function useRunBrowserAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: triggerBrowserAgent,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
+  });
+}
+
+export function useRunDiscoveryKit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: triggerDiscoveryKit,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
   });
 }
 

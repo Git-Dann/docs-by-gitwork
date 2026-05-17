@@ -1,5 +1,5 @@
 import type { ClientDetailRecord, ClientListItem } from "@/types/client";
-import type { PulseScanRecord, PulseScanListItem } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
   CandidateListResponse,
@@ -559,6 +559,20 @@ export interface FixAgentResult {
 export async function triggerFixAgent(scanId: string): Promise<FixAgentResult> {
   return apiFetch<FixAgentResult>(
     `/api/pulse/scans/${scanId}/fix-agent`,
+    { method: "POST" },
+  );
+}
+
+export async function triggerBrowserAgent(scanId: string): Promise<{ insights: BrowserAgentInsights; checksAdded: number }> {
+  return apiFetch<{ insights: BrowserAgentInsights; checksAdded: number }>(
+    `/api/pulse/scans/${scanId}/run-browser`,
+    { method: "POST" },
+  );
+}
+
+export async function triggerDiscoveryKit(scanId: string): Promise<{ kit: DiscoveryKit }> {
+  return apiFetch<{ kit: DiscoveryKit }>(
+    `/api/pulse/scans/${scanId}/run-discovery`,
     { method: "POST" },
   );
 }
