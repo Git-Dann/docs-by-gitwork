@@ -453,20 +453,25 @@ export async function runAnalysis(
       competitorScanPromise,
     ]);
 
+    // Discovery kit: skip for FREE_TEXT scans — no URL/repo data to act on
+    const runDiscovery = input.inputType !== "FREE_TEXT";
+
     const [discoveryKit, competitorComparison] = await Promise.all([
-      generateDiscoveryKit(
-        {
-          projectName: input.projectName,
-          projectType: llmAnalysis.projectClassification.type,
-          healthScore,
-          proposalHook: llmAnalysis.proposalHook,
-          executiveSummary: llmAnalysis.executiveSummary,
-          criticalGaps: llmAnalysis.criticalGaps,
-          buildOpportunities: llmAnalysis.buildOpportunities,
-          checks: allChecks,
-        },
-        aiConfig,
-      ),
+      runDiscovery
+        ? generateDiscoveryKit(
+            {
+              projectName: input.projectName,
+              projectType: llmAnalysis.projectClassification.type,
+              healthScore,
+              proposalHook: llmAnalysis.proposalHook,
+              executiveSummary: llmAnalysis.executiveSummary,
+              criticalGaps: llmAnalysis.criticalGaps,
+              buildOpportunities: llmAnalysis.buildOpportunities,
+              checks: allChecks,
+            },
+            aiConfig,
+          )
+        : Promise.resolve(null),
       competitorScans.length > 0
         ? generateCompetitorComparison(
             { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
