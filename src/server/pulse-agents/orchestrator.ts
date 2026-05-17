@@ -1,13 +1,15 @@
 import { runUrlChecks, runGithubChecks, skipAllChecks } from "@/server/pulse-scan";
 import { runCodeAgent } from "./code-agent";
 import { runDeployAgent } from "./deploy-agent";
-import type { PulseScanCheckInput, PulseScanInputType, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
+import { runBrowserAgent } from "./browser-agent";
+import type { PulseScanCheckInput, PulseScanInputType, CodeAgentInsights, DeployAgentInsights, BrowserAgentInsights } from "@/types/pulse";
 
 export interface OrchestratorResult {
   checks: PulseScanCheckInput[];
   techStack: string[];
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
+  browserInsights: BrowserAgentInsights | null;
 }
 
 export async function runOrchestratedScan(input: {
@@ -22,19 +24,22 @@ export async function runOrchestratedScan(input: {
       techStack: [],
       codeInsights: null,
       deployInsights: null,
+      browserInsights: null,
     };
   }
 
   if (input.inputType === "URL" && input.inputUrl) {
-    // Run infra + deploy agents in parallel
-    const [infraResult, deployResult] = await Promise.all([
+    // Run infra, deploy, and browser agents in parallel
+    const [infraResult, deployResult, browserResult] = await Promise.all([
       runUrlChecks(input.inputUrl),
       runDeployAgent(input.inputUrl),
+      runBrowserAgent(input.inputUrl),
     ]);
 
     const allChecks = deduplicateChecks([
       ...infraResult.checks,
       ...deployResult.checks,
+      ...browserResult.checks,
     ]);
 
     return {
@@ -42,6 +47,7 @@ export async function runOrchestratedScan(input: {
       techStack: infraResult.techStack,
       codeInsights: null,
       deployInsights: deployResult.insights,
+      browserInsights: browserResult.insights,
     };
   }
 
@@ -62,6 +68,7 @@ export async function runOrchestratedScan(input: {
       techStack: infraResult.techStack,
       codeInsights: codeResult.insights,
       deployInsights: null,
+      browserInsights: null,
     };
   }
 
@@ -70,6 +77,7 @@ export async function runOrchestratedScan(input: {
     techStack: [],
     codeInsights: null,
     deployInsights: null,
+    browserInsights: null,
   };
 }
 

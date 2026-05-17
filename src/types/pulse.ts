@@ -137,6 +137,7 @@ export interface PulseScanRecord {
   discoveryKit: DiscoveryKit | null;
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
+  browserInsights: BrowserAgentInsights | null;
   competitorUrls: string[] | null;
   competitorData: CompetitorData | null;
   shareToken: string | null;
@@ -193,6 +194,18 @@ export interface DeployAgentInsights {
   avgBuildMs: number | null;
   buildWarnings: string[];
   recentErrorPatterns: string[];
+}
+
+export interface BrowserAgentInsights {
+  performanceScore: number | null;  // 0–100
+  accessibilityScore: number | null;
+  seoScore: number | null;
+  bestPracticesScore: number | null;
+  lcp: number | null;   // ms
+  cls: number | null;
+  fcp: number | null;   // ms
+  tbt: number | null;   // ms
+  cruxCategory: string | null;
 }
 
 // ── Competitor benchmarking ───────────────────────────────────────────────────

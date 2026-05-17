@@ -22,6 +22,7 @@ import type {
   DiscoveryKit,
   CodeAgentInsights,
   DeployAgentInsights,
+  BrowserAgentInsights,
   CompetitorData,
   CompetitorScanSummary,
 } from "@/types/pulse";
@@ -66,6 +67,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     discoveryKit: (record.discoveryData as DiscoveryKit | null) ?? null,
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
+    browserInsights: ((record.agentData as { browserInsights?: BrowserAgentInsights | null } | null)?.browserInsights) ?? null,
     competitorUrls: asJson<string[] | null>(record.competitorUrls, null),
     competitorData: asJson<CompetitorData | null>(record.competitorData, null),
     shareToken: record.shareToken,
@@ -386,7 +388,7 @@ export async function runAnalysis(
       inputDescription: input.inputDescription,
     });
 
-    const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
+    const { checks: allChecks, techStack, codeInsights, deployInsights, browserInsights } = scanResult;
     const healthScore = calculateHealthScore(allChecks);
 
     // Phase 1: persist checks + lightweight fields immediately so SSE clients
@@ -411,7 +413,7 @@ export async function runAnalysis(
       data: {
         healthScore,
         techStack: techStack as unknown as Prisma.InputJsonValue,
-        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
       },
     });
 

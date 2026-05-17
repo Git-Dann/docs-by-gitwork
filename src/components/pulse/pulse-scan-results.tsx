@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -390,6 +390,113 @@ function StackTab({
   );
 }
 
+function VitalScore({
+  label,
+  score,
+}: {
+  label: string;
+  score: number | null;
+}) {
+  const color =
+    score === null ? "text-[var(--text-4)]"
+    : score >= 90 ? "text-emerald-600"
+    : score >= 50 ? "text-amber-600"
+    : "text-red-600";
+  const ring =
+    score === null ? "border-[var(--border-2)]"
+    : score >= 90 ? "border-emerald-300"
+    : score >= 50 ? "border-amber-300"
+    : "border-red-300";
+  return (
+    <div className={cn("flex flex-col items-center gap-1 rounded-[12px] border p-3", ring)}>
+      <span className={cn("text-xl font-bold tabular-nums", color)}>
+        {score !== null ? score : "—"}
+      </span>
+      <span className="text-center text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function VitalMetric({
+  label,
+  value,
+  status,
+}: {
+  label: string;
+  value: string;
+  status: "PASS" | "WARN" | "FAIL";
+}) {
+  const color =
+    status === "PASS" ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+    : status === "WARN" ? "text-amber-700 bg-amber-50 border-amber-200"
+    : "text-red-700 bg-red-50 border-red-200";
+  return (
+    <div className={cn("flex items-center justify-between rounded-[10px] border px-3 py-2", color)}>
+      <span className="text-xs font-medium">{label}</span>
+      <span className="font-mono text-xs font-bold">{value}</span>
+    </div>
+  );
+}
+
+function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
+  const lcpMs = insights.lcp;
+  const fcpMs = insights.fcp;
+  const tbtMs = insights.tbt;
+  const cls = insights.cls;
+
+  const lcpStatus = lcpMs === null ? "FAIL" : lcpMs <= 2500 ? "PASS" : lcpMs <= 4000 ? "WARN" : "FAIL";
+  const fcpStatus = fcpMs === null ? "FAIL" : fcpMs <= 1800 ? "PASS" : fcpMs <= 3000 ? "WARN" : "FAIL";
+  const tbtStatus = tbtMs === null ? "FAIL" : tbtMs <= 200 ? "PASS" : tbtMs <= 600 ? "WARN" : "FAIL";
+  const clsStatus = cls === null ? "FAIL" : cls <= 0.1 ? "PASS" : cls <= 0.25 ? "WARN" : "FAIL";
+
+  const formatMs = (ms: number | null) => ms !== null ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`) : "—";
+
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[var(--text-1)]">Core Web Vitals</p>
+        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
+          Lighthouse · mobile
+        </span>
+      </div>
+
+      {/* 4-score grid */}
+      <div className="mb-4 grid grid-cols-4 gap-2">
+        <VitalScore label="Performance" score={insights.performanceScore} />
+        <VitalScore label="Accessibility" score={insights.accessibilityScore} />
+        <VitalScore label="SEO" score={insights.seoScore} />
+        <VitalScore label="Best practices" score={insights.bestPracticesScore} />
+      </div>
+
+      {/* Individual metrics */}
+      {(lcpMs !== null || fcpMs !== null || tbtMs !== null || cls !== null) && (
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {lcpMs !== null && <VitalMetric label="LCP" value={formatMs(lcpMs)} status={lcpStatus} />}
+          {fcpMs !== null && <VitalMetric label="FCP" value={formatMs(fcpMs)} status={fcpStatus} />}
+          {tbtMs !== null && <VitalMetric label="TBT" value={formatMs(tbtMs)} status={tbtStatus} />}
+          {cls !== null && <VitalMetric label="CLS" value={cls.toFixed(3)} status={clsStatus} />}
+        </div>
+      )}
+
+      {insights.cruxCategory && (
+        <p className="mt-3 text-xs text-[var(--text-4)]">
+          Chrome UX Report (real users):{" "}
+          <span className={cn(
+            "font-semibold",
+            insights.cruxCategory === "FAST" ? "text-emerald-600"
+            : insights.cruxCategory === "AVERAGE" ? "text-amber-600"
+            : "text-red-600",
+          )}>
+            {insights.cruxCategory.toLowerCase()}
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
@@ -712,6 +819,11 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       </div>
 
       {/* Tab content */}
+      {/* Web Vitals — shown on overview regardless of AI result */}
+      {activeTab === "overview" && scan.browserInsights && (
+        <WebVitalsCard insights={scan.browserInsights} />
+      )}
+
       {activeTab === "overview" && llm && (
         <div className="space-y-6">
 
