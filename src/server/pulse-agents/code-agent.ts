@@ -42,6 +42,23 @@ const CODE_AGENT_QUERY = `
           }
         }
       }
+      releases(last: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
+        totalCount
+        nodes { tagName createdAt isLatest }
+      }
+      codeOfConduct { name }
+      hasIssuesEnabled
+      issues(states: [OPEN], first: 1) { totalCount }
+      closedIssues: issues(states: [CLOSED], first: 1) { totalCount }
+      stargazerCount
+      forkCount
+      watchers(first: 1) { totalCount }
+      licenseInfo { name spdxId }
+      isArchived
+      isEmpty
+      diskUsage
+      primaryLanguage { name }
+      languages(first: 5) { nodes { name } }
     }
   }
 `;
@@ -78,6 +95,23 @@ interface GQLResponse {
         };
       };
     } | null;
+    releases: {
+      totalCount: number;
+      nodes: { tagName: string; createdAt: string; isLatest: boolean }[];
+    } | null;
+    codeOfConduct: { name: string } | null;
+    hasIssuesEnabled: boolean;
+    issues: { totalCount: number } | null;
+    closedIssues: { totalCount: number } | null;
+    stargazerCount: number;
+    forkCount: number;
+    watchers: { totalCount: number } | null;
+    licenseInfo: { name: string; spdxId: string } | null;
+    isArchived: boolean;
+    isEmpty: boolean;
+    diskUsage: number | null;
+    primaryLanguage: { name: string } | null;
+    languages: { nodes: { name: string }[] } | null;
   };
 }
 
@@ -201,6 +235,82 @@ export async function runCodeAgent(repoInput: string): Promise<{
       detail: `${commitVelocity} commits/week over last 30 days, ${uniqueContributors} contributor${uniqueContributors !== 1 ? "s" : ""}.`,
     });
   }
+
+  // ── Releases / versioning ─────────────────────────────────────────────────
+  const releaseCount = repo.releases?.totalCount ?? 0;
+  checks.push({
+    category: "Code Quality",
+    checkKey: "has_releases",
+    label: "GitHub releases / version tags",
+    status: releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
+    detail: releaseCount > 0
+      ? `${releaseCount} release${releaseCount !== 1 ? "s" : ""} published — versioning history documented.`
+      : "No releases — users and integrators cannot pin to a stable version.",
+  });
+
+  // ── Issue health ───────────────────────────────────────────────────────────
+  const openIssues = repo.issues?.totalCount ?? 0;
+  const closedIssues = repo.closedIssues?.totalCount ?? 0;
+  const totalIssues = openIssues + closedIssues;
+  const issueCloseRate = totalIssues > 0 ? closedIssues / totalIssues : null;
+  checks.push({
+    category: "Code Quality",
+    checkKey: "issue_close_rate",
+    label: "Issue closure rate",
+    status: issueCloseRate === null ? "WARN"
+      : issueCloseRate >= 0.7 ? "PASS"
+      : issueCloseRate >= 0.4 ? "WARN"
+      : "FAIL",
+    detail: issueCloseRate !== null
+      ? `${Math.round(issueCloseRate * 100)}% of issues closed (${closedIssues}/${totalIssues}).`
+      : "No issues found — either no bug tracker activity or issues are disabled.",
+  });
+
+  // ── Repo vitals ────────────────────────────────────────────────────────────
+  const stars = repo.stargazerCount ?? 0;
+  checks.push({
+    category: "Trust & Brand",
+    checkKey: "github_stars",
+    label: "GitHub stars (social proof)",
+    status: stars >= 100 ? "PASS" : stars >= 10 ? "WARN" : "FAIL",
+    detail: `${stars.toLocaleString()} GitHub stars.${stars < 10 ? " Low stars suggest limited community adoption or a private/new project." : ""}`,
+  });
+
+  // ── Archived check ─────────────────────────────────────────────────────────
+  checks.push({
+    category: "Code Quality",
+    checkKey: "repo_not_archived",
+    label: "Repository is not archived",
+    status: repo.isArchived ? "FAIL" : "PASS",
+    detail: repo.isArchived
+      ? "This repository is archived — no new contributions or maintenance are expected."
+      : "Repository is active (not archived).",
+  });
+
+  // ── Primary language ───────────────────────────────────────────────────────
+  const primaryLang = repo.primaryLanguage?.name ?? null;
+  const languages = repo.languages?.nodes?.map((l) => l.name) ?? [];
+  if (primaryLang) {
+    checks.push({
+      category: "Code Quality",
+      checkKey: "primary_language",
+      label: "Primary language detected",
+      status: "PASS",
+      detail: `Primary language: ${primaryLang}${languages.length > 1 ? ` (also: ${languages.filter((l) => l !== primaryLang).join(", ")})` : ""}.`,
+    });
+  }
+
+  // ── License (via GraphQL) ──────────────────────────────────────────────────
+  const license = repo.licenseInfo;
+  checks.push({
+    category: "Code Quality",
+    checkKey: "has_license_graphql",
+    label: "License (via GitHub)",
+    status: license ? "PASS" : "WARN",
+    detail: license
+      ? `Licensed under ${license.name} (${license.spdxId}).`
+      : "No license detected — code is legally all-rights-reserved by default, even in public repos.",
+  });
 
   const vulnerabilities = (vulnAlerts?.nodes ?? []).map((n) => ({
     severity: n.securityVulnerability.severity,

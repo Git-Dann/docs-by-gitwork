@@ -2039,6 +2039,490 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         : "No hash routing detected — URL structure appears SEO-friendly.",
     });
 
+    // ─── A1: Email Security (DNS-over-HTTPS) ──────────────────────────────────
+    async function checkDnsRecord(name: string, type: string): Promise<string[]> {
+      try {
+        const res = await fetchWithTimeout(
+          `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
+          { headers: { Accept: "application/dns-json" } },
+        );
+        if (!res.ok) return [];
+        const json = await res.json() as { Answer?: { data: string }[] };
+        return (json.Answer ?? []).map((a) => a.data);
+      } catch {
+        return [];
+      }
+    }
+
+    try {
+      const [spfRecords, dmarcRecords, mxRecords] = await Promise.all([
+        checkDnsRecord(hostname, "TXT"),
+        checkDnsRecord(`_dmarc.${hostname}`, "TXT"),
+        checkDnsRecord(hostname, "MX"),
+      ]);
+
+      const hasSpf = spfRecords.some((r) => r.includes("v=spf1"));
+      checks.push({
+        category: "Security",
+        checkKey: "spf_record",
+        label: "SPF record (email spoofing protection)",
+        status: hasSpf ? "PASS" : "WARN",
+        detail: hasSpf
+          ? "SPF record found — mail server authenticity is declared."
+          : "No SPF record found. SPF authenticates which mail servers can send on your behalf. Without it, anyone can spoof your domain in phishing emails.",
+      });
+
+      const hasDmarc = dmarcRecords.some((r) => r.includes("v=DMARC1"));
+      checks.push({
+        category: "Security",
+        checkKey: "dmarc_record",
+        label: "DMARC record (email impersonation protection)",
+        status: hasDmarc ? "PASS" : "WARN",
+        detail: hasDmarc
+          ? "DMARC record found — email authentication policy is published."
+          : "No DMARC record. DMARC builds on SPF/DKIM and tells receiving servers what to do with unauthenticated email. Essential to prevent domain impersonation.",
+      });
+
+      const hasMx = mxRecords.length > 0;
+      checks.push({
+        category: "Infrastructure",
+        checkKey: "mx_record",
+        label: "MX records (email infrastructure)",
+        status: hasMx ? "PASS" : "WARN",
+        detail: hasMx
+          ? `MX records found — email infrastructure is declared (${mxRecords.length} record${mxRecords.length !== 1 ? "s" : ""}).`
+          : "No MX records detected — the domain may not be configured to receive email.",
+      });
+    } catch {
+      checks.push(
+        { category: "Security", checkKey: "spf_record", label: "SPF record (email spoofing protection)", status: "WARN", detail: "Could not verify SPF record — DNS lookup failed." },
+        { category: "Security", checkKey: "dmarc_record", label: "DMARC record (email impersonation protection)", status: "WARN", detail: "Could not verify DMARC record — DNS lookup failed." },
+        { category: "Infrastructure", checkKey: "mx_record", label: "MX records (email infrastructure)", status: "WARN", detail: "Could not verify MX records — DNS lookup failed." },
+      );
+    }
+
+    // ─── A2: Sensitive Path Exposure ──────────────────────────────────────────
+    async function checkPaths(baseUrl: string, paths: string[], timeoutMs = 3000): Promise<number[]> {
+      const results = await Promise.allSettled(
+        paths.map((p) =>
+          fetch(`${baseUrl}${p}`, {
+            method: "HEAD",
+            redirect: "follow",
+            signal: AbortSignal.timeout(timeoutMs),
+            headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+          }).then((r) => r.status).catch(() => 0),
+        ),
+      );
+      return results.map((r) => (r.status === "fulfilled" ? r.value : 0));
+    }
+
+    const [adminStatuses, phpInfoStatuses, gitConfigStatus, debugStatuses, backupStatuses] = await Promise.all([
+      checkPaths(httpsUrl, ["/admin", "/wp-admin"]),
+      checkPaths(httpsUrl, ["/phpinfo.php", "/info.php"]),
+      checkPaths(httpsUrl, ["/.git/config"]).then((s) => s[0]),
+      checkPaths(httpsUrl, ["/telescope", "/__clockwork", "/horizon", "/_debug"]),
+      checkPaths(httpsUrl, ["/backup.sql", "/dump.sql", "/.env.bak", "/db.sql"]),
+    ]);
+
+    const adminExposed = adminStatuses.some((s) => s === 200);
+    checks.push({
+      category: "Security",
+      checkKey: "no_exposed_admin",
+      label: "Admin panel not publicly accessible",
+      status: adminExposed ? "WARN" : "PASS",
+      detail: adminExposed
+        ? "An admin path (/admin or /wp-admin) returned HTTP 200 — verify it requires authentication. Exposed admin panels are prime targets for credential stuffing attacks."
+        : "Admin paths not freely accessible.",
+    });
+
+    const phpInfoExposed = phpInfoStatuses.some((s) => s === 200);
+    checks.push({
+      category: "Security",
+      checkKey: "no_exposed_phpinfo",
+      label: "PHP info page not exposed",
+      status: phpInfoExposed ? "FAIL" : "PASS",
+      detail: phpInfoExposed
+        ? "phpinfo.php or info.php returned HTTP 200 — this file exposes PHP version, server paths, loaded extensions, and environment variables to attackers."
+        : "No exposed PHP info pages detected.",
+    });
+
+    checks.push({
+      category: "Security",
+      checkKey: "no_exposed_git_config",
+      label: "Git config not publicly accessible",
+      status: gitConfigStatus === 200 ? "FAIL" : "PASS",
+      detail: gitConfigStatus === 200
+        ? "/.git/config is publicly accessible — this reveals repository URLs, credentials, and project structure. Remove or block access immediately."
+        : "Git config not publicly accessible.",
+    });
+
+    const debugExposed = debugStatuses.some((s) => s === 200);
+    checks.push({
+      category: "Security",
+      checkKey: "no_debug_endpoints",
+      label: "Debug/monitoring endpoints not public",
+      status: debugExposed ? "WARN" : "PASS",
+      detail: debugExposed
+        ? "A debug endpoint (/telescope, /__clockwork, /horizon, or /_debug) returned HTTP 200 — these expose internal request logs, jobs, and performance data."
+        : "Debug and monitoring endpoints are not publicly accessible.",
+    });
+
+    const backupExposed = backupStatuses.some((s) => s === 200);
+    checks.push({
+      category: "Security",
+      checkKey: "no_exposed_backup",
+      label: "Database backup files not exposed",
+      status: backupExposed ? "FAIL" : "PASS",
+      detail: backupExposed
+        ? "A database backup file (backup.sql, dump.sql, .env.bak, or db.sql) is publicly downloadable — this is a critical data breach risk."
+        : "No exposed database backup files detected.",
+    });
+
+    // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
+    const altSvcHeader = pageResult.headers["alt-svc"] ?? "";
+    const http2Detected = altSvcHeader.includes("h2") || pageResult.headers["x-firefox-spdy"] === "h2";
+    checks.push({
+      category: "Performance",
+      checkKey: "http2_enabled",
+      label: "HTTP/2 protocol",
+      status: http2Detected ? "PASS" : "WARN",
+      detail: http2Detected
+        ? "HTTP/2 detected via alt-svc header — multiplexed connections improve load performance."
+        : "Could not verify HTTP/2 support — consider upgrading for multiplexing benefits. Modern servers (Nginx 1.9.5+, Apache 2.4.17+) support HTTP/2 natively.",
+    });
+
+    const xPoweredBy = pageResult.headers["x-powered-by"];
+    checks.push({
+      category: "Security",
+      checkKey: "no_x_powered_by",
+      label: "X-Powered-By header absent",
+      status: xPoweredBy ? "FAIL" : "PASS",
+      detail: xPoweredBy
+        ? `X-Powered-By is set to "${xPoweredBy}" — this exposes your backend technology to attackers who can target known vulnerabilities in that stack.`
+        : "X-Powered-By header is not present — backend technology is not disclosed.",
+    });
+
+    const serverHeader = pageResult.headers["server"] ?? "";
+    const serverHasVersion = /[\/]\d+\.\d+/.test(serverHeader);
+    checks.push({
+      category: "Security",
+      checkKey: "no_server_version",
+      label: "Server version not disclosed",
+      status: serverHasVersion ? "FAIL" : "PASS",
+      detail: serverHasVersion
+        ? `Server header "${serverHeader}" includes a version number — attackers can target known CVEs for that exact version.`
+        : serverHeader
+          ? `Server header present ("${serverHeader}") but no version number disclosed.`
+          : "Server header not present — server identity and version are not disclosed.",
+    });
+
+    const corsHeader = pageResult.headers["access-control-allow-origin"] ?? "";
+    checks.push({
+      category: "Security",
+      checkKey: "cors_not_wildcard",
+      label: "CORS not open to all origins",
+      status: corsHeader === "*" ? "FAIL" : "PASS",
+      detail: corsHeader === "*"
+        ? "Access-Control-Allow-Origin: * allows any website to read your API responses, enabling data theft and CSRF-style attacks. Restrict to specific trusted origins."
+        : corsHeader
+          ? `CORS origin is restricted to "${corsHeader}".`
+          : "No CORS header present on the main page.",
+    });
+
+    // ─── A4: Content Quality (HTML analysis) ──────────────────────────────────
+    const strippedText = pageResult.html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const wordCount = strippedText.split(/\s+/).filter((w) => w.length > 0).length;
+    checks.push({
+      category: "SEO",
+      checkKey: "has_word_count",
+      label: "Sufficient page content",
+      status: wordCount >= 300 ? "PASS" : wordCount >= 100 ? "WARN" : "FAIL",
+      detail: wordCount >= 300
+        ? `Page contains approximately ${wordCount.toLocaleString()} words — good content depth for SEO.`
+        : wordCount >= 100
+          ? `Page contains approximately ${wordCount.toLocaleString()} words — below the recommended 300 words for indexed pages.`
+          : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
+    });
+
+    const hasH1 = /<h1[\s>]/i.test(pageResult.html);
+    const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
+    checks.push({
+      category: "SEO",
+      checkKey: "has_heading_hierarchy",
+      label: "Heading hierarchy (H1→H2→H3)",
+      status: hasH1 && hasH2orH3 ? "PASS" : hasH1 ? "WARN" : "FAIL",
+      detail: hasH1 && hasH2orH3
+        ? "Heading hierarchy detected (H1 and sub-headings present)."
+        : hasH1
+          ? "H1 found but no H2/H3 sub-headings — add sub-headings to improve content structure and SEO."
+          : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
+    });
+
+    const imgTags = pageResult.html.match(/<img[^>]*>/gi) ?? [];
+    const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
+    const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
+    checks.push({
+      category: "Accessibility",
+      checkKey: "image_alt_coverage",
+      label: "Image alt text coverage",
+      status: imgTags.length === 0 ? "PASS" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
+      detail: imgTags.length === 0
+        ? "No images detected on this page."
+        : `${imgsWithAlt}/${imgTags.length} images have alt attributes (${Math.round(altCoverage * 100)}%). ${altCoverage < 0.8 ? "Missing alt text fails WCAG 1.1.1 and harms screen reader users." : "Good alt text coverage."}`,
+    });
+
+    const internalLinkPattern = new RegExp(`<a[^>]+href=["'](/|https?://${hostname.replace(".", "\\.")})[^"']*["']`, "gi");
+    const internalLinkMatches = pageResult.html.match(internalLinkPattern) ?? [];
+    const internalLinkCount = internalLinkMatches.length;
+    checks.push({
+      category: "SEO",
+      checkKey: "internal_links_present",
+      label: "Internal linking",
+      status: internalLinkCount > 5 ? "PASS" : internalLinkCount >= 1 ? "WARN" : "FAIL",
+      detail: internalLinkCount > 5
+        ? `${internalLinkCount} internal links detected — good link structure for SEO crawling.`
+        : internalLinkCount >= 1
+          ? `Only ${internalLinkCount} internal link${internalLinkCount !== 1 ? "s" : ""} detected — add more internal links to distribute page authority and aid navigation.`
+          : "No internal links detected — search engines cannot crawl deeper pages without internal links.",
+    });
+
+    const hasConsoleLogs = /console\.log\s*\(/.test(pageResult.html);
+    checks.push({
+      category: "Code Quality",
+      checkKey: "no_broken_inline_scripts",
+      label: "No console.log in production HTML",
+      status: hasConsoleLogs ? "WARN" : "PASS",
+      detail: hasConsoleLogs
+        ? "console.log() calls found in page HTML — debug logging left in production code can expose sensitive data and signals poor build hygiene."
+        : "No console.log statements detected in page source.",
+    });
+
+    // ─── A5: PWA & Offline Readiness ──────────────────────────────────────────
+    const hasServiceWorker = /navigator\.serviceWorker|registerServiceWorker|["']sw\.js["']|service[-_]worker/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "service_worker_present",
+      label: "Service worker (offline/caching)",
+      status: hasServiceWorker ? "PASS" : "WARN",
+      detail: hasServiceWorker
+        ? "Service worker detected — offline support and cache-first loading are enabled."
+        : "No service worker detected. Service workers enable offline support, background sync, and dramatically faster repeat visits via cache-first loading.",
+    });
+
+    const hasManifestLink = /<link[^>]+rel=["']manifest["']/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "web_app_manifest_linked",
+      label: "Web app manifest linked",
+      status: hasManifestLink ? "PASS" : "WARN",
+      detail: hasManifestLink
+        ? "Web app manifest linked — PWA install prompt and home screen support enabled."
+        : "No <link rel=\"manifest\"> found. A manifest.json enables Add to Home Screen on mobile, defines app name/icons, and is required for PWA install prompts.",
+    });
+
+    const hasThemeColor = /<meta[^>]+name=["']theme-color["']/i.test(pageResult.html);
+    checks.push({
+      category: "Performance",
+      checkKey: "theme_color_defined",
+      label: "Theme colour meta tag",
+      status: hasThemeColor ? "PASS" : "WARN",
+      detail: hasThemeColor
+        ? "theme-color meta tag found — browser UI will match brand colour on mobile."
+        : "No theme-color meta tag. theme-color customises the browser UI colour on mobile, improving brand recognition.",
+    });
+
+    // ─── A6: Third-Party Script Risk ──────────────────────────────────────────
+    const scriptSrcMatches = pageResult.html.match(/<script[^>]+src=["']([^"']+)["']/gi) ?? [];
+    const externalScriptDomains = new Set<string>();
+    const oldJqueryFound: string[] = [];
+    for (const tag of scriptSrcMatches) {
+      const srcMatch = tag.match(/src=["']([^"']+)["']/i);
+      if (!srcMatch) continue;
+      const src = srcMatch[1];
+      if (!src.startsWith("http")) continue;
+      try {
+        const scriptHostname = new URL(src).hostname;
+        if (scriptHostname !== hostname) {
+          externalScriptDomains.add(scriptHostname);
+        }
+      } catch { /* ignore */ }
+      if (/jquery[-/]([12])\.\d+/i.test(src) || /jquery[-/]1\.\d+|jquery[-/]2\.\d+/i.test(src)) {
+        oldJqueryFound.push(src);
+      }
+    }
+    const thirdPartyDomainCount = externalScriptDomains.size;
+    checks.push({
+      category: "Performance",
+      checkKey: "third_party_script_count",
+      label: "Third-party script load",
+      status: thirdPartyDomainCount <= 5 ? "PASS" : thirdPartyDomainCount <= 12 ? "WARN" : "FAIL",
+      detail: thirdPartyDomainCount <= 5
+        ? `${thirdPartyDomainCount} external script domain${thirdPartyDomainCount !== 1 ? "s" : ""} — reasonable third-party dependency footprint.`
+        : `${thirdPartyDomainCount} external script domains — each is a DNS lookup and potential supply-chain attack vector. Audit and consolidate where possible.`,
+      evidence: thirdPartyDomainCount > 0 ? [...externalScriptDomains].slice(0, 5).join(", ") : undefined,
+    });
+
+    checks.push({
+      category: "Code Quality",
+      checkKey: "no_jquery_old",
+      label: "No outdated jQuery",
+      status: oldJqueryFound.length > 0 ? "FAIL" : "PASS",
+      detail: oldJqueryFound.length > 0
+        ? `Old jQuery version detected (${oldJqueryFound[0]}) — jQuery 1.x/2.x has known XSS and prototype pollution vulnerabilities and is no longer maintained.`
+        : "No outdated jQuery (1.x/2.x) detected.",
+    });
+
+    // ─── A7: SaaS / Business Signals ──────────────────────────────────────────
+    const hasAnnualBilling = /annual|yearly|per year|save\s+\d|\bsave\b.*year|year.*save/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "annual_billing_signal",
+      label: "Annual billing option",
+      status: hasAnnualBilling ? "PASS" : "WARN",
+      detail: hasAnnualBilling
+        ? "Annual billing option detected — cash flow and churn reduction signals present."
+        : "No annual billing signal found. Annual billing reduces churn by ~50% and improves cash flow. Most SaaS buyers expect a monthly vs annual toggle.",
+    });
+
+    const hasMoneyBack = /money[\s-]back|30[\s-]day|14[\s-]day|7[\s-]day|\brefund\b/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "money_back_signal",
+      label: "Money-back guarantee signal",
+      status: hasMoneyBack ? "PASS" : "WARN",
+      detail: hasMoneyBack
+        ? "Money-back guarantee or refund policy signal detected — purchase anxiety reduced."
+        : "No money-back guarantee signal. A clearly stated refund policy reduces purchase anxiety and increases conversion rates.",
+    });
+
+    const hasLiveChat = /\b(intercom|crisp|tidio|drift|hubspot|freshchat|zendesk|tawk|liveagent|chatra|helpscout)\b/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "live_chat_signal",
+      label: "Live chat / support widget",
+      status: hasLiveChat ? "PASS" : "WARN",
+      detail: hasLiveChat
+        ? "Live chat or support widget detected — real-time support capability present."
+        : "No live chat widget detected. Live chat can increase conversions by 20-40% and is now expected in SaaS products.",
+    });
+
+    const hasDemoBooking = /book\s+a\s+demo|schedule\s+a\s+demo|book\s+a\s+call|calendly\.com|cal\.com|book\s+demo/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "demo_booking_signal",
+      label: "Demo booking or discovery call",
+      status: hasDemoBooking ? "PASS" : "WARN",
+      detail: hasDemoBooking
+        ? "Demo booking or discovery call signal detected — sales-assist motion is supported."
+        : "No demo booking path detected. A demo booking option is essential for PLG → sales-assist motion and enterprise prospects.",
+    });
+
+    const hasSocialProofNumbers = /\b\d[\d,]*\s*[k+]\s*(users?|customers?|teams?|companies|businesses)|\b\d[\d,]*\+\s*(users?|customers?|teams?)|\b(users?|customers?|teams?|companies)\s*\d[\d,]*[k+]?/i.test(pageResult.html);
+    checks.push({
+      category: "Trust & Brand",
+      checkKey: "social_proof_numbers",
+      label: "Quantified social proof",
+      status: hasSocialProofNumbers ? "PASS" : "WARN",
+      detail: hasSocialProofNumbers
+        ? "Quantified social proof (numeric user/customer count) detected — specific numbers build credibility."
+        : "No numeric social proof found. Specific numbers ('10,000 teams') convert 3x better than vague claims ('thousands of customers').",
+    });
+
+    const hasVideoEmbed = /youtube\.com\/embed|loom\.com\/embed|vimeo\.com\/video|wistia\.com|mux\.com/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "video_embed_present",
+      label: "Product demo video",
+      status: hasVideoEmbed ? "PASS" : "WARN",
+      detail: hasVideoEmbed
+        ? "Product demo video embed detected — visual product demonstration available."
+        : "No product demo video detected. A demo video on the landing page typically increases conversion rate by 20-80%.",
+    });
+
+    // ─── A8: Developer / API Signals ──────────────────────────────────────────
+    const hasApiDocsSignal = /api\s+docs|api\s+reference|developer\s+docs?\b/i.test(pageResult.html) ||
+      /href=["'][^"']*\/(docs|api-docs|developers|api\/docs)[^"']*["']/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "api_docs_signal",
+      label: "API documentation",
+      status: hasApiDocsSignal ? "PASS" : "WARN",
+      detail: hasApiDocsSignal
+        ? "API documentation link or reference detected — developer resources are accessible."
+        : "No API documentation signals found. API docs are essential for technical buyers and integration partners.",
+    });
+
+    const [openApiStatuses] = await Promise.all([
+      checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"]),
+    ]);
+    const hasOpenApiEndpoint = openApiStatuses.some((s) => s === 200);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "openapi_endpoint",
+      label: "OpenAPI spec endpoint",
+      status: hasOpenApiEndpoint ? "PASS" : "WARN",
+      detail: hasOpenApiEndpoint
+        ? "OpenAPI/Swagger spec endpoint found — machine-readable API spec enables auto-generated SDKs and Postman imports."
+        : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
+    });
+
+    const hasGraphqlInHtml = /\bgraphql\b/i.test(pageResult.html);
+    const graphqlPathStatus = await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0]);
+    const hasGraphql = hasGraphqlInHtml || graphqlPathStatus === 200;
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "graphql_signal",
+      label: "GraphQL API",
+      status: hasGraphql ? "PASS" : "WARN",
+      detail: hasGraphql
+        ? "GraphQL API signal detected — flexible query API available for clients."
+        : "No GraphQL signals found. GraphQL reduces over-fetching and enables flexible client queries. Common in modern developer platforms.",
+    });
+
+    // ─── A9: Conversion & UX Signals ──────────────────────────────────────────
+    const hasSearch = /<input[^>]+type=["']search["']/i.test(pageResult.html) ||
+      /role=["']search["']/i.test(pageResult.html) ||
+      /placeholder=["'][^"']*search[^"']*["']/i.test(pageResult.html) ||
+      /\b(algolia|typesense|fuse\.js)\b/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "search_functionality",
+      label: "Search functionality",
+      status: hasSearch ? "PASS" : "WARN",
+      detail: hasSearch
+        ? "Search functionality detected — users can find content without manual navigation."
+        : "No search functionality detected. Apps without search force users to navigate manually — search reduces time-to-value.",
+    });
+
+    const hasGranularConsent = /accept\s+all|reject\s+all|manage\s+(cookies|preferences)/i.test(pageResult.html);
+    const hasBasicConsent = /cookie\s*(consent|banner|notice)|we\s+use\s+cookies|this\s+site\s+uses\s+cookies/i.test(pageResult.html);
+    checks.push({
+      category: "Legal & Compliance",
+      checkKey: "cookie_consent_granular",
+      label: "Granular cookie consent (accept/reject all)",
+      status: hasGranularConsent ? "PASS" : hasBasicConsent ? "WARN" : "FAIL",
+      detail: hasGranularConsent
+        ? "Granular cookie consent (accept all / reject all / manage preferences) detected — GDPR-compliant consent flow."
+        : hasBasicConsent
+          ? "Basic cookie notice detected but no reject/manage options — GDPR requires granular consent with the ability to decline non-essential cookies."
+          : "No cookie consent mechanism detected — required by GDPR, ePrivacy Directive, and CCPA for sites using tracking cookies.",
+    });
+
+    const hasNewsletter = /newsletter|\bsubscribe\b|mailing\s+list|email\s+updates/i.test(pageResult.html);
+    checks.push({
+      category: "SaaS Readiness",
+      checkKey: "newsletter_signup",
+      label: "Newsletter / email list capture",
+      status: hasNewsletter ? "PASS" : "WARN",
+      detail: hasNewsletter
+        ? "Newsletter or email capture detected — email list building is in place."
+        : "No newsletter or email signup detected. Email lists compound over time — a newsletter is one of the highest-ROI acquisition channels for SaaS.",
+    });
+
   } else {
     // Site unreachable — mark remaining checks as FAIL
     const failedChecks: Array<[string, string, string]> = [
@@ -2382,6 +2866,133 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
       label: ".gitignore",
       status: hasGitignore ? "PASS" : "FAIL",
       detail: hasGitignore ? ".gitignore found — build artifacts and secrets excluded from version control." : "No .gitignore — secrets and build artifacts may be accidentally committed.",
+    },
+  );
+
+  // ── Additional file presence checks ──────────────────────────────────────
+  const hasDockerCompose = names.includes("docker-compose.yml") || names.includes("docker-compose.yaml");
+  const hasMakefile = names.includes("makefile");
+  const hasHuskyConfig = names.includes(".husky") || names.includes(".huskyrc");
+  const hasVitest = names.some((n) => n === "vitest.config.ts" || n === "vitest.config.js");
+  const hasJest = names.some((n) => n === "jest.config.js" || n === "jest.config.ts" || n === "jest.config.mjs");
+  const hasPlaywright = names.some((n) => n.startsWith("playwright.config"));
+  const hasCypress = names.some((n) => n === "cypress.json" || n === "cypress.config.js" || n === "cypress.config.ts" || n === "cypress");
+  const hasE2eTests = hasPlaywright || hasCypress;
+  const hasDevContainer = names.includes(".devcontainer");
+  const hasRenovate = names.some((n) => n === "renovate.json" || n === ".renovaterc" || n === "renovate.json5");
+  const hasHelmChart = names.includes("charts") || names.includes("helm");
+  const hasK8s = names.includes("k8s") || names.includes("kubernetes");
+  const hasInfraCode = hasHelmChart || hasK8s || names.includes("terraform") || names.includes("pulumi");
+  const hasMigrations = names.some((n) => n === "migrations" || n === "db" || n === "database" || n === "prisma");
+  const hasSupabase = names.includes("supabase");
+  const hasPrisma = names.includes("prisma");
+  const hasDrizzle = names.some((n) => n === "drizzle.config.ts" || n === "drizzle.config.js");
+  const hasOrmConfig = hasPrisma || hasDrizzle || hasSupabase;
+  const hasMonorepo = names.some((n) => n === "pnpm-workspace.yaml" || n === "lerna.json" || n === "nx.json" || n === "turbo.json");
+  const hasCoverage = names.some((n) => n === "codecov.yml" || n === ".codecov.yml" || n === "coveralls.yml" || n.startsWith("coverage"));
+
+  // suppress unused variable warnings for variables that may be useful in future
+  void hasDockerCompose;
+
+  checks.push(
+    {
+      category: "Code Quality",
+      checkKey: "has_e2e_tests",
+      label: "E2E test suite (Playwright / Cypress)",
+      status: hasE2eTests ? "PASS" : "WARN",
+      detail: hasE2eTests
+        ? "End-to-end test configuration found."
+        : "No E2E tests detected — Playwright or Cypress would catch regressions that unit tests miss.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_unit_test_config",
+      label: "Unit test framework (Jest / Vitest)",
+      status: hasVitest || hasJest ? "PASS" : "WARN",
+      detail: hasVitest || hasJest
+        ? "Unit test framework configured."
+        : "No Jest/Vitest config found — unit tests are the fastest feedback loop for catching bugs.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_git_hooks",
+      label: "Git hooks (Husky / lefthook)",
+      status: hasHuskyConfig || names.includes("lefthook.yml") || names.includes(".lefthook.yml") ? "PASS" : "WARN",
+      detail: hasHuskyConfig
+        ? "Git hooks configured — linting and tests run before commits."
+        : "No pre-commit hooks — lint errors and test failures can reach the main branch undetected.",
+    },
+    {
+      category: "Infrastructure",
+      checkKey: "has_orm_config",
+      label: "ORM / database configuration",
+      status: hasOrmConfig ? "PASS" : "WARN",
+      detail: hasOrmConfig
+        ? "Database ORM configuration detected (Prisma/Drizzle/Supabase)."
+        : "No ORM config detected — consider Prisma or Drizzle for type-safe database access and migration management.",
+    },
+    {
+      category: "Infrastructure",
+      checkKey: "has_migrations",
+      label: "Database migrations",
+      status: hasMigrations ? "PASS" : "WARN",
+      detail: hasMigrations
+        ? "Database migrations directory detected."
+        : "No migrations folder detected — schema changes without migrations make deployments risky and rollbacks difficult.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_renovate",
+      label: "Renovate / automated dependency updates",
+      status: hasRenovate ? "PASS" : "WARN",
+      detail: hasRenovate
+        ? "Renovate config found — dependencies stay up-to-date automatically."
+        : "No Renovate config — dependencies gradually drift out of date, accumulating security debt.",
+    },
+    {
+      category: "Infrastructure",
+      checkKey: "has_devcontainer",
+      label: "Dev container (.devcontainer)",
+      status: hasDevContainer ? "PASS" : "WARN",
+      detail: hasDevContainer
+        ? ".devcontainer found — reproducible dev environment."
+        : "No devcontainer — onboarding a new developer requires manual environment setup, which is error-prone.",
+    },
+    {
+      category: "Infrastructure",
+      checkKey: "has_infra_code",
+      label: "Infrastructure as Code (Terraform / Helm / K8s)",
+      status: hasInfraCode ? "PASS" : "WARN",
+      detail: hasInfraCode
+        ? "Infrastructure as Code configuration detected."
+        : "No IaC detected — infrastructure managed manually means deployments are harder to reproduce and audit.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_makefile",
+      label: "Makefile / task runner",
+      status: hasMakefile ? "PASS" : "WARN",
+      detail: hasMakefile
+        ? "Makefile found — common tasks are standardised."
+        : "No Makefile — developers must remember or document common commands (build, test, deploy) separately.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "is_monorepo",
+      label: "Monorepo tooling (Turbo / Nx / pnpm workspaces)",
+      status: hasMonorepo ? "PASS" : "WARN",
+      detail: hasMonorepo
+        ? "Monorepo configuration detected."
+        : "Single package repository — fine for smaller projects, but consider a monorepo as the product grows.",
+    },
+    {
+      category: "Code Quality",
+      checkKey: "has_coverage_config",
+      label: "Code coverage reporting",
+      status: hasCoverage ? "PASS" : "WARN",
+      detail: hasCoverage
+        ? "Coverage configuration found."
+        : "No coverage config — without coverage tracking you can't see which code paths are untested.",
     },
   );
 
