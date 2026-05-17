@@ -10,19 +10,20 @@ import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
 
 const STAGES = [
-  { label: "Connecting to project",    from: 0  },
-  { label: "Fetching page & headers",  from: 8  },
-  { label: "Running automated checks", from: 22 },
-  { label: "Detecting tech stack",     from: 55 },
-  { label: "AI analysis in progress",  from: 65 },
-  { label: "Finalising report",        from: 90 },
+  { label: "Connecting to project",        from: 0  },
+  { label: "Fetching page & headers",      from: 8  },
+  { label: "Running automated checks",     from: 22 },
+  { label: "Detecting tech stack",         from: 45 },
+  { label: "Measuring Core Web Vitals",    from: 55 },
+  { label: "AI analysis in progress",      from: 68 },
+  { label: "Finalising report",            from: 92 },
 ];
 
 function currentStage(pct: number) {
   return STAGES.slice().reverse().find((s) => pct >= s.from) ?? STAGES[0];
 }
 
-function easedProgress(elapsedMs: number, capPct = 96, totalMs = 45000): number {
+function easedProgress(elapsedMs: number, capPct = 96, totalMs = 60000): number {
   const t = Math.min(elapsedMs / totalMs, 1);
   const eased = 1 - Math.pow(1 - t, 2.5);
   return Math.min(eased * capPct, capPct);
@@ -46,7 +47,7 @@ function ScanRunningState({ startedAt, scanId }: { startedAt: string; scanId: st
   }, [startedAt]);
 
   const stage = currentStage(pct);
-  const isLong = elapsedSec > 45;
+  const isLong = elapsedSec > 60;
 
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">

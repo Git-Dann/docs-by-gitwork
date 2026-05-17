@@ -13,6 +13,7 @@ import {
 import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
+import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import type {
   PulseScanRecord,
@@ -388,7 +389,7 @@ export async function runAnalysis(
       inputDescription: input.inputDescription,
     });
 
-    const { checks: allChecks, techStack, codeInsights, deployInsights, browserInsights } = scanResult;
+    const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
     const healthScore = calculateHealthScore(allChecks);
 
     // Phase 1: persist checks + lightweight fields immediately so SSE clients
@@ -413,7 +414,7 @@ export async function runAnalysis(
       data: {
         healthScore,
         techStack: techStack as unknown as Prisma.InputJsonValue,
-        agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -438,7 +439,14 @@ export async function runAnalysis(
           )
         : Promise.resolve([]);
 
-    const [llmAnalysis, competitorScans] = await Promise.all([
+    // Browser agent (PageSpeed Insights — slow, ~30s) runs in parallel with AI
+    // so fast checks still stream to the client within 8-10s of scan start.
+    const browserAgentPromise =
+      input.inputType === "URL" && input.inputUrl
+        ? runBrowserAgent(input.inputUrl)
+        : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
+
+    const [llmAnalysis, competitorScans, browserResult] = await Promise.all([
       analyseWithClaude(
         {
           projectName: input.projectName,
@@ -453,6 +461,7 @@ export async function runAnalysis(
         aiConfig,
       ),
       competitorScanPromise,
+      browserAgentPromise,
     ]);
 
     // Discovery kit: skip for FREE_TEXT scans — no URL/repo data to act on
@@ -487,9 +496,29 @@ export async function runAnalysis(
         ? { scans: competitorScans, comparison: competitorComparison }
         : null;
 
-    // Phase 2: persist AI analysis and mark COMPLETED
+    // Phase 2: persist AI analysis + browser insights and mark COMPLETED
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
     if (current?.status !== "RUNNING") return;
+
+    // Add browser checks to DB (they arrive after Phase 1 fast checks)
+    if (browserResult.checks.length > 0) {
+      const existingKeys = new Set(allChecks.map((c) => c.checkKey));
+      const newBrowserChecks = browserResult.checks.filter((c) => !existingKeys.has(c.checkKey));
+      if (newBrowserChecks.length > 0) {
+        await prisma.pulseScanCheck.createMany({
+          data: newBrowserChecks.map((check, i) => ({
+            scanId,
+            category: check.category,
+            checkKey: check.checkKey,
+            label: check.label,
+            status: check.status,
+            detail: check.detail ?? null,
+            evidence: check.evidence ?? null,
+            sortOrder: (allChecks.length + i),
+          })),
+        });
+      }
+    }
 
     await prisma.pulseScan.update({
       where: { id: scanId },
@@ -499,6 +528,7 @@ export async function runAnalysis(
         llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights } as unknown as Prisma.InputJsonValue,
       },
     });
   } catch (error) {
