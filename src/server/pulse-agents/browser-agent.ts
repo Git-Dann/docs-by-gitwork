@@ -38,10 +38,10 @@ export async function runBrowserAgent(
     const psiUrl = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
     psiUrl.searchParams.set("url", url);
     psiUrl.searchParams.set("strategy", "mobile");
-    psiUrl.searchParams.set("category", "performance");
-    psiUrl.searchParams.set("category", "accessibility");
-    psiUrl.searchParams.set("category", "best-practices");
-    psiUrl.searchParams.set("category", "seo");
+    psiUrl.searchParams.append("category", "performance");
+    psiUrl.searchParams.append("category", "accessibility");
+    psiUrl.searchParams.append("category", "best-practices");
+    psiUrl.searchParams.append("category", "seo");
     if (apiKey) psiUrl.searchParams.set("key", apiKey);
 
     const controller = new AbortController();
