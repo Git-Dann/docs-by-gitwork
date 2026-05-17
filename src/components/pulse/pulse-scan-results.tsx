@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -680,6 +680,7 @@ function AgentPanel({
   onMonitor,
   creatingMonitor,
   monitorWebhookUrl,
+  onDiscoverySuccess,
 }: {
   scan: PulseScanRecord;
   fixResult: FixAgentResult | null;
@@ -689,9 +690,12 @@ function AgentPanel({
   onMonitor: () => void;
   creatingMonitor: boolean;
   monitorWebhookUrl: string | null;
+  onDiscoverySuccess: () => void;
 }) {
   const { mutateAsync: runBrowser, isPending: runningBrowser } = useRunBrowserAgent();
   const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
+  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
 
   const checksTotal = scan.checks.filter((c) => c.status !== "SKIPPED").length;
   const checksFail = scan.checks.filter((c) => c.status === "FAIL").length;
@@ -723,18 +727,23 @@ function AgentPanel({
       id: "browser",
       label: "Browser & Performance",
       description: "Lighthouse via PageSpeed Insights — Core Web Vitals, accessibility, SEO scores",
-      status: scan.browserInsights
-        ? "completed"
+      status: browserError ? "error"
+        : scan.browserInsights ? "completed"
         : (scan.inputType === "URL" || (scan.inputType === "GITHUB_REPO" && scan.codeInsights?.homepageUrl))
           ? "available"
           : "na",
-      summary: scan.browserInsights
-        ? `Performance ${scan.browserInsights.performanceScore ?? "?"}  ·  Accessibility ${scan.browserInsights.accessibilityScore ?? "?"}  ·  SEO ${scan.browserInsights.seoScore ?? "?"}`
-        : scan.inputType === "URL" || (scan.inputType === "GITHUB_REPO" && scan.codeInsights?.homepageUrl)
-          ? "Run Lighthouse analysis on the live site"
-          : "No URL available for this scan",
-      actionLabel: scan.browserInsights ? "Re-run analysis" : "Run analysis",
-      onAction: () => runBrowser(scan.id),
+      summary: browserError ? browserError
+        : scan.browserInsights
+          ? `Performance ${scan.browserInsights.performanceScore ?? "?"}  ·  Accessibility ${scan.browserInsights.accessibilityScore ?? "?"}  ·  SEO ${scan.browserInsights.seoScore ?? "?"}`
+          : scan.inputType === "URL" || (scan.inputType === "GITHUB_REPO" && scan.codeInsights?.homepageUrl)
+            ? "Run Lighthouse analysis on the live site"
+            : "No URL available for this scan",
+      actionLabel: scan.browserInsights ? "Re-run analysis" : browserError ? "Retry" : "Run analysis",
+      onAction: async () => {
+        setBrowserError(null);
+        try { await runBrowser(scan.id); }
+        catch (err) { setBrowserError(err instanceof Error ? err.message : "Browser analysis failed. Check the URL is reachable."); }
+      },
       loading: runningBrowser,
     },
     // Deploy Intelligence
@@ -764,18 +773,26 @@ function AgentPanel({
       id: "discovery",
       label: "Discovery Prep",
       description: "AI-generated call guide — questions, objections, pricing anchor",
-      status: scan.discoveryKit
-        ? "completed"
-        : scan.llmAnalysis && scan.inputType !== "FREE_TEXT"
-          ? "available"
-          : "na",
-      summary: scan.discoveryKit
-        ? `${scan.discoveryKit.questions.length} questions · pricing £${scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£${scan.discoveryKit.pricingAnchor.high.toLocaleString()}`
-        : scan.llmAnalysis && scan.inputType !== "FREE_TEXT"
-          ? "Generate a tailored discovery call briefing"
-          : "Requires AI synthesis to complete first",
-      actionLabel: scan.discoveryKit ? "Regenerate" : "Generate",
-      onAction: () => runDiscovery(scan.id),
+      status: discoveryError ? "error"
+        : scan.discoveryKit ? "completed"
+        : scan.llmAnalysis && scan.inputType !== "FREE_TEXT" ? "available"
+        : "na",
+      summary: discoveryError ? discoveryError
+        : scan.discoveryKit
+          ? `${scan.discoveryKit.questions.length} questions · pricing £${scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£${scan.discoveryKit.pricingAnchor.high.toLocaleString()}`
+          : scan.llmAnalysis && scan.inputType !== "FREE_TEXT"
+            ? "Generate a tailored discovery call briefing"
+            : "Requires AI synthesis to complete first",
+      actionLabel: scan.discoveryKit ? "Regenerate" : discoveryError ? "Retry" : "Generate",
+      onAction: async () => {
+        setDiscoveryError(null);
+        try {
+          await runDiscovery(scan.id);
+          onDiscoverySuccess();
+        } catch (err) {
+          setDiscoveryError(err instanceof Error ? err.message : "Discovery kit generation failed. Check your AI provider settings.");
+        }
+      },
       loading: runningDiscovery,
     },
     // Auto-fix
@@ -872,6 +889,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [fixResult, setFixResult] = useState<FixAgentResult | null>(null);
   const [fixError, setFixError] = useState<string | null>(null);
   const [monitorWebhookUrl, setMonitorWebhookUrl] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  // Keep local share state in sync when the scan is re-fetched externally
+  useEffect(() => {
+    setShareToken(scan.shareToken);
+    setIsShared(scan.isShared);
+  }, [scan.shareToken, scan.isShared]);
 
   function toggleCategory(category: string) {
     setExpandedCategories((prev: Set<string>) => {
@@ -888,16 +912,26 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const reportUrl = shareToken ? `${typeof window !== "undefined" ? window.location.origin : ""}/report/${shareToken}` : null;
 
   async function handleShare() {
-    const result = await shareScan(scan.id);
-    setShareToken(result.shareToken);
-    setIsShared(true);
+    setShareError(null);
+    try {
+      const result = await shareScan(scan.id);
+      setShareToken(result.shareToken);
+      setIsShared(true);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Failed to generate share link.");
+    }
   }
 
   async function handleUnshare() {
-    await unshareScan(scan.id);
-    setShareToken(null);
-    setIsShared(false);
-    setCopied(false);
+    setShareError(null);
+    try {
+      await unshareScan(scan.id);
+      setShareToken(null);
+      setIsShared(false);
+      setCopied(false);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Failed to revoke share link.");
+    }
   }
 
   function handleCopy() {
@@ -1070,6 +1104,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               </button>
             </div>
           )}
+          {shareError && (
+            <p className="text-[11px] text-red-600">{shareError}</p>
+          )}
         </div>
       </div>
 
@@ -1084,6 +1121,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           onMonitor={handleMonitor}
           creatingMonitor={creatingMonitor}
           monitorWebhookUrl={monitorWebhookUrl}
+          onDiscoverySuccess={() => setActiveTab("discovery")}
         />
       )}
 

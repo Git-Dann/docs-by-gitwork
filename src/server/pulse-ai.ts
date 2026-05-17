@@ -568,7 +568,9 @@ Generate a discovery call briefing. Return JSON with this shape:
         system: DISCOVERY_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
       });
-      rawContent = (message.content[0] as { type: string; text: string }).text ?? "";
+      const dBlock = message.content[0];
+      if (!dBlock || dBlock.type !== "text") throw new Error("Unexpected response format from AI.");
+      rawContent = dBlock.text ?? "";
     } else {
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({
@@ -648,7 +650,9 @@ Return JSON with exactly this shape:
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
       });
-      rawContent = (message.content[0] as { type: string; text: string }).text ?? "";
+      const cBlock = message.content[0];
+      if (!cBlock || cBlock.type !== "text") throw new Error("Unexpected response format from AI.");
+      rawContent = cBlock.text ?? "";
     } else {
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({ apiKey: aiConfig.apiKey, baseURL: aiConfig.baseUrl ?? undefined });
