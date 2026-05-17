@@ -563,6 +563,46 @@ export async function triggerFixAgent(scanId: string): Promise<FixAgentResult> {
   );
 }
 
+export interface MonitorRecord {
+  id: string;
+  projectName: string;
+  inputType: string;
+  inputUrl: string | null;
+  inputGithubRepo: string | null;
+  webhookSecret: string;
+  lastScanId: string | null;
+  lastHealthScore: number | null;
+  alertThreshold: number;
+  isActive: boolean;
+  createdAt: string;
+  webhookUrl: string;
+}
+
+export async function listMonitors(): Promise<{ monitors: MonitorRecord[] }> {
+  return apiFetch<{ monitors: MonitorRecord[] }>("/api/pulse/monitors");
+}
+
+export async function createMonitor(input: {
+  projectName: string;
+  inputType: string;
+  inputUrl?: string;
+  inputGithubRepo?: string;
+  clientId?: string;
+  alertThreshold?: number;
+}): Promise<{ monitor: MonitorRecord }> {
+  return apiFetch<{ monitor: MonitorRecord }>("/api/pulse/monitors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMonitor(monitorId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/pulse/monitors/${monitorId}`, {
+    method: "DELETE",
+  });
+}
+
 export interface IntegrationsResponse {
   aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicKeyMasked: string | null;

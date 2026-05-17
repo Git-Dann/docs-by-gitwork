@@ -152,6 +152,7 @@ model Workspace {
   proofDocuments  ProofDocument[]
   candidates      Candidate[]
   pulseScans      PulseScan[]
+  pulseMonitors   PulseMonitor[]
 }
 
 model WorkspaceMember {
@@ -584,6 +585,29 @@ model PulseScan {
   @@index([workspaceId, createdAt])
   @@index([clientId, createdAt])
   @@index([shareToken])
+}
+
+model PulseMonitor {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectName     String
+  inputType       PulseScanInputType
+  inputUrl        String?
+  inputGithubRepo String?
+  clientId        String?
+  webhookSecret   String             @unique @default(cuid())
+  lastScanId      String?
+  lastHealthScore Int?
+  alertThreshold  Int                @default(10)  // score drop that triggers alert
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([workspaceId])
+  @@index([webhookSecret])
+  @@index([inputGithubRepo])
+  @@index([inputUrl])
 }
 
 model PulseScanCheck {

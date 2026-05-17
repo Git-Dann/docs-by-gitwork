@@ -15,6 +15,9 @@ import {
   sharePulseScan,
   unsharePulseScan,
   triggerFixAgent,
+  listMonitors,
+  createMonitor,
+  deleteMonitor,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -173,5 +176,33 @@ export function useGeneratePulseProposal() {
 export function useRunFixAgent() {
   return useMutation({
     mutationFn: triggerFixAgent,
+  });
+}
+
+export function useMonitors() {
+  return useQuery({
+    queryKey: ["pulse-monitors"],
+    queryFn: listMonitors,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useCreateMonitor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createMonitor,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });
+    },
+  });
+}
+
+export function useDeleteMonitor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteMonitor,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });
+    },
   });
 }

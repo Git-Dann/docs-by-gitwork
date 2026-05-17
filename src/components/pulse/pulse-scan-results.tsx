@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   ArrowRightIcon,
   ArrowPathIcon,
+  BellIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -18,11 +19,11 @@ import {
   LightBulbIcon,
   MinusCircleIcon,
   QuestionMarkCircleIcon,
-  XCircleIcon,
   WrenchScrewdriverIcon,
+  XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData } from "@/types/pulse";
@@ -395,12 +396,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
   const { mutateAsync: runFix, isPending: fixing } = useRunFixAgent();
+  const { mutateAsync: addMonitor, isPending: creatingMonitor } = useCreateMonitor();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(scan.shareToken);
   const [isShared, setIsShared] = useState(scan.isShared);
   const [fixResult, setFixResult] = useState<FixAgentResult | null>(null);
+  const [monitorWebhookUrl, setMonitorWebhookUrl] = useState<string | null>(null);
 
   function toggleCategory(category: string) {
     setExpandedCategories((prev: Set<string>) => {
@@ -435,6 +438,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleMonitor() {
+    const result = await addMonitor({
+      projectName: scan.projectName,
+      inputType: scan.inputType,
+      inputUrl: scan.inputUrl ?? undefined,
+      inputGithubRepo: scan.inputGithubRepo ?? undefined,
+      clientId: scan.clientId ?? undefined,
+    });
+    setMonitorWebhookUrl(result.monitor.webhookUrl);
   }
 
   async function handleAutoFix() {
@@ -556,6 +570,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 {fixing ? "Fixing…" : "Auto-fix"}
               </Button>
             )}
+            {scan.status === "COMPLETED" && !monitorWebhookUrl && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={handleMonitor}
+                loading={creatingMonitor}
+                leadingIcon={<BellIcon className="h-4 w-4" />}
+              >
+                Monitor
+              </Button>
+            )}
             {scan.status === "COMPLETED" && (
               isShared ? (
                 <Button
@@ -592,6 +617,28 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               >
                 Revoke
               </button>
+            </div>
+          )}
+          {monitorWebhookUrl && (
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                GitHub webhook URL
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="max-w-[260px] truncate font-mono text-[10px] text-[var(--text-3)]">
+                  {monitorWebhookUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(monitorWebhookUrl)}
+                  className="shrink-0 text-[10px] text-[var(--brand-600)] hover:underline"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-[var(--text-4)]">
+                Add to GitHub → Settings → Webhooks. Send push events. Score drops &gt;10 pts create a GitHub Issue.
+              </p>
             </div>
           )}
         </div>
