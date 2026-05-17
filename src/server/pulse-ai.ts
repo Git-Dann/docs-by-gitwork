@@ -2,6 +2,24 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, DiscoveryKit } from "@/types/pulse";
 
+export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
+export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
+export { getModelForTask };
+
+// Anthropic model routing — different capability/cost profiles per task.
+// Other providers use their configured workspace model throughout.
+const ANTHROPIC_TASK_MODELS: Record<AiTask, string> = {
+  synthesis:   "claude-opus-4-7",   // highest reasoning for the main audit
+  discovery:   "claude-sonnet-4-6", // strong enough, saves cost on the sales kit
+  competitor:  "claude-sonnet-4-6", // parallel comparison, cost-effective
+  "fix-agent": "claude-opus-4-7",   // tool-use loop requires best instruction-following
+};
+
+function getModelForTask(config: AiConfig, task: AiTask): string {
+  if (config.provider !== "ANTHROPIC") return config.model;
+  return ANTHROPIC_TASK_MODELS[task] ?? config.model;
+}
+
 
 
 const pulseStrengthSchema = z.object({
@@ -399,7 +417,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
     const client = new Anthropic({ apiKey: aiConfig.apiKey });
     const message = await withRetry(() =>
       client.messages.create({
-        model: aiConfig.model,
+        model: getModelForTask(aiConfig, "synthesis"),
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
@@ -551,7 +569,7 @@ Generate a discovery call briefing. Return JSON with this shape:
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey });
       const message = await client.messages.create({
-        model: aiConfig.model,
+        model: getModelForTask(aiConfig, "discovery"),
         max_tokens: 2048,
         system: DISCOVERY_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
