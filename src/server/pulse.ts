@@ -252,7 +252,7 @@ export async function createPulseScanRecord(input: {
   competitorUrls?: string[];
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
   const { workspace } = await ensureBaseRecords();
-  // Use the per-scan override if provided, otherwise fall back to the workspace default
+  // Use only what the workspace has explicitly configured — no silent fallbacks.
   const p = (input.aiProvider ?? workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,

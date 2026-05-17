@@ -935,7 +935,6 @@ function ProviderRow({
     : provider.id === "GEMINI" ? (config.geminiModel ?? "gemini-1.5-flash")
     : (config.localLlmModel ?? "llama3.1");
   const configured = Boolean(keySource) || (provider.id === "LOCAL" && Boolean(config.localLlmUrl));
-  const isActive = config.aiProvider === provider.id;
 
   function openEdit() {
     setInputs({
@@ -956,7 +955,8 @@ function ProviderRow({
       // A key is "changed" only if it's non-empty and contains no masking bullets (•).
       // Masked values like "AIzaSyC•••••••••3tc8" must never be written back to the DB.
       const keyChanged = inputs.key.length > 0 && !inputs.key.includes("•");
-      const payload: Parameters<typeof saveIntegrations>[0] = { aiProvider: provider.id };
+      // Never include aiProvider here — the dropdown at the top controls that exclusively.
+      const payload: Parameters<typeof saveIntegrations>[0] = {};
       if (provider.id === "ANTHROPIC") {
         if (keyChanged) payload.anthropicApiKey = inputs.key;
         if (inputs.model) payload.anthropicModel = inputs.model;
@@ -973,7 +973,9 @@ function ProviderRow({
         if (inputs.url) payload.localLlmUrl = inputs.url;
         if (inputs.localModel) payload.localLlmModel = inputs.localModel;
       }
-      await saveIntegrations(payload);
+      if (Object.keys(payload).length > 0) {
+        await saveIntegrations(payload);
+      }
       const updated = await getIntegrations();
       onSaved(updated);
       setSaved(true);
@@ -993,12 +995,7 @@ function ProviderRow({
       {/* Row summary — always visible */}
       <div className="flex items-center gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
-            {isActive && (
-              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">ACTIVE</span>
-            )}
-          </div>
+          <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
           <p className="mt-0.5 text-xs text-[var(--text-4)]">
             {configured
               ? keySource === "env"
@@ -1096,7 +1093,7 @@ function ProviderRow({
               onClick={handleSave}
               loading={saving}
             >
-              {saved ? "Saved ✓" : isActive ? "Save changes" : `Save & set as active`}
+              {saved ? "Saved ✓" : "Save changes"}
             </Button>
             <Button
               type="button"
@@ -1116,10 +1113,29 @@ function ProviderRow({
 
 function IntegrationsTab() {
   const [config, setConfig] = useState<IntegrationsResponse | null>(null);
+  const [savingProvider, setSavingProvider] = useState(false);
 
   useEffect(() => {
     getIntegrations().then(setConfig).catch(() => {});
   }, []);
+
+  async function handleProviderChange(provider: AiProvider) {
+    if (!config) return;
+    const optimistic = { ...config, aiProvider: provider };
+    setConfig(optimistic);
+    setSavingProvider(true);
+    try {
+      await saveIntegrations({ aiProvider: provider });
+      const fresh = await getIntegrations();
+      setConfig(fresh);
+    } catch {
+      setConfig(config); // revert on error
+    } finally {
+      setSavingProvider(false);
+    }
+  }
+
+  const activeProvider = config ? PROVIDERS.find((p) => p.id === config.aiProvider) : null;
 
   return (
     <div className="space-y-6">
@@ -1129,15 +1145,61 @@ function IntegrationsTab() {
           AI analysis engine
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-          Pulse uses AI to generate gap analysis, build opportunities, and scaling roadmaps. Click{" "}
-          <strong>Edit</strong> on any provider to add a key or change the model. The active provider
-          is used for all new scans by default.
+          Select the AI provider Pulse uses for all scans. Only the selected provider is used — no fallbacks.
+          Add its API key and model below.
         </p>
 
-        {!config ? (
-          <p className="mt-6 text-sm text-[var(--text-4)]">Loading…</p>
-        ) : (
-          <div className="mt-6 space-y-3">
+        {/* ── Default provider selector ──────────────────────────── */}
+        <div className="mt-5 rounded-[14px] border-2 border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-600)]">
+                Default AI provider
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--text-3)]">
+                All new scans use this provider exclusively. Change it and all future scans switch immediately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!config ? (
+                <p className="text-sm text-[var(--text-4)]">Loading…</p>
+              ) : (
+                <select
+                  className="app-select min-w-[220px] text-sm font-semibold"
+                  value={config.aiProvider}
+                  onChange={(e) => handleProviderChange(e.target.value as AiProvider)}
+                  disabled={savingProvider}
+                >
+                  {PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {savingProvider && (
+                <span className="text-xs text-[var(--text-4)]">Saving…</span>
+              )}
+            </div>
+          </div>
+          {activeProvider && config && (
+            <p className="mt-3 text-xs text-[var(--text-3)]">
+              Active: <span className="font-semibold text-[var(--text-1)]">{activeProvider.label}</span>
+              {(() => {
+                const model = config.aiProvider === "ANTHROPIC" ? (config.anthropicModel ?? "claude-sonnet-4-6")
+                  : config.aiProvider === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
+                  : config.aiProvider === "GEMINI" ? (config.geminiModel ?? "gemini-1.5-flash")
+                  : (config.localLlmModel ?? "llama3.1");
+                return <> · Model: <span className="font-mono font-medium text-[var(--text-1)]">{model}</span></>;
+              })()}
+            </p>
+          )}
+        </div>
+
+        {/* ── Per-provider credential config ─────────────────────── */}
+        {!config ? null : (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-[var(--text-4)]">Configure API keys and models for each provider below.</p>
             {PROVIDERS.map((p) => (
               <ProviderRow
                 key={p.id}
