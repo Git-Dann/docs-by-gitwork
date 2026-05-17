@@ -165,7 +165,7 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   return lines.join("\n");
 }
 
-function getMockAnalysis(input: { projectName: string; healthScore: number }): PulseAnalysisOutput {
+export function getMockAnalysis(input: { projectName: string; healthScore: number }): PulseAnalysisOutput {
   return {
     projectClassification: {
       type: "SaaS",

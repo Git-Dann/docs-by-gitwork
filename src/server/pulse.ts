@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
 import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
-import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
+import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison, getMockAnalysis } from "@/server/pulse-ai";
 import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
@@ -69,6 +69,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
     browserInsights: ((record.agentData as { browserInsights?: BrowserAgentInsights | null } | null)?.browserInsights) ?? null,
+    aiError: ((record.agentData as { aiError?: string | null } | null)?.aiError) ?? null,
     competitorUrls: asJson<string[] | null>(record.competitorUrls, null),
     competitorData: asJson<CompetitorData | null>(record.competitorData, null),
     shareToken: record.shareToken,
@@ -264,7 +265,7 @@ export async function createPulseScanRecord(input: {
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
            p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-opus-4-6"),
+           (workspace.anthropicModel ?? "claude-sonnet-4-6"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -340,7 +341,7 @@ export async function retryPulseScan(scanId: string): Promise<{
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
            p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-opus-4-6"),
+           (workspace.anthropicModel ?? "claude-sonnet-4-6"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -446,20 +447,42 @@ export async function runAnalysis(
         ? runBrowserAgent(input.inputUrl)
         : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
 
-    const [llmAnalysis, competitorScans, browserResult] = await Promise.all([
-      analyseWithClaude(
-        {
-          projectName: input.projectName,
-          inputType: input.inputType,
-          inputUrl: input.inputUrl ?? null,
-          inputGithubRepo: input.inputGithubRepo ?? null,
-          inputDescription: input.inputDescription ?? null,
-          healthScore,
-          techStack,
-          checks: allChecks,
-        },
-        aiConfig,
-      ),
+    // Wrap the LLM call so a bad API key / wrong model name doesn't wipe out
+    // the Phase 1 checks we already saved.  On failure we fall back to mock
+    // analysis (clearly labelled) and store the error so it shows in the UI.
+    async function safeAnalyse() {
+      try {
+        return { analysis: await analyseWithClaude(
+          {
+            projectName: input.projectName,
+            inputType: input.inputType,
+            inputUrl: input.inputUrl ?? null,
+            inputGithubRepo: input.inputGithubRepo ?? null,
+            inputDescription: input.inputDescription ?? null,
+            healthScore,
+            techStack,
+            checks: allChecks,
+          },
+          aiConfig,
+        ), aiError: null };
+      } catch (err) {
+        const httpStatus = (err as { status?: number })?.status;
+        let aiError: string;
+        if (httpStatus === 401 || httpStatus === 403) {
+          aiError = "AI authentication failed — check your API key in Settings → Integrations.";
+        } else if (httpStatus === 404) {
+          aiError = `AI model not found — '${aiConfig.model}' is not a valid model ID for ${aiConfig.provider}. Update the model name in Settings → Integrations.`;
+        } else if (httpStatus === 429) {
+          aiError = "AI rate limit hit — quota exhausted. Wait a minute or switch to a different provider in Settings.";
+        } else {
+          aiError = err instanceof Error ? err.message : "AI analysis unavailable.";
+        }
+        return { analysis: getMockAnalysis({ projectName: input.projectName, healthScore }), aiError };
+      }
+    }
+
+    const [{ analysis: llmAnalysis, aiError }, competitorScans, browserResult] = await Promise.all([
+      safeAnalyse(),
       competitorScanPromise,
       browserAgentPromise,
     ]);
@@ -528,7 +551,7 @@ export async function runAnalysis(
         llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
       },
     });
   } catch (error) {

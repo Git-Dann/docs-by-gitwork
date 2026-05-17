@@ -818,6 +818,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       </div>
 
+      {/* AI error banner — shown when LLM failed but scan still completed */}
+      {scan.aiError && (
+        <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">AI analysis unavailable:</span> {scan.aiError} Technical checks and scores above are accurate.
+        </div>
+      )}
+
       {/* Tab content */}
       {/* Web Vitals — shown on overview regardless of AI result */}
       {activeTab === "overview" && scan.browserInsights && (

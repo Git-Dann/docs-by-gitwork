@@ -138,6 +138,7 @@ export interface PulseScanRecord {
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
   browserInsights: BrowserAgentInsights | null;
+  aiError: string | null;
   competitorUrls: string[] | null;
   competitorData: CompetitorData | null;
   shareToken: string | null;
