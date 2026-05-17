@@ -32,6 +32,7 @@ export async function GET(
     healthScore: scan.healthScore,
     techStack: scan.techStack,
     completedAt: scan.completedAt,
+    browserInsights: scan.browserInsights,
     llmAnalysis: scan.llmAnalysis
       ? {
           projectClassification: scan.llmAnalysis.projectClassification,

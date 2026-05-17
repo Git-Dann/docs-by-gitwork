@@ -11,6 +11,18 @@ import {
 import type { PulseCriticalGap, PulseScalingPhase } from "@/types/pulse";
 import { cn, formatDate } from "@/lib/format";
 
+interface BrowserInsights {
+  performanceScore: number | null;
+  accessibilityScore: number | null;
+  seoScore: number | null;
+  bestPracticesScore: number | null;
+  lcp: number | null;
+  cls: number | null;
+  fcp: number | null;
+  tbt: number | null;
+  cruxCategory: string | null;
+}
+
 interface PublicScan {
   id: string;
   projectName: string;
@@ -20,6 +32,7 @@ interface PublicScan {
   healthScore: number | null;
   techStack: string[] | null;
   completedAt: string | null;
+  browserInsights: BrowserInsights | null;
   llmAnalysis: {
     projectClassification: { type: string; subtype: string | null };
     executiveSummary: string;
@@ -57,6 +70,79 @@ function UrgencyBadge({ urgency }: { urgency: string }) {
     <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", cls)}>
       {urgency}
     </span>
+  );
+}
+
+function VitalsRow({ label, score }: { label: string; score: number | null }) {
+  const color = score === null ? "text-gray-400" : score >= 90 ? "text-emerald-600" : score >= 50 ? "text-amber-500" : "text-red-500";
+  const bg = score === null ? "bg-gray-50 border-gray-200" : score >= 90 ? "bg-emerald-50 border-emerald-200" : score >= 50 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
+  return (
+    <div className={cn("flex flex-col items-center gap-1 rounded-[10px] border p-3", bg)}>
+      <span className={cn("text-xl font-bold tabular-nums", color)}>{score ?? "—"}</span>
+      <span className="text-center text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+    </div>
+  );
+}
+
+function WebVitalsSection({ insights }: { insights: BrowserInsights }) {
+  const fmt = (ms: number | null) => ms !== null ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`) : "—";
+  const lcpStatus = (insights.lcp ?? 99999) <= 2500 ? "good" : (insights.lcp ?? 99999) <= 4000 ? "needs improvement" : "poor";
+  const fcpStatus = (insights.fcp ?? 99999) <= 1800 ? "good" : (insights.fcp ?? 99999) <= 3000 ? "needs improvement" : "poor";
+  const tbtStatus = (insights.tbt ?? 99999) <= 200 ? "good" : (insights.tbt ?? 99999) <= 600 ? "needs improvement" : "poor";
+  const clsStatus = (insights.cls ?? 99) <= 0.1 ? "good" : (insights.cls ?? 99) <= 0.25 ? "needs improvement" : "poor";
+  const metricColor = (s: string) => s === "good" ? "text-emerald-600" : s === "needs improvement" ? "text-amber-500" : "text-red-500";
+
+  return (
+    <div className="overflow-hidden rounded-[16px] border border-gray-200 bg-white p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Core Web Vitals</h2>
+        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium text-gray-500">Lighthouse · mobile</span>
+      </div>
+      <div className="mb-4 grid grid-cols-4 gap-2">
+        <VitalsRow label="Performance" score={insights.performanceScore} />
+        <VitalsRow label="Accessibility" score={insights.accessibilityScore} />
+        <VitalsRow label="SEO" score={insights.seoScore} />
+        <VitalsRow label="Best practices" score={insights.bestPracticesScore} />
+      </div>
+      {(insights.lcp !== null || insights.fcp !== null || insights.tbt !== null || insights.cls !== null) && (
+        <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+          {insights.lcp !== null && (
+            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+              <span className="font-medium text-gray-500">LCP</span>
+              <span className={cn("font-bold", metricColor(lcpStatus))}>{fmt(insights.lcp)}</span>
+            </div>
+          )}
+          {insights.fcp !== null && (
+            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+              <span className="font-medium text-gray-500">FCP</span>
+              <span className={cn("font-bold", metricColor(fcpStatus))}>{fmt(insights.fcp)}</span>
+            </div>
+          )}
+          {insights.tbt !== null && (
+            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+              <span className="font-medium text-gray-500">TBT</span>
+              <span className={cn("font-bold", metricColor(tbtStatus))}>{fmt(insights.tbt)}</span>
+            </div>
+          )}
+          {insights.cls !== null && (
+            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+              <span className="font-medium text-gray-500">CLS</span>
+              <span className={cn("font-bold", metricColor(clsStatus))}>{insights.cls.toFixed(3)}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {insights.cruxCategory && (
+        <p className="mt-3 text-xs text-gray-400">
+          Chrome UX Report (real users):{" "}
+          <span className={cn("font-semibold",
+            insights.cruxCategory === "FAST" ? "text-emerald-600" : insights.cruxCategory === "AVERAGE" ? "text-amber-500" : "text-red-500",
+          )}>
+            {insights.cruxCategory.toLowerCase()}
+          </span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -196,6 +282,11 @@ export default function PublicReportPage({
             </div>
           </div>
         </div>
+
+        {/* Web Vitals */}
+        {scan.browserInsights && (
+          <WebVitalsSection insights={scan.browserInsights} />
+        )}
 
         {/* Health narrative */}
         {analysis?.healthNarrative && (
