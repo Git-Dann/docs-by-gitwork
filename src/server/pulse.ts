@@ -379,6 +379,32 @@ export async function runAnalysis(
     const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
     const healthScore = calculateHealthScore(allChecks);
 
+    // Phase 1: persist checks + lightweight fields immediately so SSE clients
+    // can show check results while the AI synthesis is still running.
+    const currentBefore = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
+    if (currentBefore?.status !== "RUNNING") return;
+
+    await prisma.pulseScanCheck.createMany({
+      data: allChecks.map((check, i) => ({
+        scanId,
+        category: check.category,
+        checkKey: check.checkKey,
+        label: check.label,
+        status: check.status,
+        detail: check.detail ?? null,
+        evidence: check.evidence ?? null,
+        sortOrder: check.sortOrder ?? i,
+      })),
+    });
+    await prisma.pulseScan.update({
+      where: { id: scanId },
+      data: {
+        healthScore,
+        techStack: techStack as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
     const llmAnalysis = await analyseWithClaude(
       {
         projectName: input.projectName,
@@ -393,7 +419,6 @@ export async function runAnalysis(
       aiConfig,
     );
 
-    // Generate discovery kit in parallel with the DB write (fire-and-forget pattern)
     const discoveryKit = await generateDiscoveryKit(
       {
         projectName: input.projectName,
@@ -408,7 +433,7 @@ export async function runAnalysis(
       aiConfig,
     );
 
-    // Don't overwrite a user cancellation
+    // Phase 2: persist AI analysis and mark COMPLETED
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
     if (current?.status !== "RUNNING") return;
 
@@ -417,22 +442,8 @@ export async function runAnalysis(
       data: {
         status: "COMPLETED",
         completedAt: new Date(),
-        healthScore,
-        techStack: techStack as unknown as Prisma.InputJsonValue,
         llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
-        checks: {
-          create: allChecks.map((check) => ({
-            category: check.category,
-            checkKey: check.checkKey,
-            label: check.label,
-            status: check.status,
-            detail: check.detail ?? null,
-            evidence: check.evidence ?? null,
-            sortOrder: check.sortOrder ?? 0,
-          })),
-        },
       },
     });
   } catch (error) {

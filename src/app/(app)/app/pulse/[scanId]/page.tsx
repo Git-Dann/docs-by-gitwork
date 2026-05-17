@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";
-import { usePulseScan, useCancelPulseScan, useRetryPulseScan } from "@/hooks/use-pulse";
+import { usePulseScan, usePulseScanStream, useCancelPulseScan, useRetryPulseScan } from "@/hooks/use-pulse";
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
@@ -146,8 +146,9 @@ export default function PulseScanDetailPage({
 }) {
   const { scanId } = use(params);
   const { data, isLoading } = usePulseScan(scanId);
-
   const scan = data?.scan;
+  // SSE stream — active only while RUNNING; falls back to 5s polling on error
+  usePulseScanStream(scanId, scan?.status === "RUNNING");
 
   return (
     <AppShell

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PulseScanRecord } from "@/types/pulse";
 import {
@@ -57,11 +58,55 @@ export function usePulseScan(scanId: string) {
     queryKey: ["pulse-scan", scanId],
     queryFn: () => getPulseScan(scanId),
     enabled: Boolean(scanId),
+    // Fallback polling — SSE hook keeps this inactive when stream is open
     refetchInterval: (query: { state: { data?: { scan: PulseScanRecord } | undefined } }) => {
       const scan = query.state.data?.scan;
-      return scan?.status === "RUNNING" ? 3000 : false;
+      return scan?.status === "RUNNING" ? 5000 : false;
     },
   });
+}
+
+// Subscribes to the server-sent event stream for a RUNNING scan.
+// Merges streamed state into the React Query cache so usePulseScan
+// reflects live check/analysis updates without full refetch polling.
+export function usePulseScanStream(scanId: string, enabled: boolean) {
+  const queryClient = useQueryClient();
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !scanId) return;
+
+    const es = new EventSource(`/api/pulse/scans/${scanId}/stream`);
+    esRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data) as { type: string; scan?: PulseScanRecord };
+        if (msg.type === "state" && msg.scan) {
+          queryClient.setQueryData(["pulse-scan", scanId], { scan: msg.scan });
+        }
+        if (msg.type === "complete") {
+          es.close();
+          // Final authoritative fetch after stream closes
+          queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+          queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+          queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
+        }
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      // Fall back to polling — invalidate so usePulseScan refetches
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    };
+
+    return () => {
+      es.close();
+    };
+  }, [scanId, enabled, queryClient]);
 }
 
 export function useCreatePulseScan() {
