@@ -2202,30 +2202,30 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         : "X-Powered-By header is not present — backend technology is not disclosed.",
     });
 
-    const serverHeader = pageResult.headers["server"] ?? "";
-    const serverHasVersion = /[\/]\d+\.\d+/.test(serverHeader);
+    const a3ServerHeader = pageResult.headers["server"] ?? "";
+    const serverHasVersion = /[\/]\d+\.\d+/.test(a3ServerHeader);
     checks.push({
       category: "Security",
       checkKey: "no_server_version",
       label: "Server version not disclosed",
       status: serverHasVersion ? "FAIL" : "PASS",
       detail: serverHasVersion
-        ? `Server header "${serverHeader}" includes a version number — attackers can target known CVEs for that exact version.`
-        : serverHeader
-          ? `Server header present ("${serverHeader}") but no version number disclosed.`
+        ? `Server header "${a3ServerHeader}" includes a version number — attackers can target known CVEs for that exact version.`
+        : a3ServerHeader
+          ? `Server header present ("${a3ServerHeader}") but no version number disclosed.`
           : "Server header not present — server identity and version are not disclosed.",
     });
 
-    const corsHeader = pageResult.headers["access-control-allow-origin"] ?? "";
+    const a3CorsHeader = pageResult.headers["access-control-allow-origin"] ?? "";
     checks.push({
       category: "Security",
       checkKey: "cors_not_wildcard",
       label: "CORS not open to all origins",
-      status: corsHeader === "*" ? "FAIL" : "PASS",
-      detail: corsHeader === "*"
+      status: a3CorsHeader === "*" ? "FAIL" : "PASS",
+      detail: a3CorsHeader === "*"
         ? "Access-Control-Allow-Origin: * allows any website to read your API responses, enabling data theft and CSRF-style attacks. Restrict to specific trusted origins."
-        : corsHeader
-          ? `CORS origin is restricted to "${corsHeader}".`
+        : a3CorsHeader
+          ? `CORS origin is restricted to "${a3CorsHeader}".`
           : "No CORS header present on the main page.",
     });
 
@@ -2248,16 +2248,16 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
           : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
     });
 
-    const hasH1 = /<h1[\s>]/i.test(pageResult.html);
+    const a4HasH1 = /<h1[\s>]/i.test(pageResult.html);
     const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
     checks.push({
       category: "SEO",
       checkKey: "has_heading_hierarchy",
       label: "Heading hierarchy (H1→H2→H3)",
-      status: hasH1 && hasH2orH3 ? "PASS" : hasH1 ? "WARN" : "FAIL",
-      detail: hasH1 && hasH2orH3
+      status: a4HasH1 && hasH2orH3 ? "PASS" : a4HasH1 ? "WARN" : "FAIL",
+      detail: a4HasH1 && hasH2orH3
         ? "Heading hierarchy detected (H1 and sub-headings present)."
-        : hasH1
+        : a4HasH1
           ? "H1 found but no H2/H3 sub-headings — add sub-headings to improve content structure and SEO."
           : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
     });
@@ -2313,13 +2313,13 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
         : "No service worker detected. Service workers enable offline support, background sync, and dramatically faster repeat visits via cache-first loading.",
     });
 
-    const hasManifestLink = /<link[^>]+rel=["']manifest["']/i.test(pageResult.html);
+    const a5HasManifestLink = /<link[^>]+rel=["']manifest["']/i.test(pageResult.html);
     checks.push({
       category: "Performance",
       checkKey: "web_app_manifest_linked",
       label: "Web app manifest linked",
-      status: hasManifestLink ? "PASS" : "WARN",
-      detail: hasManifestLink
+      status: a5HasManifestLink ? "PASS" : "WARN",
+      detail: a5HasManifestLink
         ? "Web app manifest linked — PWA install prompt and home screen support enabled."
         : "No <link rel=\"manifest\"> found. A manifest.json enables Add to Home Screen on mobile, defines app name/icons, and is required for PWA install prompts.",
     });
