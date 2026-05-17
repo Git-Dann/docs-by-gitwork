@@ -382,6 +382,35 @@ export async function runAnalysis(
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
   try {
+    // For URL scans the target is known upfront — start browser agent and
+    // competitor checks immediately so they run in parallel with infra checks
+    // instead of waiting for the agent pipeline to complete (~15-30s saved).
+    const knownUrl = input.inputType === "URL" ? (input.inputUrl ?? null) : null;
+
+    const earlyBrowserPromise = knownUrl
+      ? runBrowserAgent(knownUrl)
+      : null;
+
+    const earlyCompetitorPromise: Promise<CompetitorScanSummary[]> =
+      knownUrl && input.competitorUrls && input.competitorUrls.length > 0
+        ? Promise.all(
+            input.competitorUrls.map(async (url) => {
+              try {
+                let resolvedUrl = url.trim();
+                if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
+                const result = await runUrlChecks(resolvedUrl);
+                const score = calculateHealthScore(result.checks);
+                const pass = result.checks.filter((c) => c.status === "PASS").length;
+                const warn = result.checks.filter((c) => c.status === "WARN").length;
+                const fail = result.checks.filter((c) => c.status === "FAIL").length;
+                return { url: resolvedUrl, healthScore: score, checksPass: pass, checksWarn: warn, checksFail: fail, techStack: result.techStack };
+              } catch {
+                return { url, healthScore: 0, checksPass: 0, checksWarn: 0, checksFail: 0, techStack: [] };
+              }
+            }),
+          )
+        : Promise.resolve([]);
+
     // Multi-agent orchestrated scan (parallel where possible)
     const scanResult = await runOrchestratedScan({
       inputType: input.inputType,
@@ -419,37 +448,36 @@ export async function runAnalysis(
       },
     });
 
-    // Run competitor URL checks in parallel with AI synthesis (both start now)
-    const competitorScanPromise: Promise<CompetitorScanSummary[]> =
-      input.competitorUrls && input.competitorUrls.length > 0
-        ? Promise.all(
-            input.competitorUrls.map(async (url) => {
-              try {
-                let resolvedUrl = url.trim();
-                if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
-                const result = await runUrlChecks(resolvedUrl);
-                const score = calculateHealthScore(result.checks);
-                const pass = result.checks.filter((c) => c.status === "PASS").length;
-                const warn = result.checks.filter((c) => c.status === "WARN").length;
-                const fail = result.checks.filter((c) => c.status === "FAIL").length;
-                return { url: resolvedUrl, healthScore: score, checksPass: pass, checksWarn: warn, checksFail: fail, techStack: result.techStack };
-              } catch {
-                return { url, healthScore: 0, checksPass: 0, checksWarn: 0, checksFail: 0, techStack: [] };
-              }
-            }),
-          )
-        : Promise.resolve([]);
-
-    // Browser agent (PageSpeed Insights — slow, ~30s) runs in parallel with AI
-    // so fast checks still stream to the client within 8-10s of scan start.
+    // For GitHub scans, homepage URL may only be known now (from code agent).
+    // For URL scans, earlyBrowserPromise already started above.
     const browserUrl =
-      input.inputType === "URL" ? (input.inputUrl ?? null)
+      input.inputType === "URL" ? knownUrl
       : (input.inputType === "GITHUB_REPO" && scanResult.homepageUrl) ? scanResult.homepageUrl
       : null;
 
-    const browserAgentPromise = browserUrl
-      ? runBrowserAgent(browserUrl)
-      : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
+    const browserAgentPromise = earlyBrowserPromise
+      ?? (browserUrl ? runBrowserAgent(browserUrl) : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null }));
+
+    // For GitHub scans, competitor checks start here (URL was unknown earlier).
+    const competitorScanPromise: Promise<CompetitorScanSummary[]> = earlyCompetitorPromise.then((early) => {
+      if (early.length > 0 || !input.competitorUrls?.length) return early;
+      return Promise.all(
+        input.competitorUrls.map(async (url) => {
+          try {
+            let resolvedUrl = url.trim();
+            if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
+            const result = await runUrlChecks(resolvedUrl);
+            const score = calculateHealthScore(result.checks);
+            const pass = result.checks.filter((c) => c.status === "PASS").length;
+            const warn = result.checks.filter((c) => c.status === "WARN").length;
+            const fail = result.checks.filter((c) => c.status === "FAIL").length;
+            return { url: resolvedUrl, healthScore: score, checksPass: pass, checksWarn: warn, checksFail: fail, techStack: result.techStack };
+          } catch {
+            return { url, healthScore: 0, checksPass: 0, checksWarn: 0, checksFail: 0, techStack: [] };
+          }
+        }),
+      );
+    });
 
     // Wrap the LLM call so a bad key / wrong model / no key never wipes out
     // the Phase 1 checks. On failure analysis is null (no mock data shown).

@@ -577,6 +577,10 @@ export async function triggerDiscoveryKit(scanId: string): Promise<{ kit: Discov
   );
 }
 
+export async function loadDemoScan(): Promise<{ scanId: string }> {
+  return apiFetch<{ scanId: string }>("/api/dev/seed-demo", { method: "POST" });
+}
+
 export interface MonitorRecord {
   id: string;
   projectName: string;

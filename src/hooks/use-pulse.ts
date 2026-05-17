@@ -17,6 +17,7 @@ import {
   triggerFixAgent,
   triggerBrowserAgent,
   triggerDiscoveryKit,
+  loadDemoScan,
   listMonitors,
   createMonitor,
   deleteMonitor,
@@ -197,6 +198,17 @@ export function useRunDiscoveryKit() {
     mutationFn: triggerDiscoveryKit,
     onSuccess: (_data, scanId) => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
+  });
+}
+
+export function useLoadDemoScan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: loadDemoScan,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
     },
   });
 }

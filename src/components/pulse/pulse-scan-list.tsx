@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowRightIcon,
+  BeakerIcon,
   DocumentTextIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
@@ -12,7 +13,8 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { usePulseScans, useDeletePulseScan } from "@/hooks/use-pulse";
+import { useRouter } from "next/navigation";
+import { usePulseScans, useDeletePulseScan, useLoadDemoScan } from "@/hooks/use-pulse";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
@@ -365,8 +367,15 @@ function ScanRow({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function PulseScanListView() {
+  const router = useRouter();
   const { data, isLoading, error } = usePulseScans();
   const { mutateAsync: bulkDelete, isPending: bulkDeleting } = useDeletePulseScan();
+  const { mutateAsync: loadDemo, isPending: loadingDemo } = useLoadDemoScan();
+
+  async function handleLoadDemo() {
+    const result = await loadDemo();
+    router.push(`/app/pulse/${result.scanId}`);
+  }
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -511,6 +520,18 @@ export function PulseScanListView() {
             <option value="SCORE_LOW">Score: low → high</option>
           </select>
 
+          {/* Demo */}
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={handleLoadDemo}
+            loading={loadingDemo}
+            leadingIcon={<BeakerIcon className="h-4 w-4" />}
+            className="shrink-0 whitespace-nowrap"
+          >
+            {loadingDemo ? "Loading…" : "Demo scan"}
+          </Button>
+
           {/* New scan */}
           <Link href="/app/pulse/new" className="shrink-0">
             <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
@@ -586,6 +607,22 @@ export function PulseScanListView() {
           <p className="mt-1 text-sm text-[var(--text-4)]">
             Run your first Pulse scan to validate a client project.
           </p>
+          <div className="mt-4 flex justify-center gap-3">
+            <Link href="/app/pulse/new">
+              <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
+                New scan
+              </Button>
+            </Link>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleLoadDemo}
+              loading={loadingDemo}
+              leadingIcon={<BeakerIcon className="h-4 w-4" />}
+            >
+              Load demo scan
+            </Button>
+          </div>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-[16px] border border-dashed border-[var(--border-2)] py-12 text-center">
