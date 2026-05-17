@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowRightIcon,
@@ -193,50 +193,77 @@ function FiltersDropdown({
   );
 }
 
-// ── Delete button with inline confirm ─────────────────────────────────────────
+// ── Delete button with floating popover confirm ───────────────────────────────
 
 function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () => void }) {
-  const [armed, setArmed] = useState(false);
+  const [open, setOpen] = useState(false);
   const { mutateAsync, isPending } = useDeletePulseScan();
+  const ref = useRef<HTMLDivElement>(null);
 
-  async function handleConfirm() {
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, close]);
+
+  async function handleDelete() {
     await mutateAsync(scanId);
     onDeleted?.();
   }
 
-  if (armed) {
-    return (
-      <div className="flex items-center gap-1 rounded-[8px] border border-red-200 bg-red-50 px-2 py-1">
-        <span className="text-[11px] text-red-700">Delete?</span>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={isPending}
-          className="text-[11px] font-semibold text-red-600 hover:text-red-900 disabled:opacity-50 px-0.5"
-        >
-          {isPending ? "…" : "Yes"}
-        </button>
-        <span className="text-red-300 text-[11px] select-none">·</span>
-        <button
-          type="button"
-          onClick={() => setArmed(false)}
-          className="text-[11px] text-[var(--text-4)] hover:text-[var(--text-2)] px-0.5"
-        >
-          No
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <button
-      type="button"
-      onClick={() => setArmed(true)}
-      className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
-      title="Delete scan"
-    >
-      <TrashIcon className="h-4 w-4" />
-    </button>
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "rounded-[6px] p-1.5 transition",
+          open
+            ? "bg-red-100 text-red-600"
+            : "text-[var(--text-4)] hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100",
+        )}
+        title="Delete scan"
+      >
+        <TrashIcon className="h-4 w-4" />
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full right-0 z-30 mb-2 w-44 rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-xl">
+          {/* tiny arrow */}
+          <div className="absolute -bottom-1.5 right-3 h-3 w-3 rotate-45 border-b border-r border-[var(--border-2)] bg-white" />
+          <p className="mb-2.5 text-xs font-medium text-[var(--text-1)]">Delete this scan?</p>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isPending}
+              className="flex-1 rounded-[8px] bg-red-600 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition"
+            >
+              {isPending ? "Deleting…" : "Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="flex-1 rounded-[8px] border border-[var(--border-2)] py-1.5 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
