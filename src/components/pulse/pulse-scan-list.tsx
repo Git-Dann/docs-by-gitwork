@@ -199,32 +199,30 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
   const [armed, setArmed] = useState(false);
   const { mutateAsync, isPending } = useDeletePulseScan();
 
-  async function handleDelete() {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
+  async function handleConfirm() {
     await mutateAsync(scanId);
     onDeleted?.();
   }
 
   if (armed) {
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 rounded-[8px] border border-red-200 bg-red-50 px-2 py-1">
+        <span className="text-[11px] text-red-700">Delete?</span>
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={handleConfirm}
           disabled={isPending}
-          className="rounded-[6px] bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          className="text-[11px] font-semibold text-red-600 hover:text-red-900 disabled:opacity-50 px-0.5"
         >
-          {isPending ? "Deleting…" : "Confirm"}
+          {isPending ? "…" : "Yes"}
         </button>
+        <span className="text-red-300 text-[11px] select-none">·</span>
         <button
           type="button"
           onClick={() => setArmed(false)}
-          className="rounded-[6px] p-1 text-[var(--text-4)] hover:text-[var(--text-2)]"
+          className="text-[11px] text-[var(--text-4)] hover:text-[var(--text-2)] px-0.5"
         >
-          <XMarkIcon className="h-3.5 w-3.5" />
+          No
         </button>
       </div>
     );
@@ -233,8 +231,8 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
   return (
     <button
       type="button"
-      onClick={handleDelete}
-      className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+      onClick={() => setArmed(true)}
+      className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
       title="Delete scan"
     >
       <TrashIcon className="h-4 w-4" />
@@ -244,7 +242,7 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
 
 // Shared grid template — header and every row use the same columns so they align exactly.
 // Actions column is fixed (not auto) so the empty header spacer matches the row's buttons.
-const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem 4rem";
+const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem 7rem";
 
 // ── Scan row ──────────────────────────────────────────────────────────────────
 
@@ -324,12 +322,12 @@ function ScanRow({
       </span>
 
       {/* Col 8 — Actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-end gap-1.5">
         <Link
           href={`/app/pulse/${scan.id}`}
-          className="hidden rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--text-1)] sm:block"
+          className="hidden sm:inline-flex items-center gap-1 rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--text-3)] opacity-0 transition-all group-hover:opacity-100 hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)] hover:text-[var(--brand-600)]"
         >
-          <ArrowRightIcon className="h-4 w-4" />
+          View <ArrowRightIcon className="h-3 w-3" />
         </Link>
         <DeleteButton scanId={scan.id} />
       </div>
