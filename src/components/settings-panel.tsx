@@ -813,7 +813,7 @@ type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string; defaultModel: string }[] = [
   { id: "ANTHROPIC", label: "Claude", hint: "claude-sonnet-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY", defaultModel: "claude-sonnet-4-6" },
   { id: "OPENAI", label: "OpenAI", hint: "gpt-4o by default.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY", defaultModel: "gpt-4o" },
-  { id: "GEMINI", label: "Gemini (Google)", hint: "gemini-1.5-flash by default.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY", defaultModel: "gemini-1.5-flash" },
+  { id: "GEMINI", label: "Gemini (Google)", hint: "gemini-2.0-flash by default.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY", defaultModel: "gemini-2.0-flash" },
   { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server.", keyPlaceholder: "(optional API key)", envVar: "", defaultModel: "llama3.1" },
 ];
 
@@ -932,7 +932,7 @@ function ProviderRow({
     : null;
   const currentModel = provider.id === "ANTHROPIC" ? (config.anthropicModel ?? "claude-sonnet-4-6")
     : provider.id === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
-    : provider.id === "GEMINI" ? (config.geminiModel ?? "gemini-1.5-flash")
+    : provider.id === "GEMINI" ? (config.geminiModel ?? "gemini-2.0-flash")
     : (config.localLlmModel ?? "llama3.1");
   const configured = Boolean(keySource) || (provider.id === "LOCAL" && Boolean(config.localLlmUrl));
 
@@ -1188,7 +1188,7 @@ function IntegrationsTab() {
               {(() => {
                 const model = config.aiProvider === "ANTHROPIC" ? (config.anthropicModel ?? "claude-sonnet-4-6")
                   : config.aiProvider === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
-                  : config.aiProvider === "GEMINI" ? (config.geminiModel ?? "gemini-1.5-flash")
+                  : config.aiProvider === "GEMINI" ? (config.geminiModel ?? "gemini-2.0-flash")
                   : (config.localLlmModel ?? "llama3.1");
                 return <> · Model: <span className="font-mono font-medium text-[var(--text-1)]">{model}</span></>;
               })()}

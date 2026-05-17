@@ -10,9 +10,13 @@ async function getPageData() {
       id: true,
       aiProvider: true,
       anthropicApiKey: true,
+      anthropicModel: true,
       openaiApiKey: true,
+      openaiModel: true,
       geminiApiKey: true,
+      geminiModel: true,
       localLlmUrl: true,
+      localLlmModel: true,
     },
   });
 
@@ -24,20 +28,20 @@ async function getPageData() {
       })
     : [];
 
-  type Provider = { id: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; label: string };
+  type Provider = { id: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; label: string; model: string };
   const configuredProviders: Provider[] = [];
 
   if (process.env.ANTHROPIC_API_KEY || workspace?.anthropicApiKey) {
-    configuredProviders.push({ id: "ANTHROPIC", label: "Claude" });
+    configuredProviders.push({ id: "ANTHROPIC", label: "Claude", model: workspace?.anthropicModel ?? "claude-sonnet-4-6" });
   }
   if (process.env.OPENAI_API_KEY || workspace?.openaiApiKey) {
-    configuredProviders.push({ id: "OPENAI", label: "OpenAI" });
+    configuredProviders.push({ id: "OPENAI", label: "OpenAI", model: workspace?.openaiModel ?? "gpt-4o" });
   }
   if (process.env.GEMINI_API_KEY || workspace?.geminiApiKey) {
-    configuredProviders.push({ id: "GEMINI", label: "Gemini" });
+    configuredProviders.push({ id: "GEMINI", label: "Gemini", model: workspace?.geminiModel ?? "gemini-2.0-flash" });
   }
   if (workspace?.localLlmUrl) {
-    configuredProviders.push({ id: "LOCAL", label: "Local LLM" });
+    configuredProviders.push({ id: "LOCAL", label: "Local LLM", model: workspace?.localLlmModel ?? "llama3.1" });
   }
 
   return {

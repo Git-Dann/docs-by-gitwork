@@ -101,7 +101,7 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
            (workspace.anthropicModel ?? "claude-opus-4-7"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :

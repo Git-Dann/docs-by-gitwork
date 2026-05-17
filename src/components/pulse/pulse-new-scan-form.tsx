@@ -49,7 +49,7 @@ export function PulseNewScanForm({
   activeProvider,
 }: {
   clients: Array<{ id: string; name: string }>;
-  configuredProviders: Array<{ id: AiProviderId; label: string }>;
+  configuredProviders: Array<{ id: AiProviderId; label: string; model: string }>;
   activeProvider: AiProviderId;
 }) {
   const router = useRouter();
@@ -66,7 +66,6 @@ export function PulseNewScanForm({
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
-  const showProviderPicker = configuredProviders.length > 1;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -259,31 +258,35 @@ export function PulseNewScanForm({
         </div>
       )}
 
-      {showProviderPicker && (
-        <div className="space-y-2">
-          <label className="app-field-label">AI provider for this scan</label>
-          <div className="flex flex-wrap gap-2">
-            {configuredProviders.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setSelectedProvider(p.id)}
-                disabled={isPending}
-                className={
-                  selectedProvider === p.id
-                    ? "rounded-[10px] border border-[var(--brand-500)] bg-[var(--brand-50)] px-3 py-2 text-sm font-medium text-[var(--brand-700)]"
-                    : "rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-                }
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-[var(--text-4)]">
-            Default is {configuredProviders.find((p) => p.id === activeProvider)?.label ?? activeProvider} — override per scan here.
-          </p>
-        </div>
-      )}
+      <div className="space-y-1.5">
+        <label className="app-field-label">AI provider &amp; model</label>
+        <select
+          className="app-select"
+          value={selectedProvider}
+          onChange={(e) => setSelectedProvider(e.target.value as AiProviderId)}
+          disabled={isPending || configuredProviders.length === 0}
+        >
+          {configuredProviders.length === 0 ? (
+            <option value="">No provider configured — add one in Settings → Integrations</option>
+          ) : (
+            configuredProviders.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} — {p.model}
+              </option>
+            ))
+          )}
+        </select>
+        <p className="text-xs text-[var(--text-4)]">
+          {(() => {
+            const active = configuredProviders.find((p) => p.id === selectedProvider);
+            if (!active) return "Configure an AI provider in Settings → Integrations first.";
+            const isDefault = selectedProvider === activeProvider;
+            return isDefault
+              ? `This is your default provider. Change in Settings → Integrations to save a new default.`
+              : `Using ${active.label} (${active.model}) for this scan only. Your default is still ${configuredProviders.find((p) => p.id === activeProvider)?.label ?? activeProvider}.`;
+          })()}
+        </p>
+      </div>
 
       {error && (
         <p className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">

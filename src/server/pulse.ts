@@ -263,7 +263,7 @@ export async function createPulseScanRecord(input: {
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
            (workspace.anthropicModel ?? "claude-sonnet-4-6"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
@@ -339,7 +339,7 @@ export async function retryPulseScan(scanId: string): Promise<{
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-1.5-flash") :
+           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
            (workspace.anthropicModel ?? "claude-sonnet-4-6"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
