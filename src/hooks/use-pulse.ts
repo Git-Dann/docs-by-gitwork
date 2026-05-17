@@ -14,6 +14,7 @@ import {
   getPulseStats,
   sharePulseScan,
   unsharePulseScan,
+  triggerFixAgent,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -166,5 +167,11 @@ export function useGeneratePulseProposal() {
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
+  });
+}
+
+export function useRunFixAgent() {
+  return useMutation({
+    mutationFn: triggerFixAgent,
   });
 }

@@ -550,6 +550,19 @@ export async function unsharePulseScan(scanId: string): Promise<{ isShared: bool
   );
 }
 
+export interface FixAgentResult {
+  proposedFixes: Array<{ checkKey: string; filePath: string; newContent: string; explanation: string }>;
+  prUrl: string | null;
+  summary: string;
+}
+
+export async function triggerFixAgent(scanId: string): Promise<FixAgentResult> {
+  return apiFetch<FixAgentResult>(
+    `/api/pulse/scans/${scanId}/fix-agent`,
+    { method: "POST" },
+  );
+}
+
 export interface IntegrationsResponse {
   aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicKeyMasked: string | null;

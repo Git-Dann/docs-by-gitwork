@@ -19,9 +19,11 @@ import {
   MinusCircleIcon,
   QuestionMarkCircleIcon,
   XCircleIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent } from "@/hooks/use-pulse";
+import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData } from "@/types/pulse";
 import {
@@ -392,11 +394,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
+  const { mutateAsync: runFix, isPending: fixing } = useRunFixAgent();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(scan.shareToken);
   const [isShared, setIsShared] = useState(scan.isShared);
+  const [fixResult, setFixResult] = useState<FixAgentResult | null>(null);
 
   function toggleCategory(category: string) {
     setExpandedCategories((prev: Set<string>) => {
@@ -431,6 +435,11 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleAutoFix() {
+    const result = await runFix(scan.id);
+    setFixResult(result);
   }
 
   async function handleRescan() {
@@ -536,6 +545,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 Report
               </Button>
             </Link>
+            {scan.status === "COMPLETED" && scan.inputType === "GITHUB_REPO" && !fixResult && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={handleAutoFix}
+                loading={fixing}
+                leadingIcon={<WrenchScrewdriverIcon className="h-4 w-4" />}
+              >
+                {fixing ? "Fixing…" : "Auto-fix"}
+              </Button>
+            )}
             {scan.status === "COMPLETED" && (
               isShared ? (
                 <Button
@@ -576,6 +596,47 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
         </div>
       </div>
+
+      {/* Fix agent result banner */}
+      {fixResult && (
+        <div className={cn(
+          "rounded-[14px] border p-4",
+          fixResult.prUrl ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50",
+        )}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className={cn("text-sm font-semibold", fixResult.prUrl ? "text-emerald-800" : "text-amber-800")}>
+                {fixResult.prUrl ? "Pull request created" : "Fix agent complete"}
+              </p>
+              <p className={cn("mt-0.5 text-sm", fixResult.prUrl ? "text-emerald-700" : "text-amber-700")}>
+                {fixResult.summary}
+              </p>
+            </div>
+            {fixResult.prUrl && (
+              <a
+                href={fixResult.prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-[8px] bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
+              >
+                View PR →
+              </a>
+            )}
+          </div>
+          {fixResult.proposedFixes.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {fixResult.proposedFixes.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs text-emerald-700">
+                  <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <code className="font-mono">{f.filePath}</code>
+                  <span className="text-emerald-500">—</span>
+                  <span className="truncate">{f.explanation}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-[var(--border-2)]">
