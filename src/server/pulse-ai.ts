@@ -6,18 +6,20 @@ export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; 
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
 export { getModelForTask };
 
-// Anthropic model routing — different capability/cost profiles per task.
-// Other providers use their configured workspace model throughout.
-const ANTHROPIC_TASK_MODELS: Record<AiTask, string> = {
-  synthesis:   "claude-opus-4-7",   // highest reasoning for the main audit
-  discovery:   "claude-sonnet-4-6", // strong enough, saves cost on the sales kit
-  competitor:  "claude-sonnet-4-6", // parallel comparison, cost-effective
-  "fix-agent": "claude-opus-4-7",   // tool-use loop requires best instruction-following
-};
+// Task-specific model hints for Anthropic — only applied when the workspace model
+// matches a known fast/cheap model and we want to use a heavier one for synthesis.
+// Falls back to config.model (workspace setting) which is always safe.
+const ANTHROPIC_LIGHTER_MODELS = new Set(["claude-sonnet-4-6", "claude-haiku-4-5-20251001"]);
 
 function getModelForTask(config: AiConfig, task: AiTask): string {
   if (config.provider !== "ANTHROPIC") return config.model;
-  return ANTHROPIC_TASK_MODELS[task] ?? config.model;
+  // Only upgrade synthesis to the workspace model if it's already a capable one.
+  // Never hardcode a model the workspace hasn't explicitly chosen.
+  if (task === "discovery" || task === "competitor") {
+    // Use sonnet for cheaper tasks if the workspace is on a heavier model
+    if (!ANTHROPIC_LIGHTER_MODELS.has(config.model)) return "claude-sonnet-4-6";
+  }
+  return config.model;
 }
 
 
