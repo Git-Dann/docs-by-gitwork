@@ -497,6 +497,21 @@ function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
   );
 }
 
+function AiUnavailable({ aiError }: { aiError: string | null }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-8 text-center">
+      <p className="text-sm font-semibold text-[var(--text-2)]">AI analysis not available</p>
+      {aiError ? (
+        <p className="mt-2 text-sm text-[var(--text-3)]">{aiError}</p>
+      ) : (
+        <p className="mt-2 text-sm text-[var(--text-3)]">
+          Configure an AI provider in <strong>Settings → Integrations</strong> to see this section.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
@@ -831,6 +846,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         <WebVitalsCard insights={scan.browserInsights} />
       )}
 
+      {activeTab === "overview" && !llm && (
+        <AiUnavailable aiError={scan.aiError} />
+      )}
+
       {activeTab === "overview" && llm && (
         <div className="space-y-6">
 
@@ -979,6 +998,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
+      {activeTab === "gaps" && !llm && <AiUnavailable aiError={scan.aiError} />}
+
       {activeTab === "gaps" && llm && (
         <div className="space-y-3">
           {llm.criticalGaps.length === 0 && (
@@ -1009,6 +1030,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
+      {activeTab === "opportunities" && !llm && <AiUnavailable aiError={scan.aiError} />}
+
       {activeTab === "opportunities" && llm && (
         <div className="space-y-3">
           {llm.buildOpportunities.length === 0 && (
@@ -1035,6 +1058,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           ))}
         </div>
       )}
+
+      {activeTab === "readiness" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
       {activeTab === "readiness" && llm && (
         <div className="space-y-6">
@@ -1083,6 +1108,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
+      {activeTab === "stack" && !llm && <AiUnavailable aiError={scan.aiError} />}
+
       {activeTab === "stack" && llm?.techStackAnalysis && (
         <StackTab analysis={llm.techStackAnalysis} detectedStack={scan.techStack ?? []} />
       )}
@@ -1094,6 +1121,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {activeTab === "discovery" && scan.discoveryKit && (
         <DiscoveryTab kit={scan.discoveryKit} />
       )}
+
+      {activeTab === "roadmap" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
       {activeTab === "roadmap" && llm && (
         <div className="space-y-4">

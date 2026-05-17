@@ -293,7 +293,10 @@ export async function analyseWithClaude(
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ): Promise<PulseAnalysisOutput> {
   if (!aiConfig.apiKey) {
-    return getMockAnalysis({ projectName: input.projectName, healthScore: input.healthScore });
+    throw Object.assign(
+      new Error(`No ${aiConfig.provider} API key configured — add one in Settings → Integrations.`),
+      { code: "NO_API_KEY" },
+    );
   }
 
   const inputRef =

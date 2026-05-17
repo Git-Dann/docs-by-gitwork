@@ -3,6 +3,8 @@ import { PulseNewScanForm } from "@/components/pulse/pulse-new-scan-form";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
+export const dynamic = "force-dynamic";
+
 async function getPageData() {
   const workspace = await prisma.workspace.findFirst({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -41,7 +43,13 @@ async function getPageData() {
     configuredProviders.push({ id: "GEMINI", label: "Gemini", model: workspace?.geminiModel ?? "gemini-2.0-flash" });
   }
   if (workspace?.localLlmUrl) {
-    configuredProviders.push({ id: "LOCAL", label: "Local LLM", model: workspace?.localLlmModel ?? "llama3.1" });
+    const localModel = workspace?.localLlmModel ?? "llama3.1";
+    const localLabel = workspace?.localLlmUrl?.includes("ollama") || workspace?.localLlmUrl?.includes("11434")
+      ? "Ollama"
+      : workspace?.localLlmUrl?.includes("lmstudio") || workspace?.localLlmUrl?.includes("1234")
+        ? "LM Studio"
+        : "Local LLM";
+    configuredProviders.push({ id: "LOCAL", label: localLabel, model: localModel });
   }
 
   return {

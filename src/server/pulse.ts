@@ -11,7 +11,7 @@ import {
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
 import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
-import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison, getMockAnalysis } from "@/server/pulse-ai";
+import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
@@ -447,28 +447,33 @@ export async function runAnalysis(
         ? runBrowserAgent(input.inputUrl)
         : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
 
-    // Wrap the LLM call so a bad API key / wrong model name doesn't wipe out
-    // the Phase 1 checks we already saved.  On failure we fall back to mock
-    // analysis (clearly labelled) and store the error so it shows in the UI.
-    async function safeAnalyse() {
+    // Wrap the LLM call so a bad key / wrong model / no key never wipes out
+    // the Phase 1 checks. On failure analysis is null (no mock data shown).
+    async function safeAnalyse(): Promise<{ analysis: PulseAnalysisOutput | null; aiError: string | null }> {
       try {
-        return { analysis: await analyseWithClaude(
-          {
-            projectName: input.projectName,
-            inputType: input.inputType,
-            inputUrl: input.inputUrl ?? null,
-            inputGithubRepo: input.inputGithubRepo ?? null,
-            inputDescription: input.inputDescription ?? null,
-            healthScore,
-            techStack,
-            checks: allChecks,
-          },
-          aiConfig,
-        ), aiError: null };
+        return {
+          analysis: await analyseWithClaude(
+            {
+              projectName: input.projectName,
+              inputType: input.inputType,
+              inputUrl: input.inputUrl ?? null,
+              inputGithubRepo: input.inputGithubRepo ?? null,
+              inputDescription: input.inputDescription ?? null,
+              healthScore,
+              techStack,
+              checks: allChecks,
+            },
+            aiConfig,
+          ),
+          aiError: null,
+        };
       } catch (err) {
         const httpStatus = (err as { status?: number })?.status;
+        const code = (err as { code?: string })?.code;
         let aiError: string;
-        if (httpStatus === 401 || httpStatus === 403) {
+        if (code === "NO_API_KEY") {
+          aiError = err instanceof Error ? err.message : "No API key configured.";
+        } else if (httpStatus === 401 || httpStatus === 403) {
           aiError = "AI authentication failed — check your API key in Settings → Integrations.";
         } else if (httpStatus === 404) {
           aiError = `AI model not found — '${aiConfig.model}' is not a valid model ID for ${aiConfig.provider}. Update the model name in Settings → Integrations.`;
@@ -477,7 +482,7 @@ export async function runAnalysis(
         } else {
           aiError = err instanceof Error ? err.message : "AI analysis unavailable.";
         }
-        return { analysis: getMockAnalysis({ projectName: input.projectName, healthScore }), aiError };
+        return { analysis: null, aiError };
       }
     }
 
@@ -487,26 +492,26 @@ export async function runAnalysis(
       browserAgentPromise,
     ]);
 
-    // Discovery kit: skip for FREE_TEXT scans — no URL/repo data to act on
-    const runDiscovery = input.inputType !== "FREE_TEXT";
+    // Discovery kit and competitor comparison require a successful LLM analysis.
+    const runDiscovery = input.inputType !== "FREE_TEXT" && llmAnalysis !== null;
 
     const [discoveryKit, competitorComparison] = await Promise.all([
       runDiscovery
         ? generateDiscoveryKit(
             {
               projectName: input.projectName,
-              projectType: llmAnalysis.projectClassification.type,
+              projectType: llmAnalysis!.projectClassification.type,
               healthScore,
-              proposalHook: llmAnalysis.proposalHook,
-              executiveSummary: llmAnalysis.executiveSummary,
-              criticalGaps: llmAnalysis.criticalGaps,
-              buildOpportunities: llmAnalysis.buildOpportunities,
+              proposalHook: llmAnalysis!.proposalHook,
+              executiveSummary: llmAnalysis!.executiveSummary,
+              criticalGaps: llmAnalysis!.criticalGaps,
+              buildOpportunities: llmAnalysis!.buildOpportunities,
               checks: allChecks,
             },
             aiConfig,
           )
         : Promise.resolve(null),
-      competitorScans.length > 0
+      competitorScans.length > 0 && llmAnalysis !== null
         ? generateCompetitorComparison(
             { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
             aiConfig,
@@ -548,7 +553,7 @@ export async function runAnalysis(
       data: {
         status: "COMPLETED",
         completedAt: new Date(),
-        llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
+        llmAnalysis: llmAnalysis ? (llmAnalysis as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
