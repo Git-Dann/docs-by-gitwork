@@ -674,6 +674,7 @@ function AgentCard({ slot }: { slot: AgentSlot }) {
 function AgentPanel({
   scan,
   fixResult,
+  fixError,
   onAutoFix,
   fixing,
   onMonitor,
@@ -682,6 +683,7 @@ function AgentPanel({
 }: {
   scan: PulseScanRecord;
   fixResult: FixAgentResult | null;
+  fixError: string | null;
   onAutoFix: () => void;
   fixing: boolean;
   onMonitor: () => void;
@@ -781,17 +783,15 @@ function AgentPanel({
       id: "fix",
       label: "Auto-fix",
       description: "AI reads your repo files and opens a GitHub PR with targeted fixes",
-      status: fixResult
-        ? "completed"
-        : scan.inputType === "GITHUB_REPO"
-          ? "available"
-          : "na",
-      summary: fixResult
-        ? fixResult.summary
-        : scan.inputType === "GITHUB_REPO"
-          ? `Fix the ${scan.checks.filter((c) => c.status === "FAIL").length} failing checks automatically`
-          : "GitHub repo scans only",
-      actionLabel: fixResult ? "View PR" : "Run fix agent",
+      status: fixError ? "error" : fixResult ? "completed" : scan.inputType === "GITHUB_REPO" ? "available" : "na",
+      summary: fixError
+        ? fixError
+        : fixResult
+          ? fixResult.summary
+          : scan.inputType === "GITHUB_REPO"
+            ? `Fix the ${scan.checks.filter((c) => c.status === "FAIL").length} failing checks automatically`
+            : "GitHub repo scans only",
+      actionLabel: fixError ? "Retry" : fixResult?.prUrl ? "View PR" : "Run fix agent",
       onAction: fixResult?.prUrl ? () => window.open(fixResult.prUrl!, "_blank") : onAutoFix,
       loading: fixing,
     },
@@ -870,6 +870,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [shareToken, setShareToken] = useState<string | null>(scan.shareToken);
   const [isShared, setIsShared] = useState(scan.isShared);
   const [fixResult, setFixResult] = useState<FixAgentResult | null>(null);
+  const [fixError, setFixError] = useState<string | null>(null);
   const [monitorWebhookUrl, setMonitorWebhookUrl] = useState<string | null>(null);
 
   function toggleCategory(category: string) {
@@ -919,8 +920,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   }
 
   async function handleAutoFix() {
-    const result = await runFix(scan.id);
-    setFixResult(result);
+    setFixError(null);
+    try {
+      const result = await runFix(scan.id);
+      setFixResult(result);
+    } catch (err) {
+      setFixError(err instanceof Error ? err.message : "Fix agent failed. Check your configuration and try again.");
+    }
   }
 
   async function handleRescan() {
@@ -1072,6 +1078,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         <AgentPanel
           scan={scan}
           fixResult={fixResult}
+          fixError={fixError}
           onAutoFix={handleAutoFix}
           fixing={fixing}
           onMonitor={handleMonitor}

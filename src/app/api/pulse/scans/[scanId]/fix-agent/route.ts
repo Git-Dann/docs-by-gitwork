@@ -37,6 +37,7 @@ export async function POST(
              : null,
     };
     if (!aiConfig.apiKey) return apiError("No AI API key configured — add one in Settings → Integrations.", 400);
+    if (!process.env.GITHUB_TOKEN?.trim()) return apiError("GITHUB_TOKEN is not set — add it to your environment variables to allow the fix agent to create pull requests.", 400);
 
     const result = await runFixAgent(scanId, aiConfig);
     return apiOk(result);

@@ -38,8 +38,10 @@ export async function GET(
           projectClassification: scan.llmAnalysis.projectClassification,
           executiveSummary: scan.llmAnalysis.executiveSummary,
           healthNarrative: scan.llmAnalysis.healthNarrative,
+          proposalHook: scan.llmAnalysis.proposalHook,
           strengths: scan.llmAnalysis.strengths,
-          criticalGaps: scan.llmAnalysis.criticalGaps.slice(0, 5),
+          criticalGaps: scan.llmAnalysis.criticalGaps.slice(0, 6),
+          buildOpportunities: scan.llmAnalysis.buildOpportunities.slice(0, 6),
           scalingRoadmap: scan.llmAnalysis.scalingRoadmap,
           techStackAnalysis: scan.llmAnalysis.techStackAnalysis,
         }
