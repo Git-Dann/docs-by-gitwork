@@ -11,8 +11,9 @@ import {
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
 import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
-import { analyseWithClaude, generateDiscoveryKit } from "@/server/pulse-ai";
+import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
+import { runUrlChecks } from "@/server/pulse-scan";
 import type {
   PulseScanRecord,
   PulseScanListItem,
@@ -21,6 +22,8 @@ import type {
   DiscoveryKit,
   CodeAgentInsights,
   DeployAgentInsights,
+  CompetitorData,
+  CompetitorScanSummary,
 } from "@/types/pulse";
 
 export const pulseInclude = {
@@ -63,6 +66,8 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     discoveryKit: (record.discoveryData as DiscoveryKit | null) ?? null,
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
+    competitorUrls: asJson<string[] | null>(record.competitorUrls, null),
+    competitorData: asJson<CompetitorData | null>(record.competitorData, null),
     shareToken: record.shareToken,
     isShared: record.isShared,
     errorCode: record.errorCode,
@@ -240,6 +245,7 @@ export async function createPulseScanRecord(input: {
   platform?: string;
   clientId?: string;
   aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  competitorUrls?: string[];
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
   const { workspace } = await ensureBaseRecords();
   // Use the per-scan override if provided, otherwise fall back to the workspace default
@@ -287,6 +293,9 @@ export async function createPulseScanRecord(input: {
       status: "RUNNING",
       scanVersion: SCAN_VERSION,
       previousHealthScore: previousScan?.healthScore ?? null,
+      competitorUrls: input.competitorUrls && input.competitorUrls.length > 0
+        ? (input.competitorUrls as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
     },
     include: pulseInclude,
   });
@@ -364,6 +373,7 @@ export async function runAnalysis(
     inputDescription?: string;
     projectName: string;
     clientId?: string;
+    competitorUrls?: string[];
   },
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
@@ -405,33 +415,70 @@ export async function runAnalysis(
       },
     });
 
-    const llmAnalysis = await analyseWithClaude(
-      {
-        projectName: input.projectName,
-        inputType: input.inputType,
-        inputUrl: input.inputUrl ?? null,
-        inputGithubRepo: input.inputGithubRepo ?? null,
-        inputDescription: input.inputDescription ?? null,
-        healthScore,
-        techStack,
-        checks: allChecks,
-      },
-      aiConfig,
-    );
+    // Run competitor URL checks in parallel with AI synthesis (both start now)
+    const competitorScanPromise: Promise<CompetitorScanSummary[]> =
+      input.competitorUrls && input.competitorUrls.length > 0
+        ? Promise.all(
+            input.competitorUrls.map(async (url) => {
+              try {
+                let resolvedUrl = url.trim();
+                if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
+                const result = await runUrlChecks(resolvedUrl);
+                const score = calculateHealthScore(result.checks);
+                const pass = result.checks.filter((c) => c.status === "PASS").length;
+                const warn = result.checks.filter((c) => c.status === "WARN").length;
+                const fail = result.checks.filter((c) => c.status === "FAIL").length;
+                return { url: resolvedUrl, healthScore: score, checksPass: pass, checksWarn: warn, checksFail: fail, techStack: result.techStack };
+              } catch {
+                return { url, healthScore: 0, checksPass: 0, checksWarn: 0, checksFail: 0, techStack: [] };
+              }
+            }),
+          )
+        : Promise.resolve([]);
 
-    const discoveryKit = await generateDiscoveryKit(
-      {
-        projectName: input.projectName,
-        projectType: llmAnalysis.projectClassification.type,
-        healthScore,
-        proposalHook: llmAnalysis.proposalHook,
-        executiveSummary: llmAnalysis.executiveSummary,
-        criticalGaps: llmAnalysis.criticalGaps,
-        buildOpportunities: llmAnalysis.buildOpportunities,
-        checks: allChecks,
-      },
-      aiConfig,
-    );
+    const [llmAnalysis, competitorScans] = await Promise.all([
+      analyseWithClaude(
+        {
+          projectName: input.projectName,
+          inputType: input.inputType,
+          inputUrl: input.inputUrl ?? null,
+          inputGithubRepo: input.inputGithubRepo ?? null,
+          inputDescription: input.inputDescription ?? null,
+          healthScore,
+          techStack,
+          checks: allChecks,
+        },
+        aiConfig,
+      ),
+      competitorScanPromise,
+    ]);
+
+    const [discoveryKit, competitorComparison] = await Promise.all([
+      generateDiscoveryKit(
+        {
+          projectName: input.projectName,
+          projectType: llmAnalysis.projectClassification.type,
+          healthScore,
+          proposalHook: llmAnalysis.proposalHook,
+          executiveSummary: llmAnalysis.executiveSummary,
+          criticalGaps: llmAnalysis.criticalGaps,
+          buildOpportunities: llmAnalysis.buildOpportunities,
+          checks: allChecks,
+        },
+        aiConfig,
+      ),
+      competitorScans.length > 0
+        ? generateCompetitorComparison(
+            { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
+            aiConfig,
+          )
+        : Promise.resolve(null),
+    ]);
+
+    const competitorData: CompetitorData | null =
+      competitorScans.length > 0
+        ? { scans: competitorScans, comparison: competitorComparison }
+        : null;
 
     // Phase 2: persist AI analysis and mark COMPLETED
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
@@ -444,6 +491,7 @@ export async function runAnalysis(
         completedAt: new Date(),
         llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
       },
     });
   } catch (error) {

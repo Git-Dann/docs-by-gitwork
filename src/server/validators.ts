@@ -367,6 +367,7 @@ export const pulseScanCreateSchema = z
     platform: z.string().trim().max(50).optional(),
     clientId: z.string().cuid().optional(),
     aiProvider: z.enum(["ANTHROPIC", "OPENAI", "GEMINI", "LOCAL"]).optional(),
+    competitorUrls: z.array(z.string().trim().min(1)).max(3).optional(),
   })
   .refine(
     (d) => {

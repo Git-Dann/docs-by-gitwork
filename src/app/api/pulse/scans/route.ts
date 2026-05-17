@@ -28,11 +28,9 @@ export async function POST(request: NextRequest) {
       inputDescription: body.inputDescription,
       clientId: body.clientId,
       aiProvider: body.aiProvider,
+      competitorUrls: body.competitorUrls,
     });
 
-    // after() keeps the serverless function alive after the response is sent.
-    // Without this, Vercel freezes the process once the HTTP response completes,
-    // leaving the scan stuck in RUNNING state forever.
     after(() =>
       runAnalysis(scan.id, {
         inputType: body.inputType,
@@ -41,6 +39,7 @@ export async function POST(request: NextRequest) {
         inputDescription: body.inputDescription,
         projectName: body.projectName,
         clientId: body.clientId,
+        competitorUrls: body.competitorUrls,
       }, aiConfig)
     );
 

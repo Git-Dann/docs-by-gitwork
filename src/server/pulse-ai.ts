@@ -600,3 +600,75 @@ Generate a discovery call briefing. Return JSON with this shape:
     return null;
   }
 }
+
+// ── Competitor comparison ─────────────────────────────────────────────────────
+
+import type { CompetitorScanSummary, CompetitorComparison } from "@/types/pulse";
+
+const competitorComparisonSchema = z.object({
+  summary: z.string(),
+  advantages: z.array(z.string()).min(1),
+  gaps: z.array(z.string()),
+  recommendation: z.string(),
+});
+
+export async function generateCompetitorComparison(
+  input: {
+    projectName: string;
+    mainScore: number;
+    mainTechStack: string[];
+    competitors: CompetitorScanSummary[];
+  },
+  aiConfig: AiConfig,
+): Promise<CompetitorComparison | null> {
+  if (!aiConfig.apiKey || input.competitors.length === 0) return null;
+
+  const competitorLines = input.competitors
+    .map((c, i) => `Competitor ${i + 1}: ${c.url} — score ${c.healthScore}/100, pass ${c.checksPass}/${c.checksPass + c.checksWarn + c.checksFail}, tech: ${c.techStack.join(", ") || "unknown"}`)
+    .join("\n");
+
+  const userMessage = `Compare the following projects and return a JSON competitor analysis.
+
+Main project: ${input.projectName}
+Score: ${input.mainScore}/100
+Tech stack: ${input.mainTechStack.join(", ") || "unknown"}
+
+Competitors:
+${competitorLines}
+
+Return JSON with exactly this shape:
+{
+  "summary": "2-3 sentence side-by-side comparison",
+  "advantages": ["string — where the main project leads (max 5)"],
+  "gaps": ["string — where competitors lead over the main project (max 5)"],
+  "recommendation": "1-2 sentences on what to fix to overtake the leading competitor"
+}`;
+
+  try {
+    let rawContent: string;
+
+    if (aiConfig.provider === "ANTHROPIC") {
+      const client = new Anthropic({ apiKey: aiConfig.apiKey });
+      const message = await client.messages.create({
+        model: getModelForTask(aiConfig, "competitor"),
+        max_tokens: 1024,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      rawContent = (message.content[0] as { type: string; text: string }).text ?? "";
+    } else {
+      const { default: OpenAI } = await import("openai");
+      const client = new OpenAI({ apiKey: aiConfig.apiKey, baseURL: aiConfig.baseUrl ?? undefined });
+      const completion = await client.chat.completions.create({
+        model: getModelForTask(aiConfig, "competitor"),
+        max_tokens: 1024,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      rawContent = completion.choices[0]?.message?.content ?? "";
+    }
+
+    const result = competitorComparisonSchema.safeParse(JSON.parse(extractJson(rawContent)));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}

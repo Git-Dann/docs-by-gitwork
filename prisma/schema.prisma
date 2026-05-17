@@ -569,6 +569,8 @@ model PulseScan {
   llmAnalysis         Json?
   discoveryData       Json?              // DiscoveryKit — discovery call intelligence
   agentData           Json?              // { codeInsights, deployInsights } from agent pipeline
+  competitorUrls      Json?              // string[] — optional competitor URLs to benchmark
+  competitorData      Json?              // CompetitorData — parallel scan results + AI comparison
   shareToken          String?            @unique
   isShared            Boolean            @default(false)
   errorCode           String?

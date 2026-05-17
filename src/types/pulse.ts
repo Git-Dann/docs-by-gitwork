@@ -137,6 +137,8 @@ export interface PulseScanRecord {
   discoveryKit: DiscoveryKit | null;
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
+  competitorUrls: string[] | null;
+  competitorData: CompetitorData | null;
   shareToken: string | null;
   isShared: boolean;
   errorCode: string | null;
@@ -191,6 +193,29 @@ export interface DeployAgentInsights {
   avgBuildMs: number | null;
   buildWarnings: string[];
   recentErrorPatterns: string[];
+}
+
+// ── Competitor benchmarking ───────────────────────────────────────────────────
+
+export interface CompetitorScanSummary {
+  url: string;
+  healthScore: number;
+  checksPass: number;
+  checksWarn: number;
+  checksFail: number;
+  techStack: string[];
+}
+
+export interface CompetitorComparison {
+  summary: string;
+  advantages: string[];    // where user's project leads
+  gaps: string[];          // where competitors lead
+  recommendation: string;
+}
+
+export interface CompetitorData {
+  scans: CompetitorScanSummary[];
+  comparison: CompetitorComparison | null;
 }
 
 // ── Discovery call kit ────────────────────────────────────────────────────────

@@ -61,6 +61,8 @@ export function PulseNewScanForm({
   const [platform, setPlatform] = useState("WEB_APP");
   const [clientId, setClientId] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<AiProviderId>(activeProvider);
+  const [competitorUrls, setCompetitorUrls] = useState<string[]>([""]);
+  const [showCompetitors, setShowCompetitors] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
@@ -85,6 +87,11 @@ export function PulseNewScanForm({
         resolvedUrl = `https://${resolvedUrl}`;
       }
 
+      const cleanedCompetitors = competitorUrls
+        .map((u) => u.trim())
+        .filter(Boolean)
+        .map((u) => (!/^https?:\/\//i.test(u) ? `https://${u}` : u));
+
       const result = await mutateAsync({
         projectName: projectName.trim(),
         inputType,
@@ -94,6 +101,7 @@ export function PulseNewScanForm({
         platform,
         clientId: clientId || undefined,
         aiProvider: selectedProvider,
+        competitorUrls: cleanedCompetitors.length > 0 ? cleanedCompetitors : undefined,
       });
       router.push(`/app/pulse/${result.scan.id}`);
     } catch (err) {
@@ -192,6 +200,64 @@ export function PulseNewScanForm({
           />
         )}
       </div>
+
+      {inputType === "URL" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="app-field-label">Benchmark against competitors</label>
+            <button
+              type="button"
+              onClick={() => setShowCompetitors((v) => !v)}
+              disabled={isPending}
+              className="text-xs text-[var(--brand-600)] hover:underline"
+            >
+              {showCompetitors ? "Hide" : "+ Add competitors"}
+            </button>
+          </div>
+          {showCompetitors && (
+            <div className="space-y-2">
+              {competitorUrls.map((url, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    className="app-input flex-1"
+                    placeholder={`Competitor ${i + 1} URL`}
+                    value={url}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                      const next = [...competitorUrls];
+                      next[i] = e.target.value;
+                      setCompetitorUrls(next);
+                    }}
+                    disabled={isPending}
+                  />
+                  {competitorUrls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setCompetitorUrls(competitorUrls.filter((_, j) => j !== i))}
+                      disabled={isPending}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+              {competitorUrls.length < 3 && (
+                <button
+                  type="button"
+                  onClick={() => setCompetitorUrls([...competitorUrls, ""])}
+                  disabled={isPending}
+                  className="text-xs text-[var(--brand-600)] hover:underline"
+                >
+                  + Add another (max 3)
+                </button>
+              )}
+              <p className="text-xs text-[var(--text-4)]">
+                We'll run a parallel scan on each competitor and AI will generate a side-by-side comparison.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {showProviderPicker && (
         <div className="space-y-2">
