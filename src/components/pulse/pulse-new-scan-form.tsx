@@ -252,7 +252,7 @@ export function PulseNewScanForm({
                 </button>
               )}
               <p className="text-xs text-[var(--text-4)]">
-                We'll run a parallel scan on each competitor and AI will generate a side-by-side comparison.
+                We&apos;ll run a parallel scan on each competitor and AI will generate a side-by-side comparison.
               </p>
             </div>
           )}

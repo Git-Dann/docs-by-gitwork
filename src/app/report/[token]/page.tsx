@@ -235,7 +235,7 @@ export default function PublicReportPage({
         {/* Strengths */}
         {analysis?.strengths && analysis.strengths.length > 0 && (
           <div className="rounded-[16px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">What's working well</h2>
+            <h2 className="mb-4 text-sm font-semibold text-gray-700">What&apos;s working well</h2>
             <div className="space-y-3">
               {analysis.strengths.slice(0, 4).map((s, i) => (
                 <div key={i} className="flex gap-3">
