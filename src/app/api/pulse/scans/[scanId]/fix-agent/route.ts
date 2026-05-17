@@ -19,15 +19,24 @@ export async function POST(
     if (scan.inputType !== "GITHUB_REPO") return apiError("Fix agent only works with GitHub repo scans.", 400);
 
     const { workspace } = await ensureBaseRecords();
-    const apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
-    if (!apiKey) return apiError("Anthropic API key required for the fix agent.", 400);
-
+    const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
     const aiConfig = {
-      provider: "ANTHROPIC" as const,
-      apiKey,
-      model: workspace.anthropicModel ?? "claude-opus-4-7",
-      baseUrl: null,
+      provider: p,
+      apiKey: (() => {
+        if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+        if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+        if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+        return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      })(),
+      model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o")
+           : p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash")
+           : p === "LOCAL"  ? (workspace.localLlmModel ?? "llama3.1")
+           : (workspace.anthropicModel ?? "claude-sonnet-4-6"),
+      baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
+             : p === "LOCAL"  ? (workspace.localLlmUrl ?? "http://localhost:11434/v1")
+             : null,
     };
+    if (!aiConfig.apiKey) return apiError("No AI API key configured — add one in Settings → Integrations.", 400);
 
     const result = await runFixAgent(scanId, aiConfig);
     return apiOk(result);
