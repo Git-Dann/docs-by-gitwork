@@ -59,6 +59,7 @@ const CODE_AGENT_QUERY = `
       diskUsage
       primaryLanguage { name }
       languages(first: 5) { nodes { name } }
+      homepageUrl
     }
   }
 `;
@@ -112,6 +113,7 @@ interface GQLResponse {
     diskUsage: number | null;
     primaryLanguage: { name: string } | null;
     languages: { nodes: { name: string }[] } | null;
+    homepageUrl: string | null;
   };
 }
 
@@ -327,6 +329,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
       prReviewRate,
       commitVelocity,
       uniqueContributors,
+      homepageUrl: repo.homepageUrl ?? null,
     },
   };
 }
@@ -339,5 +342,6 @@ function emptyInsights(): CodeAgentInsights {
     prReviewRate: null,
     commitVelocity: null,
     uniqueContributors: null,
+    homepageUrl: null,
   };
 }

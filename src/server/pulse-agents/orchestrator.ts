@@ -8,6 +8,7 @@ export interface OrchestratorResult {
   techStack: string[];
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
+  homepageUrl: string | null;
 }
 
 export async function runOrchestratedScan(input: {
@@ -22,6 +23,7 @@ export async function runOrchestratedScan(input: {
       techStack: [],
       codeInsights: null,
       deployInsights: null,
+      homepageUrl: null,
     };
   }
 
@@ -43,26 +45,43 @@ export async function runOrchestratedScan(input: {
       techStack: infraResult.techStack,
       codeInsights: null,
       deployInsights: deployResult.insights,
+      homepageUrl: null,
     };
   }
 
   if (input.inputType === "GITHUB_REPO" && input.inputGithubRepo) {
-    // Run infra (GitHub file checks) + code intelligence agent in parallel
     const [infraResult, codeResult] = await Promise.all([
       runGithubChecks(input.inputGithubRepo),
       runCodeAgent(input.inputGithubRepo),
     ]);
 
+    let deployInsights: DeployAgentInsights | null = null;
+    let urlChecks: PulseScanCheckInput[] = [];
+    let urlTechStack: string[] = [];
+    const homepageUrl = codeResult.insights.homepageUrl ?? null;
+
+    if (homepageUrl) {
+      const [urlResult, deployResult] = await Promise.all([
+        runUrlChecks(homepageUrl),
+        runDeployAgent(homepageUrl),
+      ]);
+      urlChecks = urlResult.checks;
+      urlTechStack = urlResult.techStack;
+      deployInsights = deployResult.insights;
+    }
+
     const allChecks = deduplicateChecks([
       ...infraResult.checks,
       ...codeResult.checks,
+      ...urlChecks,
     ]);
 
     return {
       checks: allChecks,
-      techStack: infraResult.techStack,
+      techStack: urlTechStack.length > 0 ? urlTechStack : infraResult.techStack,
       codeInsights: codeResult.insights,
-      deployInsights: null,
+      deployInsights,
+      homepageUrl,
     };
   }
 
@@ -71,6 +90,7 @@ export async function runOrchestratedScan(input: {
     techStack: [],
     codeInsights: null,
     deployInsights: null,
+    homepageUrl: null,
   };
 }
 

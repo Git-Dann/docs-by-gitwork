@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -440,6 +440,124 @@ function VitalMetric({
   );
 }
 
+function CodeInsightsCard({ insights }: { insights: NonNullable<CodeAgentInsights> }) {
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[var(--text-1)]">Code Intelligence</p>
+        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
+          GitHub GraphQL
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Vulnerabilities */}
+        <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Vulnerabilities</p>
+          {insights.vulnerabilities.length === 0 ? (
+            <p className="mt-1 text-sm font-semibold text-emerald-600">None found</p>
+          ) : (
+            <p className="mt-1 text-sm font-semibold text-red-600">
+              {insights.vulnerabilities.filter((v) => v.severity === "CRITICAL").length} critical,{" "}
+              {insights.vulnerabilities.filter((v) => v.severity === "HIGH").length} high
+            </p>
+          )}
+        </div>
+        {/* Branch protection */}
+        <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Branch protection</p>
+          <p className={cn("mt-1 text-sm font-semibold", insights.branchProtected ? "text-emerald-600" : "text-red-600")}>
+            {insights.branchProtected ? (insights.requiresReviews ? "Protected + reviews" : "Protected") : "Not protected"}
+          </p>
+        </div>
+        {/* PR reviews */}
+        {insights.prReviewRate !== null && (
+          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">PR reviews</p>
+            <p className={cn("mt-1 text-sm font-semibold",
+              insights.prReviewRate >= 0.7 ? "text-emerald-600"
+              : insights.prReviewRate >= 0.3 ? "text-amber-600"
+              : "text-red-600"
+            )}>
+              {Math.round(insights.prReviewRate * 100)}% reviewed
+            </p>
+          </div>
+        )}
+        {/* Commit velocity */}
+        {insights.commitVelocity !== null && (
+          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Velocity</p>
+            <p className="mt-1 text-sm font-semibold text-[var(--text-1)]">
+              {insights.commitVelocity} commits/wk
+              {insights.uniqueContributors !== null && (
+                <span className="ml-1 text-xs font-normal text-[var(--text-3)]">· {insights.uniqueContributors} {insights.uniqueContributors === 1 ? "contributor" : "contributors"}</span>
+              )}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DeployInsightsCard({ insights }: { insights: NonNullable<DeployAgentInsights> }) {
+  if (!insights.platform && insights.recentDeployments === null) return null;
+  const successRate = insights.recentDeployments && insights.failedDeployments !== null
+    ? (insights.recentDeployments - insights.failedDeployments) / insights.recentDeployments
+    : null;
+
+  return (
+    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[var(--text-1)]">Deploy Intelligence</p>
+        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
+          {insights.platform === "vercel" ? "Vercel" : insights.platform ?? "Deploy"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {successRate !== null && insights.recentDeployments !== null && (
+          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Success rate</p>
+            <p className={cn("mt-1 text-sm font-semibold",
+              successRate >= 0.9 ? "text-emerald-600"
+              : successRate >= 0.7 ? "text-amber-600"
+              : "text-red-600"
+            )}>
+              {insights.recentDeployments - (insights.failedDeployments ?? 0)}/{insights.recentDeployments} deployments
+            </p>
+          </div>
+        )}
+        {insights.avgBuildMs !== null && (
+          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Avg build time</p>
+            <p className={cn("mt-1 text-sm font-semibold",
+              insights.avgBuildMs < 60_000 ? "text-emerald-600"
+              : insights.avgBuildMs < 180_000 ? "text-amber-600"
+              : "text-red-600"
+            )}>
+              {Math.round(insights.avgBuildMs / 1000)}s
+            </p>
+          </div>
+        )}
+        {insights.buildWarnings.length > 0 && (
+          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Build warnings</p>
+            <p className="mt-1 text-sm font-semibold text-amber-600">
+              {insights.buildWarnings.length} warning{insights.buildWarnings.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+        )}
+      </div>
+      {insights.buildWarnings.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-[var(--border-2)] pt-3">
+          {insights.buildWarnings.slice(0, 3).map((w, i) => (
+            <p key={i} className="truncate text-xs text-[var(--text-3)]">{w}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
   const lcpMs = insights.lcp;
   const fcpMs = insights.fcp;
@@ -844,6 +962,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {/* Web Vitals — shown on overview regardless of AI result */}
       {activeTab === "overview" && scan.browserInsights && (
         <WebVitalsCard insights={scan.browserInsights} />
+      )}
+      {activeTab === "overview" && scan.codeInsights && (
+        <CodeInsightsCard insights={scan.codeInsights} />
+      )}
+      {activeTab === "overview" && scan.deployInsights && (
+        <DeployInsightsCard insights={scan.deployInsights} />
       )}
 
       {activeTab === "overview" && !llm && (

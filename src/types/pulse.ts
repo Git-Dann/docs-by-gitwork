@@ -186,6 +186,7 @@ export interface CodeAgentInsights {
   prReviewRate: number | null;    // 0–1, % of merged PRs that had at least 1 review
   commitVelocity: number | null;  // commits per week (last 30 days)
   uniqueContributors: number | null;
+  homepageUrl: string | null;
 }
 
 export interface DeployAgentInsights {

@@ -442,10 +442,14 @@ export async function runAnalysis(
 
     // Browser agent (PageSpeed Insights — slow, ~30s) runs in parallel with AI
     // so fast checks still stream to the client within 8-10s of scan start.
-    const browserAgentPromise =
-      input.inputType === "URL" && input.inputUrl
-        ? runBrowserAgent(input.inputUrl)
-        : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
+    const browserUrl =
+      input.inputType === "URL" ? (input.inputUrl ?? null)
+      : (input.inputType === "GITHUB_REPO" && scanResult.homepageUrl) ? scanResult.homepageUrl
+      : null;
+
+    const browserAgentPromise = browserUrl
+      ? runBrowserAgent(browserUrl)
+      : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null });
 
     // Wrap the LLM call so a bad key / wrong model / no key never wipes out
     // the Phase 1 checks. On failure analysis is null (no mock data shown).
