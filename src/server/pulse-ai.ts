@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
+import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, DiscoveryKit } from "@/types/pulse";
 
 
 
@@ -445,4 +445,140 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   }
 
   return result.data;
+}
+
+// ── Discovery Kit generation ───────────────────────────────────────────────────
+
+const discoveryKitSchema = z.object({
+  openingStatement: z.string(),
+  wowFinding: z.object({ finding: z.string(), impact: z.string() }),
+  questions: z.array(
+    z.object({ question: z.string(), context: z.string(), followUp: z.string() }),
+  ).min(4).max(12),
+  anticipatedObjections: z.array(
+    z.object({ objection: z.string(), response: z.string() }),
+  ).min(2).max(8),
+  pricingAnchor: z.object({ low: z.number(), high: z.number(), rationale: z.string() }),
+  talkingPoints: z.array(z.string()).min(3).max(10),
+});
+
+const DISCOVERY_SYSTEM_PROMPT = `You are a senior business development consultant at Gitwork, preparing a discovery call briefing for the sales team.
+
+The team has just completed a technical Pulse scan of a potential client's app. Your job is to convert the technical findings into a sales conversation guide — something a non-technical BD person can use to run an effective 30-minute discovery call.
+
+Rules:
+- All questions and talking points must be DIRECTLY grounded in the scan findings — do not use generic questions
+- The pricing anchor should reflect realistic consultancy rates (£/day, fixed-price project ranges), calibrated to the complexity and number of gaps found
+- Write in a confident, commercially-minded tone — this is a paid consulting engagement, not a charity audit
+- You MUST respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.`;
+
+export async function generateDiscoveryKit(
+  input: {
+    projectName: string;
+    projectType: string;
+    healthScore: number;
+    proposalHook: string;
+    executiveSummary: string;
+    criticalGaps: { category: string; gap: string; urgency: string }[];
+    buildOpportunities: { title: string; estimatedEffort: string; businessValue: string }[];
+    checks: PulseScanCheckInput[];
+  },
+  aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
+): Promise<DiscoveryKit | null> {
+  if (!aiConfig.apiKey) return null;
+
+  const gapsText = input.criticalGaps
+    .slice(0, 8)
+    .map((g) => `- [${g.urgency}] ${g.category}: ${g.gap}`)
+    .join("\n");
+
+  const oppsText = input.buildOpportunities
+    .slice(0, 6)
+    .map((o) => `- ${o.title} (Effort: ${o.estimatedEffort}, Value: ${o.businessValue})`)
+    .join("\n");
+
+  const failedChecks = input.checks
+    .filter((c) => c.status === "FAIL")
+    .slice(0, 10)
+    .map((c) => `${c.category}: ${c.label}`)
+    .join(", ");
+
+  const userMessage = `Project: ${input.projectName}
+Type: ${input.projectType}
+Health score: ${input.healthScore}/100
+Hook: ${input.proposalHook}
+Executive summary: ${input.executiveSummary}
+
+Critical gaps:
+${gapsText}
+
+Failed checks: ${failedChecks || "None"}
+
+Build opportunities:
+${oppsText}
+
+Generate a discovery call briefing. Return JSON with this shape:
+{
+  "openingStatement": "2–3 sentence confident opener the BD person uses on the call to establish credibility and context",
+  "wowFinding": {
+    "finding": "The single most surprising or urgent finding from the scan — specific, not generic",
+    "impact": "What business risk or opportunity this creates for them"
+  },
+  "questions": [
+    {
+      "question": "Specific question directly tied to a scan finding",
+      "context": "Why this question matters given what we found",
+      "followUp": "Natural follow-up if they say yes / give a positive answer"
+    }
+  ],
+  "anticipatedObjections": [
+    {
+      "objection": "Likely pushback from the prospect",
+      "response": "Scripted, confident rebuttal that pivots to the opportunity"
+    }
+  ],
+  "pricingAnchor": {
+    "low": 5000,
+    "high": 20000,
+    "rationale": "Why this range — based on the number and severity of gaps + build opportunities found"
+  },
+  "talkingPoints": ["Bullet 1", "Bullet 2", "Bullet 3"]
+}`;
+
+  try {
+    let rawContent: string;
+
+    if (aiConfig.provider === "ANTHROPIC") {
+      const client = new Anthropic({ apiKey: aiConfig.apiKey });
+      const message = await client.messages.create({
+        model: aiConfig.model,
+        max_tokens: 2048,
+        system: DISCOVERY_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      rawContent = (message.content[0] as { type: string; text: string }).text ?? "";
+    } else {
+      const { default: OpenAI } = await import("openai");
+      const client = new OpenAI({
+        apiKey: aiConfig.apiKey,
+        baseURL: aiConfig.baseUrl ?? undefined,
+      });
+      const completion = await client.chat.completions.create({
+        model: aiConfig.model,
+        max_tokens: 2048,
+        messages: [
+          { role: "system", content: DISCOVERY_SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+      });
+      rawContent = completion.choices[0]?.message?.content ?? "";
+    }
+
+    const extracted = extractJson(rawContent);
+    const parsed = JSON.parse(extracted);
+    const result = discoveryKitSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
 }

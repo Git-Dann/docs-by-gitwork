@@ -11,7 +11,31 @@ import {
   retryPulseScan,
   generateProposalFromScan,
   getPulseStats,
+  sharePulseScan,
+  unsharePulseScan,
 } from "@/lib/api";
+
+export function useSharePulseScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: sharePulseScan,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
+  });
+}
+
+export function useUnsharePulseScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: unsharePulseScan,
+    onSuccess: (_data, scanId) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
+  });
+}
 
 export function usePulseStats() {
   return useQuery({

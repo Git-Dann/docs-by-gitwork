@@ -134,6 +134,11 @@ export interface PulseScanRecord {
   previousHealthScore: number | null;
   techStack: string[] | null;
   llmAnalysis: PulseAnalysisOutput | null;
+  discoveryKit: DiscoveryKit | null;
+  codeInsights: CodeAgentInsights | null;
+  deployInsights: DeployAgentInsights | null;
+  shareToken: string | null;
+  isShared: boolean;
   errorCode: string | null;
   errorMessage: string | null;
   generatedProposalId: string | null;
@@ -166,4 +171,46 @@ export interface PulseScanCheckInput {
   detail?: string;
   evidence?: string;
   sortOrder?: number;
+}
+
+// ── Agent intelligence outputs ────────────────────────────────────────────────
+
+export interface CodeAgentInsights {
+  vulnerabilities: { severity: string; packageName: string; description: string }[];
+  branchProtected: boolean;
+  requiresReviews: boolean;
+  prReviewRate: number | null;    // 0–1, % of merged PRs that had at least 1 review
+  commitVelocity: number | null;  // commits per week (last 30 days)
+  uniqueContributors: number | null;
+}
+
+export interface DeployAgentInsights {
+  platform: "vercel" | "netlify" | "railway" | "other" | null;
+  recentDeployments: number | null;
+  failedDeployments: number | null;
+  avgBuildMs: number | null;
+  buildWarnings: string[];
+  recentErrorPatterns: string[];
+}
+
+// ── Discovery call kit ────────────────────────────────────────────────────────
+
+export interface DiscoveryQuestion {
+  question: string;
+  context: string;    // why this question, based on scan findings
+  followUp: string;
+}
+
+export interface DiscoveryObjection {
+  objection: string;
+  response: string;
+}
+
+export interface DiscoveryKit {
+  openingStatement: string;
+  wowFinding: { finding: string; impact: string };
+  questions: DiscoveryQuestion[];
+  anticipatedObjections: DiscoveryObjection[];
+  pricingAnchor: { low: number; high: number; rationale: string };
+  talkingPoints: string[];
 }

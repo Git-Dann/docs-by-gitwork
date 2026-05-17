@@ -10,13 +10,17 @@ import {
   getDefaultAssetPayload,
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
-import { runUrlChecks, runGithubChecks, skipAllChecks, calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
-import { analyseWithClaude } from "@/server/pulse-ai";
+import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
+import { analyseWithClaude, generateDiscoveryKit } from "@/server/pulse-ai";
+import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
 import type {
   PulseScanRecord,
   PulseScanListItem,
   PulseScanCheckInput,
   PulseAnalysisOutput,
+  DiscoveryKit,
+  CodeAgentInsights,
+  DeployAgentInsights,
 } from "@/types/pulse";
 
 export const pulseInclude = {
@@ -56,6 +60,11 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     previousHealthScore: record.previousHealthScore ?? null,
     techStack: asJson<string[] | null>(record.techStack, null),
     llmAnalysis: asJson<PulseAnalysisOutput | null>(record.llmAnalysis, null),
+    discoveryKit: (record.discoveryData as DiscoveryKit | null) ?? null,
+    codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
+    deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
+    shareToken: record.shareToken,
+    isShared: record.isShared,
     errorCode: record.errorCode,
     errorMessage: record.errorMessage,
     generatedProposalId: record.generatedProposalId,
@@ -359,23 +368,15 @@ export async function runAnalysis(
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
   try {
-    let urlChecks: PulseScanCheckInput[] = [];
-    let githubChecks: PulseScanCheckInput[] = [];
-    let techStack: string[] = [];
+    // Multi-agent orchestrated scan (parallel where possible)
+    const scanResult = await runOrchestratedScan({
+      inputType: input.inputType,
+      inputUrl: input.inputUrl,
+      inputGithubRepo: input.inputGithubRepo,
+      inputDescription: input.inputDescription,
+    });
 
-    if (input.inputType === "URL" && input.inputUrl) {
-      const urlResult = await runUrlChecks(input.inputUrl);
-      urlChecks = urlResult.checks;
-      techStack = urlResult.techStack;
-    } else if (input.inputType === "GITHUB_REPO" && input.inputGithubRepo) {
-      const githubResult = await runGithubChecks(input.inputGithubRepo);
-      githubChecks = githubResult.checks;
-      techStack = githubResult.techStack;
-    } else {
-      urlChecks = skipAllChecks("FREE_TEXT");
-    }
-
-    const allChecks = [...urlChecks, ...githubChecks];
+    const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
     const healthScore = calculateHealthScore(allChecks);
 
     const llmAnalysis = await analyseWithClaude(
@@ -387,6 +388,21 @@ export async function runAnalysis(
         inputDescription: input.inputDescription ?? null,
         healthScore,
         techStack,
+        checks: allChecks,
+      },
+      aiConfig,
+    );
+
+    // Generate discovery kit in parallel with the DB write (fire-and-forget pattern)
+    const discoveryKit = await generateDiscoveryKit(
+      {
+        projectName: input.projectName,
+        projectType: llmAnalysis.projectClassification.type,
+        healthScore,
+        proposalHook: llmAnalysis.proposalHook,
+        executiveSummary: llmAnalysis.executiveSummary,
+        criticalGaps: llmAnalysis.criticalGaps,
+        buildOpportunities: llmAnalysis.buildOpportunities,
         checks: allChecks,
       },
       aiConfig,
@@ -404,6 +420,8 @@ export async function runAnalysis(
         healthScore,
         techStack: techStack as unknown as Prisma.InputJsonValue,
         llmAnalysis: llmAnalysis as unknown as Prisma.InputJsonValue,
+        discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
         checks: {
           create: allChecks.map((check) => ({
             category: check.category,

@@ -1,4 +1,5 @@
 const GITHUB_API_BASE = "https://api.github.com";
+const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
 export class GitHubRequestError extends Error {
   code: string;
@@ -53,6 +54,36 @@ export async function safeGithubRequest<T>(path: string, fallback: T): Promise<T
   } catch {
     return fallback;
   }
+}
+
+export async function githubGraphQL<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<T> {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) throw new GitHubRequestError("GITHUB_NO_TOKEN", "GITHUB_TOKEN is required for GraphQL queries.");
+
+  const response = await fetch(GITHUB_GRAPHQL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "docs-by-gitwork",
+    },
+    body: JSON.stringify({ query, variables }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new GitHubRequestError("GITHUB_GRAPHQL_FAILED", `GraphQL request failed: ${response.status}`);
+  }
+
+  const json = (await response.json()) as { data?: T; errors?: { message: string }[] };
+  if (json.errors?.length) {
+    throw new GitHubRequestError("GITHUB_GRAPHQL_ERROR", json.errors[0].message);
+  }
+  return json.data as T;
 }
 
 export function parseGithubRepo(input: string): { owner: string; repo: string } | null {

@@ -567,6 +567,10 @@ model PulseScan {
   previousHealthScore Int?
   techStack           Json?
   llmAnalysis         Json?
+  discoveryData       Json?              // DiscoveryKit — discovery call intelligence
+  agentData           Json?              // { codeInsights, deployInsights } from agent pipeline
+  shareToken          String?            @unique
+  isShared            Boolean            @default(false)
   errorCode           String?
   errorMessage        String?
   generatedProposalId String?
@@ -577,6 +581,7 @@ model PulseScan {
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt])
   @@index([clientId, createdAt])
+  @@index([shareToken])
 }
 
 model PulseScanCheck {

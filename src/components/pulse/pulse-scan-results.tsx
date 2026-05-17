@@ -9,15 +9,21 @@ import {
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ClipboardDocumentCheckIcon,
+  ClipboardDocumentIcon,
+  CurrencyDollarIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
+  LinkIcon,
+  LightBulbIcon,
   MinusCircleIcon,
+  QuestionMarkCircleIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -43,7 +49,93 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
   return Math.round((passing / applicable.length) * 100);
 }
 
-type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack";
+type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery";
+
+function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
+  return (
+    <div className="space-y-6">
+      {/* Opening statement */}
+      <div className="rounded-[14px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
+        <p className="app-eyebrow mb-2">Opening statement</p>
+        <p className="text-sm italic leading-7 text-[var(--text-1)]">&ldquo;{kit.openingStatement}&rdquo;</p>
+      </div>
+
+      {/* Wow finding */}
+      <div className="rounded-[14px] border border-amber-200 bg-amber-50 p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <LightBulbIcon className="h-4 w-4 text-amber-600" />
+          <p className="text-sm font-semibold text-amber-800">Wow finding</p>
+        </div>
+        <p className="text-sm font-medium text-amber-900">{kit.wowFinding.finding}</p>
+        <p className="mt-1.5 text-sm text-amber-700">{kit.wowFinding.impact}</p>
+      </div>
+
+      {/* Talking points */}
+      {kit.talkingPoints.length > 0 && (
+        <div className="rounded-[14px] border border-[var(--border-2)] p-5">
+          <p className="app-eyebrow mb-3">Call talking points</p>
+          <ul className="space-y-2">
+            {kit.talkingPoints.map((point, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm text-[var(--text-2)]">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-500)]" />
+                {point}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Tailored questions */}
+      {kit.questions.length > 0 && (
+        <div>
+          <p className="app-eyebrow mb-3">Discovery questions</p>
+          <div className="space-y-3">
+            {kit.questions.map((q, i) => (
+              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+                <div className="mb-2 flex items-start gap-2">
+                  <QuestionMarkCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-500)]" />
+                  <p className="text-sm font-semibold text-[var(--text-1)]">{q.question}</p>
+                </div>
+                <p className="mb-2 pl-6 text-xs text-[var(--text-3)]">{q.context}</p>
+                <div className="ml-6 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Follow-up: </span>
+                  <span className="text-xs italic text-[var(--text-3)]">{q.followUp}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Anticipated objections */}
+      {kit.anticipatedObjections.length > 0 && (
+        <div>
+          <p className="app-eyebrow mb-3">Anticipated objections</p>
+          <div className="space-y-3">
+            {kit.anticipatedObjections.map((obj, i) => (
+              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+                <p className="mb-2 text-sm font-medium text-red-700">&ldquo;{obj.objection}&rdquo;</p>
+                <p className="text-sm text-[var(--text-2)]">{obj.response}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pricing anchor */}
+      <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <CurrencyDollarIcon className="h-4 w-4 text-emerald-700" />
+          <p className="text-sm font-semibold text-emerald-800">Pricing anchor</p>
+        </div>
+        <p className="text-xl font-bold tabular-nums text-emerald-900">
+          ${kit.pricingAnchor.low.toLocaleString()} – ${kit.pricingAnchor.high.toLocaleString()}
+        </p>
+        <p className="mt-1.5 text-sm text-emerald-700">{kit.pricingAnchor.rationale}</p>
+      </div>
+    </div>
+  );
+}
 
 function ReadinessStatusIcon({ status }: { status: ProductionReadinessItem["status"] }) {
   if (status === "DONE") return <CheckCircleIcon className="h-4 w-4 text-emerald-500" />;
@@ -206,8 +298,13 @@ function StackTab({
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
+  const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
+  const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(scan.shareToken);
+  const [isShared, setIsShared] = useState(scan.isShared);
 
   function toggleCategory(category: string) {
     setExpandedCategories((prev: Set<string>) => {
@@ -220,6 +317,29 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
   const llm = scan.llmAnalysis;
   const checksByCategory = groupChecksByCategory(scan.checks);
+
+  const reportUrl = shareToken ? `${typeof window !== "undefined" ? window.location.origin : ""}/report/${shareToken}` : null;
+
+  async function handleShare() {
+    const result = await shareScan(scan.id);
+    setShareToken(result.shareToken);
+    setIsShared(true);
+  }
+
+  async function handleUnshare() {
+    await unshareScan(scan.id);
+    setShareToken(null);
+    setIsShared(false);
+    setCopied(false);
+  }
+
+  function handleCopy() {
+    if (!reportUrl) return;
+    navigator.clipboard.writeText(reportUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   async function handleRescan() {
     const result = await createScan({
@@ -244,6 +364,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
     { id: "stack", label: "Tech Stack", count: llm?.techStackAnalysis?.recommendations.length },
+    ...(scan.discoveryKit ? [{ id: "discovery" as Tab, label: "Discovery" }] : []),
   ];
 
   return (
@@ -307,20 +428,59 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={handleRescan}
-            loading={rescanning}
-            leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
-          >
-            Re-scan
-          </Button>
-          <Link href={`/app/pulse/${scan.id}/report`} target="_blank" rel="noopener noreferrer">
-            <Button variant="primary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
-              Download report
+          <div className="flex items-center gap-2">
+            <Button
+              variant="tertiary"
+              size="sm"
+              onClick={handleRescan}
+              loading={rescanning}
+              leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
+            >
+              Re-scan
             </Button>
-          </Link>
+            <Link href={`/app/pulse/${scan.id}/report`} target="_blank" rel="noopener noreferrer">
+              <Button variant="tertiary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
+                Report
+              </Button>
+            </Link>
+            {scan.status === "COMPLETED" && (
+              isShared ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCopy}
+                  leadingIcon={copied ? <ClipboardDocumentCheckIcon className="h-4 w-4" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
+                >
+                  {copied ? "Copied!" : "Copy link"}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleShare}
+                  loading={sharing}
+                  leadingIcon={<LinkIcon className="h-4 w-4" />}
+                >
+                  Share report
+                </Button>
+              )
+            )}
+          </div>
+          {isShared && reportUrl && (
+            <div className="flex items-center gap-2">
+              <span className="max-w-[220px] truncate rounded border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-3)]">
+                {reportUrl}
+              </span>
+              <button
+                type="button"
+                onClick={handleUnshare}
+                disabled={unsharing}
+                className="text-[11px] text-red-500 hover:underline disabled:opacity-50"
+              >
+                Revoke
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -605,6 +765,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {activeTab === "stack" && llm?.techStackAnalysis && (
         <StackTab analysis={llm.techStackAnalysis} detectedStack={scan.techStack ?? []} />
+      )}
+
+      {activeTab === "discovery" && scan.discoveryKit && (
+        <DiscoveryTab kit={scan.discoveryKit} />
       )}
 
       {activeTab === "roadmap" && llm && (

@@ -535,6 +535,20 @@ export async function getPulseStats(): Promise<import("@/server/pulse").PulseSta
   return apiFetch<import("@/server/pulse").PulseStatsResponse>("/api/pulse/stats");
 }
 
+export async function sharePulseScan(scanId: string): Promise<{ shareToken: string; isShared: boolean }> {
+  return apiFetch<{ shareToken: string; isShared: boolean }>(
+    `/api/pulse/scans/${scanId}/share`,
+    { method: "POST" },
+  );
+}
+
+export async function unsharePulseScan(scanId: string): Promise<{ isShared: boolean }> {
+  return apiFetch<{ isShared: boolean }>(
+    `/api/pulse/scans/${scanId}/share`,
+    { method: "DELETE" },
+  );
+}
+
 export interface IntegrationsResponse {
   aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   anthropicKeyMasked: string | null;
