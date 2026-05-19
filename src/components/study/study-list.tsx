@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { PlusIcon, BeakerIcon } from "@heroicons/react/24/outline";
-import { useStudyList, useStudyPersonas, useDeleteStudy } from "@/hooks/use-study";
+import { useStudyList, useStudyPersonas, useDeleteStudy, useLoadStudyDemo } from "@/hooks/use-study";
 import { PERSONA_COLORS } from "@/config/study-personas";
 import { cn, formatDate } from "@/lib/format";
 import type { StudyListItem } from "@/server/study";
@@ -98,10 +99,17 @@ function StudyCard({ study, personasById, onDelete }: { study: StudyListItem; pe
 }
 
 export function StudyList() {
+  const router = useRouter();
   const { data: studies, isLoading } = useStudyList();
   const { data: personas } = useStudyPersonas();
   const { mutate: deleteStudy } = useDeleteStudy();
+  const { mutateAsync: loadDemo, isPending: loadingDemo } = useLoadStudyDemo();
   const [filter, setFilter] = useState<Filter>("all");
+
+  async function handleLoadDemo() {
+    const result = await loadDemo();
+    router.push(`/app/study/${result.studyId}`);
+  }
 
   const personasById = Object.fromEntries((personas ?? []).map((p) => [p.id, p]));
 
@@ -138,12 +146,23 @@ export function StudyList() {
           ))}
         </div>
 
-        <Link href="/app/study/new">
-          <button type="button" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">
-            <PlusIcon className="h-4 w-4" />
-            New study
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLoadDemo}
+            disabled={loadingDemo}
+            className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+          >
+            <BeakerIcon className="h-4 w-4" />
+            {loadingDemo ? "Loading…" : "Load demo"}
           </button>
-        </Link>
+          <Link href="/app/study/new">
+            <button type="button" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">
+              <PlusIcon className="h-4 w-4" />
+              New study
+            </button>
+          </Link>
+        </div>
       </div>
 
       {isLoading ? (
@@ -155,10 +174,21 @@ export function StudyList() {
           <BeakerIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
           <p className="text-sm font-medium text-[var(--text-2)]">{filter === "all" ? "No studies yet" : `No ${filter} studies`}</p>
           {filter === "all" && (
-            <Link href="/app/study/new" className="mt-4 inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
-              <PlusIcon className="h-4 w-4" />
-              New study
-            </Link>
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleLoadDemo}
+                disabled={loadingDemo}
+                className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] disabled:opacity-50"
+              >
+                <BeakerIcon className="h-4 w-4" />
+                {loadingDemo ? "Loading…" : "Load demo study"}
+              </button>
+              <Link href="/app/study/new" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                <PlusIcon className="h-4 w-4" />
+                New study
+              </Link>
+            </div>
           )}
         </div>
       ) : (

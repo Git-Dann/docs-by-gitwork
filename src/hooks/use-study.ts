@@ -152,3 +152,14 @@ export function useStudyStream(studyId: string | null, onUpdate: (study: StudyRe
     return () => es.close();
   }, [studyId, qc]);
 }
+
+// ── Demo seed ─────────────────────────────────────────────────────────────────
+
+export function useLoadStudyDemo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ studyId: string }>("/api/dev/seed-study-demo", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["study", "list"] }),
+  });
+}
