@@ -14,7 +14,6 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
-  UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useState, useDeferredValue } from "react";
@@ -642,102 +641,122 @@ export function SupportDashboard() {
   ).length;
 
   return (
-    <div className="flex min-h-0 flex-col gap-0">
-      {/* client selector + header */}
-      <div className="border-b border-[var(--border-2)] pb-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {clients.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  setActiveClientId(c.id);
-                  setActiveTab("inbox");
-                }}
-                className={cn(
-                  "flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition",
-                  c.id === activeClientId
-                    ? "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--brand-700)]"
-                    : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-                )}
-              >
-                <span
+    <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
+      {/* client sub-sidebar */}
+      <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+        <div className="px-3 pb-2 pt-4">
+          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">
+            Clients
+          </p>
+          <div className="space-y-0.5">
+            {clients.map((c) => {
+              const unread = SUPPORT_SEED.conversations.filter(
+                (cv) => cv.clientId === c.id && cv.unread,
+              ).length;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveClientId(c.id);
+                    setActiveTab("inbox");
+                  }}
                   className={cn(
-                    "h-2 w-2 rounded-full",
-                    c.id === activeClientId ? "bg-[var(--brand-700)]" : "bg-[var(--text-4)]",
+                    "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
+                    c.id === activeClientId
+                      ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                      : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
                   )}
-                />
-                {c.name}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="flex items-center gap-1.5 rounded-full border border-dashed border-[var(--border-2)] px-3 py-1.5 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add client
-            </button>
+                >
+                  <span
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full",
+                      c.id === activeClientId ? "bg-[var(--brand-700)]" : "bg-[var(--text-4)]",
+                    )}
+                  />
+                  <span className="flex-1 truncate font-medium">{c.name}</span>
+                  {unread > 0 && (
+                    <span className={cn(
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                      c.id === activeClientId
+                        ? "bg-[var(--brand-700)] text-white"
+                        : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                    )}>
+                      {unread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-1 text-xs font-medium text-[var(--text-3)]">
-              <UsersIcon className="mr-1 inline h-3.5 w-3.5 align-text-bottom" />
-              owner
-            </span>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+          <button
+            type="button"
+            className="mx-2 mt-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+            Add client
+          </button>
+        </div>
+      </aside>
+
+      {/* main content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* client name + tab bar */}
+        <div className="border-b border-[var(--border-2)] px-6 sm:px-8">
+          <div className="flex items-center justify-between pt-5 pb-0">
+            <h2 className="text-[15px] font-semibold text-[var(--text-1)]">{client.name}</h2>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               live
             </span>
           </div>
+
+          <nav className="mt-3 flex gap-0 overflow-x-auto">
+            {TABS.map((tab) => {
+              const count = tab.count ? tab.count(activeClientId) : undefined;
+              const badge = tab.id === "inbox" ? inboxUnread : count;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition",
+                    activeTab === tab.id
+                      ? "border-[var(--brand-700)] text-[var(--brand-700)]"
+                      : "border-transparent text-[var(--text-3)] hover:border-[var(--border-2)] hover:text-[var(--text-2)]",
+                  )}
+                >
+                  <tab.icon className="h-4 w-4" />
+                  {tab.label}
+                  {badge != null && badge > 0 && (
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                        activeTab === tab.id
+                          ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                          : "bg-[var(--surface-1)] text-[var(--text-4)]",
+                      )}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* tab bar */}
-        <nav className="flex gap-0 overflow-x-auto">
-          {TABS.map((tab) => {
-            const count = tab.count ? tab.count(activeClientId) : undefined;
-            const isInbox = tab.id === "inbox";
-            const badge = isInbox ? inboxUnread : count;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition",
-                  activeTab === tab.id
-                    ? "border-[var(--brand-700)] text-[var(--brand-700)]"
-                    : "border-transparent text-[var(--text-3)] hover:border-[var(--border-2)] hover:text-[var(--text-2)]",
-                )}
-              >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-                {badge != null && badge > 0 && (
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                      activeTab === tab.id
-                        ? "bg-[var(--mist)] text-[var(--brand-700)]"
-                        : "bg-[var(--surface-1)] text-[var(--text-4)]",
-                    )}
-                  >
-                    {badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* tab content */}
-      <div className="pt-5">
-        <VaultNotice />
-        <div className="mt-4">
-          {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
-          {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
-          {activeTab === "reports" && <ReportsView client={client} />}
-          {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} />}
-          {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
+        {/* tab content */}
+        <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
+          <VaultNotice />
+          <div className="mt-4">
+            {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
+            {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
+            {activeTab === "reports" && <ReportsView client={client} />}
+            {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} />}
+            {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
+          </div>
         </div>
       </div>
     </div>
