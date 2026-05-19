@@ -10,14 +10,14 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson } from "@/lib/api";
+import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveIntegrations, fetchProviderModels, type IntegrationsResponse, type ModelOption } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 
-type TabId = "general" | "branding" | "content" | "people" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "integrations" | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -32,6 +32,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "branding", label: "Branding" },
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
+  { id: "integrations", label: "Integrations" },
   { id: "developer", label: "Developer" },
 ];
 
@@ -71,6 +72,7 @@ export function SettingsPanel({
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
+      {activeTab === "integrations" && <IntegrationsTab />}
       {activeTab === "developer" && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
@@ -801,6 +803,413 @@ function RateCardTab() {
             ) : null}
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+
+const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: string; envVar: string; defaultModel: string }[] = [
+  { id: "ANTHROPIC", label: "Claude", hint: "claude-sonnet-4-6 by default.", keyPlaceholder: "sk-ant-api03-…", envVar: "ANTHROPIC_API_KEY", defaultModel: "claude-sonnet-4-6" },
+  { id: "OPENAI", label: "OpenAI", hint: "gpt-4o by default.", keyPlaceholder: "sk-…", envVar: "OPENAI_API_KEY", defaultModel: "gpt-4o" },
+  { id: "GEMINI", label: "Gemini (Google)", hint: "gemini-2.0-flash by default.", keyPlaceholder: "AIza…", envVar: "GEMINI_API_KEY", defaultModel: "gemini-2.0-flash" },
+  { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server.", keyPlaceholder: "(optional API key)", envVar: "", defaultModel: "llama3.1" },
+];
+
+function KeyStatus({ source, masked }: { source: "env" | "database" | null; masked: string | null }) {
+  if (source === "env") return (
+    <span className="text-xs font-medium text-green-700">
+      ✓ Set via environment variable — <span className="font-mono">{masked}</span>
+    </span>
+  );
+  if (source === "database") return (
+    <span className="text-xs font-medium text-green-700">✓ Saved — <span className="font-mono">{masked}</span></span>
+  );
+  return <span className="text-xs text-[var(--text-4)]">Not configured</span>;
+}
+
+function ModelPicker({
+  provider,
+  currentModel,
+  selectedModel,
+  onSelect,
+  disabled,
+}: {
+  provider: AiProvider;
+  currentModel: string;
+  selectedModel: string;
+  onSelect: (model: string) => void;
+  disabled: boolean;
+}) {
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  async function loadModels() {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const list = await fetchProviderModels(provider);
+      setModels(list);
+      setLoaded(true);
+      // If the current model exists in the list, pre-select it
+      if (!selectedModel && currentModel) {
+        onSelect(currentModel);
+      }
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load models");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <FieldLabel>Model</FieldLabel>
+        <button
+          type="button"
+          onClick={loadModels}
+          disabled={loading || disabled}
+          className="flex items-center gap-1 text-xs text-[var(--brand-600)] hover:text-[var(--brand-700)] disabled:opacity-50"
+        >
+          <ArrowPathIcon className={cn("h-3 w-3", loading && "animate-spin")} />
+          {loading ? "Loading…" : loaded ? "Refresh" : "Load models"}
+        </button>
+      </div>
+      {loaded && models.length > 0 ? (
+        <select
+          className="app-select text-sm"
+          value={selectedModel || currentModel}
+          onChange={(e) => onSelect(e.target.value)}
+          disabled={disabled}
+        >
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="app-input text-sm"
+          placeholder={currentModel}
+          value={selectedModel}
+          onChange={(e) => onSelect(e.target.value)}
+          disabled={disabled}
+        />
+      )}
+      {loadError && <p className="text-xs text-amber-600">{loadError}</p>}
+      <p className="text-xs text-[var(--text-4)]">Active: {currentModel}</p>
+    </div>
+  );
+}
+
+function ProviderRow({
+  provider,
+  config,
+  onSaved,
+}: {
+  provider: typeof PROVIDERS[number];
+  config: IntegrationsResponse;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [inputs, setInputs] = useState({ key: "", model: "", url: "", localModel: "" });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const keySource = provider.id === "ANTHROPIC" ? config.anthropicKeySource
+    : provider.id === "OPENAI" ? config.openaiKeySource
+    : provider.id === "GEMINI" ? config.geminiKeySource
+    : null;
+  const maskedKey = provider.id === "ANTHROPIC" ? config.anthropicKeyMasked
+    : provider.id === "OPENAI" ? config.openaiKeyMasked
+    : provider.id === "GEMINI" ? config.geminiKeyMasked
+    : null;
+  const currentModel = provider.id === "ANTHROPIC" ? (config.anthropicModel ?? "claude-sonnet-4-6")
+    : provider.id === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
+    : provider.id === "GEMINI" ? (config.geminiModel ?? "gemini-2.0-flash")
+    : (config.localLlmModel ?? "llama3.1");
+  const configured = Boolean(keySource) || (provider.id === "LOCAL" && Boolean(config.localLlmUrl));
+
+  function openEdit() {
+    setInputs({
+      key: maskedKey ?? "",
+      model: currentModel,
+      url: config.localLlmUrl ?? "",
+      localModel: currentModel,
+    });
+    setError(null);
+    setSaved(false);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      // A key is "changed" only if it's non-empty and contains no masking bullets (•).
+      // Masked values like "AIzaSyC•••••••••3tc8" must never be written back to the DB.
+      const keyChanged = inputs.key.length > 0 && !inputs.key.includes("•");
+      // Never include aiProvider here — the dropdown at the top controls that exclusively.
+      const payload: Parameters<typeof saveIntegrations>[0] = {};
+      if (provider.id === "ANTHROPIC") {
+        if (keyChanged) payload.anthropicApiKey = inputs.key;
+        if (inputs.model) payload.anthropicModel = inputs.model;
+      }
+      if (provider.id === "OPENAI") {
+        if (keyChanged) payload.openaiApiKey = inputs.key;
+        if (inputs.model) payload.openaiModel = inputs.model;
+      }
+      if (provider.id === "GEMINI") {
+        if (keyChanged) payload.geminiApiKey = inputs.key;
+        if (inputs.model) payload.geminiModel = inputs.model;
+      }
+      if (provider.id === "LOCAL") {
+        if (inputs.url) payload.localLlmUrl = inputs.url;
+        if (inputs.localModel) payload.localLlmModel = inputs.localModel;
+      }
+      if (Object.keys(payload).length > 0) {
+        await saveIntegrations(payload);
+      }
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        setEditing(false);
+      }, 1200);
+    } catch {
+      setError("Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-[14px] border border-[var(--border-2)] bg-white">
+      {/* Row summary — always visible */}
+      <div className="flex items-center gap-4 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-[var(--text-1)]">{provider.label}</p>
+          <p className="mt-0.5 text-xs text-[var(--text-4)]">
+            {configured
+              ? keySource === "env"
+                ? `Key set via environment variable — ${maskedKey}`
+                : maskedKey
+                  ? `Key saved — ${maskedKey} · Model: ${currentModel}`
+                  : `Configured · Model: ${currentModel}`
+              : provider.id === "LOCAL"
+                ? "Not configured — add a base URL to enable"
+                : "Not configured"}
+          </p>
+        </div>
+        {!editing && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={openEdit}
+          >
+            Edit
+          </Button>
+        )}
+      </div>
+
+      {/* Inline edit panel */}
+      {editing && (
+        <div className="border-t border-[var(--border-2)] px-5 pb-5 pt-4 space-y-3">
+          {provider.id !== "LOCAL" && (
+            <div className="space-y-1.5">
+              <FieldLabel>API key</FieldLabel>
+              {keySource === "env" ? (
+                <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-xs text-[var(--text-3)]">
+                  {maskedKey} — set via environment variable, cannot be overridden here
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  className="app-input font-mono text-sm"
+                  placeholder={provider.keyPlaceholder}
+                  value={inputs.key}
+                  onChange={(e) => setInputs((s) => ({ ...s, key: e.target.value }))}
+                  disabled={saving}
+                />
+              )}
+              {provider.envVar && keySource !== "env" && (
+                <p className="text-xs text-[var(--text-4)]">
+                  Or set <code className="font-mono">{provider.envVar}</code> as an environment variable (takes precedence).
+                </p>
+              )}
+            </div>
+          )}
+
+          {provider.id !== "LOCAL" ? (
+            <ModelPicker
+              key={provider.id}
+              provider={provider.id}
+              currentModel={currentModel}
+              selectedModel={inputs.model}
+              onSelect={(m) => setInputs((s) => ({ ...s, model: m }))}
+              disabled={saving}
+            />
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <FieldLabel>Base URL</FieldLabel>
+                <input
+                  className="app-input font-mono text-sm"
+                  placeholder="http://localhost:11434/v1"
+                  value={inputs.url}
+                  onChange={(e) => setInputs((s) => ({ ...s, url: e.target.value }))}
+                  disabled={saving}
+                />
+                <p className="text-xs text-[var(--text-4)]">
+                  Current: {config.localLlmUrl || "not set"} — Ollama, LM Studio, and any OpenAI-compatible server work.
+                </p>
+              </div>
+              <ModelPicker
+                key="LOCAL"
+                provider="LOCAL"
+                currentModel={currentModel}
+                selectedModel={inputs.localModel}
+                onSelect={(m) => setInputs((s) => ({ ...s, localModel: m }))}
+                disabled={saving}
+              />
+            </>
+          )}
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              loading={saving}
+            >
+              {saved ? "Saved ✓" : "Save changes"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const [config, setConfig] = useState<IntegrationsResponse | null>(null);
+  const [savingProvider, setSavingProvider] = useState(false);
+
+  useEffect(() => {
+    getIntegrations().then(setConfig).catch(() => {});
+  }, []);
+
+  async function handleProviderChange(provider: AiProvider) {
+    if (!config) return;
+    const optimistic = { ...config, aiProvider: provider };
+    setConfig(optimistic);
+    setSavingProvider(true);
+    try {
+      await saveIntegrations({ aiProvider: provider });
+      const fresh = await getIntegrations();
+      setConfig(fresh);
+    } catch {
+      setConfig(config); // revert on error
+    } finally {
+      setSavingProvider(false);
+    }
+  }
+
+  const activeProvider = config ? PROVIDERS.find((p) => p.id === config.aiProvider) : null;
+
+  return (
+    <div className="space-y-6">
+      <section className="app-card p-6">
+        <p className="app-eyebrow">AI provider</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          AI analysis engine
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+          Select the AI provider Pulse uses for all scans. Only the selected provider is used — no fallbacks.
+          Add its API key and model below.
+        </p>
+
+        {/* ── Default provider selector ──────────────────────────── */}
+        <div className="mt-5 rounded-[14px] border-2 border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-600)]">
+                Default AI provider
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--text-3)]">
+                All new scans use this provider exclusively. Change it and all future scans switch immediately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!config ? (
+                <p className="text-sm text-[var(--text-4)]">Loading…</p>
+              ) : (
+                <select
+                  className="app-select min-w-[220px] text-sm font-semibold"
+                  value={config.aiProvider}
+                  onChange={(e) => handleProviderChange(e.target.value as AiProvider)}
+                  disabled={savingProvider}
+                >
+                  {PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {savingProvider && (
+                <span className="text-xs text-[var(--text-4)]">Saving…</span>
+              )}
+            </div>
+          </div>
+          {activeProvider && config && (
+            <p className="mt-3 text-xs text-[var(--text-3)]">
+              Active: <span className="font-semibold text-[var(--text-1)]">{activeProvider.label}</span>
+              {(() => {
+                const model = config.aiProvider === "ANTHROPIC" ? (config.anthropicModel ?? "claude-sonnet-4-6")
+                  : config.aiProvider === "OPENAI" ? (config.openaiModel ?? "gpt-4o")
+                  : config.aiProvider === "GEMINI" ? (config.geminiModel ?? "gemini-2.0-flash")
+                  : (config.localLlmModel ?? "llama3.1");
+                return <> · Model: <span className="font-mono font-medium text-[var(--text-1)]">{model}</span></>;
+              })()}
+            </p>
+          )}
+        </div>
+
+        {/* ── Per-provider credential config ─────────────────────── */}
+        {!config ? null : (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-[var(--text-4)]">Configure API keys and models for each provider below.</p>
+            {PROVIDERS.map((p) => (
+              <ProviderRow
+                key={p.id}
+                provider={p}
+                config={config}
+                onSaved={setConfig}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

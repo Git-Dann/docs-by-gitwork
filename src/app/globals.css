@@ -535,15 +535,15 @@ a {
 
   .app-select,
   .proposal-form-theme select {
-    background-position: calc(100% - 14px) center;
+    background-position: calc(100% - 20px) center;
     background-size: 18px 18px;
-    padding-right: 42px;
+    padding-right: 46px;
   }
 
   .app-select-compact {
-    background-position: calc(100% - 12px) center;
+    background-position: calc(100% - 16px) center;
     background-size: 16px 16px;
-    padding-right: 36px;
+    padding-right: 40px;
   }
 
   .app-checkbox {

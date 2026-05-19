@@ -1,4 +1,5 @@
 import type { ClientDetailRecord, ClientListItem } from "@/types/client";
+import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
   CandidateListResponse,
@@ -471,4 +472,207 @@ export async function updateProofDocument(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function listPulseScans(params?: {
+  clientId?: string;
+}): Promise<{ scans: PulseScanListItem[] }> {
+  const query = new URLSearchParams();
+  if (params?.clientId) query.set("clientId", params.clientId);
+  const qs = query.toString();
+  return apiFetch<{ scans: PulseScanListItem[] }>(`/api/pulse/scans${qs ? `?${qs}` : ""}`);
+}
+
+export async function createPulseScan(input: {
+  projectName: string;
+  inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";
+  inputUrl?: string;
+  inputGithubRepo?: string;
+  inputDescription?: string;
+  platform?: string;
+  clientId?: string;
+  aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  competitorUrls?: string[];
+}): Promise<{ scan: PulseScanRecord }> {
+  return apiFetch<{ scan: PulseScanRecord }>("/api/pulse/scans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getPulseScan(scanId: string): Promise<{ scan: PulseScanRecord }> {
+  return apiFetch<{ scan: PulseScanRecord }>(`/api/pulse/scans/${scanId}`);
+}
+
+export async function deletePulseScan(scanId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/pulse/scans/${scanId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function cancelPulseScan(scanId: string): Promise<{ cancelled: boolean }> {
+  return apiFetch<{ cancelled: boolean }>(`/api/pulse/scans/${scanId}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function retryPulseScan(scanId: string): Promise<{ scan: import("@/types/pulse").PulseScanRecord }> {
+  return apiFetch<{ scan: import("@/types/pulse").PulseScanRecord }>(`/api/pulse/scans/${scanId}/retry`, {
+    method: "POST",
+  });
+}
+
+export async function generateProposalFromScan(
+  scanId: string,
+): Promise<{ proposalId: string }> {
+  return apiFetch<{ proposalId: string }>(
+    `/api/pulse/scans/${scanId}/generate-proposal`,
+    { method: "POST" },
+  );
+}
+
+export async function getPulseStats(): Promise<import("@/server/pulse").PulseStatsResponse> {
+  return apiFetch<import("@/server/pulse").PulseStatsResponse>("/api/pulse/stats");
+}
+
+export async function sharePulseScan(scanId: string): Promise<{ shareToken: string; isShared: boolean }> {
+  return apiFetch<{ shareToken: string; isShared: boolean }>(
+    `/api/pulse/scans/${scanId}/share`,
+    { method: "POST" },
+  );
+}
+
+export async function unsharePulseScan(scanId: string): Promise<{ isShared: boolean }> {
+  return apiFetch<{ isShared: boolean }>(
+    `/api/pulse/scans/${scanId}/share`,
+    { method: "DELETE" },
+  );
+}
+
+export interface FixAgentResult {
+  proposedFixes: Array<{ checkKey: string; filePath: string; newContent: string; explanation: string }>;
+  prUrl: string | null;
+  summary: string;
+}
+
+export async function triggerFixAgent(scanId: string): Promise<FixAgentResult> {
+  return apiFetch<FixAgentResult>(
+    `/api/pulse/scans/${scanId}/fix-agent`,
+    { method: "POST" },
+  );
+}
+
+export async function triggerBrowserAgent(scanId: string): Promise<{ insights: BrowserAgentInsights; checksAdded: number }> {
+  return apiFetch<{ insights: BrowserAgentInsights; checksAdded: number }>(
+    `/api/pulse/scans/${scanId}/run-browser`,
+    { method: "POST" },
+  );
+}
+
+export async function triggerDiscoveryKit(scanId: string): Promise<{ kit: DiscoveryKit }> {
+  return apiFetch<{ kit: DiscoveryKit }>(
+    `/api/pulse/scans/${scanId}/run-discovery`,
+    { method: "POST" },
+  );
+}
+
+export async function loadDemoScan(): Promise<{ scanId: string }> {
+  return apiFetch<{ scanId: string }>("/api/dev/seed-demo", { method: "POST" });
+}
+
+export interface MonitorRecord {
+  id: string;
+  projectName: string;
+  inputType: string;
+  inputUrl: string | null;
+  inputGithubRepo: string | null;
+  webhookSecret: string;
+  lastScanId: string | null;
+  lastHealthScore: number | null;
+  alertThreshold: number;
+  isActive: boolean;
+  createdAt: string;
+  webhookUrl: string;
+}
+
+export async function listMonitors(): Promise<{ monitors: MonitorRecord[] }> {
+  return apiFetch<{ monitors: MonitorRecord[] }>("/api/pulse/monitors");
+}
+
+export async function createMonitor(input: {
+  projectName: string;
+  inputType: string;
+  inputUrl?: string;
+  inputGithubRepo?: string;
+  clientId?: string;
+  alertThreshold?: number;
+}): Promise<{ monitor: MonitorRecord }> {
+  return apiFetch<{ monitor: MonitorRecord }>("/api/pulse/monitors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMonitor(monitorId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/pulse/monitors/${monitorId}`, {
+    method: "DELETE",
+  });
+}
+
+export interface IntegrationsResponse {
+  aiProvider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  anthropicKeyMasked: string | null;
+  anthropicKeySource: "env" | "database" | null;
+  anthropicModel: string;
+  openaiKeyMasked: string | null;
+  openaiKeySource: "env" | "database" | null;
+  openaiModel: string;
+  geminiKeyMasked: string | null;
+  geminiKeySource: "env" | "database" | null;
+  geminiModel: string;
+  localLlmUrl: string;
+  localLlmModel: string;
+}
+
+export interface ModelOption {
+  id: string;
+  name: string;
+}
+
+export async function fetchProviderModels(
+  provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL",
+): Promise<ModelOption[]> {
+  const data = await apiFetch<{ models: ModelOption[] }>(
+    `/api/settings/models?provider=${provider}`,
+  );
+  return data.models;
+}
+
+export async function getIntegrations(): Promise<IntegrationsResponse> {
+  return apiFetch("/api/settings/integrations");
+}
+
+export async function saveIntegrations(data: {
+  aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  anthropicApiKey?: string;
+  anthropicModel?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
+  localLlmUrl?: string;
+  localLlmModel?: string;
+}): Promise<{ saved: boolean }> {
+  return apiFetch("/api/settings/integrations", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+// Keep for backwards compat
+export async function saveAnthropicKey(anthropicApiKey: string): Promise<{ saved: boolean }> {
+  return saveIntegrations({ anthropicApiKey });
 }
