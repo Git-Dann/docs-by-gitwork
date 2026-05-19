@@ -508,18 +508,12 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
 
 function FoundryLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "leading-none" : "leading-none"}>
-      <div className="flex items-baseline gap-[1px]">
-        <span
-          className={compact ? "text-[18px] font-black tracking-[-0.03em] text-[#0a0a0a]" : "text-[20px] font-black tracking-[-0.03em] text-[#0a0a0a]"}
-          style={{ fontFamily: "var(--font-inter, Inter, sans-serif)" }}
-        >
-          Foundry
-        </span>
-        <span className={compact ? "text-[18px] font-black" : "text-[20px] font-black"} style={{ color: "#5b52f0" }}>.</span>
-      </div>
-      <p className="mt-[2px] text-[10px] font-medium tracking-[0.04em] text-[var(--text-4)]">by Gitwork</p>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/foundry-logo.png"
+      alt="Foundry by Gitwork"
+      className={compact ? "h-7 w-auto" : "h-8 w-auto"}
+    />
   );
 }
 
