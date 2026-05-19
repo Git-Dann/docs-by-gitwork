@@ -24,9 +24,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gitwork | Docs, Proof and Pulse",
+  title: "Foundry by Gitwork",
   description:
-    "Gitwork's delivery platform for structured proposals, proof of work, and AI project validation.",
+    "Foundry by Gitwork — the delivery platform for structured proposals, client docs, and AI project validation.",
 };
 
 export default function RootLayout({

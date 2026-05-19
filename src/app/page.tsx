@@ -115,7 +115,7 @@ const testimonials = [
   },
   {
     quote:
-      "Most agencies give you estimates. Gitwork gave us a working product. The 14-day guarantee felt like a bold claim until it happened.",
+      "Most agencies give you estimates. Foundry gave us a working product. The 14-day guarantee felt like a bold claim until it happened.",
     name: "Sarah M.",
     role: "CPO, FinTech startup",
   },
@@ -165,9 +165,8 @@ export default function HomePage() {
       {/* Nav */}
       <nav style={{ backgroundColor: "#f0ece3" }} className="sticky top-0 z-50 border-b border-black/8">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <span className="text-[22px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
-            Gitwork.
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-7 w-auto" />
           <div className="hidden items-center gap-8 md:flex">
             {["Services", "How we work", "Work", "FAQ"].map((item) => (
               <a key={item} href={`#${item.toLowerCase().replace(/ /g, "-")}`} className="text-[15px] text-black/60 transition-colors hover:text-black">
@@ -197,7 +196,7 @@ export default function HomePage() {
           <span style={{ color: "#5b52f0", fontStyle: "italic" }}>production.</span>
         </h1>
         <p className="mt-7 max-w-xl text-[19px] leading-[1.65] text-black/56">
-          Gitwork is a design and build agency for AI-native products. We take your idea from brief to deployed
+          Foundry by Gitwork is a design and build agency for AI-native products. We take your idea from brief to deployed
           in 14 days — design, code, and delivery included.
         </p>
         <div className="mt-10 flex flex-wrap gap-3">
@@ -240,7 +239,7 @@ export default function HomePage() {
           <p className="mt-2 max-w-2xl text-[28px] font-normal leading-[1.4] tracking-[-0.02em] text-white" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
             Most agencies spend 3 months scoping what we ship in 2 weeks. We build for the speed your market demands.
           </p>
-          <p className="mt-8 text-[14px] font-medium text-white/40">— Gitwork</p>
+          <p className="mt-8 text-[14px] font-medium text-white/40">— Foundry by Gitwork</p>
         </div>
       </section>
 
@@ -355,7 +354,7 @@ export default function HomePage() {
       {/* Features grid */}
       <section className="py-20" style={{ backgroundColor: "#ebe7de" }}>
         <div className="mx-auto max-w-6xl px-6">
-          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Why Gitwork</p>
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Why Foundry</p>
           <h2 className="mb-12 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
             Built different.
           </h2>
@@ -451,9 +450,8 @@ export default function HomePage() {
       <footer className="border-t border-black/8 py-12" style={{ backgroundColor: "#ece8df" }}>
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-            <span className="text-[20px] font-normal" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
-              Gitwork.
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-6 w-auto" />
             <div className="flex flex-wrap gap-6 text-[14px] text-black/50">
               {["Services", "Process", "FAQ", "Platform", "Privacy"].map((item) => (
                 <a key={item} href="#" className="transition-colors hover:text-black">
@@ -462,7 +460,7 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-          <p className="mt-8 text-[13px] text-black/35">© 2026 Gitwork. All rights reserved.</p>
+          <p className="mt-8 text-[13px] text-black/35">© 2026 Foundry by Gitwork. All rights reserved.</p>
         </div>
       </footer>
     </div>

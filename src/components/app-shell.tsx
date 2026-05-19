@@ -4,14 +4,14 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   ChartBarSquareIcon,
-  CheckCircleIcon,
   ChevronUpDownIcon,
+  CodeBracketIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
+  HomeIcon,
   LifebuoyIcon,
   MagnifyingGlassIcon,
   SignalIcon,
-  Squares2X2Icon,
   UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -25,6 +25,7 @@ import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
 type NavItem = {
   href?: string;
   label: string;
+  subtitle?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
 };
@@ -66,39 +67,44 @@ export function AppShell({
     () => [
       {
         href: "/app",
-        label: "Dashboard",
-        icon: Squares2X2Icon,
-      },
-      {
-        href: "/app/proof",
-        label: "Proof",
-        icon: DocumentTextIcon,
-      },
-      {
-        href: "/app/proposals",
-        label: "Docs",
-        icon: ChartBarSquareIcon,
+        label: "Foundry HQ",
+        icon: HomeIcon,
       },
       {
         href: "/app/pulse",
-        label: "Pulse",
+        label: "Foundry Pulse",
+        subtitle: "Health and delivery tracking",
         icon: SignalIcon,
       },
       {
         href: "/app/codeclear",
-        label: "CodeClear",
-        icon: CheckCircleIcon,
+        label: "Foundry Code",
+        subtitle: "Dev review and validation",
+        icon: CodeBracketIcon,
+      },
+      {
+        href: "/app/proposals",
+        label: "Foundry Docs",
+        subtitle: "Documentation and client outputs",
+        icon: ChartBarSquareIcon,
       },
       {
         href: "/app/clients",
-        label: "Clients",
+        label: "Foundry Portal",
+        subtitle: "Client-support workspace",
         icon: UsersIcon,
       },
       {
         href: "/app/support",
-        label: "Support",
+        label: "Foundry Care",
+        subtitle: "Support and aftercare",
         icon: LifebuoyIcon,
       },
+      // {
+      //   href: "/app/proof",
+      //   label: "Proof",
+      //   icon: DocumentTextIcon,
+      // },
     ],
     [],
   );
@@ -129,10 +135,7 @@ export function AppShell({
         <div className="flex min-h-0 flex-col bg-white">
           {/* Mobile top bar */}
           <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
-            <div className="flex items-center gap-2.5">
-              <BrandGlyph className="h-7 w-7 shrink-0" />
-              <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</span>
-            </div>
+            <FoundryLogo compact />
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
@@ -181,10 +184,7 @@ export function AppShell({
           {/* Drawer */}
           <div className="absolute inset-y-0 left-0 flex w-[280px] flex-col bg-[var(--surface-0)]">
             <div className="flex items-center justify-between border-b border-[var(--border-2)] px-5 py-4">
-              <div className="flex items-center gap-2.5">
-                <BrandGlyph className="h-7 w-7 shrink-0" />
-                <span className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</span>
-              </div>
+              <FoundryLogo compact />
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
@@ -256,12 +256,7 @@ function ExpandedRail({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
-        <div className="flex items-center gap-3">
-          <BrandGlyph className="h-8 w-8 shrink-0" />
-          <div>
-            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</p>
-          </div>
-        </div>
+        <FoundryLogo />
 
         <label className="relative mt-4 block">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
@@ -332,7 +327,14 @@ function SidebarNavItem({
   const content = (
     <>
       <Icon className={cn("h-5 w-5 shrink-0", active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
-      <span>{item.label}</span>
+      <div className="min-w-0 flex-1">
+        <span className="block leading-tight">{item.label}</span>
+        {item.subtitle ? (
+          <span className="mt-0.5 block text-[11px] font-normal leading-tight text-[var(--text-4)]">
+            {item.subtitle}
+          </span>
+        ) : null}
+      </div>
     </>
   );
 
@@ -504,17 +506,15 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
   );
 }
 
-function BrandGlyph({ className }: { className?: string }) {
+function FoundryLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-[8px] border border-[rgba(10,13,18,0.08)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
-        className,
-      )}
-    >
-      <div className="absolute inset-[22%] rounded-[4px] bg-[linear-gradient(135deg,#0970C8_0%,#42C7FF_100%)]" />
-      <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/foundry-logo.png"
+      alt="Foundry by Gitwork"
+      className={compact ? "h-7 w-auto" : "h-8 w-auto"}
+      style={{ maxWidth: compact ? 140 : 180 }}
+    />
   );
 }
 

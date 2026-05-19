@@ -581,7 +581,7 @@ function SectionBody({
             </div>
             {data.showBrandingBlock ? (
               <div className="rounded-[14px] bg-[var(--surface-brand)] px-4 py-3 text-xs font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
-                Docs by Gitwork
+                Foundry by Gitwork
               </div>
             ) : null}
           </div>

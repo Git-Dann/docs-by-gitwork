@@ -65,7 +65,7 @@ function githubHeaders() {
 
   return {
     Accept: "application/vnd.github+json",
-    "User-Agent": "docs-by-gitwork-codeclear",
+    "User-Agent": "foundry-by-gitwork-code",
     ...(token
       ? {
           Authorization: `Bearer ${token}`,

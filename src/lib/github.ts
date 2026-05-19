@@ -16,7 +16,7 @@ export function githubHeaders() {
 
   return {
     Accept: "application/vnd.github+json",
-    "User-Agent": "docs-by-gitwork",
+    "User-Agent": "foundry-by-gitwork",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
@@ -69,7 +69,7 @@ export async function githubGraphQL<T>(
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": "docs-by-gitwork",
+      "User-Agent": "foundry-by-gitwork",
     },
     body: JSON.stringify({ query, variables }),
     cache: "no-store",

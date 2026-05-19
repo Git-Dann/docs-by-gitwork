@@ -1235,7 +1235,7 @@ function ApiSection({
   const baseUrl =
     typeof window !== "undefined"
       ? window.location.origin
-      : "https://docs-by-gitwork.vercel.app";
+      : "https://foundry.gitwork.co";
 
   const [copiedUrl, setCopiedUrl] = useState(false);
 
@@ -1255,8 +1255,8 @@ function ApiSection({
             API access
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-            Use these endpoints to connect Docs, Proof, CodeClear, and external clients to Docs by
-            Gitwork. The web app uses a secure server-set session cookie, while external clients
+            Use these endpoints to connect Foundry Docs, Foundry Code, and external clients to
+            Foundry by Gitwork. The web app uses a secure server-set session cookie, while external clients
             authenticate with{" "}
             <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
               Authorization: Bearer &lt;key&gt;
