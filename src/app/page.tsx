@@ -1,279 +1,470 @@
-import Image from "next/image";
+"use client";
+
 import Link from "next/link";
-import { MinusSmallIcon, PlusSmallIcon } from "@heroicons/react/24/outline";
-import { CodeClearSiteDemo } from "@/components/marketing/codeclear-site-demo";
+import { useState } from "react";
+
+const CALENDLY = "https://calendly.com/gitworkgroup/30min";
+
+const services = [
+  {
+    name: "Launch Pad",
+    price: "£4,995",
+    period: "one-off",
+    tag: "Get live in days",
+    description:
+      "Validate your idea and get a working product in front of users fast. Landing page, waitlist, and working prototype.",
+    features: ["Landing page + waitlist", "Working prototype", "AI-ready stack", "Delivered in 7 days"],
+    featured: false,
+  },
+  {
+    name: "MVP Sprint",
+    price: "£25,000",
+    period: "fixed scope",
+    tag: "Most popular",
+    description:
+      "Full product delivered in 14 days. Design, build, deploy, and handover — with a team that ships as fast as you think.",
+    features: [
+      "End-to-end design + build",
+      "Auth, payments, dashboard",
+      "Claude + OpenAI integrations",
+      "14-day delivery guarantee",
+      "Vercel / Supabase / GitHub",
+    ],
+    featured: true,
+  },
+  {
+    name: "Greenfield",
+    price: "£15,000",
+    period: "per month",
+    tag: "Scale with us",
+    description:
+      "Embedded team for ongoing product work. Senior engineers and designers working as your in-house build partner.",
+    features: [
+      "Dedicated senior team",
+      "Weekly sprint reviews",
+      "Unlimited scope changes",
+      "Slack + daily standups",
+    ],
+    featured: false,
+  },
+];
+
+const stats = [
+  { value: "10×", suffix: "", label: "faster than traditional agencies" },
+  { value: "14", suffix: "d", label: "average MVP delivery" },
+  { value: "100", suffix: "%", label: "shipped on schedule" },
+  { value: "£0", suffix: "", label: "wasted on failed projects" },
+];
+
+const steps = [
+  {
+    num: "i.",
+    title: "Brief",
+    description:
+      "You tell us what you're building. We dig into the product, the users, and the commercial logic before touching any code.",
+  },
+  {
+    num: "ii.",
+    title: "Design & scope",
+    description:
+      "We produce a precise scope document with Figma designs, technical decisions, and a fixed price — no surprises.",
+  },
+  {
+    num: "iii.",
+    title: "Build",
+    description:
+      "An embedded team ships your product sprint by sprint. You see working software every 48 hours, not at the end.",
+  },
+  {
+    num: "iv.",
+    title: "Handover",
+    description:
+      "Full repo access, documentation, and a Loom walkthrough. You own everything and can continue independently.",
+  },
+];
+
+const features = [
+  {
+    title: "AI-native from day one",
+    description:
+      "Every build is designed around LLMs. Not bolted on after — structured from the data model up for agents and automation.",
+  },
+  {
+    title: "Pulse project validation",
+    description:
+      "Every project gets a live health score. Infrastructure, security, performance — tracked across every sprint.",
+  },
+  {
+    title: "Proof of work built in",
+    description:
+      "Automated delivery reports, Git-linked evidence, and client-ready documentation at the end of every sprint.",
+  },
+  {
+    title: "No vendor lock-in",
+    description:
+      "You own the codebase, the Vercel project, the Supabase org. We hand over keys at the end, not invoices.",
+  },
+];
+
+const testimonials = [
+  {
+    quote:
+      "They shipped our MVP in 11 days. The code quality was exceptional — we've been building on it for 8 months without touching the foundations.",
+    name: "James R.",
+    role: "Co-founder, Series A SaaS",
+  },
+  {
+    quote:
+      "Most agencies give you estimates. Gitwork gave us a working product. The 14-day guarantee felt like a bold claim until it happened.",
+    name: "Sarah M.",
+    role: "CPO, FinTech startup",
+  },
+  {
+    quote:
+      "The Proof documents alone saved us in our Series A due diligence. Investors could see exactly what was built and when.",
+    name: "Tom H.",
+    role: "CTO, B2B platform",
+  },
+];
 
 const faqs = [
-  "What does Gitwork actually do?",
-  "Is CodeClear part of the agency or a standalone product?",
-  "Can hiring teams use the CodeClear integration first?",
-  "Do you work with in-house teams as well as startups?",
-  "Can Gitwork take a project from brief to delivery?",
-  "How quickly can we get started?",
+  {
+    q: "How does the 14-day guarantee work?",
+    a: "We scope exactly what we'll build before we start. If we miss the delivery date by more than 2 days for reasons within our control, we give you a full refund. We've never triggered it.",
+  },
+  {
+    q: "What stack do you build on?",
+    a: "Next.js 15, Supabase, Vercel, and TypeScript as the default. We integrate Claude, OpenAI, or any LLM your product needs. The stack is chosen for AI-readiness, not habit.",
+  },
+  {
+    q: "Do I own the code?",
+    a: "Completely. You get the GitHub repo, Vercel project, Supabase org — everything transferred to your accounts on delivery. No ongoing dependency on us.",
+  },
+  {
+    q: "Can we continue after the initial build?",
+    a: "Yes. Most clients move to Greenfield (our ongoing build partner model) after Launch Pad or MVP Sprint. Some take the code and run — that's fine too.",
+  },
+  {
+    q: "What if we need changes mid-sprint?",
+    a: "Greenfield has unlimited scope changes. For fixed-price engagements, we handle small pivots in scope — anything major gets a transparent change order.",
+  },
+  {
+    q: "Do you work with non-technical founders?",
+    a: "Primarily, yes. Our process is designed for founders who think in product, not in code. We translate intent into architecture, and architecture into shipping software.",
+  },
 ];
 
-const footerColumns = [
-  {
-    title: "Products",
-    links: ["Docs", "Proof", "CodeClear", "Clients", "Platform"],
-  },
-  {
-    title: "Services",
-    links: ["Product design", "Web delivery", "Embedded developers", "Technical leadership", "Proposals"],
-  },
-  {
-    title: "Resources",
-    links: ["Pricing", "Process", "FAQ", "Book a call", "Contact"],
-  },
-  {
-    title: "Company",
-    links: ["About", "Blog", "LinkedIn", "GitHub", "Privacy"],
-  },
-];
-
-const proofPoints = [
-  {
-    title: "Agency delivery",
-    copy: "Design, proposals, staffing, and shipping support under one calmer operating rhythm.",
-  },
-  {
-    title: "Platform systems",
-    copy: "Docs and Proof keep briefs, commercials, sign-off, and working drafts properly structured.",
-  },
-  {
-    title: "Hiring signal",
-    copy: "CodeClear gives hiring companies a faster way to frame demand and surface stronger-fit developers.",
-  },
-];
+const tools = ["Cursor", "v0", "Lovable", "Replit", "Bolt", "Claude Code"];
 
 export default function HomePage() {
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <main className="bg-[#0a0a0a] text-white">
-        <section className="relative isolate overflow-hidden border-b border-white/5 bg-[#0a0a0a]">
-          <HeroGrid />
+    <div className="min-h-screen" style={{ backgroundColor: "#f0ece3", color: "#1a1a18", fontFamily: "var(--font-sans, Inter, sans-serif)" }}>
 
-          <div className="relative z-10 mx-auto max-w-[1280px] px-8">
-            <header className="flex h-[84px] items-center justify-between">
-              <Link href="/" aria-label="Gitwork home" className="inline-flex items-center">
-                <Image src="/gitwork-logo-white.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
-              </Link>
+      {/* Nav */}
+      <nav style={{ backgroundColor: "#f0ece3" }} className="sticky top-0 z-50 border-b border-black/8">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <span className="text-[22px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+            Gitwork.
+          </span>
+          <div className="hidden items-center gap-8 md:flex">
+            {["Services", "How we work", "Work", "FAQ"].map((item) => (
+              <a key={item} href={`#${item.toLowerCase().replace(/ /g, "-")}`} className="text-[15px] text-black/60 transition-colors hover:text-black">
+                {item}
+              </a>
+            ))}
+          </div>
+          <a
+            href={CALENDLY}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-black px-5 py-2 text-[14px] font-medium text-white transition-opacity hover:opacity-80"
+          >
+            Book a call <span aria-hidden>→</span>
+          </a>
+        </div>
+      </nav>
 
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/app/proposals"
-                  className="app-button app-button-dark app-button-md"
-                >
-                  Open platform
-                </Link>
-                <a
-                  href="https://calendly.com/gitworkgroup/30min"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="app-button app-button-primary app-button-md"
-                >
-                  Book call
-                </a>
-              </div>
-            </header>
+      {/* Hero */}
+      <section className="mx-auto max-w-6xl px-6 pb-20 pt-24">
+        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/60 px-4 py-1.5 text-[13px] text-black/60">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "#5b52f0" }} />
+          AI-native delivery · 14-day MVP guarantee
+        </div>
+        <h1 className="max-w-3xl text-[72px] font-normal leading-[0.96] tracking-[-0.04em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+          From prompt to{" "}
+          <span style={{ color: "#5b52f0", fontStyle: "italic" }}>production.</span>
+        </h1>
+        <p className="mt-7 max-w-xl text-[19px] leading-[1.65] text-black/56">
+          Gitwork is a design and build agency for AI-native products. We take your idea from brief to deployed
+          in 14 days — design, code, and delivery included.
+        </p>
+        <div className="mt-10 flex flex-wrap gap-3">
+          <a
+            href={CALENDLY}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: "#5b52f0" }}
+          >
+            Book a free call
+          </a>
+          <Link
+            href="/app/proposals"
+            className="inline-flex items-center gap-2 rounded-full border border-black/12 bg-white/70 px-6 py-3 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
+          >
+            Open platform
+          </Link>
+        </div>
+      </section>
 
-            <div className="grid items-center gap-12 pb-24 pt-14 lg:grid-cols-[minmax(0,520px)_1fr] lg:gap-16 lg:pb-28">
-              <div className="max-w-[520px]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Gitwork</p>
-                <h1 className="mt-5 text-[64px] font-semibold leading-[0.98] tracking-[-0.065em] text-white">
-                  Agency delivery with better systems built in.
-                </h1>
-                <p className="mt-6 text-[20px] leading-[1.6] text-white/62">
-                  Gitwork is a design and developer agency. We use Docs, Proof, and CodeClear to turn messy briefs
-                  into cleaner proposals, clearer delivery, and stronger hiring decisions.
-                </p>
+      {/* Trust bar */}
+      <section className="border-y border-black/6 py-5" style={{ backgroundColor: "#ece8df" }}>
+        <div className="mx-auto max-w-6xl px-6">
+          <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Built with the best AI tooling</p>
+          <div className="flex flex-wrap gap-x-8 gap-y-2">
+            {tools.map((tool) => (
+              <span key={tool} className="text-[15px] font-medium text-black/40">
+                {tool}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
 
-                <div className="mt-9 flex flex-wrap gap-3">
-                  <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
-                    Open platform
-                  </Link>
-                  <a
-                    href="https://calendly.com/gitworkgroup/30min"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="app-button app-button-primary app-button-md"
+      {/* Statement card */}
+      <section className="mx-auto max-w-6xl px-6 py-20">
+        <div className="rounded-[24px] p-10 md:p-14" style={{ backgroundColor: "#1a1a18" }}>
+          <span className="block text-[80px] leading-none" style={{ color: "#5b52f0", fontFamily: "var(--font-display, serif)" }}>&ldquo;</span>
+          <p className="mt-2 max-w-2xl text-[28px] font-normal leading-[1.4] tracking-[-0.02em] text-white" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+            Most agencies spend 3 months scoping what we ship in 2 weeks. We build for the speed your market demands.
+          </p>
+          <p className="mt-8 text-[14px] font-medium text-white/40">— Gitwork</p>
+        </div>
+      </section>
+
+      {/* Services */}
+      <section id="services" className="mx-auto max-w-6xl px-6 pb-20">
+        <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Services</p>
+        <h2 className="mb-12 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+          Choose your build.
+        </h2>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {services.map((svc) => (
+            <div
+              key={svc.name}
+              className="flex flex-col rounded-[20px] p-8"
+              style={{
+                backgroundColor: svc.featured ? "#1a1a18" : "white",
+                color: svc.featured ? "white" : "#1a1a18",
+              }}
+            >
+              <div className="mb-6 flex items-start justify-between">
+                <div>
+                  <span
+                    className="mb-2 inline-block rounded-full px-3 py-1 text-[12px] font-medium"
+                    style={{
+                      backgroundColor: svc.featured ? "rgba(91,82,240,0.25)" : "rgba(91,82,240,0.08)",
+                      color: svc.featured ? "#b8b3ff" : "#5b52f0",
+                    }}
                   >
-                    Book call
-                  </a>
+                    {svc.tag}
+                  </span>
+                  <h3 className="text-[22px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, serif)" }}>
+                    {svc.name}
+                  </h3>
+                </div>
+                <div className="text-right">
+                  <span className="block text-[26px] font-semibold tracking-[-0.03em]">{svc.price}</span>
+                  <span className="text-[12px]" style={{ color: svc.featured ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.4)" }}>
+                    {svc.period}
+                  </span>
                 </div>
               </div>
 
-              <div className="relative">
-                <div className="absolute inset-0 rounded-[42px] bg-[radial-gradient(circle_at_50%_18%,rgba(84,130,255,0.28),transparent_38%),radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.12),transparent_45%)] blur-3xl" />
-                <div className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-4 shadow-[0_28px_120px_rgba(0,0,0,0.42)]">
-                  <Image
-                    src="/gitwork-header.png"
-                    alt="Gitwork platform layers"
-                    width={592}
-                    height={599}
-                    className="h-auto w-full rounded-[28px] object-cover"
-                    priority
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-[#0a0a0a] py-24">
-          <div className="mx-auto max-w-[1280px] px-8">
-            <div className="mx-auto max-w-[760px] text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Public integration</p>
-              <h2 className="mt-4 text-[44px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
-                A better front door for hiring companies.
-              </h2>
-              <p className="mt-4 text-[19px] leading-8 text-white/60">
-                This is the public-facing CodeClear experience. A company frames the work, Gitwork surfaces the best
-                matches, and the shortlist can move into a proper agency-led review.
+              <p className="mb-6 text-[15px] leading-[1.6]" style={{ color: svc.featured ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.55)" }}>
+                {svc.description}
               </p>
-            </div>
 
-            <div className="mt-14">
-              <CodeClearSiteDemo />
-            </div>
-          </div>
-        </section>
+              <ul className="mb-8 flex-1 space-y-2.5">
+                {svc.features.map((f) => (
+                  <li key={f} className="flex items-center gap-2.5 text-[14px]" style={{ color: svc.featured ? "rgba(255,255,255,0.75)" : "rgba(0,0,0,0.65)" }}>
+                    <span style={{ color: "#5b52f0" }}>✓</span> {f}
+                  </li>
+                ))}
+              </ul>
 
-        <section className="border-y border-white/5 bg-[#0a0a0a] py-20">
-          <div className="mx-auto max-w-[1280px] px-8">
-            <div className="grid gap-8 lg:grid-cols-3">
-              {proofPoints.map((item) => (
-                <div key={item.title} className="border-t border-white/10 pt-5">
-                  <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-white">{item.title}</h3>
-                  <p className="mt-3 max-w-[320px] text-[16px] leading-7 text-white/56">{item.copy}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-[#0a0a0a] py-24">
-          <div className="mx-auto max-w-[768px] px-8 text-center">
-            <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.05em] text-white">
-              Start the conversation.
-            </h2>
-            <p className="mt-4 text-[19px] leading-8 text-white/60">
-              Tell us what you&apos;re building. We&apos;ll work out the right shape together.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <a
-                href="https://calendly.com/gitworkgroup/30min"
+                href={CALENDLY}
                 target="_blank"
                 rel="noreferrer"
-                className="app-button app-button-primary app-button-md"
+                className="mt-auto block rounded-full py-3 text-center text-[14px] font-medium transition-opacity hover:opacity-80"
+                style={{
+                  backgroundColor: svc.featured ? "#5b52f0" : "transparent",
+                  color: svc.featured ? "white" : "#5b52f0",
+                  border: svc.featured ? "none" : "1.5px solid #5b52f0",
+                }}
               >
-                Book a call
+                Get started →
               </a>
-              <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
-                Open platform
-              </Link>
             </div>
-          </div>
-        </section>
+          ))}
+        </div>
+      </section>
 
-        <section className="bg-[#0a0a0a] py-24">
-          <div className="mx-auto max-w-[768px] px-8 text-center">
-            <h2 className="text-[36px] font-semibold leading-[1.22] tracking-[-0.04em] text-white">
-              Frequently asked questions
-            </h2>
-            <p className="mt-4 text-[18px] leading-7 text-white/56">
-              A quick overview of how Gitwork works as an agency and where the platform fits in.
-            </p>
+      {/* Stats */}
+      <section className="border-y border-black/6 py-16" style={{ backgroundColor: "#ece8df" }}>
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+            {stats.map((s) => (
+              <div key={s.label}>
+                <p className="text-[52px] font-semibold leading-none tracking-[-0.04em]">
+                  {s.value}
+                  {s.suffix && <span style={{ color: "#5b52f0" }}>{s.suffix}</span>}
+                </p>
+                <p className="mt-2 text-[14px] text-black/50">{s.label}</p>
+              </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          <div className="mx-auto mt-16 max-w-[768px] px-8">
-            {faqs.map((item, index) => (
-              <div key={item} className="flex items-center justify-between border-b border-[#262626] py-6">
-                <span className="text-[18px] leading-7 text-white">{item}</span>
-                {index === 0 ? (
-                  <MinusSmallIcon className="h-5 w-5 text-white/56" />
-                ) : (
-                  <PlusSmallIcon className="h-5 w-5 text-white/56" />
+      {/* How we work */}
+      <section id="how-we-work" className="mx-auto max-w-6xl px-6 py-20">
+        <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Process</p>
+        <h2 className="mb-14 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+          How we work.
+        </h2>
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+          {steps.map((step) => (
+            <div key={step.num}>
+              <span className="block text-[22px] font-normal italic" style={{ color: "#5b52f0", fontFamily: "var(--font-display, serif)" }}>
+                {step.num}
+              </span>
+              <h3 className="mt-3 text-[20px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, serif)" }}>
+                {step.title}
+              </h3>
+              <p className="mt-3 text-[14px] leading-[1.7] text-black/55">{step.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Features grid */}
+      <section className="py-20" style={{ backgroundColor: "#ebe7de" }}>
+        <div className="mx-auto max-w-6xl px-6">
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Why Gitwork</p>
+          <h2 className="mb-12 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+            Built different.
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {features.map((f) => (
+              <div key={f.title} className="rounded-[20px] bg-white/70 p-8">
+                <h3 className="mb-3 text-[20px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, serif)" }}>
+                  {f.title}
+                </h3>
+                <p className="text-[15px] leading-[1.65] text-black/55">{f.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section id="work" className="mx-auto max-w-6xl px-6 py-20">
+        <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">Client results</p>
+        <h2 className="mb-12 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+          What clients say.
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {testimonials.map((t) => (
+            <div key={t.name} className="rounded-[20px] bg-white/70 p-8">
+              <p className="mb-6 text-[16px] leading-[1.65] text-black/70">&ldquo;{t.quote}&rdquo;</p>
+              <div>
+                <p className="text-[14px] font-semibold">{t.name}</p>
+                <p className="text-[13px] text-black/45">{t.role}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="py-20" style={{ backgroundColor: "#ece8df" }}>
+        <div className="mx-auto max-w-3xl px-6">
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-black/36">FAQ</p>
+          <h2 className="mb-12 text-[44px] font-normal tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+            Honest answers.
+          </h2>
+          <div className="divide-y divide-black/8">
+            {faqs.map((faq, i) => (
+              <div key={faq.q}>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between py-5 text-left"
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                >
+                  <span className="pr-4 text-[17px] font-medium">{faq.q}</span>
+                  <span className="shrink-0 text-[20px] text-black/40" style={{ color: "#5b52f0" }}>
+                    {openFaq === i ? "−" : "+"}
+                  </span>
+                </button>
+                {openFaq === i && (
+                  <p className="pb-5 text-[15px] leading-[1.7] text-black/55">{faq.a}</p>
                 )}
               </div>
             ))}
-
-            <div className="mt-10 rounded-[24px] border border-[#262626] bg-[#171717] px-8 py-10 text-center">
-              <h3 className="text-[20px] font-semibold text-white">Still have questions?</h3>
-              <p className="mt-2 text-[16px] text-white/56">
-                Talk to Gitwork about the platform, the agency model, or the right delivery shape for the next build.
-              </p>
-              <a
-                href="https://calendly.com/gitworkgroup/30min"
-                target="_blank"
-                rel="noreferrer"
-                className="app-button app-button-primary app-button-md mt-6"
-              >
-                Book call
-              </a>
-            </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="bg-[#171717] py-24">
-          <div className="mx-auto max-w-[768px] px-8 text-center">
-            <h2 className="text-[30px] font-semibold leading-[1.2] tracking-[-0.04em] text-white">
-              Sign up for our newsletter
-            </h2>
-            <p className="mt-4 text-[16px] leading-6 text-white/56">
-              Be the first to know about platform updates, agency thinking, and release notes.
-            </p>
-            <div className="mx-auto mt-8 flex max-w-[440px] gap-4">
-              <div className="flex-1 rounded-[8px] border border-[#404040] bg-[#0f0f0f] px-[14px] py-[10px] text-left text-[16px] text-[#737373]">
-                Enter your email
-              </div>
-              <button type="button" className="app-button app-button-primary app-button-md">
-                Subscribe
-              </button>
-            </div>
-            <p className="mt-3 text-[14px] text-[#737373]">We care about your data in our privacy policy.</p>
-          </div>
-        </section>
+      {/* Final CTA */}
+      <section className="mx-auto max-w-6xl px-6 py-24 text-center">
+        <h2 className="mx-auto max-w-2xl text-[52px] font-normal leading-[1.08] tracking-[-0.03em]" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+          Ready to ship?
+        </h2>
+        <p className="mt-5 text-[19px] leading-[1.65] text-black/55">
+          Tell us what you&apos;re building. We&apos;ll scope it, price it, and ship it.
+        </p>
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <a
+            href={CALENDLY}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: "#5b52f0" }}
+          >
+            Book a free call
+          </a>
+          <Link
+            href="/app/proposals"
+            className="inline-flex items-center gap-2 rounded-full border border-black/12 bg-white/70 px-8 py-3.5 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
+          >
+            Open platform
+          </Link>
+        </div>
+      </section>
 
-        <footer className="border-t border-[#262626] bg-[#0a0a0a] py-16 text-white">
-          <div className="mx-auto max-w-[1280px] px-8">
-            <div className="grid gap-10 lg:grid-cols-[1.2fr_repeat(4,1fr)]">
-              <div>
-                <Image src="/gitwork-logo-white.svg" alt="Gitwork" width={134} height={25} className="h-[25px] w-auto" />
-                <p className="mt-6 max-w-[320px] text-[16px] leading-6 text-white/56">
-                  Gitwork is a creative design and developer agency with a sharper operating system behind the work.
-                </p>
-              </div>
-
-              {footerColumns.map((column) => (
-                <div key={column.title}>
-                  <h3 className="text-[14px] font-semibold text-white">{column.title}</h3>
-                  <div className="mt-4 space-y-3">
-                    {column.links.map((item) => (
-                      <p key={item} className="text-[14px] text-[#bfbfbf]">
-                        {item}
-                      </p>
-                    ))}
-                  </div>
-                </div>
+      {/* Footer */}
+      <footer className="border-t border-black/8 py-12" style={{ backgroundColor: "#ece8df" }}>
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+            <span className="text-[20px] font-normal" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
+              Gitwork.
+            </span>
+            <div className="flex flex-wrap gap-6 text-[14px] text-black/50">
+              {["Services", "Process", "FAQ", "Platform", "Privacy"].map((item) => (
+                <a key={item} href="#" className="transition-colors hover:text-black">
+                  {item}
+                </a>
               ))}
             </div>
-
-            <div className="mt-12 border-t border-[#262626] pt-8 text-[14px] text-white/56">
-              © 2026 Gitwork. All rights reserved.
-            </div>
           </div>
-        </footer>
-      </main>
-    </div>
-  );
-}
-
-function HeroGrid() {
-  return (
-    <div className="pointer-events-none absolute inset-0 opacity-100">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.12),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]" />
-      <div className="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:76px_76px]" />
+          <p className="mt-8 text-[13px] text-black/35">© 2026 Gitwork. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   );
 }
