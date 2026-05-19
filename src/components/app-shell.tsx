@@ -140,7 +140,7 @@ export function AppShell({
           {hideContentHeader ? null : (
             <header className="border-b border-[var(--border-2)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
-                <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                <h1 className="text-[32px] font-normal tracking-[-0.02em] text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
                   {title}
                 </h1>
                 {subtitle ? (

@@ -25,7 +25,7 @@ function StatCard({
   return (
     <div className={cn("app-card p-5", toneClass)}>
       <p className="text-sm font-medium text-[var(--text-3)]">{label}</p>
-      <p className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+      <p className="mt-3 text-[32px] font-normal tracking-[-0.01em] text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
         {value}
       </p>
       {caption ? <p className="mt-2 text-sm text-[var(--text-4)]">{caption}</p> : null}
