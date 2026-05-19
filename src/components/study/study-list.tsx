@@ -184,7 +184,7 @@ export function StudyList() {
                 <BeakerIcon className="h-4 w-4" />
                 {loadingDemo ? "Loading…" : "Load demo study"}
               </button>
-              <Link href="/app/study/new" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+              <Link href="/app/study/new" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" style={{ color: "white" }}>
                 <PlusIcon className="h-4 w-4" />
                 New study
               </Link>
