@@ -91,9 +91,11 @@ body {
   background: rgba(9, 112, 200, 0.14);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 @layer components {
