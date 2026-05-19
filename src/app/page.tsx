@@ -165,8 +165,13 @@ export default function HomePage() {
       {/* Nav */}
       <nav style={{ backgroundColor: "#f0ece3" }} className="sticky top-0 z-50 border-b border-black/8">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-7 w-auto" />
+          <div className="leading-none">
+            <div className="flex items-baseline gap-[1px]">
+              <span className="text-[20px] font-black tracking-[-0.03em] text-[#0a0a0a]">Foundry</span>
+              <span className="text-[20px] font-black" style={{ color: "#5b52f0" }}>.</span>
+            </div>
+            <p className="mt-[2px] text-[10px] font-medium tracking-[0.04em] text-black/40">by Gitwork</p>
+          </div>
           <div className="hidden items-center gap-8 md:flex">
             {["Services", "How we work", "Work", "FAQ"].map((item) => (
               <a key={item} href={`#${item.toLowerCase().replace(/ /g, "-")}`} className="text-[15px] text-black/60 transition-colors hover:text-black">
@@ -450,8 +455,13 @@ export default function HomePage() {
       <footer className="border-t border-black/8 py-12" style={{ backgroundColor: "#ece8df" }}>
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-6 w-auto" />
+            <div className="leading-none">
+              <div className="flex items-baseline gap-[1px]">
+                <span className="text-[18px] font-black tracking-[-0.03em] text-[#0a0a0a]">Foundry</span>
+                <span className="text-[18px] font-black" style={{ color: "#5b52f0" }}>.</span>
+              </div>
+              <p className="mt-[2px] text-[10px] font-medium tracking-[0.04em] text-black/40">by Gitwork</p>
+            </div>
             <div className="flex flex-wrap gap-6 text-[14px] text-black/50">
               {["Services", "Process", "FAQ", "Platform", "Privacy"].map((item) => (
                 <a key={item} href="#" className="transition-colors hover:text-black">
