@@ -1,3 +1,13 @@
+import type {
+  AuditLog,
+  Connection,
+  Conversation,
+  DraftAction,
+  Message,
+  SupportClient,
+  Ticket,
+  WorkflowRule,
+} from "@/types/support";
 import type { ClientDetailRecord, ClientListItem } from "@/types/client";
 import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
@@ -676,3 +686,169 @@ export async function saveIntegrations(data: {
 export async function saveAnthropicKey(anthropicApiKey: string): Promise<{ saved: boolean }> {
   return saveIntegrations({ anthropicApiKey });
 }
+
+// ─── Support API ──────────────────────────────────────────────────────────────
+
+export async function listSupportClients(): Promise<{ clients: SupportClient[] }> {
+  return apiFetch("/api/support/clients");
+}
+
+export async function getSupportClient(clientId: string): Promise<{ client: SupportClient }> {
+  return apiFetch(`/api/support/clients/${clientId}`);
+}
+
+export async function createSupportClient(
+  data: Partial<SupportClient>,
+): Promise<{ client: SupportClient }> {
+  return apiFetch("/api/support/clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSupportClient(
+  clientId: string,
+  data: Partial<SupportClient>,
+): Promise<{ client: SupportClient }> {
+  return apiFetch(`/api/support/clients/${clientId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportConversations(
+  clientId: string,
+): Promise<{ conversations: Conversation[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations`);
+}
+
+export async function updateSupportConversation(
+  clientId: string,
+  convId: string,
+  data: Partial<Conversation>,
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportMessages(
+  clientId: string,
+  convId: string,
+): Promise<{ messages: Message[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/messages`);
+}
+
+export async function sendSupportMessage(
+  clientId: string,
+  convId: string,
+  data: { direction: "inbound" | "outbound"; authorLabel: string; body: string },
+): Promise<{ message: Message }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportTickets(clientId: string): Promise<{ tickets: Ticket[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets`);
+}
+
+export async function updateSupportTicket(
+  clientId: string,
+  ticketId: string,
+  data: Partial<Ticket>,
+): Promise<{ ticket: Ticket }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets/${ticketId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSupportTicket(
+  clientId: string,
+  ticketId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets/${ticketId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listSupportConnections(
+  clientId: string,
+): Promise<{ connections: Connection[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/connections`);
+}
+
+export async function updateSupportConnection(
+  clientId: string,
+  connId: string,
+  data: Partial<Connection>,
+): Promise<{ connection: Connection }> {
+  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportDraftActions(
+  clientId: string,
+): Promise<{ draftActions: DraftAction[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/draft-actions`);
+}
+
+export async function updateSupportDraftAction(
+  clientId: string,
+  draftId: string,
+  data: Partial<DraftAction>,
+): Promise<{ draftAction: DraftAction }> {
+  return apiFetch(`/api/support/clients/${clientId}/draft-actions/${draftId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportWorkflowRules(
+  clientId: string,
+): Promise<{ rules: WorkflowRule[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/workflow-rules`);
+}
+
+export async function createSupportWorkflowRule(
+  clientId: string,
+  data: Partial<WorkflowRule>,
+): Promise<{ rule: WorkflowRule }> {
+  return apiFetch(`/api/support/clients/${clientId}/workflow-rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSupportWorkflowRule(
+  clientId: string,
+  ruleId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/support/clients/${clientId}/workflow-rules/${ruleId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listSupportAuditLogs(clientId: string): Promise<{ logs: AuditLog[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/audit-logs`);
+}
+
+export async function listSupportMembers(
+  clientId: string,
+): Promise<{ members: { id: string; name: string; email: string; role: string }[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/members`);
+}
+

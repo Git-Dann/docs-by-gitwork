@@ -16,9 +16,8 @@ import {
   SparklesIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useState, useDeferredValue } from "react";
+import { useState, useDeferredValue, useEffect, useRef } from "react";
 import { cn } from "@/lib/format";
-import { SUPPORT_SEED } from "@/lib/support-seed";
 import type {
   Connection,
   Conversation,
@@ -28,6 +27,19 @@ import type {
   TicketPriority,
   TicketStatus,
 } from "@/types/support";
+import {
+  useSupportClients,
+  useSupportConversations,
+  useSupportMessages,
+  useUpdateConversation,
+  useSendMessage,
+  useSupportTickets,
+  useUpdateTicket,
+  useSupportConnections,
+  useSupportWorkflowRules,
+  useSupportMembers,
+  useSupportAuditLogs,
+} from "@/hooks/use-support";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -100,10 +112,37 @@ type Tab = "inbox" | "tickets" | "reports" | "connectors" | "settings";
 // ─── inbox view ──────────────────────────────────────────────────────────────
 
 function InboxView({ clientId }: { clientId: string }) {
-  const convos = SUPPORT_SEED.conversations.filter((c) => c.clientId === clientId);
-  const [selected, setSelected] = useState<string | null>(convos[0]?.id ?? null);
+  const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
+  const convos = convoData?.conversations ?? [];
+
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const deferred = useDeferredValue(search);
+  const [replyText, setReplyText] = useState("");
+
+  // Set first conversation when data loads
+  useEffect(() => {
+    if (convos.length > 0 && selectedConvId === null) {
+      setSelectedConvId(convos[0].id);
+    }
+  }, [convos, selectedConvId]);
+
+  const { data: msgData, isLoading: msgsLoading } = useSupportMessages(clientId, selectedConvId);
+  const messages = msgData?.messages ?? [];
+
+  const updateConversation = useUpdateConversation(clientId);
+  const sendMessage = useSendMessage(clientId, selectedConvId);
+
+  // Mark conversation as read when opened
+  const markedReadRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!selectedConvId) return;
+    const convo = convos.find((c) => c.id === selectedConvId);
+    if (convo?.unread && !markedReadRef.current.has(selectedConvId)) {
+      markedReadRef.current.add(selectedConvId);
+      updateConversation.mutate({ convId: selectedConvId, data: { unread: false } });
+    }
+  }, [selectedConvId, convos, updateConversation]);
 
   const filtered = convos.filter(
     (c) =>
@@ -112,8 +151,16 @@ function InboxView({ clientId }: { clientId: string }) {
       c.tags.some((t) => t.includes(deferred.toLowerCase())),
   );
 
-  const activeConvo = convos.find((c) => c.id === selected) ?? null;
-  const messages = SUPPORT_SEED.messages.filter((m) => m.conversationId === selected);
+  const activeConvo = convos.find((c) => c.id === selectedConvId) ?? null;
+
+  function handleSend() {
+    const body = replyText.trim();
+    if (!body || !selectedConvId) return;
+    sendMessage.mutate(
+      { direction: "outbound", authorLabel: "Support", body },
+      { onSuccess: () => setReplyText("") },
+    );
+  }
 
   return (
     <div className="grid min-h-0 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -130,15 +177,22 @@ function InboxView({ clientId }: { clientId: string }) {
         </div>
 
         <div className="max-h-[calc(100vh-16rem)] space-y-2 overflow-y-auto pr-0.5">
-          {filtered.length === 0 && (
+          {convosLoading && (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-24 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+              ))}
+            </div>
+          )}
+          {!convosLoading && filtered.length === 0 && (
             <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
           )}
           {filtered.map((c) => (
             <ConversationCard
               key={c.id}
               convo={c}
-              active={c.id === selected}
-              onClick={() => setSelected(c.id)}
+              active={c.id === selectedConvId}
+              onClick={() => setSelectedConvId(c.id)}
             />
           ))}
         </div>
@@ -177,6 +231,13 @@ function InboxView({ clientId }: { clientId: string }) {
             </div>
 
             <div className="space-y-3 p-5">
+              {msgsLoading && (
+                <div className="space-y-2">
+                  {[...Array(2)].map((_, i) => (
+                    <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                  ))}
+                </div>
+              )}
               {messages.map((msg) => (
                 <div
                   key={msg.id}
@@ -202,13 +263,17 @@ function InboxView({ clientId }: { clientId: string }) {
                 rows={3}
                 className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white resize-none"
                 placeholder="Write a reply…"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
               />
               <div className="mt-2 flex justify-end">
                 <button
                   type="button"
-                  className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+                  onClick={handleSend}
+                  disabled={sendMessage.isPending || !replyText.trim()}
+                  className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                 >
-                  Send reply
+                  {sendMessage.isPending ? "Sending…" : "Send reply"}
                 </button>
               </div>
             </div>
@@ -279,7 +344,18 @@ function ConversationCard({
 // ─── tickets view ────────────────────────────────────────────────────────────
 
 function TicketsView({ clientId }: { clientId: string }) {
-  const tickets = SUPPORT_SEED.tickets.filter((t) => t.clientId === clientId);
+  const { data, isLoading } = useSupportTickets(clientId);
+  const tickets = data?.tickets ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="h-28 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+        ))}
+      </div>
+    );
+  }
 
   if (tickets.length === 0) {
     return (
@@ -292,13 +368,15 @@ function TicketsView({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-3">
       {tickets.map((ticket) => (
-        <TicketCard key={ticket.id} ticket={ticket} />
+        <TicketCard key={ticket.id} ticket={ticket} clientId={clientId} />
       ))}
     </div>
   );
 }
 
-function TicketCard({ ticket }: { ticket: Ticket }) {
+function TicketCard({ ticket, clientId }: { ticket: Ticket; clientId: string }) {
+  const updateTicket = useUpdateTicket(clientId);
+
   return (
     <div className="app-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -338,6 +416,16 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
           <span className="font-medium text-[var(--text-2)]">Next action:</span> {ticket.nextAction}
         </p>
         <p className="mt-1 text-xs text-[var(--text-4)]">Assigned to {ticket.assignedTo}</p>
+        {ticket.status !== "resolved" && (
+          <button
+            type="button"
+            onClick={() => updateTicket.mutate({ ticketId: ticket.id, data: { status: "resolved" } })}
+            disabled={updateTicket.isPending}
+            className="mt-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+          >
+            Mark resolved
+          </button>
+        )}
       </div>
     </div>
   );
@@ -406,7 +494,18 @@ const AUTH_MODE_LABEL: Record<Connection["authMode"], string> = {
 };
 
 function ConnectorsView({ clientId }: { clientId: string }) {
-  const connections = SUPPORT_SEED.connections.filter((c) => c.clientId === clientId);
+  const { data, isLoading } = useSupportConnections(clientId);
+  const connections = data?.connections ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="app-card overflow-hidden p-0">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className={cn("h-20 animate-pulse bg-[var(--surface-1)]", i > 0 && "border-t border-[var(--border-2)]")} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -479,9 +578,13 @@ function ConnectorsView({ clientId }: { clientId: string }) {
 // ─── settings view ───────────────────────────────────────────────────────────
 
 function SettingsView({ clientId }: { clientId: string }) {
-  const rules = SUPPORT_SEED.workflowRules.filter((r) => r.clientId === clientId);
-  const users = SUPPORT_SEED.users.filter((u) => u.assignedClientIds.includes(clientId));
-  const logs = SUPPORT_SEED.auditLogs.filter((l) => l.clientId === clientId);
+  const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
+  const { data: membersData, isLoading: membersLoading } = useSupportMembers(clientId);
+  const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
+
+  const rules = rulesData?.rules ?? [];
+  const members = membersData?.members ?? [];
+  const logs = logsData?.logs ?? [];
 
   return (
     <div className="space-y-6">
@@ -489,7 +592,10 @@ function SettingsView({ clientId }: { clientId: string }) {
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Workflow rules</h3>
         <div className="app-card overflow-hidden p-0">
-          {rules.length === 0 && (
+          {rulesLoading && (
+            <div className="h-20 animate-pulse bg-[var(--surface-1)]" />
+          )}
+          {!rulesLoading && rules.length === 0 && (
             <p className="px-5 py-4 text-sm text-[var(--text-4)]">No rules configured.</p>
           )}
           {rules.map((rule, idx) => (
@@ -529,7 +635,10 @@ function SettingsView({ clientId }: { clientId: string }) {
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Team access</h3>
         <div className="app-card overflow-hidden p-0">
-          {users.map((user, idx) => (
+          {membersLoading && (
+            <div className="h-16 animate-pulse bg-[var(--surface-1)]" />
+          )}
+          {members.map((user, idx) => (
             <div
               key={user.id}
               className={cn(
@@ -555,10 +664,13 @@ function SettingsView({ clientId }: { clientId: string }) {
       </section>
 
       {/* audit log */}
-      {logs.length > 0 && (
+      {(logsLoading || logs.length > 0) && (
         <section>
           <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Audit log</h3>
           <div className="app-card overflow-hidden p-0">
+            {logsLoading && (
+              <div className="h-16 animate-pulse bg-[var(--surface-1)]" />
+            )}
             {logs.map((log, idx) => (
               <div
                 key={log.id}
@@ -612,14 +724,9 @@ function VaultNotice() {
 
 // ─── tab bar ─────────────────────────────────────────────────────────────────
 
-const TABS: { id: Tab; label: string; icon: React.ElementType; count?: (clientId: string) => number }[] = [
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "inbox", label: "Inbox", icon: InboxIcon },
-  {
-    id: "tickets",
-    label: "Tickets",
-    icon: ClipboardDocumentListIcon,
-    count: (cid) => SUPPORT_SEED.tickets.filter((t) => t.clientId === cid).length,
-  },
+  { id: "tickets", label: "Tickets", icon: ClipboardDocumentListIcon },
   { id: "reports", label: "Reports", icon: DocumentTextIcon },
   { id: "connectors", label: "Connectors", icon: BoltIcon },
   { id: "settings", label: "Settings", icon: Cog8ToothIcon },
@@ -628,17 +735,43 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; count?: (clientId
 // ─── main dashboard ──────────────────────────────────────────────────────────
 
 export function SupportDashboard() {
-  const { clients } = SUPPORT_SEED;
-  const [activeClientId, setActiveClientId] = useState<string>(clients[0]?.id ?? "");
+  const { data: clientsData, isLoading: clientsLoading } = useSupportClients();
+  const clients = clientsData?.clients ?? [];
+
+  const [activeClientId, setActiveClientId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
+
+  // Set first client when data loads
+  useEffect(() => {
+    if (clients.length > 0 && !activeClientId) {
+      setActiveClientId(clients[0].id);
+    }
+  }, [clients, activeClientId]);
 
   const client = clients.find((c) => c.id === activeClientId);
 
-  if (!client) return null;
+  // Inbox unread count for active client (from conversations query if cached)
+  const { data: convoData } = useSupportConversations(activeClientId || null);
+  const inboxUnread = (convoData?.conversations ?? []).filter((c) => c.unread).length;
 
-  const inboxUnread = SUPPORT_SEED.conversations.filter(
-    (c) => c.clientId === activeClientId && c.unread,
-  ).length;
+  if (clientsLoading) {
+    return (
+      <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
+        <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+          <div className="px-3 pb-2 pt-4 space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-9 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+            ))}
+          </div>
+        </aside>
+        <div className="flex min-w-0 flex-1 items-center justify-center">
+          <p className="text-sm text-[var(--text-4)]">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!client) return null;
 
   return (
     <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
@@ -649,45 +782,30 @@ export function SupportDashboard() {
             Clients
           </p>
           <div className="space-y-0.5">
-            {clients.map((c) => {
-              const unread = SUPPORT_SEED.conversations.filter(
-                (cv) => cv.clientId === c.id && cv.unread,
-              ).length;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveClientId(c.id);
-                    setActiveTab("inbox");
-                  }}
+            {clients.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  setActiveClientId(c.id);
+                  setActiveTab("inbox");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
+                  c.id === activeClientId
+                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                )}
+              >
+                <span
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
-                    c.id === activeClientId
-                      ? "bg-[var(--mist)] text-[var(--brand-700)]"
-                      : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                    "h-2 w-2 shrink-0 rounded-full",
+                    c.id === activeClientId ? "bg-[var(--brand-700)]" : "bg-[var(--text-4)]",
                   )}
-                >
-                  <span
-                    className={cn(
-                      "h-2 w-2 shrink-0 rounded-full",
-                      c.id === activeClientId ? "bg-[var(--brand-700)]" : "bg-[var(--text-4)]",
-                    )}
-                  />
-                  <span className="flex-1 truncate font-medium">{c.name}</span>
-                  {unread > 0 && (
-                    <span className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                      c.id === activeClientId
-                        ? "bg-[var(--brand-700)] text-white"
-                        : "bg-[var(--surface-2)] text-[var(--text-3)]",
-                    )}>
-                      {unread}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                />
+                <span className="flex-1 truncate font-medium">{c.name}</span>
+              </button>
+            ))}
           </div>
 
           <button
@@ -713,8 +831,7 @@ export function SupportDashboard() {
 
           <nav className="mt-3 flex gap-0 overflow-x-auto">
             {TABS.map((tab) => {
-              const count = tab.count ? tab.count(activeClientId) : undefined;
-              const badge = tab.id === "inbox" ? inboxUnread : count;
+              const badge = tab.id === "inbox" ? inboxUnread : undefined;
               return (
                 <button
                   key={tab.id}

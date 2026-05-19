@@ -214,6 +214,7 @@ export function serializeConversation(row: {
   unread: boolean;
   tags: string[];
   sentiment: PrismaConversationSentiment;
+  tickets?: Array<{ id: string }>;
 }): Conversation {
   return {
     id: row.id,
@@ -226,6 +227,7 @@ export function serializeConversation(row: {
     unread: row.unread,
     tags: row.tags,
     sentiment: mapSentiment(row.sentiment),
+    ticketId: row.tickets?.[0]?.id,
   };
 }
 
@@ -427,13 +429,17 @@ export async function deleteSupportClient(clientId: string): Promise<void> {
 export async function listConversations(clientId: string): Promise<Conversation[]> {
   const rows = await prisma.supportConversation.findMany({
     where: { clientId },
+    include: { tickets: { select: { id: true }, take: 1 } },
     orderBy: { receivedAt: "desc" },
   });
   return rows.map(serializeConversation);
 }
 
 export async function getConversation(convId: string): Promise<Conversation> {
-  const row = await prisma.supportConversation.findUniqueOrThrow({ where: { id: convId } });
+  const row = await prisma.supportConversation.findUniqueOrThrow({
+    where: { id: convId },
+    include: { tickets: { select: { id: true }, take: 1 } },
+  });
   return serializeConversation(row);
 }
 
@@ -464,6 +470,7 @@ export async function createConversation(
         ? (data.sentiment.toUpperCase() as PrismaConversationSentiment)
         : "NEUTRAL",
     },
+    include: { tickets: { select: { id: true }, take: 1 } },
   });
   return serializeConversation(row);
 }
@@ -489,6 +496,7 @@ export async function updateConversation(
       ...(data.subject !== undefined ? { subject: data.subject } : {}),
       ...(data.preview !== undefined ? { preview: data.preview } : {}),
     },
+    include: { tickets: { select: { id: true }, take: 1 } },
   });
   return serializeConversation(row);
 }
@@ -809,7 +817,7 @@ export async function createAuditLog(
       actorId: data.actor ?? null,
       action: data.action,
       target: data.target ?? null,
-      metadata: data.metadata ?? undefined,
+      metadata: data.metadata ? (data.metadata as import("@prisma/client").Prisma.InputJsonValue) : undefined,
     },
   });
   return serializeAuditLog(row);
