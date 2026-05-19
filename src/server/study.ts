@@ -5,6 +5,7 @@ import { generateResearchPlan, generateFollowUps } from "@/server/study-agents/r
 import { conductInterview } from "@/server/study-agents/persona";
 import { synthesizeTurn, synthesizeSession, generateReport } from "@/server/study-agents/synthesizer";
 import type { StudyTurn, SessionTranscript, SessionSynthesis, ResearchPlanOutput } from "@/server/study-agents/types";
+import type { AiConfig } from "@/server/pulse-ai";
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
@@ -83,6 +84,20 @@ function serializeListItem(s: { id: string; title: string; problemStatement: str
 async function getWorkspace() {
   const { workspace } = await ensureBaseRecords();
   return workspace;
+}
+
+function resolveAiConfig(workspace: Awaited<ReturnType<typeof getWorkspace>>): AiConfig {
+  const provider = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  if (provider === "OPENAI") {
+    return { provider, apiKey: process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null, model: workspace.openaiModel ?? "gpt-4o", baseUrl: null };
+  }
+  if (provider === "GEMINI") {
+    return { provider, apiKey: process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null, model: workspace.geminiModel ?? "gemini-2.0-flash", baseUrl: `https://generativelanguage.googleapis.com/v1beta/openai` };
+  }
+  if (provider === "LOCAL") {
+    return { provider, apiKey: workspace.openaiApiKey ?? "local", model: workspace.localLlmModel ?? "llama3.1", baseUrl: workspace.localLlmUrl ?? "http://localhost:11434/v1" };
+  }
+  return { provider: "ANTHROPIC", apiKey: process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null, model: workspace.anthropicModel ?? "claude-sonnet-4-6", baseUrl: null };
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -200,8 +215,8 @@ export async function triggerPlanGeneration(studyId: string): Promise<void> {
   const workspace = await getWorkspace();
   const study = await prisma.study.findUniqueOrThrow({ where: { id: studyId } });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
-  if (!apiKey) throw new Error("No Anthropic API key configured. Add it in Settings → Integrations.");
+  const aiConfig = resolveAiConfig(workspace);
+  if (!aiConfig.apiKey) throw new Error(`No ${aiConfig.provider} API key configured. Add it in Settings → Integrations.`);
 
   // Set status to PLAN_GENERATING and ensure plan row exists
   await prisma.study.update({ where: { id: studyId }, data: { status: "PLAN_GENERATING" } });
@@ -216,7 +231,7 @@ export async function triggerPlanGeneration(studyId: string): Promise<void> {
     const result: ResearchPlanOutput = await generateResearchPlan(
       { title: study.title, problemStatement: study.problemStatement, researchGoals: study.researchGoals },
       personas,
-      apiKey,
+      aiConfig,
     );
 
     // Delete existing questions and replace
@@ -287,8 +302,8 @@ export async function savePlan(
 
 export async function runStudy(studyId: string): Promise<void> {
   const workspace = await getWorkspace();
-  const apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
-  if (!apiKey) throw new Error("No Anthropic API key configured. Add it in Settings → Integrations.");
+  const aiConfig = resolveAiConfig(workspace);
+  if (!aiConfig.apiKey) throw new Error(`No ${aiConfig.provider} API key configured. Add it in Settings → Integrations.`);
 
   const study = await prisma.study.findUniqueOrThrow({
     where: { id: studyId },
@@ -354,7 +369,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
       for (const persona of personasToInterview) {
         try {
-          const response = await conductInterview(persona, study, question.text, sessionHistory, apiKey);
+          const response = await conductInterview(persona, study, question.text, sessionHistory, aiConfig);
           exchanges.push({ question: question.text, response, isFollowUp: false, depth: 0 });
           allResponses.push({ personaId: persona.id, personaName: persona.name, ...response });
           sessionHistory.push({ question: question.text, answer: response.spoken });
@@ -369,12 +384,12 @@ export async function runStudy(studyId: string): Promise<void> {
               lastExchange.response.spoken,
               depth,
               alreadyAsked,
-              apiKey,
+              aiConfig,
             );
             if (fu.followUps.length === 0) break;
             const followUp = fu.followUps[0];
             alreadyAsked.push(followUp.question);
-            const fuResponse = await conductInterview(persona, study, followUp.question, sessionHistory, apiKey);
+            const fuResponse = await conductInterview(persona, study, followUp.question, sessionHistory, aiConfig);
             exchanges.push({ question: followUp.question, response: fuResponse, isFollowUp: true, depth });
             sessionHistory.push({ question: followUp.question, answer: fuResponse.spoken });
           }
@@ -385,7 +400,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
       let synthesis;
       try {
-        synthesis = await synthesizeTurn(question.text, allResponses, apiKey);
+        synthesis = await synthesizeTurn(question.text, allResponses, aiConfig);
       } catch {
         // Non-fatal
       }
@@ -410,7 +425,7 @@ export async function runStudy(studyId: string): Promise<void> {
     let sessionSynthesis: SessionSynthesis | undefined;
     const primaryPersona = personaDef ?? BUILT_IN_PERSONAS[0];
     try {
-      sessionSynthesis = await synthesizeSession(primaryPersona, studyTurns, apiKey);
+      sessionSynthesis = await synthesizeSession(primaryPersona, studyTurns, aiConfig);
       allSessionSyntheses.push(sessionSynthesis);
     } catch {
       // Non-fatal
@@ -433,7 +448,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
   // Generate final report
   try {
-    const reportPayload = await generateReport(study, allSessionSyntheses, apiKey);
+    const reportPayload = await generateReport(study, allSessionSyntheses, aiConfig);
     await prisma.studyReport.upsert({
       where: { studyId },
       create: { studyId, payload: reportPayload as object },

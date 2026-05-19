@@ -1,9 +1,36 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { TurnSynthesis, SessionSynthesis, StudyReportPayload, StudyTurn } from "./types";
 import type { StudyPersonaDef } from "@/config/study-personas";
+import type { AiConfig } from "@/server/pulse-ai";
 
-function makeClient(apiKey: string) {
-  return new Anthropic({ apiKey });
+async function callAI(config: AiConfig, system: string, user: string, maxTokens = 2048): Promise<string> {
+  if (config.provider === "ANTHROPIC") {
+    const client = new Anthropic({ apiKey: config.apiKey ?? undefined });
+    const msg = await client.messages.create({
+      model: config.model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: user }],
+    });
+    const block = msg.content.find((b) => b.type === "text");
+    if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
+    return block.text;
+  }
+
+  const { default: OpenAI } = await import("openai");
+  const client = new OpenAI({
+    apiKey: config.apiKey ?? "local",
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+  });
+  const completion = await client.chat.completions.create({
+    model: config.model,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  return completion.choices[0]?.message?.content?.trim() ?? "";
 }
 
 function parseJson<T>(raw: string): T {
@@ -12,25 +39,11 @@ function parseJson<T>(raw: string): T {
   return JSON.parse(jsonStr.trim()) as T;
 }
 
-async function callClaude(client: Anthropic, system: string, user: string): Promise<string> {
-  const msg = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-  const block = msg.content.find((b) => b.type === "text");
-  if (!block || block.type !== "text") throw new Error("No text in Claude response");
-  return block.text;
-}
-
 export async function synthesizeTurn(
   questionText: string,
   responses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string; painPoints: string[]; delights: string[]; confusionPoints: string[] }>,
-  apiKey: string,
+  config: AiConfig,
 ): Promise<TurnSynthesis> {
-  const client = makeClient(apiKey);
-
   const system = `You are a user-research synthesiser writing a tight summary of a single interview question.
 Produce structured JSON only:
 {
@@ -47,7 +60,7 @@ Produce structured JSON only:
 
   const user = `Question: ${questionText}\n\nResponses:\n${responsesBlock}`;
 
-  const raw = await callClaude(client, system, user);
+  const raw = await callAI(config, system, user);
   try {
     return parseJson<TurnSynthesis>(raw);
   } catch {
@@ -58,10 +71,8 @@ Produce structured JSON only:
 export async function synthesizeSession(
   persona: StudyPersonaDef,
   turns: StudyTurn[],
-  apiKey: string,
+  config: AiConfig,
 ): Promise<SessionSynthesis> {
-  const client = makeClient(apiKey);
-
   const system = `You are a user-research synthesiser writing a session summary for one participant.
 Output JSON only:
 {
@@ -84,7 +95,7 @@ Output JSON only:
 
   const user = `Participant: ${persona.name} — ${persona.description}\n\nSession transcript:\n${turnsBlock}`;
 
-  const raw = await callClaude(client, system, user);
+  const raw = await callAI(config, system, user);
   try {
     return parseJson<SessionSynthesis>(raw);
   } catch {
@@ -95,10 +106,8 @@ Output JSON only:
 export async function generateReport(
   study: { title: string; problemStatement: string; researchGoals: string[] },
   sessionSummaries: SessionSynthesis[],
-  apiKey: string,
+  config: AiConfig,
 ): Promise<StudyReportPayload> {
-  const client = makeClient(apiKey);
-
   const system = `You are a senior user researcher writing the final research report.
 Output JSON only with this exact shape:
 {
@@ -125,7 +134,7 @@ Session summaries:\n${summariesBlock}
 
 Generate the final report.`;
 
-  const raw = await callClaude(client, system, user);
+  const raw = await callAI(config, system, user, 4096);
   try {
     return parseJson<StudyReportPayload>(raw);
   } catch {

@@ -1,21 +1,36 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ResearchPlanOutput, FollowUpsOutput } from "./types";
 import type { StudyPersonaDef } from "@/config/study-personas";
+import type { AiConfig } from "@/server/pulse-ai";
 
-function makeClient(apiKey: string) {
-  return new Anthropic({ apiKey });
-}
+async function callAI(config: AiConfig, system: string, user: string): Promise<string> {
+  if (config.provider === "ANTHROPIC") {
+    const client = new Anthropic({ apiKey: config.apiKey ?? undefined });
+    const msg = await client.messages.create({
+      model: config.model,
+      max_tokens: 4096,
+      system,
+      messages: [{ role: "user", content: user }],
+    });
+    const block = msg.content.find((b) => b.type === "text");
+    if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
+    return block.text;
+  }
 
-async function callClaude(client: Anthropic, system: string, user: string): Promise<string> {
-  const msg = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system,
-    messages: [{ role: "user", content: user }],
+  const { default: OpenAI } = await import("openai");
+  const client = new OpenAI({
+    apiKey: config.apiKey ?? "local",
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
   });
-  const block = msg.content.find((b) => b.type === "text");
-  if (!block || block.type !== "text") throw new Error("No text in Claude response");
-  return block.text;
+  const completion = await client.chat.completions.create({
+    model: config.model,
+    max_tokens: 4096,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  return completion.choices[0]?.message?.content?.trim() ?? "";
 }
 
 function parseJson<T>(raw: string): T {
@@ -27,10 +42,8 @@ function parseJson<T>(raw: string): T {
 export async function generateResearchPlan(
   study: { title: string; problemStatement: string; researchGoals: string[] },
   personas: StudyPersonaDef[],
-  apiKey: string,
+  config: AiConfig,
 ): Promise<ResearchPlanOutput> {
-  const client = makeClient(apiKey);
-
   const system = `You are an experienced product user researcher drafting a research plan.
 Your job is to turn the inputs below into a concrete, runnable plan: a small set of well-formed open questions.
 Guidelines:
@@ -55,7 +68,7 @@ ${personaList}
 
 Generate the research plan now.`;
 
-  const raw = await callClaude(client, system, user);
+  const raw = await callAI(config, system, user);
   return parseJson<ResearchPlanOutput>(raw);
 }
 
@@ -65,11 +78,9 @@ export async function generateFollowUps(
   response: string,
   depth: number,
   alreadyAsked: string[],
-  apiKey: string,
+  config: AiConfig,
 ): Promise<FollowUpsOutput> {
   if (depth >= 2) return { followUps: [] };
-
-  const client = makeClient(apiKey);
 
   const system = `You are an experienced user researcher deciding whether to probe further.
 Probe only when the answer was vague, contradictory, surprising, or skipped a relevant detail.
@@ -88,7 +99,7 @@ Their answer: ${response}${alreadyList}
 
 Decide on 0 or 1 follow-up question.`;
 
-  const raw = await callClaude(client, system, user);
+  const raw = await callAI(config, system, user);
   try {
     return parseJson<FollowUpsOutput>(raw);
   } catch {

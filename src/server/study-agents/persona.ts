@@ -1,9 +1,36 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { PersonaInterviewResponse } from "./types";
 import type { StudyPersonaDef } from "@/config/study-personas";
+import type { AiConfig } from "@/server/pulse-ai";
 
-function makeClient(apiKey: string) {
-  return new Anthropic({ apiKey });
+async function callAI(config: AiConfig, system: string, user: string): Promise<string> {
+  if (config.provider === "ANTHROPIC") {
+    const client = new Anthropic({ apiKey: config.apiKey ?? undefined });
+    const msg = await client.messages.create({
+      model: config.model,
+      max_tokens: 1024,
+      system,
+      messages: [{ role: "user", content: user }],
+    });
+    const block = msg.content.find((b) => b.type === "text");
+    if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
+    return block.text;
+  }
+
+  const { default: OpenAI } = await import("openai");
+  const client = new OpenAI({
+    apiKey: config.apiKey ?? "local",
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+  });
+  const completion = await client.chat.completions.create({
+    model: config.model,
+    max_tokens: 1024,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  return completion.choices[0]?.message?.content?.trim() ?? "";
 }
 
 function parseJson<T>(raw: string): T {
@@ -17,10 +44,8 @@ export async function conductInterview(
   study: { title: string; problemStatement: string; researchGoals: string[] },
   question: string,
   sessionHistory: Array<{ question: string; answer: string }>,
-  apiKey: string,
+  config: AiConfig,
 ): Promise<PersonaInterviewResponse> {
-  const client = new Anthropic({ apiKey });
-
   const system = `You are ${persona.name}. ${persona.description}
 
 Demographics: ${persona.demographics.age} years old, ${persona.demographics.occupation}, based in ${persona.demographics.location}.
@@ -61,21 +86,12 @@ Output JSON only:
   const user = `${historyContext}Now answer this question as ${persona.name}:
 ${question}`;
 
-  const msg = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-
-  const block = msg.content.find((b) => b.type === "text");
-  if (!block || block.type !== "text") throw new Error("No text in Claude response");
-
+  const raw = await callAI(config, system, user);
   try {
-    return parseJson<PersonaInterviewResponse>(block.text);
+    return parseJson<PersonaInterviewResponse>(raw);
   } catch {
     return {
-      spoken: block.text.slice(0, 500),
+      spoken: raw.slice(0, 500),
       sentiment: "neutral",
       painPoints: [],
       delights: [],
