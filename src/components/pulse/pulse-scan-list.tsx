@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   ArrowRightIcon,
@@ -200,14 +201,28 @@ function FiltersDropdown({
 function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () => void }) {
   const [open, setOpen] = useState(false);
   const { mutateAsync, isPending } = useDeletePulseScan();
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, right: 0 });
 
   const close = useCallback(() => setOpen(false), []);
+
+  function handleToggle() {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setCoords({ top: rect.top, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  }
 
   useEffect(() => {
     if (!open) return;
     function onMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
+      const target = e.target as Node;
+      if (
+        popoverRef.current && !popoverRef.current.contains(target) &&
+        triggerRef.current && !triggerRef.current.contains(target)
+      ) close();
     }
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") close();
@@ -226,10 +241,11 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         className={cn(
           "rounded-[6px] p-1.5 transition",
           open
@@ -241,9 +257,17 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
         <TrashIcon className="h-4 w-4" />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full right-0 z-30 mb-2 w-44 rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-xl">
-          {/* tiny arrow */}
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          style={{
+            position: "fixed",
+            top: coords.top,
+            right: coords.right,
+            transform: "translateY(calc(-100% - 8px))",
+          }}
+          className="z-[9999] w-44 rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-xl"
+        >
           <div className="absolute -bottom-1.5 right-3 h-3 w-3 rotate-45 border-b border-r border-[var(--border-2)] bg-white" />
           <p className="mb-2.5 text-xs font-medium text-[var(--text-1)]">Delete this scan?</p>
           <div className="flex gap-1.5">
@@ -263,9 +287,10 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
               Cancel
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
 
