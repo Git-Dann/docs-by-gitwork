@@ -155,6 +155,7 @@ model Workspace {
   pulseScans      PulseScan[]
   pulseMonitors   PulseMonitor[]
   supportClients  SupportClient[]
+  studies         Study[]
 }
 
 model WorkspaceMember {
@@ -896,4 +897,109 @@ model SupportAuditLog {
   createdAt DateTime      @default(now())
 
   @@index([clientId, createdAt])
+}
+
+// ─── Study / Research ────────────────────────────────────────────────────────
+
+enum StudyStatus {
+  DRAFT
+  PLAN_GENERATING
+  PLAN_READY
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum StudySessionMode {
+  ONE_ON_ONE
+  GROUP
+}
+
+enum StudyPlanStatus {
+  DRAFT
+  GENERATING
+  READY
+  LOCKED
+}
+
+enum StudyTurnType {
+  SINGLE
+  SEQUENCED_FLOW
+}
+
+enum StudySessionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Study {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title              String
+  problemStatement   String
+  researchGoals      String[]         @default([])
+  status             StudyStatus      @default(DRAFT)
+  sessionMode        StudySessionMode @default(ONE_ON_ONE)
+  selectedPersonaIds String[]         @default([])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  plan               StudyResearchPlan?
+  sessions           StudySession[]
+  report             StudyReport?
+
+  @@index([workspaceId, createdAt])
+}
+
+model StudyResearchPlan {
+  id        String            @id @default(cuid())
+  studyId   String            @unique
+  study     Study             @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  notes     String?
+  status    StudyPlanStatus   @default(DRAFT)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  questions StudyPlanQuestion[]
+}
+
+model StudyPlanQuestion {
+  id         String            @id @default(cuid())
+  planId     String
+  plan       StudyResearchPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  text       String
+  personaIds String[]          @default([])
+  turnType   StudyTurnType     @default(SINGLE)
+  orderIndex Int
+  rationale  String?
+  createdAt  DateTime          @default(now())
+
+  @@index([planId, orderIndex])
+}
+
+model StudySession {
+  id             String             @id @default(cuid())
+  studyId        String
+  study          Study              @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  personaId      String
+  personaName    String
+  mode           StudySessionMode   @default(ONE_ON_ONE)
+  status         StudySessionStatus @default(PENDING)
+  transcriptData Json?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([studyId, status])
+}
+
+model StudyReport {
+  id        String   @id @default(cuid())
+  studyId   String   @unique
+  study     Study    @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

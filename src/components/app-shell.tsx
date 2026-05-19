@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AcademicCapIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   ChartBarSquareIcon,
@@ -99,6 +100,12 @@ export function AppShell({
         label: "Care",
         subtitle: "Support and aftercare",
         icon: LifebuoyIcon,
+      },
+      {
+        href: "/app/study",
+        label: "Study",
+        subtitle: "AI-powered user research",
+        icon: AcademicCapIcon,
       },
       // {
       //   href: "/app/proof",
