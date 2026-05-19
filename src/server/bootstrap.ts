@@ -23,7 +23,7 @@ export async function ensureBaseRecords() {
     update: {},
     create: {
       email: DEFAULT_USER_EMAIL,
-      name: "Gitwork Owner",
+      name: "Foundry Owner",
     },
   });
 
@@ -34,7 +34,7 @@ export async function ensureBaseRecords() {
     update: {},
     create: {
       slug: DEFAULT_WORKSPACE_SLUG,
-      name: "Gitwork",
+      name: "Foundry by Gitwork",
     },
   });
 
@@ -65,8 +65,8 @@ export async function ensureBaseRecords() {
     create: {
       workspaceId: workspace.id,
       slug: DEFAULT_TEMPLATE_SLUG,
-      name: "Gitwork Proposal Template",
-      description: "Default structured proposal template for Docs by Gitwork.",
+      name: "Foundry Proposal Template",
+      description: "Default structured proposal template for Foundry by Gitwork.",
       documentType: DocumentType.PROPOSAL,
       sections: getDefaultProposalSections() as unknown as Prisma.InputJsonValue,
       metadata: DEFAULT_PROPOSAL_METADATA as unknown as Prisma.InputJsonValue,
@@ -113,7 +113,7 @@ async function ensureSampleProposal({
       templateId: template.id,
       documentType: "PROPOSAL",
       status: "DRAFT",
-      title: "Docs by Gitwork — Sample Proposal",
+      title: "Foundry by Gitwork — Sample Proposal",
       productName: "Proposal Builder",
       clientName: "Acme Health",
       summary: "",

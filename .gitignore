@@ -39,10 +39,12 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# local MCP config (contains personal access tokens)
+.mcp.json
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.mcp.json

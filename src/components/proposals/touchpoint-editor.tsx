@@ -54,7 +54,7 @@ export function TouchpointEditor({
                     onChange={(event) => patch(index, { summary: event.target.value })}
                     rows={3}
                     className="proposal-field-compact min-h-[74px] w-full"
-                    placeholder="Docs by Gitwork is a template-driven platform for generating client-ready proposals and documentation from structured content blocks."
+                    placeholder="Foundry by Gitwork is a template-driven platform for generating client-ready proposals and documentation from structured content blocks."
                   />
                 </label>
 

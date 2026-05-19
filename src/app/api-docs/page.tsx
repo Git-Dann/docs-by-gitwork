@@ -1,9 +1,9 @@
 export const metadata = {
-  title: "API Reference — Docs by Gitwork",
-  description: "REST API documentation for Docs by Gitwork",
+  title: "API Reference — Foundry by Gitwork",
+  description: "REST API documentation for Foundry by Gitwork",
 };
 
-const BASE_URL = "https://docs-by-gitwork.vercel.app";
+const BASE_URL = "https://foundry.gitwork.co";
 
 interface Param {
   name: string;
@@ -29,7 +29,7 @@ const endpoints: Endpoint[] = [
     path: "/api/health",
     description: "Health check — confirms the service is running.",
     auth: false,
-    response: `{ "ok": true, "service": "docs-by-gitwork", "version": "0.1.0", "timestamp": "2026-03-31T00:00:00.000Z" }`,
+    response: `{ "ok": true, "service": "foundry-by-gitwork", "version": "0.1.0", "timestamp": "2026-03-31T00:00:00.000Z" }`,
   },
   {
     method: "GET",
@@ -468,7 +468,7 @@ export default function ApiDocsPage() {
       <body>
         <div className="container">
           <div className="header">
-            <div className="logo">Docs by Gitwork</div>
+            <div className="logo">Foundry by Gitwork</div>
             <h1>API Reference</h1>
             <p className="subtitle">REST API for building iOS and web integrations with your proposal workspace.</p>
           </div>
@@ -587,7 +587,7 @@ SENT             → Delivered to client
 ARCHIVED         → Archived / no longer active`}</pre>
 
           <div className="footer">
-            Docs by Gitwork · <a href={BASE_URL}>docs-by-gitwork.vercel.app</a>
+            Foundry by Gitwork · <a href={BASE_URL}>foundry.gitwork.co</a>
           </div>
         </div>
       </body>

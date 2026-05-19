@@ -24,7 +24,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     title: "Cover",
     description: "Front page and confidentiality metadata.",
     data: {
-      proposalTitle: "Docs by Gitwork",
+      proposalTitle: "Foundry by Gitwork",
       productName: "Proposal Builder",
       clientName: "Acme Health",
       subtitle: "Version 1.0",
@@ -41,7 +41,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     description: "Company statement and positioning summary.",
     data: {
       statement:
-        "Gitwork helps product and operations teams move from concept to launch with documentation that is clear, aligned, and execution-ready.",
+        "Foundry by Gitwork helps product and operations teams move from concept to launch with documentation that is clear, aligned, and execution-ready.",
       summary:
         "This proposal outlines a structured delivery plan for a proposal-builder workflow with strong governance and clear stakeholder checkpoints.",
       graphic: "",
@@ -53,7 +53,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     description: "What the platform is, who it is for, and why it matters.",
     data: {
       platformDescription:
-        "Docs by Gitwork is a template-driven platform for generating client-ready proposals and documentation from structured content blocks.",
+        "Foundry by Gitwork is a template-driven platform for generating client-ready proposals and documentation from structured content blocks.",
       audience:
         "Built for delivery leads, operations teams, and account managers who need consistent and auditable proposal output.",
       valueProposition:
@@ -274,10 +274,10 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     title: "Sign-off / Footer",
     description: "Prepared by details and Gitwork branding block.",
     data: {
-      preparedBy: "Gitwork Delivery Team",
+      preparedBy: "Foundry Delivery Team",
       team: "Product and Delivery",
       contactDetails: "hello@gitwork.io",
-      footerNote: "Docs by Gitwork | Internal Business Proposal",
+      footerNote: "Foundry by Gitwork | Internal Business Proposal",
       showBrandingBlock: true,
       signatureName: "",
       signatureDate: "",
