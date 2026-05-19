@@ -6,6 +6,7 @@ export default function SupportPage() {
     <AppShell
       title="Support"
       subtitle="Multi-client customer service ops — inbox, tickets, connectors, and reports."
+      mainClassName="flex min-h-0 flex-1 overflow-hidden p-0"
     >
       <SupportDashboard />
     </AppShell>

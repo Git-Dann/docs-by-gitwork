@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AcademicCapIcon,
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   ChartBarSquareIcon,
@@ -72,33 +73,39 @@ export function AppShell({
       },
       {
         href: "/app/pulse",
-        label: "Foundry Pulse",
+        label: "Pulse",
         subtitle: "Health and delivery tracking",
         icon: SignalIcon,
       },
       {
         href: "/app/codeclear",
-        label: "Foundry Code",
+        label: "Code",
         subtitle: "Dev review and validation",
         icon: CodeBracketIcon,
       },
       {
         href: "/app/proposals",
-        label: "Foundry Docs",
+        label: "Docs",
         subtitle: "Documentation and client outputs",
         icon: ChartBarSquareIcon,
       },
       {
         href: "/app/clients",
-        label: "Foundry Portal",
+        label: "Portal",
         subtitle: "Client-support workspace",
         icon: UsersIcon,
       },
       {
         href: "/app/support",
-        label: "Foundry Care",
+        label: "Care",
         subtitle: "Support and aftercare",
         icon: LifebuoyIcon,
+      },
+      {
+        href: "/app/study",
+        label: "Study",
+        subtitle: "AI-powered user research",
+        icon: AcademicCapIcon,
       },
       // {
       //   href: "/app/proof",
@@ -513,7 +520,6 @@ function FoundryLogo({ compact = false }: { compact?: boolean }) {
       src="/foundry-logo.png"
       alt="Foundry by Gitwork"
       className={compact ? "h-7 w-auto" : "h-8 w-auto"}
-      style={{ maxWidth: compact ? 140 : 180 }}
     />
   );
 }

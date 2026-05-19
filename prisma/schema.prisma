@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum DocumentType {
@@ -153,6 +154,8 @@ model Workspace {
   candidates      Candidate[]
   pulseScans      PulseScan[]
   pulseMonitors   PulseMonitor[]
+  supportClients  SupportClient[]
+  studies         Study[]
 }
 
 model WorkspaceMember {
@@ -625,4 +628,378 @@ model PulseScanCheck {
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])
+}
+
+// ─── Support Ops ──────────────────────────────────────────────────────────────
+
+enum SupportClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SupportSource {
+  GMAIL
+  REDDIT
+  INSTAGRAM
+  YOUTUBE
+  DISCORD
+  CLICKUP
+  STRIPE
+}
+
+enum ConnectionHealth {
+  CONNECTED
+  NEEDS_SETUP
+  ERROR
+}
+
+enum ConnectionAuthMode {
+  OAUTH
+  BOT_TOKEN
+  MANUAL
+  API_KEY
+}
+
+enum ConversationSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  DEV_REVIEW
+  AWAITING_CUSTOMER
+  RESOLVED
+}
+
+enum SupportTicketPriority {
+  URGENT
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum DraftActionType {
+  REPLY
+  STRIPE_CANCEL
+  STRIPE_REFUND
+}
+
+enum DraftActionStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENT
+}
+
+enum DraftActionRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SupportUserRole {
+  OWNER
+  STAFF
+}
+
+model SupportClient {
+  id                  String                    @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                String
+  slug                String
+  status              SupportClientStatus       @default(ACTIVE)
+  supportDaysPerMonth Int?
+  supportDaysUsed     Int?                      @default(0)
+  reportingRecipient  String?
+  reportDueDay        Int?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  connections         AccountConnection[]
+  conversations       SupportConversation[]
+  tickets             SupportTicket[]
+  draftActions        DraftSupportAction[]
+  workflowRules       SupportWorkflowRule[]
+  auditLogs           SupportAuditLog[]
+  memberships         SupportClientMembership[]
+  reports             SupportReport[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+model SupportClientMembership {
+  id        String          @id @default(cuid())
+  clientId  String
+  client    SupportClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  role      SupportUserRole @default(STAFF)
+  createdAt DateTime        @default(now())
+
+  @@unique([clientId, userId])
+  @@index([clientId])
+}
+
+model AccountConnection {
+  id            String             @id @default(cuid())
+  clientId      String
+  client        SupportClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source        SupportSource
+  label         String
+  authMode      ConnectionAuthMode
+  health        ConnectionHealth   @default(NEEDS_SETUP)
+  secretRef     String?
+  scraperConfig Json?
+  nextStep      String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  channelTokens ChannelToken[]
+
+  @@index([clientId, source])
+}
+
+model ChannelToken {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   AccountConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  tokenData    Json
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([connectionId])
+}
+
+model CustomerIdentity {
+  id              String   @id @default(cuid())
+  clientId        String
+  externalIdHash  String
+  displayLabel    String
+  createdAt       DateTime @default(now())
+
+  @@unique([clientId, externalIdHash])
+  @@index([clientId])
+}
+
+model SupportConversation {
+  id            String                @id @default(cuid())
+  clientId      String
+  client        SupportClient         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source        SupportSource
+  customerLabel String
+  externalId    String?
+  subject       String
+  preview       String?
+  unread        Boolean               @default(true)
+  tags          String[]              @default([])
+  sentiment     ConversationSentiment @default(NEUTRAL)
+  receivedAt    DateTime
+  createdAt     DateTime              @default(now())
+  messages      SupportMessage[]
+  tickets       SupportTicket[]
+
+  @@index([clientId, receivedAt])
+  @@index([clientId, unread])
+}
+
+model SupportMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      String
+  authorLabel    String
+  body           String
+  createdAt      DateTime            @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model SupportTicket {
+  id             String                @id @default(cuid())
+  clientId       String
+  client         SupportClient         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   SupportConversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  title          String
+  customerLabel  String
+  status         SupportTicketStatus   @default(OPEN)
+  priority       SupportTicketPriority @default(NORMAL)
+  source         SupportSource
+  nextAction     String?
+  issueType      String?
+  assignedTo     String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  draftActions   DraftSupportAction[]
+
+  @@index([clientId, status])
+  @@index([clientId, updatedAt])
+}
+
+model DraftSupportAction {
+  id         String            @id @default(cuid())
+  clientId   String
+  client     SupportClient     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ticketId   String?
+  ticket     SupportTicket?    @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  type       DraftActionType
+  title      String
+  body       String
+  status     DraftActionStatus @default(PENDING_APPROVAL)
+  risk       DraftActionRisk   @default(LOW)
+  approvedBy String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([clientId, status])
+  @@index([ticketId])
+}
+
+model SupportWorkflowRule {
+  id               String        @id @default(cuid())
+  clientId         String
+  client           SupportClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name             String
+  triggerText      String
+  actionsText      String
+  requiresApproval Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([clientId])
+}
+
+model SupportReport {
+  id        String        @id @default(cuid())
+  clientId  String
+  client    SupportClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  period    String
+  payload   Json?
+  createdBy String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([clientId, period])
+}
+
+model SupportAuditLog {
+  id        String        @id @default(cuid())
+  clientId  String
+  client    SupportClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String
+  target    String?
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  @@index([clientId, createdAt])
+}
+
+// ─── Study / Research ────────────────────────────────────────────────────────
+
+enum StudyStatus {
+  DRAFT
+  PLAN_GENERATING
+  PLAN_READY
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum StudySessionMode {
+  ONE_ON_ONE
+  GROUP
+}
+
+enum StudyPlanStatus {
+  DRAFT
+  GENERATING
+  READY
+  LOCKED
+}
+
+enum StudyTurnType {
+  SINGLE
+  SEQUENCED_FLOW
+}
+
+enum StudySessionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Study {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title              String
+  problemStatement   String
+  researchGoals      String[]         @default([])
+  status             StudyStatus      @default(DRAFT)
+  sessionMode        StudySessionMode @default(ONE_ON_ONE)
+  selectedPersonaIds String[]         @default([])
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  plan               StudyResearchPlan?
+  sessions           StudySession[]
+  report             StudyReport?
+
+  @@index([workspaceId, createdAt])
+}
+
+model StudyResearchPlan {
+  id        String            @id @default(cuid())
+  studyId   String            @unique
+  study     Study             @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  notes     String?
+  status    StudyPlanStatus   @default(DRAFT)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  questions StudyPlanQuestion[]
+}
+
+model StudyPlanQuestion {
+  id         String            @id @default(cuid())
+  planId     String
+  plan       StudyResearchPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  text       String
+  personaIds String[]          @default([])
+  turnType   StudyTurnType     @default(SINGLE)
+  orderIndex Int
+  rationale  String?
+  createdAt  DateTime          @default(now())
+
+  @@index([planId, orderIndex])
+}
+
+model StudySession {
+  id             String             @id @default(cuid())
+  studyId        String
+  study          Study              @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  personaId      String
+  personaName    String
+  mode           StudySessionMode   @default(ONE_ON_ONE)
+  status         StudySessionStatus @default(PENDING)
+  transcriptData Json?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([studyId, status])
+}
+
+model StudyReport {
+  id        String   @id @default(cuid())
+  studyId   String   @unique
+  study     Study    @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
