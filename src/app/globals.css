@@ -1,33 +1,53 @@
 @import "tailwindcss";
 
 :root {
+  /* ── Gitwork Pulse brand palette ───────────────────────────────────── */
+  --brand-300: #B9E3FF;
+  --brand-500: #63BDF5;
+  --brand-600: #42C7FF;
+  --brand-700: #0970C8;
+  --brand-800: #075A9F;
+  --brand-900: #064A83;
+
+  /* ── Mist / cool-blue surfaces ─────────────────────────────────────── */
+  --mist: #F1F8FE;
+  --mist-light: #F7FBFF;
+  --mist-deeper: #DDF0FC;
+  --mist-border: #B7D7EE;
+
+  /* ── Surface ────────────────────────────────────────────────────────── */
   --surface-canvas: #ffffff;
   --surface-0: #ffffff;
   --surface-1: #fafafa;
-  --surface-2: #f5f5f5;
-  --surface-brand: #eff4ff;
-  --surface-brand-soft: #f5f8ff;
-  --text-1: #171717;
-  --text-2: #404040;
-  --text-3: #525252;
-  --text-4: #737373;
-  --border-1: #d4d4d4;
-  --border-2: #e5e5e5;
-  --border-3: rgba(10, 13, 18, 0.08);
-  --brand-500: #5b7cff;
-  --brand-600: #335cff;
-  --brand-700: #2447d5;
-  --brand-800: #1e3aa9;
+  --surface-2: #F1F8FE;
+  --surface-brand: #F1F8FE;
+  --surface-brand-soft: #F7FBFF;
+  --surface-code: #1c1c1e;
+
+  /* ── Text ────────────────────────────────────────────────────────────── */
+  --text-1: #1f1f1f;
+  --text-2: #3d3d3d;
+  --text-3: #4a4a4a;
+  --text-4: #8a8a8a;
+
+  /* ── Borders ─────────────────────────────────────────────────────────── */
+  --border-1: #c7c7c7;
+  --border-2: #ededed;
+  --border-3: rgba(10, 13, 18, 0.07);
+
+  /* ── Semantic ────────────────────────────────────────────────────────── */
   --success-500: #17b26a;
   --success-50: #ecfdf3;
   --warning-500: #dc6803;
   --warning-50: #fffaeb;
-  --info-500: #1570ef;
-  --info-50: #eff8ff;
+  --info-500: #0970C8;
+  --info-50: #F1F8FE;
   --danger-500: #f04438;
   --danger-50: #fef3f2;
-  --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.05);
-  --shadow-sm: 0 1px 3px rgba(10, 13, 18, 0.08), 0 1px 2px rgba(10, 13, 18, 0.04);
+
+  /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.04);
+  --shadow-sm: 0 1px 3px rgba(10, 13, 18, 0.06), 0 1px 2px rgba(10, 13, 18, 0.04);
   --shadow-lg:
     0 12px 16px -4px rgba(10, 13, 18, 0.08),
     0 4px 6px -2px rgba(10, 13, 18, 0.03),
@@ -35,14 +55,15 @@
   --shadow-skeuomorphic:
     0 1px 2px rgba(10, 13, 18, 0.05),
     inset 0 -2px 0 rgba(10, 13, 18, 0.05),
-    inset 0 0 0 1px rgba(10, 13, 18, 0.12);
+    inset 0 0 0 1px rgba(10, 13, 18, 0.10);
 }
 
 @theme inline {
   --color-background: var(--surface-canvas);
   --color-foreground: var(--text-1);
-  --font-sans: "Inter";
-  --font-mono: "Inter";
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "DM Serif Display", "Times New Roman", Georgia, serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -63,11 +84,11 @@ body {
   background: #ffffff;
   color: var(--text-1);
   font-family: "Inter", "Segoe UI", sans-serif;
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
 ::selection {
-  background: rgba(51, 92, 255, 0.16);
+  background: rgba(9, 112, 200, 0.14);
 }
 
 a {
@@ -76,37 +97,46 @@ a {
 }
 
 @layer components {
+  /* ── Surfaces & cards ──────────────────────────────────────────────── */
   .app-surface {
     border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
 
   .app-card {
     border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
 
   .app-muted-card {
     border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--surface-1);
+  }
+
+  .app-mist-card {
+    border: 1px solid var(--mist-border);
+    border-radius: 12px;
+    background: var(--mist);
+    color: var(--text-1);
   }
 
   .app-subtle-panel {
     border: 1px solid var(--border-2);
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
 
+  /* ── Typography helpers ────────────────────────────────────────────── */
   .app-eyebrow {
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-4);
   }
@@ -115,6 +145,11 @@ a {
     color: var(--text-3);
   }
 
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* ── Chip / badge ──────────────────────────────────────────────────── */
   .app-chip {
     display: inline-flex;
     align-items: center;
@@ -129,10 +164,11 @@ a {
     color: var(--text-3);
   }
 
+  /* ── Table ─────────────────────────────────────────────────────────── */
   .app-table-shell {
     overflow: hidden;
     border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--surface-0);
     box-shadow: var(--shadow-xs);
   }
@@ -168,9 +204,10 @@ a {
   }
 
   .app-table tbody tr:hover {
-    background: var(--surface-1);
+    background: var(--mist-light);
   }
 
+  /* ── Dialog ────────────────────────────────────────────────────────── */
   .app-dialog-backdrop {
     background: rgba(10, 13, 18, 0.42);
     backdrop-filter: blur(6px);
@@ -178,11 +215,12 @@ a {
 
   .app-dialog-panel {
     border: 1px solid var(--border-2);
-    border-radius: 24px;
+    border-radius: 20px;
     background: var(--surface-0);
     box-shadow: var(--shadow-lg);
   }
 
+  /* ── Buttons — base ────────────────────────────────────────────────── */
   .app-button {
     display: inline-flex;
     align-items: center;
@@ -192,7 +230,7 @@ a {
     vertical-align: middle;
     text-decoration: none;
     border: 1px solid transparent;
-    font-weight: 600;
+    font-weight: 500;
     line-height: 20px;
     text-align: center;
     transition:
@@ -210,7 +248,7 @@ a {
 
   .app-button:focus-visible {
     box-shadow:
-      0 0 0 4px rgba(51, 92, 255, 0.12),
+      0 0 0 4px rgba(9, 112, 200, 0.14),
       var(--shadow-xs);
   }
 
@@ -218,9 +256,10 @@ a {
     cursor: not-allowed;
   }
 
+  /* ── Button variants ───────────────────────────────────────────────── */
   .app-button-primary {
     background: var(--brand-700);
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.10);
     color: #ffffff !important;
     box-shadow: var(--shadow-skeuomorphic);
   }
@@ -233,12 +272,12 @@ a {
 
   .app-button-primary:hover:not(:disabled) {
     background: var(--brand-800);
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.10);
   }
 
   .app-button-primary:disabled {
-    background: #9db0ff;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--brand-300);
+    border-color: rgba(255, 255, 255, 0.10);
     color: #ffffff;
     box-shadow: none;
   }
@@ -257,13 +296,13 @@ a {
   }
 
   .app-button-secondary:hover:not(:disabled) {
-    background: var(--surface-1);
+    background: var(--mist-light);
   }
 
   .app-button-secondary:disabled {
     background: #fcfcfd;
     border-color: var(--border-2);
-    color: #a4a7ae;
+    color: var(--text-4);
     box-shadow: none;
   }
 
@@ -274,11 +313,11 @@ a {
   }
 
   .app-button-tertiary:hover:not(:disabled) {
-    background: var(--surface-1);
+    background: var(--mist-light);
   }
 
   .app-button-tertiary:disabled {
-    color: #a4a7ae;
+    color: var(--text-4);
   }
 
   .app-button-link,
@@ -301,7 +340,17 @@ a {
 
   .app-button-link:disabled,
   .app-button-hyperlink:disabled {
-    color: #a4a7ae;
+    color: var(--text-4);
+  }
+
+  .app-button-mist {
+    background: var(--mist);
+    border-color: var(--mist-border);
+    color: var(--text-1) !important;
+  }
+
+  .app-button-mist:hover:not(:disabled) {
+    background: var(--mist-deeper);
   }
 
   .app-button-dark {
@@ -341,17 +390,18 @@ a {
   }
 
   .app-button-utility:hover:not(:disabled) {
-    background: var(--surface-1);
+    background: var(--mist-light);
     color: var(--text-2);
   }
 
   .app-button-utility:disabled {
     background: #fcfcfd;
     border-color: var(--border-2);
-    color: #a4a7ae;
+    color: var(--text-4);
     box-shadow: none;
   }
 
+  /* ── Button sizes ──────────────────────────────────────────────────── */
   .app-button-xs {
     height: 32px;
     border-radius: 8px;
@@ -383,7 +433,7 @@ a {
   .app-button-icon-sm {
     height: 36px;
     width: 36px;
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 0;
   }
 
@@ -394,6 +444,7 @@ a {
     padding: 0;
   }
 
+  /* ── Forms ─────────────────────────────────────────────────────────── */
   .app-field-label,
   .proposal-form-theme label > span:first-child {
     display: block;
@@ -436,7 +487,7 @@ a {
   .app-select,
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
   .proposal-form-theme select {
-    min-height: 36px;
+    min-height: 44px;
     padding: 0 12px;
     font-size: 14px;
     line-height: 20px;
@@ -449,7 +500,7 @@ a {
     font-size: 14px;
     line-height: 20px;
     resize: vertical;
-    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10.5 1.5L1.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.5 5.5L5.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10.5 1.5L1.5 10.5' stroke='%23B7D7EE' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.5 5.5L5.5 10.5' stroke='%23B7D7EE' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
     background-position: calc(100% - 5px) calc(100% - 5px);
     background-repeat: no-repeat;
     background-size: 12px 12px;
@@ -489,9 +540,9 @@ a {
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):focus,
   .proposal-form-theme select:focus,
   .proposal-form-theme textarea:focus {
-    border-color: var(--brand-500);
+    border-color: var(--brand-700);
     box-shadow:
-      0 0 0 4px rgba(51, 92, 255, 0.12),
+      0 0 0 4px rgba(9, 112, 200, 0.12),
       var(--shadow-xs);
   }
 
@@ -529,7 +580,7 @@ a {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23717680' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a8a8a' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
   }
 
@@ -549,7 +600,21 @@ a {
   .app-checkbox {
     width: 16px;
     height: 16px;
-    accent-color: var(--brand-600);
+    accent-color: var(--brand-700);
+  }
+
+  /* ── Signal stripe — brand closing band ────────────────────────────── */
+  .signal-stripe {
+    background: linear-gradient(
+      90deg,
+      #064A83 0%,
+      #0970C8 30%,
+      #63BDF5 60%,
+      #42C7FF 80%,
+      #F1F8FE 100%
+    );
+    height: 6px;
+    width: 100%;
   }
 }
 

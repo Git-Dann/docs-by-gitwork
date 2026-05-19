@@ -318,14 +318,14 @@ function SidebarNavItem({
   const classes = cn(
     "flex w-full items-center gap-3 rounded-[8px] px-3 py-2 text-sm font-medium transition",
     active
-      ? "bg-[var(--surface-1)] text-[var(--text-1)]"
-      : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      ? "bg-[var(--mist)] text-[var(--brand-700)]"
+      : "text-[var(--text-2)] hover:bg-[var(--mist-light)]",
     item.disabled ? "cursor-default opacity-70 hover:bg-transparent" : "",
   );
 
   const content = (
     <>
-      <Icon className="h-5 w-5 shrink-0 text-[var(--text-4)]" />
+      <Icon className={cn("h-5 w-5 shrink-0", active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
       <span>{item.label}</span>
     </>
   );
@@ -506,7 +506,7 @@ function BrandGlyph({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="absolute inset-[22%] rounded-[4px] bg-[linear-gradient(135deg,var(--brand-700)_0%,var(--brand-500)_100%)]" />
+      <div className="absolute inset-[22%] rounded-[4px] bg-[linear-gradient(135deg,#0970C8_0%,#42C7FF_100%)]" />
       <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
     </div>
   );
