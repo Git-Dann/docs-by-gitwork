@@ -8,7 +8,6 @@ import {
   ChevronUpDownIcon,
   CodeBracketIcon,
   Cog8ToothIcon,
-  DocumentTextIcon,
   HomeIcon,
   LifebuoyIcon,
   MagnifyingGlassIcon,
@@ -19,6 +18,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
@@ -29,6 +29,7 @@ type NavItem = {
   subtitle?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
+  moduleId?: string;
 };
 
 export function AppShell({
@@ -47,6 +48,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
+  const { data: session } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -64,57 +66,66 @@ export function AppShell({
     };
   }, [mobileMenuOpen]);
 
-  const primaryNav = useMemo<NavItem[]>(
+  const isAdmin = session?.user?.role === "ADMIN";
+
+  const allModuleNav: NavItem[] = useMemo(
     () => [
-      {
-        href: "/app",
-        label: "Foundry HQ",
-        icon: HomeIcon,
-      },
       {
         href: "/app/pulse",
         label: "Pulse",
         subtitle: "Health and delivery tracking",
         icon: SignalIcon,
+        moduleId: "pulse",
       },
       {
         href: "/app/codeclear",
         label: "Code",
         subtitle: "Dev review and validation",
         icon: CodeBracketIcon,
+        moduleId: "codeclear",
       },
       {
         href: "/app/proposals",
         label: "Docs",
         subtitle: "Documentation and client outputs",
         icon: ChartBarSquareIcon,
+        moduleId: "proposals",
       },
       {
         href: "/app/clients",
         label: "Portal",
         subtitle: "Client-support workspace",
         icon: UsersIcon,
+        moduleId: "clients",
       },
       {
         href: "/app/support",
         label: "Care",
         subtitle: "Support and aftercare",
         icon: LifebuoyIcon,
+        moduleId: "support",
       },
       {
         href: "/app/study",
         label: "Study",
         subtitle: "AI-powered user research",
         icon: AcademicCapIcon,
+        moduleId: "study",
       },
-      // {
-      //   href: "/app/proof",
-      //   label: "Proof",
-      //   icon: DocumentTextIcon,
-      // },
     ],
     [],
   );
+
+  const primaryNav = useMemo<NavItem[]>(() => {
+    const userPermissions = session?.user?.permissions ?? [];
+    const modules = isAdmin
+      ? allModuleNav
+      : allModuleNav.filter((item) => userPermissions.includes(item.moduleId ?? ""));
+    return [
+      { href: "/app", label: "Foundry HQ", icon: HomeIcon },
+      ...modules,
+    ];
+  }, [isAdmin, session?.user?.permissions, allModuleNav]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
@@ -362,6 +373,7 @@ function SidebarNavItem({
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -398,8 +410,12 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={account.avatarUrl} alt={account.name} className="h-9 w-9 rounded-full object-cover" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
-          <p className="truncate text-xs text-[var(--text-4)]">{account.email}</p>
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+            {session?.user?.name ?? account.name}
+          </p>
+          <p className="truncate text-xs text-[var(--text-4)]">
+            {session?.user?.email ?? account.email}
+          </p>
         </div>
         <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
       </button>
@@ -446,6 +462,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
 
           <button
             type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
             className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />

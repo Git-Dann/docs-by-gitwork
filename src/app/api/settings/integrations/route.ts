@@ -25,12 +25,14 @@ export async function GET() {
         geminiModel: true,
         localLlmUrl: true,
         localLlmModel: true,
+        externalApiKey: true,
       },
     });
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
     const openaiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
     const geminiKey = process.env.GEMINI_API_KEY ?? workspace?.geminiApiKey ?? null;
+    const externalKey = process.env.API_KEY ?? workspace?.externalApiKey ?? null;
 
     return apiOk({
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
@@ -45,6 +47,8 @@ export async function GET() {
       geminiModel: workspace?.geminiModel ?? "gemini-2.0-flash",
       localLlmUrl: workspace?.localLlmUrl ?? "",
       localLlmModel: workspace?.localLlmModel ?? "llama3.1",
+      externalApiKeyMasked: externalKey ? maskKey(externalKey) : null,
+      externalApiKeySource: process.env.API_KEY ? "env" : workspace?.externalApiKey ? "database" : null,
     });
   } catch (error) {
     return fromError(error);
@@ -61,6 +65,7 @@ const updateSchema = z.object({
   geminiModel: z.string().trim().optional(),
   localLlmUrl: z.string().trim().optional(),
   localLlmModel: z.string().trim().optional(),
+  externalApiKey: z.string().trim().optional(),
 });
 
 export async function PUT(request: NextRequest) {
@@ -77,6 +82,7 @@ export async function PUT(request: NextRequest) {
     if (body.geminiModel) data.geminiModel = body.geminiModel;
     if (body.localLlmUrl) data.localLlmUrl = body.localLlmUrl;
     if (body.localLlmModel) data.localLlmModel = body.localLlmModel;
+    if (body.externalApiKey) data.externalApiKey = body.externalApiKey;
 
     if (Object.keys(data).length === 0) return apiOk({ saved: false });
 

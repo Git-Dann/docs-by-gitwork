@@ -3,21 +3,31 @@
 import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
+  PencilIcon,
   PlusIcon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson, getIntegrations, saveIntegrations, fetchProviderModels, type IntegrationsResponse, type ModelOption } from "@/lib/api";
+import { useSession } from "next-auth/react";
+import {
+  createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson,
+  getIntegrations, saveIntegrations, fetchProviderModels,
+  listTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember, resetTeamMemberPassword,
+  type IntegrationsResponse, type ModelOption, type TeamMember,
+} from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
+import { MODULE_PERMISSIONS } from "@/types/auth";
 
-type TabId = "general" | "branding" | "content" | "people" | "integrations" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "integrations" | "team" | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -27,13 +37,14 @@ interface RateCardDraft {
   billingPeriod: RateBillingPeriod;
 }
 
-const TABS: { id: TabId; label: string }[] = [
+const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "general", label: "General" },
   { id: "branding", label: "Branding" },
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
-  { id: "developer", label: "Developer" },
+  { id: "team", label: "Team", adminOnly: true },
+  { id: "developer", label: "Developer", adminOnly: true },
 ];
 
 const COMMON_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "CAD", "AUD"] as const;
@@ -44,13 +55,17 @@ export function SettingsPanel({
 }: {
   apiKeyConfigured: boolean;
 }) {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
   const [activeTab, setActiveTab] = useState<TabId>("general");
+
+  const visibleTabs = TABS.filter((tab) => !tab.adminOnly || isAdmin);
 
   return (
     <div className="space-y-6">
       <div className="border-b border-[var(--border-2)]">
         <nav className="-mb-px flex flex-wrap gap-0">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -73,7 +88,8 @@ export function SettingsPanel({
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}
-      {activeTab === "developer" && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
+      {activeTab === "team" && isAdmin && <TeamTab currentUserId={session?.user?.id ?? ""} />}
+      {activeTab === "developer" && isAdmin && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
 }
@@ -817,17 +833,6 @@ const PROVIDERS: { id: AiProvider; label: string; hint: string; keyPlaceholder: 
   { id: "LOCAL", label: "Local LLM (Ollama / LM Studio)", hint: "Point to any OpenAI-compatible server.", keyPlaceholder: "(optional API key)", envVar: "", defaultModel: "llama3.1" },
 ];
 
-function KeyStatus({ source, masked }: { source: "env" | "database" | null; masked: string | null }) {
-  if (source === "env") return (
-    <span className="text-xs font-medium text-green-700">
-      ✓ Set via environment variable — <span className="font-mono">{masked}</span>
-    </span>
-  );
-  if (source === "database") return (
-    <span className="text-xs font-medium text-green-700">✓ Saved — <span className="font-mono">{masked}</span></span>
-  );
-  return <span className="text-xs text-[var(--text-4)]">Not configured</span>;
-}
 
 function ModelPicker({
   provider,
@@ -1215,6 +1220,578 @@ function IntegrationsTab() {
   );
 }
 
+function TeamTab({ currentUserId }: { currentUserId: string }) {
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editMember, setEditMember] = useState<TeamMember | null>(null);
+  const [resetMember, setResetMember] = useState<TeamMember | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await listTeamMembers();
+      setMembers(data.members);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  return (
+    <div className="space-y-6">
+      <section className="app-card p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="app-eyebrow">Access</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              Team members
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+              Manage who can access Foundry. Admins have full access. Staff access is limited to
+              modules you enable for them.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => setShowAddModal(true)}
+            className="shrink-0"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add member
+          </Button>
+        </div>
+
+        <div className="mt-6">
+          {loading ? (
+            <p className="text-sm text-[var(--text-4)]">Loading…</p>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-[var(--text-4)]">No team members yet.</p>
+          ) : (
+            <div className="divide-y divide-[var(--border-2)]">
+              {members.map((m) => (
+                <div key={m.userId} className="flex items-center gap-3 py-4">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--mist)] text-sm font-semibold text-[var(--brand-700)]">
+                    {(m.name ?? m.email)[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+                      {m.name ?? "—"}
+                    </p>
+                    <p className="truncate text-xs text-[var(--text-4)]">{m.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                        m.role === "ADMIN"
+                          ? "bg-[var(--brand-700)] text-white"
+                          : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                      )}
+                    >
+                      {m.role}
+                    </span>
+                    {m.role === "STAFF" && m.permissions.length > 0 && (
+                      <span className="text-xs text-[var(--text-4)]">
+                        {m.permissions.length} module{m.permissions.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditMember(m)}
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+                      title="Edit"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResetMember(m)}
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+                      title="Reset password"
+                    >
+                      <ArrowPathIcon className="h-4 w-4" />
+                    </button>
+                    {m.userId !== currentUserId && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(m)}
+                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                        title="Remove"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {showAddModal && (
+        <AddMemberModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={() => { setShowAddModal(false); void reload(); }}
+        />
+      )}
+
+      {editMember && (
+        <EditMemberModal
+          member={editMember}
+          onClose={() => setEditMember(null)}
+          onSaved={() => { setEditMember(null); void reload(); }}
+        />
+      )}
+
+      {resetMember && (
+        <ResetPasswordModal
+          member={resetMember}
+          onClose={() => setResetMember(null)}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          member={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => { setDeleteTarget(null); void reload(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddMemberModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"ADMIN" | "STAFF">("STAFF");
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function togglePermission(id: string) {
+    setPermissions((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await createTeamMember({ name, email, password, role, permissions });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create member");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TeamModal title="Add team member" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Full name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="app-input w-full"
+              placeholder="Jane Smith"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Email</span>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              required
+              className="app-input w-full"
+              placeholder="jane@gitwork.co.uk"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Initial password</span>
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            required
+            minLength={8}
+            className="app-input w-full"
+            placeholder="Min. 8 characters"
+          />
+        </label>
+
+        <fieldset className="space-y-1.5">
+          <span className="app-field-label">Role</span>
+          <div className="flex gap-3">
+            {(["ADMIN", "STAFF"] as const).map((r) => (
+              <label key={r} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="role"
+                  value={r}
+                  checked={role === r}
+                  onChange={() => setRole(r)}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-medium text-[var(--text-2)]">{r}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {role === "STAFF" && (
+          <fieldset className="space-y-2">
+            <span className="app-field-label">Module access</span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {MODULE_PERMISSIONS.map((mod) => (
+                <label
+                  key={mod.id}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-2.5 transition",
+                    permissions.includes(mod.id)
+                      ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                      : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--border-1)]",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={permissions.includes(mod.id)}
+                    onChange={() => togglePermission(mod.id)}
+                    className="sr-only"
+                  />
+                  <span className="text-sm font-medium">{mod.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={saving}>
+            {saving ? "Adding…" : "Add member"}
+          </Button>
+        </div>
+      </form>
+    </TeamModal>
+  );
+}
+
+function EditMemberModal({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: TeamMember;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(member.name ?? "");
+  const [role, setRole] = useState<"ADMIN" | "STAFF">(member.role);
+  const [permissions, setPermissions] = useState<string[]>(member.permissions);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function togglePermission(id: string) {
+    setPermissions((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    );
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await updateTeamMember(member.userId, {
+        name,
+        role,
+        permissions: role === "ADMIN" ? [] : permissions,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update member");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TeamModal title={`Edit — ${member.name ?? member.email}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Full name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="app-input w-full"
+          />
+        </label>
+
+        <fieldset className="space-y-1.5">
+          <span className="app-field-label">Role</span>
+          <div className="flex gap-3">
+            {(["ADMIN", "STAFF"] as const).map((r) => (
+              <label key={r} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="edit-role"
+                  value={r}
+                  checked={role === r}
+                  onChange={() => setRole(r)}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-medium text-[var(--text-2)]">{r}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {role === "STAFF" && (
+          <fieldset className="space-y-2">
+            <span className="app-field-label">Module access</span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {MODULE_PERMISSIONS.map((mod) => (
+                <label
+                  key={mod.id}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 rounded-[10px] border px-3 py-2.5 transition",
+                    permissions.includes(mod.id)
+                      ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                      : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--border-1)]",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={permissions.includes(mod.id)}
+                    onChange={() => togglePermission(mod.id)}
+                    className="sr-only"
+                  />
+                  <span className="text-sm font-medium">{mod.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="sm" disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </TeamModal>
+  );
+}
+
+function ResetPasswordModal({
+  member,
+  onClose,
+}: {
+  member: TeamMember;
+  onClose: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      await resetTeamMemberPassword(member.userId, newPassword);
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TeamModal title={`Reset password — ${member.name ?? member.email}`} onClose={onClose}>
+      {done ? (
+        <div className="space-y-4">
+          <p className="rounded-[10px] bg-[var(--success-50)] px-4 py-3 text-sm text-[var(--success-500)]">
+            Password reset successfully. Share the new password with {member.name ?? member.email}.
+          </p>
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm text-[var(--text-3)]">
+            Set a new password for <strong>{member.name ?? member.email}</strong>. They will need to
+            use this to sign in next time.
+          </p>
+
+          <label className="block space-y-1.5">
+            <span className="app-field-label">New password</span>
+            <input
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              type="password"
+              required
+              minLength={8}
+              className="app-input w-full"
+              placeholder="Min. 8 characters"
+            />
+          </label>
+
+          {error && (
+            <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" size="sm" disabled={saving || newPassword.length < 8}>
+              {saving ? "Resetting…" : "Reset password"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </TeamModal>
+  );
+}
+
+function ConfirmDeleteModal({
+  member,
+  onClose,
+  onDeleted,
+}: {
+  member: TeamMember;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await deleteTeamMember(member.userId);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove member");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <TeamModal title="Remove team member" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-[var(--text-3)]">
+          Remove <strong>{member.name ?? member.email}</strong> from the team? They will
+          immediately lose access to Foundry. This cannot be undone.
+        </p>
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="bg-[var(--danger-500)] text-white hover:bg-red-600"
+          >
+            {deleting ? "Removing…" : "Remove member"}
+          </Button>
+        </div>
+      </div>
+    </TeamModal>
+  );
+}
+
+function TeamModal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+      <div className="app-dialog-backdrop absolute inset-0" onClick={onClose} />
+      <div className="app-dialog-panel relative z-10 w-full max-w-lg p-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)]"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function DeveloperTab({
   apiKeyConfigured,
 }: {
@@ -1222,8 +1799,112 @@ function DeveloperTab({
 }) {
   return (
     <div className="space-y-6">
+      <ExternalApiKeySection />
       <ApiSection apiKeyConfigured={apiKeyConfigured} />
     </div>
+  );
+}
+
+function ExternalApiKeySection() {
+  const [integrations, setIntegrations] = useState<IntegrationsResponse | null>(null);
+  const [keyInput, setKeyInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getIntegrations().then(setIntegrations).catch(() => null);
+  }, []);
+
+  async function handleSave() {
+    if (!keyInput.trim()) return;
+    setSaving(true);
+    try {
+      await saveIntegrations({ externalApiKey: keyInput.trim() });
+      const updated = await getIntegrations();
+      setIntegrations(updated);
+      setKeyInput("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Access control</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        External API Key
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Used for programmatic access to the Foundry API from external tools and integrations.
+        Pass as an{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
+          Authorization: Bearer &lt;key&gt;
+        </code>{" "}
+        header. The{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
+          API_KEY
+        </code>{" "}
+        environment variable takes precedence if set.
+      </p>
+
+      <div className="mt-5 space-y-3">
+        {integrations?.externalApiKeyMasked ? (
+          <div className="space-y-1.5">
+            <FieldLabel>Current key</FieldLabel>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-2)]">
+                {integrations.externalApiKeyMasked}
+              </code>
+              {integrations.externalApiKeySource === "env" && (
+                <span className="shrink-0 rounded-full bg-[var(--mist)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)]">
+                  from env
+                </span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
+            No external API key set yet.
+          </p>
+        )}
+
+        <div className="space-y-1.5">
+          <FieldLabel>
+            {integrations?.externalApiKeyMasked ? "Replace key" : "Set key"}
+          </FieldLabel>
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="Paste your API key…"
+              className="app-input flex-1 font-mono text-sm"
+              autoComplete="off"
+            />
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || !keyInput.trim()}
+            >
+              {saved ? (
+                <>
+                  <CheckIcon className="h-4 w-4" />
+                  Saved
+                </>
+              ) : saving ? (
+                "Saving…"
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -644,6 +644,8 @@ export interface IntegrationsResponse {
   geminiModel: string;
   localLlmUrl: string;
   localLlmModel: string;
+  externalApiKeyMasked: string | null;
+  externalApiKeySource: "env" | "database" | null;
 }
 
 export interface ModelOption {
@@ -674,6 +676,7 @@ export async function saveIntegrations(data: {
   geminiModel?: string;
   localLlmUrl?: string;
   localLlmModel?: string;
+  externalApiKey?: string;
 }): Promise<{ saved: boolean }> {
   return apiFetch("/api/settings/integrations", {
     method: "PUT",
@@ -850,5 +853,61 @@ export async function listSupportMembers(
   clientId: string,
 ): Promise<{ members: { id: string; name: string; email: string; role: string }[] }> {
   return apiFetch(`/api/support/clients/${clientId}/members`);
+}
+
+// ── Team management ───────────────────────────────────────────────────────────
+
+export interface TeamMember {
+  userId: string;
+  memberId: string;
+  name: string | null;
+  email: string;
+  role: "ADMIN" | "STAFF";
+  permissions: string[];
+  createdAt?: string;
+}
+
+export async function listTeamMembers(): Promise<{ members: TeamMember[] }> {
+  return apiFetch("/api/team");
+}
+
+export async function createTeamMember(data: {
+  name: string;
+  email: string;
+  password: string;
+  role: "ADMIN" | "STAFF";
+  permissions: string[];
+}): Promise<TeamMember> {
+  return apiFetch("/api/team", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTeamMember(
+  userId: string,
+  data: { name?: string; role?: "ADMIN" | "STAFF"; permissions?: string[] },
+): Promise<TeamMember> {
+  return apiFetch(`/api/team/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTeamMember(userId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/team/${userId}`, { method: "DELETE" });
+}
+
+export async function resetTeamMemberPassword(
+  userId: string,
+  newPassword: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/team/${userId}/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newPassword }),
+  });
 }
 
