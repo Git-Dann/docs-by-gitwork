@@ -1,8 +1,11 @@
 import type { NextAuthConfig } from "next-auth";
 
 // Edge-safe config — no Prisma, used by middleware
+const REMEMBER_ME_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+const SESSION_MAX_AGE = 8 * 60 * 60;            // 8 hours (no remember me)
+
 export const authConfig = {
-  session: { strategy: "jwt" as const },
+  session: { strategy: "jwt" as const, maxAge: REMEMBER_ME_MAX_AGE },
   pages: { signIn: "/login" },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
@@ -18,6 +21,13 @@ export const authConfig = {
         token.role = (user as any).role;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         token.permissions = (user as any).permissions;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        token.remember = (user as any).remember ?? false;
+        // Shorten expiry when "remember me" is not checked
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!(user as any).remember) {
+          token.exp = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE;
+        }
       }
       return token;
     },

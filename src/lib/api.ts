@@ -646,6 +646,11 @@ export interface IntegrationsResponse {
   localLlmModel: string;
   externalApiKeyMasked: string | null;
   externalApiKeySource: "env" | "database" | null;
+  googleServiceAccountJsonSet: boolean;
+  googleSubjectEmail: string | null;
+  googleCalendarId: string | null;
+  slackBotTokenMasked: string | null;
+  slackSummaryChannelId: string | null;
 }
 
 export interface ModelOption {
@@ -677,6 +682,11 @@ export async function saveIntegrations(data: {
   localLlmUrl?: string;
   localLlmModel?: string;
   externalApiKey?: string;
+  googleServiceAccountJson?: string;
+  googleSubjectEmail?: string;
+  googleCalendarId?: string;
+  slackBotToken?: string;
+  slackSummaryChannelId?: string;
 }): Promise<{ saved: boolean }> {
   return apiFetch("/api/settings/integrations", {
     method: "PUT",
@@ -934,6 +944,48 @@ export async function resetTeamMemberPassword(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ newPassword }),
+  });
+}
+
+// ─── Integrations (Gmail / Calendar / Meetings) ───────────────────────────────
+
+export interface GmailMessage {
+  id: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  date: string;
+  unread: boolean;
+}
+
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  attendees: string[];
+  location: string | null;
+  meetLink: string | null;
+}
+
+export async function getGmailMessages(): Promise<{ connected: boolean; messages: GmailMessage[] }> {
+  return apiFetch("/api/integrations/gmail");
+}
+
+export async function getCalendarEvents(): Promise<{ connected: boolean; events: CalendarEvent[] }> {
+  return apiFetch("/api/integrations/calendar");
+}
+
+export async function generateMeetingSummary(data: {
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  attendees: string[];
+}): Promise<{ summary: string }> {
+  return apiFetch("/api/integrations/meeting-summary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
 }
 

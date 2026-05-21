@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { Suspense } from "react";
 
 function LoginForm() {
@@ -13,6 +14,7 @@ function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -24,6 +26,7 @@ function LoginForm() {
     const result = await signIn("credentials", {
       email,
       password,
+      remember: remember ? "1" : "0",
       redirect: false,
     });
 
@@ -41,7 +44,7 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--surface-1)] px-4">
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex justify-center">
-          <Image src="/foundry-logo.png" alt="Foundry by Gitwork" width={120} height={36} />
+          <Image src="/foundry-logo.svg" alt="Foundry by Gitwork" width={120} height={36} />
         </div>
 
         <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-8 shadow-[var(--shadow-sm)]">
@@ -85,6 +88,16 @@ function LoginForm() {
               />
             </label>
 
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-700)]"
+              />
+              <span className="text-sm text-[var(--text-3)]">Remember me for 30 days</span>
+            </label>
+
             {error ? (
               <p className="rounded-[10px] bg-[var(--danger-50)] px-4 py-3 text-sm text-[var(--danger-500)]">
                 {error}
@@ -99,6 +112,12 @@ function LoginForm() {
               {loading ? "Signing in…" : "Sign in"}
             </button>
           </form>
+
+          <p className="mt-4 text-center text-xs text-[var(--text-4)]">
+            <Link href="/forgot-password" className="hover:text-[var(--text-2)]">
+              Forgot password?
+            </Link>
+          </p>
         </div>
 
         <p className="mt-6 text-center text-xs text-[var(--text-4)]">

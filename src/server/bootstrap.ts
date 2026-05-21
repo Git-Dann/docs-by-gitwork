@@ -183,15 +183,38 @@ async function ensureSampleCodeClearCandidates({
   }
 }
 
-// Creates the first admin user from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD
-// env vars. Only runs if those vars are set and the email doesn't exist yet.
-async function ensureInitialAdmin(workspaceId: string) {
+// Creates (or patches) the admin user from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD.
+// Runs on every bootstrap call — idempotent. If the user exists but has no passwordHash
+// (e.g. created as a placeholder before auth was added), the hash is set from env vars.
+export async function ensureInitialAdmin(workspaceId?: string) {
   const email = process.env.INITIAL_ADMIN_EMAIL;
   const password = process.env.INITIAL_ADMIN_PASSWORD;
   if (!email || !password) return;
 
+  // Resolve workspaceId if not provided
+  let wsId = workspaceId;
+  if (!wsId) {
+    const ws = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
+    if (!ws) return;
+    wsId = ws.id;
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return;
+
+  if (existing) {
+    // Patch passwordHash if it was never set
+    if (!existing.passwordHash) {
+      const passwordHash = await bcrypt.hash(password, 12);
+      await prisma.user.update({ where: { email }, data: { passwordHash } });
+    }
+    // Ensure membership exists
+    await prisma.workspaceMember.upsert({
+      where: { workspaceId_userId: { workspaceId: wsId, userId: existing.id } },
+      update: {},
+      create: { workspaceId: wsId, userId: existing.id, role: "ADMIN", permissions: [] },
+    });
+    return;
+  }
 
   const passwordHash = await bcrypt.hash(password, 12);
   const admin = await prisma.user.create({
@@ -199,11 +222,6 @@ async function ensureInitialAdmin(workspaceId: string) {
   });
 
   await prisma.workspaceMember.create({
-    data: {
-      workspaceId,
-      userId: admin.id,
-      role: "ADMIN",
-      permissions: [],
-    },
+    data: { workspaceId: wsId, userId: admin.id, role: "ADMIN", permissions: [] },
   });
 }
