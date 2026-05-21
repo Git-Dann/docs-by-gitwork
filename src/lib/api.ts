@@ -807,6 +807,7 @@ export async function createSupportConnection(
     authMode: Connection["authMode"];
     secretRef?: string;
     nextStep?: string;
+    scraperConfig?: Connection["scraperConfig"];
   },
 ): Promise<{ connection: Connection }> {
   return apiFetch(`/api/support/clients/${clientId}/connections`, {
@@ -825,6 +826,15 @@ export async function updateSupportConnection(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export async function syncSupportConnection(
+  clientId: string,
+  connId: string,
+): Promise<{ created: number; skipped: number; errors: string[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}/sync`, {
+    method: "POST",
   });
 }
 
