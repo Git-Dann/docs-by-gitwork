@@ -4,6 +4,8 @@ import {
   BoltIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
   ClipboardDocumentListIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
@@ -15,6 +17,7 @@ import {
   PlusIcon,
   SparklesIcon,
   TrashIcon,
+  UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
@@ -1431,6 +1434,7 @@ export function SupportDashboard() {
   const [activeClientId, setActiveClientId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
   const [showAddClient, setShowAddClient] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Set first client when data loads
   useEffect(() => {
@@ -1446,16 +1450,10 @@ export function SupportDashboard() {
 
   if (clientsLoading) {
     return (
-      <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
-        <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
-          <div className="px-3 pb-2 pt-4 space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-9 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
-            ))}
-          </div>
-        </aside>
-        <div className="flex min-w-0 flex-1 items-center justify-center">
-          <p className="text-sm text-[var(--text-4)]">Loading…</p>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-[var(--surface-1)]" />
+          <div className="h-3 w-32 animate-pulse rounded-full bg-[var(--surface-1)]" />
         </div>
       </div>
     );
@@ -1463,40 +1461,25 @@ export function SupportDashboard() {
 
   if (!clientsLoading && clients.length === 0) {
     return (
-      <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
-        <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
-          <div className="px-3 pb-2 pt-4">
-            <div className="px-2 pb-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-full"
-                onClick={() => setShowAddClient(true)}
-                leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-              >
-                Add client
-              </Button>
-            </div>
-          </div>
-        </aside>
-        <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
-          <div className="app-card p-8 text-center">
-            <p className="text-base font-semibold text-[var(--text-1)]">No clients yet</p>
-            <p className="mt-2 text-sm text-[var(--text-4)]">Add your first support client to get started.</p>
-            <div className="mt-4 flex justify-center">
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                onClick={() => setShowAddClient(true)}
-                leadingIcon={<PlusIcon className="h-4 w-4" />}
-              >
-                Add client
-              </Button>
-            </div>
-          </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+          <UsersIcon className="h-8 w-8 text-[var(--text-4)]" />
         </div>
+        <div className="space-y-1.5">
+          <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">No clients yet</h2>
+          <p className="max-w-xs text-sm leading-6 text-[var(--text-3)]">
+            Add your first support client to start monitoring their channels, inbox, and tickets.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={() => setShowAddClient(true)}
+          leadingIcon={<PlusIcon className="h-4 w-4" />}
+        >
+          Add client
+        </Button>
         {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}
       </div>
     );
@@ -1507,9 +1490,86 @@ export function SupportDashboard() {
   return (
     <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
       {/* client sub-sidebar */}
-      <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
-        <div className="px-3 pb-2 pt-4">
-          <div className="px-2 pb-2">
+      <aside
+        className={cn(
+          "hidden shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col transition-all duration-200",
+          sidebarCollapsed ? "w-14" : "w-56",
+        )}
+      >
+        {/* collapse / expand toggle */}
+        <div className={cn("flex items-center border-b border-[var(--border-2)] py-3", sidebarCollapsed ? "justify-center px-0" : "justify-end px-3")}>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <ChevronDoubleRightIcon className="h-3.5 w-3.5" /> : <ChevronDoubleLeftIcon className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        {/* client list */}
+        <div className={cn("flex-1 overflow-y-auto py-3", sidebarCollapsed ? "px-1.5 space-y-1.5" : "px-2 space-y-0.5")}>
+          {clients.map((c) => {
+            const initial = c.name.charAt(0).toUpperCase();
+            const isActive = c.id === activeClientId;
+            return sidebarCollapsed ? (
+              <button
+                key={c.id}
+                type="button"
+                title={c.name}
+                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                className={cn(
+                  "relative flex w-full items-center justify-center rounded-[10px] py-1.5 transition",
+                  isActive ? "bg-[var(--mist)]" : "hover:bg-[var(--surface-1)]",
+                )}
+              >
+                <span className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-bold transition",
+                  isActive
+                    ? "bg-[var(--brand-700)] text-white"
+                    : "bg-[var(--brand-50)] text-[var(--brand-700)]",
+                )}>
+                  {initial}
+                </span>
+                {inboxUnread > 0 && isActive && (
+                  <span className="absolute right-1.5 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                    {inboxUnread > 9 ? "9+" : inboxUnread}
+                  </span>
+                )}
+              </button>
+            ) : (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm transition",
+                  isActive
+                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                )}
+              >
+                <span className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                  isActive ? "bg-[var(--brand-700)] text-white" : "bg-[var(--brand-50)] text-[var(--brand-700)]",
+                )}>
+                  {initial}
+                </span>
+                <span className="flex-1 truncate font-medium">{c.name}</span>
+                {inboxUnread > 0 && isActive && (
+                  <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {inboxUnread}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* add client button */}
+        {!sidebarCollapsed ? (
+          <div className="border-t border-[var(--border-2)] px-2 py-3">
             <Button
               type="button"
               variant="secondary"
@@ -1521,35 +1581,18 @@ export function SupportDashboard() {
               Add client
             </Button>
           </div>
-          <div className="space-y-0.5">
-            {clients.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  setActiveClientId(c.id);
-                  setActiveTab("inbox");
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
-                  c.id === activeClientId
-                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
-                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-                )}
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-bold text-[var(--brand-700)]">
-                  {c.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="flex-1 truncate font-medium">{c.name}</span>
-                {inboxUnread > 0 && c.id === activeClientId && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-700)] px-1 text-[10px] font-semibold text-white">
-                    {inboxUnread}
-                  </span>
-                )}
-              </button>
-            ))}
+        ) : (
+          <div className="border-t border-[var(--border-2)] py-3 flex justify-center">
+            <button
+              type="button"
+              title="Add client"
+              onClick={() => setShowAddClient(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+            >
+              <PlusIcon className="h-4 w-4" />
+            </button>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* main content */}
@@ -1558,7 +1601,7 @@ export function SupportDashboard() {
         <div className="border-b border-[var(--border-2)] px-6 sm:px-8">
           <div className="flex items-center gap-3 pt-5 pb-0">
             <h2 className="text-base font-semibold text-[var(--text-1)]">{client.name}</h2>
-            <span className="text-[var(--text-4)]">|</span>
+            <span className="text-[var(--text-4)]">·</span>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               live
             </span>
@@ -1601,13 +1644,11 @@ export function SupportDashboard() {
 
         {/* tab content */}
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
-          <div className="mt-0">
-            {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
-            {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
-            {activeTab === "reports" && <ReportsView client={client} />}
-            {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
-            {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
-          </div>
+          {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
+          {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
+          {activeTab === "reports" && <ReportsView client={client} />}
+          {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
+          {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
         </div>
       </div>
 
