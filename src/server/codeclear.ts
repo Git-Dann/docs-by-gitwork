@@ -411,7 +411,7 @@ const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [
     notes: [
       {
         body: "Strong fit for product-facing platform work with clear ownership and reliable delivery signals.",
-        createdBy: "Daniel Lindsay",
+        createdBy: "Gitwork",
         createdAtOffsetDays: -8,
       },
     ],
@@ -431,7 +431,7 @@ const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [
   {
     name: "Dan Abramov",
     githubHandle: "gaearon",
-    email: "dan@example.com",
+    email: "team@gitwork.co.uk",
     primaryStack: "React",
     location: "London",
     bio: "Frontend-heavy candidate with strong architecture instincts and a draft verification in progress.",
@@ -450,7 +450,7 @@ const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [
     notes: [
       {
         body: "Draft looks strong, but needs final verification and placement discussion.",
-        createdBy: "Daniel Lindsay",
+        createdBy: "Gitwork",
         createdAtOffsetDays: -3,
       },
     ],

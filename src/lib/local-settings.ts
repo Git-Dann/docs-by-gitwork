@@ -45,9 +45,9 @@ export interface LocalSettingsState {
 
 export const defaultLocalSettings: LocalSettingsState = {
   account: {
-    name: "Dan Lindsay",
-    email: "dan@gitwork.co.uk",
-    avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=120&q=80",
+    name: "Gitwork",
+    email: "hello@gitwork.co.uk",
+    avatarUrl: "",
     password: "",
   },
   workspace: {

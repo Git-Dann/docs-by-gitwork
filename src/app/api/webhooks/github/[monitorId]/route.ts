@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { verifyGithubSignature, triggerMonitorScan } from "@/server/pulse-monitor";
+import { verifyGithubSignature, triggerMonitorScan } from "@/server/pulse-agents/monitor";
 
 export const dynamic = "force-dynamic";
 // Webhook handler must respond quickly — actual scan runs in after()

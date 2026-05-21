@@ -167,7 +167,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: "team-3",
-          teamMemberName: "Daniel Lindsay",
+          teamMemberName: "TBC",
           role: "Product Manager",
           techStack: "Delivery oversight",
           monthsRequired: 4,
@@ -287,7 +287,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
 
 export const DEFAULT_PROPOSAL_METADATA: ProposalMetadata = {
   client: "Acme Health",
-  owner: "Daniel Lindsay",
+  owner: "",
   expiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30)
     .toISOString()
     .slice(0, 10),

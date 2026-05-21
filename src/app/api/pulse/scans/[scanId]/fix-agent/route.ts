@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan } from "@/server/pulse";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { runFixAgent } from "@/server/pulse-fix-agent";
+import { runFixAgent } from "@/server/pulse-agents/fix-agent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;

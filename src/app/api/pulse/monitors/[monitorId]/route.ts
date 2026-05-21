@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { deleteMonitor } from "@/server/pulse-monitor";
+import { deleteMonitor } from "@/server/pulse-agents/monitor";
 
 export const dynamic = "force-dynamic";
 

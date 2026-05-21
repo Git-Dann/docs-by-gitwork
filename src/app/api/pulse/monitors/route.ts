@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { after } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { listMonitors, createMonitor } from "@/server/pulse-monitor";
+import { listMonitors, createMonitor } from "@/server/pulse-agents/monitor";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
