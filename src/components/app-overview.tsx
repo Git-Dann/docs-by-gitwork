@@ -2,12 +2,14 @@
 
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -135,12 +137,17 @@ interface ResizeHandleProps {
 function ResizeHandle({ widgetId, currentSize, gridRef, onResize }: ResizeHandleProps) {
   const startPos = useRef<{ x: number; y: number } | null>(null);
   const startSize = useRef<WidgetSize>(currentSize);
+  // Track pending size so we only fire onResize on pointerUp, not every pixel
+  const pendingSize = useRef<WidgetSize>(currentSize);
+  const [isResizing, setIsResizing] = useState(false);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
     startPos.current = { x: e.clientX, y: e.clientY };
     startSize.current = currentSize;
+    pendingSize.current = currentSize;
+    setIsResizing(true);
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
   }
 
@@ -159,6 +166,10 @@ function ResizeHandle({ widgetId, currentSize, gridRef, onResize }: ResizeHandle
     const newCols = Math.min(3, Math.max(1, Math.round((startColW + dx) / cellW))) as 1 | 2 | 3;
     const newRows = Math.min(3, Math.max(1, Math.round((startRowH + dy) / cellH))) as 1 | 2 | 3;
 
+    pendingSize.current = { cols: newCols, rows: newRows };
+
+    // Commit live so the card visually resizes — state update is infrequent
+    // because it only fires when the cell count actually changes
     if (newCols !== currentSize.cols || newRows !== currentSize.rows) {
       onResize(widgetId, { cols: newCols, rows: newRows });
     }
@@ -166,6 +177,9 @@ function ResizeHandle({ widgetId, currentSize, gridRef, onResize }: ResizeHandle
 
   function onPointerUp() {
     startPos.current = null;
+    setIsResizing(false);
+    // Ensure final size is committed if somehow missed during move
+    onResize(widgetId, pendingSize.current);
   }
 
   return (
@@ -173,12 +187,43 @@ function ResizeHandle({ widgetId, currentSize, gridRef, onResize }: ResizeHandle
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      className="absolute bottom-1.5 right-1.5 z-10 flex h-4 w-4 cursor-se-resize items-center justify-center rounded-[3px] bg-[var(--border-2)] opacity-0 transition-opacity group-hover/card:opacity-100 hover:bg-[var(--accent)] hover:opacity-100"
+      className={cn(
+        "absolute bottom-1.5 right-1.5 z-10 flex h-5 w-5 cursor-se-resize items-center justify-center rounded-[4px] transition-all",
+        isResizing
+          ? "bg-[var(--accent)] opacity-100 shadow-md"
+          : "bg-[var(--border-2)] opacity-0 group-hover/card:opacity-100 hover:bg-[var(--accent)]",
+      )}
       title="Drag to resize"
     >
       <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-        <path d="M7 1L1 7M7 4L4 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path
+          d="M7 1L1 7M7 4L4 7"
+          stroke={isResizing ? "white" : "currentColor"}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
       </svg>
+    </div>
+  );
+}
+
+// ─── Drag overlay card (no sortable, just a lifted visual clone) ──────────────
+
+function DragOverlayCard({ def, size }: { def: WidgetDef; size: WidgetSize }) {
+  const Component = def.component;
+  return (
+    <div
+      className="group/card relative overflow-hidden rounded-[12px] border border-[var(--accent)] bg-[var(--surface-0)] p-3 shadow-[0_20px_60px_-10px_rgba(0,0,0,0.25)] ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg)]"
+      style={{
+        transform: "scale(1.03) rotate(0.6deg)",
+        cursor: "grabbing",
+        willChange: "transform",
+      }}
+    >
+      <div className="absolute left-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--accent)] text-white">
+        <Bars3Icon className="h-3 w-3" />
+      </div>
+      <Component size={size} />
     </div>
   );
 }
@@ -203,9 +248,11 @@ function BentoCard({ def, size, editMode, gridRef, onResize, onHide }: BentoCard
   const style: React.CSSProperties = {
     gridColumn: `span ${size.cols}`,
     gridRow: `span ${size.rows}`,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    // Only apply transform to non-dragging cards (the ones shifting to make room)
+    transform: isDragging ? undefined : CSS.Transform.toString(transform),
+    transition: isDragging ? undefined : transition,
+    opacity: isDragging ? 0 : 1,
+    willChange: "transform",
   };
 
   const Component = def.component;
@@ -216,34 +263,34 @@ function BentoCard({ def, size, editMode, gridRef, onResize, onHide }: BentoCard
       style={style}
       className={cn(
         "group/card relative overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-0)] p-3",
-        editMode && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--bg)]",
-        isDragging && "z-50 shadow-xl",
+        editMode && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--bg)]",
+        isDragging && "rounded-[12px] border-2 border-dashed border-[var(--accent)] bg-[var(--surface-1)]",
       )}
     >
-      {editMode && (
+      {editMode && !isDragging && (
         <div
           {...listeners}
           {...attributes}
-          className="absolute left-1.5 top-1.5 z-10 flex h-5 w-5 cursor-grab items-center justify-center rounded-[4px] bg-[var(--border-2)] text-[var(--text-3)] active:cursor-grabbing"
+          className="absolute left-1.5 top-1.5 z-10 flex h-5 w-5 cursor-grab items-center justify-center rounded-[4px] bg-[var(--border-2)] text-[var(--text-3)] transition-colors hover:bg-[var(--accent)] hover:text-white active:cursor-grabbing"
           title="Drag to reorder"
         >
           <Bars3Icon className="h-3 w-3" />
         </div>
       )}
 
-      {editMode && (
+      {editMode && !isDragging && (
         <button
           onClick={() => onHide(def.id)}
-          className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--border-2)] text-[var(--text-3)] hover:bg-red-100 hover:text-red-600"
+          className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--border-2)] text-[var(--text-3)] transition-colors hover:bg-red-100 hover:text-red-600"
           title="Hide widget"
         >
           <XMarkIcon className="h-3 w-3" />
         </button>
       )}
 
-      <Component size={size} />
+      {!isDragging && <Component size={size} />}
 
-      {editMode && (
+      {editMode && !isDragging && (
         <ResizeHandle
           widgetId={def.id}
           currentSize={size}
@@ -262,33 +309,53 @@ export function AppOverview() {
   const [state, setState] = useState<PersistedState>(defaultState);
   const [editMode, setEditMode] = useState(false);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  const [activeId, setActiveId] = useState<WidgetId | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef(state);
+  // Snapshot of state when edit mode was entered — used to revert on Cancel
+  const editBaseline = useRef<PersistedState | null>(null);
 
   useEffect(() => {
     const loaded = loadState();
     setState(loaded);
-    stateRef.current = loaded;
     setHydrated(true);
   }, []);
 
-  const persistState = useCallback((next: PersistedState) => {
-    stateRef.current = next;
-    saveState(next);
+  // During edit mode, changes are held in React state only — not written to localStorage.
+  // Save commits, Cancel reverts.
+  const updateDraft = useCallback((updater: (prev: PersistedState) => PersistedState) => {
+    setState((prev) => updater(prev));
   }, []);
 
-  function updateState(updater: (prev: PersistedState) => PersistedState) {
-    setState((prev) => {
-      const next = updater(prev);
-      persistState(next);
-      return next;
-    });
+  function enterEditMode() {
+    editBaseline.current = structuredClone(state);
+    setEditMode(true);
+  }
+
+  function handleSave() {
+    saveState(state);
+    editBaseline.current = null;
+    setEditMode(false);
+    setShowWidgetPicker(false);
+  }
+
+  function handleCancel() {
+    if (editBaseline.current) {
+      setState(editBaseline.current);
+    }
+    editBaseline.current = null;
+    setEditMode(false);
+    setShowWidgetPicker(false);
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as WidgetId);
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    updateState((prev) => {
+    updateDraft((prev) => {
       const oldIndex = prev.order.indexOf(active.id as WidgetId);
       const newIndex = prev.order.indexOf(over.id as WidgetId);
       if (oldIndex === -1 || newIndex === -1) return prev;
@@ -296,22 +363,26 @@ export function AppOverview() {
     });
   }
 
+  function handleDragCancel() {
+    setActiveId(null);
+  }
+
   function handleResize(id: WidgetId, size: WidgetSize) {
-    updateState((prev) => ({
+    updateDraft((prev) => ({
       ...prev,
       sizes: { ...prev.sizes, [id]: size },
     }));
   }
 
   function handleHide(id: WidgetId) {
-    updateState((prev) => ({
+    updateDraft((prev) => ({
       ...prev,
       hidden: [...prev.hidden, id],
     }));
   }
 
   function handleShow(id: WidgetId) {
-    updateState((prev) => ({
+    updateDraft((prev) => ({
       ...prev,
       hidden: prev.hidden.filter((h) => h !== id),
     }));
@@ -349,6 +420,7 @@ export function AppOverview() {
           <h1 className="text-lg font-semibold text-[var(--text-1)]">Foundry HQ</h1>
           <p className="text-xs text-[var(--text-3)]">Your workspace at a glance</p>
         </div>
+
         <div className="flex items-center gap-2">
           {editMode && hiddenIds.length > 0 && (
             <button
@@ -359,18 +431,31 @@ export function AppOverview() {
               {hiddenIds.length} hidden
             </button>
           )}
-          <button
-            onClick={() => { setEditMode((v) => !v); setShowWidgetPicker(false); }}
-            className={cn(
-              "flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-xs font-medium transition-colors",
-              editMode
-                ? "bg-[var(--accent)] text-white hover:opacity-90"
-                : "border border-[var(--border-1)] text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-            )}
-          >
-            <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-            {editMode ? "Done" : "Customise"}
-          </button>
+
+          {editMode ? (
+            <>
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-1)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 rounded-[8px] bg-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+              >
+                Save layout
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={enterEditMode}
+              className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-1)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)]"
+            >
+              <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
+              Customise
+            </button>
+          )}
         </div>
       </div>
 
@@ -389,7 +474,13 @@ export function AppOverview() {
         </div>
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={visibleIds} strategy={rectSortingStrategy}>
           <div
             ref={gridRef}
@@ -417,6 +508,19 @@ export function AppOverview() {
             })}
           </div>
         </SortableContext>
+
+        {/* Floating drag overlay — renders a lifted clone at the cursor position */}
+        <DragOverlay dropAnimation={{
+          duration: 200,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        }}>
+          {activeId ? (
+            <DragOverlayCard
+              def={WIDGET_MAP[activeId]}
+              size={getSizeFor(activeId, state.sizes)}
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );
