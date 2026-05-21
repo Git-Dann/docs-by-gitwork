@@ -789,6 +789,23 @@ export async function listSupportConnections(
   return apiFetch(`/api/support/clients/${clientId}/connections`);
 }
 
+export async function createSupportConnection(
+  clientId: string,
+  data: {
+    source: Connection["source"];
+    label: string;
+    authMode: Connection["authMode"];
+    secretRef?: string;
+    nextStep?: string;
+  },
+): Promise<{ connection: Connection }> {
+  return apiFetch(`/api/support/clients/${clientId}/connections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateSupportConnection(
   clientId: string,
   connId: string,
@@ -798,6 +815,15 @@ export async function updateSupportConnection(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export async function generateAiDraft(
+  clientId: string,
+  convId: string,
+): Promise<{ draft: string }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/ai-draft`, {
+    method: "POST",
   });
 }
 

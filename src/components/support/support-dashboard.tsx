@@ -14,9 +14,10 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
+  TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useState, useDeferredValue, useEffect, useRef } from "react";
+import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/format";
 import type {
   Connection,
@@ -28,6 +29,11 @@ import type {
   TicketStatus,
 } from "@/types/support";
 import {
+  useCreateSupportClient,
+  useCreateSupportConnection,
+  useCreateWorkflowRule,
+  useDeleteWorkflowRule,
+  useGenerateAiDraft,
   useSupportClients,
   useSupportConversations,
   useSupportMessages,
@@ -82,6 +88,8 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   stripe: "Stripe",
 };
 
+const ALL_SOURCES = Object.keys(SOURCE_LABEL) as SupportSource[];
+
 const STATUS_LABEL: Record<TicketStatus, string> = {
   open: "Open",
   in_progress: "In progress",
@@ -109,16 +117,433 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 type Tab = "inbox" | "tickets" | "reports" | "connectors" | "settings";
 
+// ─── shared modal wrapper ─────────────────────────────────────────────────────
+
+function CareModal({
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div
+        className={cn(
+          "app-dialog-panel relative z-10 w-full p-6",
+          wide ? "max-w-xl" : "max-w-md",
+        )}
+      >
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── add client modal ─────────────────────────────────────────────────────────
+
+function AddClientModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [days, setDays] = useState("");
+  const [recipient, setRecipient] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const createClient = useCreateSupportClient();
+
+  function slug(name: string) {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    createClient.mutate(
+      {
+        name: name.trim(),
+        slug: slug(name.trim()),
+        status: "active",
+        supportDaysPerMonth: days ? Number(days) : undefined,
+        supportDaysUsed: 0,
+        reportingRecipient: recipient.trim() || undefined,
+      },
+      {
+        onSuccess: () => onClose(),
+        onError: (err) => setError(err instanceof Error ? err.message : "Failed to create client"),
+      },
+    );
+  }
+
+  return (
+    <CareModal title="Add client" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Client name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="app-input w-full"
+            placeholder="Acme Corp"
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Support days/month</span>
+            <input
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+              type="number"
+              min="0"
+              className="app-input w-full"
+              placeholder="e.g. 5"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Report recipient</span>
+            <input
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              type="email"
+              className="app-input w-full"
+              placeholder="client@company.com"
+            />
+          </label>
+        </div>
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createClient.isPending || !name.trim()}
+            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+          >
+            {createClient.isPending ? "Adding…" : "Add client"}
+          </button>
+        </div>
+      </form>
+    </CareModal>
+  );
+}
+
+// ─── add connector modal ──────────────────────────────────────────────────────
+
+const AUTH_MODE_OPTIONS: { value: Connection["authMode"]; label: string; hint: string }[] = [
+  { value: "oauth", label: "OAuth", hint: "Authorise via the platform's OAuth flow" },
+  { value: "api_key", label: "API key", hint: "Paste in an API key or access token" },
+  { value: "bot_token", label: "Bot token", hint: "A bot or service account token" },
+  { value: "manual", label: "Manual / scraper", hint: "Custom scraper or webhook setup" },
+];
+
+const AUTH_MODE_LABEL: Record<Connection["authMode"], string> = {
+  oauth: "OAuth",
+  bot_token: "Bot token",
+  manual: "Manual / scraper",
+  api_key: "API key",
+};
+
+function AddConnectorModal({
+  clientId,
+  onClose,
+}: {
+  clientId: string;
+  onClose: () => void;
+}) {
+  const [source, setSource] = useState<SupportSource>("gmail");
+  const [label, setLabel] = useState("");
+  const [authMode, setAuthMode] = useState<Connection["authMode"]>("api_key");
+  const [secretRef, setSecretRef] = useState("");
+  const [nextStep, setNextStep] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const createConnection = useCreateSupportConnection(clientId);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    createConnection.mutate(
+      {
+        source,
+        label: label.trim() || SOURCE_LABEL[source],
+        authMode,
+        secretRef: secretRef.trim() || undefined,
+        nextStep: nextStep.trim() || undefined,
+      },
+      {
+        onSuccess: () => onClose(),
+        onError: (err) =>
+          setError(err instanceof Error ? err.message : "Failed to add connector"),
+      },
+    );
+  }
+
+  return (
+    <CareModal title="Add connector" onClose={onClose} wide>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <span className="app-field-label mb-2 block">Platform</span>
+          <div className="grid grid-cols-4 gap-2">
+            {ALL_SOURCES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSource(s)}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-[10px] border py-3 px-2 text-xs font-medium transition",
+                  source === s
+                    ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--border-1)]",
+                )}
+              >
+                <SourceIcon source={s} className="h-5 w-5" />
+                {SOURCE_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Label</span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="app-input w-full"
+            placeholder={`e.g. ${SOURCE_LABEL[source]} — support inbox`}
+          />
+        </label>
+
+        <div>
+          <span className="app-field-label mb-2 block">Auth method</span>
+          <div className="grid grid-cols-2 gap-2">
+            {AUTH_MODE_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={cn(
+                  "flex cursor-pointer items-start gap-2.5 rounded-[10px] border p-3 transition",
+                  authMode === opt.value
+                    ? "border-[var(--brand-700)] bg-[var(--mist)]"
+                    : "border-[var(--border-2)] hover:border-[var(--border-1)]",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="authMode"
+                  value={opt.value}
+                  checked={authMode === opt.value}
+                  onChange={() => setAuthMode(opt.value)}
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-1)]">{opt.label}</p>
+                  <p className="text-xs text-[var(--text-4)]">{opt.hint}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Secret / key reference</span>
+          <input
+            value={secretRef}
+            onChange={(e) => setSecretRef(e.target.value)}
+            className="app-input w-full font-mono text-sm"
+            placeholder="e.g. vault:clients/acme/gmail-token"
+          />
+          <p className="text-xs text-[var(--text-4)]">
+            Store credentials in a vault. Enter the secret reference path, not the actual value.
+          </p>
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Setup notes (optional)</span>
+          <textarea
+            value={nextStep}
+            onChange={(e) => setNextStep(e.target.value)}
+            rows={2}
+            className="app-input w-full resize-none"
+            placeholder="Any setup instructions or next steps…"
+          />
+        </label>
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createConnection.isPending}
+            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+          >
+            {createConnection.isPending ? "Saving…" : "Add connector"}
+          </button>
+        </div>
+      </form>
+    </CareModal>
+  );
+}
+
+// ─── add rule modal ───────────────────────────────────────────────────────────
+
+function AddRuleModal({
+  clientId,
+  onClose,
+}: {
+  clientId: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [when, setWhen] = useState("");
+  const [then, setThen] = useState("");
+  const [requiresApproval, setRequiresApproval] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const createRule = useCreateWorkflowRule(clientId);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    createRule.mutate(
+      { name: name.trim(), when: when.trim(), then: then.trim(), requiresApproval },
+      {
+        onSuccess: () => onClose(),
+        onError: (err) => setError(err instanceof Error ? err.message : "Failed to create rule"),
+      },
+    );
+  }
+
+  return (
+    <CareModal title="Add workflow rule" onClose={onClose} wide>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-sm text-[var(--text-3)]">
+          Rules describe conditions and actions in plain language. The AI reads these when processing
+          inbound messages and applies them automatically.
+        </p>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Rule name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="app-input w-full"
+            placeholder="e.g. Escalate billing issues"
+          />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">When…</span>
+          <textarea
+            value={when}
+            onChange={(e) => setWhen(e.target.value)}
+            required
+            rows={2}
+            className="app-input w-full resize-none"
+            placeholder="e.g. A message mentions a refund, payment failure, or billing dispute"
+          />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Then…</span>
+          <textarea
+            value={then}
+            onChange={(e) => setThen(e.target.value)}
+            required
+            rows={2}
+            className="app-input w-full resize-none"
+            placeholder="e.g. Set ticket priority to Urgent and assign to the billing team"
+          />
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border-2)] p-3.5">
+          <input
+            type="checkbox"
+            checked={requiresApproval}
+            onChange={(e) => setRequiresApproval(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <div>
+            <p className="text-sm font-medium text-[var(--text-1)]">Require approval before executing</p>
+            <p className="text-xs text-[var(--text-4)]">
+              The AI will draft the action but wait for a team member to approve it.
+            </p>
+          </div>
+        </label>
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createRule.isPending || !name.trim() || !when.trim() || !then.trim()}
+            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+          >
+            {createRule.isPending ? "Saving…" : "Save rule"}
+          </button>
+        </div>
+      </form>
+    </CareModal>
+  );
+}
+
 // ─── inbox view ──────────────────────────────────────────────────────────────
+
+type DraftState = { text: string; status: "draft" | "approved" } | null;
 
 function InboxView({ clientId }: { clientId: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
-  const convos = convoData?.conversations ?? [];
+  const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
 
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const deferred = useDeferredValue(search);
   const [replyText, setReplyText] = useState("");
+  const [draft, setDraft] = useState<DraftState>(null);
 
   // Set first conversation when data loads
   useEffect(() => {
@@ -132,6 +557,7 @@ function InboxView({ clientId }: { clientId: string }) {
 
   const updateConversation = useUpdateConversation(clientId);
   const sendMessage = useSendMessage(clientId, selectedConvId);
+  const generateDraft = useGenerateAiDraft(clientId);
 
   // Mark conversation as read when opened
   const markedReadRef = useRef<Set<string>>(new Set());
@@ -144,6 +570,12 @@ function InboxView({ clientId }: { clientId: string }) {
     }
   }, [selectedConvId, convos, updateConversation]);
 
+  // Clear draft when switching conversations
+  useEffect(() => {
+    setDraft(null);
+    setReplyText("");
+  }, [selectedConvId]);
+
   const filtered = convos.filter(
     (c) =>
       !deferred ||
@@ -154,12 +586,24 @@ function InboxView({ clientId }: { clientId: string }) {
   const activeConvo = convos.find((c) => c.id === selectedConvId) ?? null;
 
   function handleSend() {
-    const body = replyText.trim();
+    const body = (draft?.status === "approved" ? draft.text : replyText).trim();
     if (!body || !selectedConvId) return;
     sendMessage.mutate(
       { direction: "outbound", authorLabel: "Support", body },
-      { onSuccess: () => setReplyText("") },
+      {
+        onSuccess: () => {
+          setReplyText("");
+          setDraft(null);
+        },
+      },
     );
+  }
+
+  function handleGenerateDraft() {
+    if (!selectedConvId) return;
+    generateDraft.mutate(selectedConvId, {
+      onSuccess: (res) => setDraft({ text: res.draft, status: "draft" }),
+    });
   }
 
   return (
@@ -199,18 +643,21 @@ function InboxView({ clientId }: { clientId: string }) {
       </div>
 
       {/* detail pane */}
-      <div className="app-card min-w-0 overflow-hidden">
+      <div className="app-card flex min-w-0 flex-col overflow-hidden">
         {!activeConvo ? (
           <div className="flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
             Select a conversation
           </div>
         ) : (
           <>
+            {/* header */}
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-5 py-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
                   <SourceIcon source={activeConvo.source} />
                   <span>{SOURCE_LABEL[activeConvo.source]}</span>
+                  <span className="text-[var(--text-4)]">·</span>
+                  <span>{activeConvo.customerLabel}</span>
                 </div>
                 <h2 className="mt-1 truncate text-base font-semibold text-[var(--text-1)]">
                   {activeConvo.subject}
@@ -222,15 +669,18 @@ function InboxView({ clientId }: { clientId: string }) {
                 </span>
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                  onClick={handleGenerateDraft}
+                  disabled={generateDraft.isPending}
+                  className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
                 >
                   <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                  Draft AI reply
+                  {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
                 </button>
               </div>
             </div>
 
-            <div className="space-y-3 p-5">
+            {/* messages */}
+            <div className="flex-1 space-y-3 overflow-y-auto p-5">
               {msgsLoading && (
                 <div className="space-y-2">
                   {[...Array(2)].map((_, i) => (
@@ -257,26 +707,79 @@ function InboxView({ clientId }: { clientId: string }) {
               ))}
             </div>
 
-            {/* reply box */}
-            <div className="border-t border-[var(--border-2)] p-4">
-              <textarea
-                rows={3}
-                className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white resize-none"
-                placeholder="Write a reply…"
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-              />
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={sendMessage.isPending || !replyText.trim()}
-                  className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {sendMessage.isPending ? "Sending…" : "Send reply"}
-                </button>
+            {/* AI draft panel */}
+            {draft && (
+              <div className="border-t border-[var(--mist-border)] bg-[var(--mist)] p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                    <span className="text-xs font-semibold text-[var(--brand-700)]">AI draft</span>
+                    {draft.status === "approved" && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                        Approved
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDraft(null)}
+                    className="text-[var(--text-4)] hover:text-[var(--text-2)]"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <textarea
+                  rows={5}
+                  value={draft.text}
+                  onChange={(e) => setDraft({ text: e.target.value, status: "draft" })}
+                  className="w-full resize-none rounded-[8px] border border-[var(--mist-border)] bg-white p-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
+                />
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  {draft.status === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={() => setDraft({ text: draft.text, status: "approved" })}
+                      className="flex items-center gap-1.5 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      <CheckCircleIcon className="h-4 w-4" />
+                      Approve draft
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={sendMessage.isPending}
+                      className="flex items-center gap-1.5 rounded-[8px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
+                    >
+                      {sendMessage.isPending ? "Sending…" : "Send reply"}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* manual reply box (only when no draft) */}
+            {!draft && (
+              <div className="border-t border-[var(--border-2)] p-4">
+                <textarea
+                  rows={3}
+                  className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+                  placeholder="Write a reply…"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={sendMessage.isPending || !replyText.trim()}
+                    className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {sendMessage.isPending ? "Sending…" : "Send reply"}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -443,7 +946,9 @@ function ReportsView({ client }: { client: SupportClient }) {
     <div className="space-y-4">
       {hasAllocation && (
         <div className="app-card p-5">
-          <p className="text-sm font-medium text-[var(--text-3)]">Support days — {new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}</p>
+          <p className="text-sm font-medium text-[var(--text-3)]">
+            Support days — {new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}
+          </p>
           <div className="mt-4 flex items-end gap-4">
             <p className="text-[32px] font-semibold leading-none tracking-[-0.03em] text-[var(--text-1)]">
               {used}
@@ -453,12 +958,17 @@ function ReportsView({ client }: { client: SupportClient }) {
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-1)]">
             <div
-              className={cn("h-full rounded-full transition-all", pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]")}
+              className={cn(
+                "h-full rounded-full transition-all",
+                pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]",
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>
           <p className="mt-2 text-xs text-[var(--text-4)]">
-            {total - used} days remaining · Report due {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"} → {client.reportingRecipient}
+            {total - used} days remaining · Report due{" "}
+            {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"} →{" "}
+            {client.reportingRecipient}
           </p>
         </div>
       )}
@@ -467,7 +977,7 @@ function ReportsView({ client }: { client: SupportClient }) {
         <p className="mb-3 text-sm font-medium text-[var(--text-3)]">Monthly report draft</p>
         <textarea
           rows={8}
-          className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white resize-none"
+          className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
           placeholder={`Write the ${client.reportingRecipient ? `report for ${client.reportingRecipient}` : "monthly support report"} here…`}
         />
         <div className="mt-3 flex items-center justify-between">
@@ -486,22 +996,22 @@ function ReportsView({ client }: { client: SupportClient }) {
 
 // ─── connectors view ─────────────────────────────────────────────────────────
 
-const AUTH_MODE_LABEL: Record<Connection["authMode"], string> = {
-  oauth: "OAuth",
-  bot_token: "Bot token",
-  manual: "Manual / scraper",
-  api_key: "API key",
-};
-
 function ConnectorsView({ clientId }: { clientId: string }) {
   const { data, isLoading } = useSupportConnections(clientId);
   const connections = data?.connections ?? [];
+  const [showAddModal, setShowAddModal] = useState(false);
 
   if (isLoading) {
     return (
       <div className="app-card overflow-hidden p-0">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className={cn("h-20 animate-pulse bg-[var(--surface-1)]", i > 0 && "border-t border-[var(--border-2)]")} />
+          <div
+            key={i}
+            className={cn(
+              "h-20 animate-pulse bg-[var(--surface-1)]",
+              i > 0 && "border-t border-[var(--border-2)]",
+            )}
+          />
         ))}
       </div>
     );
@@ -509,68 +1019,75 @@ function ConnectorsView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="app-card overflow-hidden p-0">
-        {connections.map((conn, idx) => (
-          <div
-            key={conn.id}
-            className={cn(
-              "flex flex-wrap items-start justify-between gap-4 px-5 py-4",
-              idx > 0 && "border-t border-[var(--border-2)]",
-            )}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className={cn(
-                  "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
-                  conn.health === "connected"
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-[var(--surface-1)] text-[var(--text-3)]",
-                )}
-              >
-                <SourceIcon source={conn.source} className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
-                  <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
-                </div>
-                <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
-                {conn.nextStep && (
-                  <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">{conn.nextStep}</p>
-                )}
-                {conn.secretRef && (
-                  <p className="mt-1 flex items-center gap-1 text-[11px] text-[var(--text-4)]">
-                    <KeyIcon className="h-3 w-3" />
-                    {conn.secretRef}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {conn.health === "connected" ? (
-                <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
-                  Connected
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                  <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                  Needs setup
-                </span>
+      {connections.length > 0 && (
+        <div className="app-card overflow-hidden p-0">
+          {connections.map((conn, idx) => (
+            <div
+              key={conn.id}
+              className={cn(
+                "flex flex-wrap items-start justify-between gap-4 px-5 py-4",
+                idx > 0 && "border-t border-[var(--border-2)]",
               )}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={cn(
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+                    conn.health === "connected"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                  )}
+                >
+                  <SourceIcon source={conn.source} className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
+                    <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
+                  {conn.nextStep && (
+                    <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">{conn.nextStep}</p>
+                  )}
+                  {conn.secretRef && (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-[var(--text-4)]">
+                      <KeyIcon className="h-3 w-3" />
+                      {conn.secretRef}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {conn.health === "connected" ? (
+                  <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                    <CheckCircleIcon className="h-3.5 w-3.5" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                    <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                    Needs setup
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <button
         type="button"
+        onClick={() => setShowAddModal(true)}
         className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
       >
         <PlusIcon className="h-4 w-4" />
         Add connector
       </button>
+
+      {showAddModal && (
+        <AddConnectorModal clientId={clientId} onClose={() => setShowAddModal(false)} />
+      )}
     </div>
   );
 }
@@ -581,6 +1098,9 @@ function SettingsView({ clientId }: { clientId: string }) {
   const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
   const { data: membersData, isLoading: membersLoading } = useSupportMembers(clientId);
   const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
+  const deleteRule = useDeleteWorkflowRule(clientId);
+
+  const [showAddRule, setShowAddRule] = useState(false);
 
   const rules = rulesData?.rules ?? [];
   const members = membersData?.members ?? [];
@@ -592,9 +1112,7 @@ function SettingsView({ clientId }: { clientId: string }) {
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Workflow rules</h3>
         <div className="app-card overflow-hidden p-0">
-          {rulesLoading && (
-            <div className="h-20 animate-pulse bg-[var(--surface-1)]" />
-          )}
+          {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
           {!rulesLoading && rules.length === 0 && (
             <p className="px-5 py-4 text-sm text-[var(--text-4)]">No rules configured.</p>
           )}
@@ -604,7 +1122,7 @@ function SettingsView({ clientId }: { clientId: string }) {
               className={cn("px-5 py-4", idx > 0 && "border-t border-[var(--border-2)]")}
             >
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--text-1)]">{rule.name}</p>
                   <p className="mt-1 text-xs text-[var(--text-3)]">
                     <span className="font-medium">When:</span> {rule.when}
@@ -613,31 +1131,43 @@ function SettingsView({ clientId }: { clientId: string }) {
                     <span className="font-medium">Then:</span> {rule.then}
                   </p>
                 </div>
-                {rule.requiresApproval && (
-                  <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                    Requires approval
-                  </span>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {rule.requiresApproval && (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                      Requires approval
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteRule.mutate(rule.id)}
+                    disabled={deleteRule.isPending}
+                    className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
         <button
           type="button"
+          onClick={() => setShowAddRule(true)}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
         >
           <PlusIcon className="h-4 w-4" />
           Add rule
         </button>
+        {showAddRule && (
+          <AddRuleModal clientId={clientId} onClose={() => setShowAddRule(false)} />
+        )}
       </section>
 
       {/* team */}
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Team access</h3>
         <div className="app-card overflow-hidden p-0">
-          {membersLoading && (
-            <div className="h-16 animate-pulse bg-[var(--surface-1)]" />
-          )}
+          {membersLoading && <div className="h-16 animate-pulse bg-[var(--surface-1)]" />}
           {members.map((user, idx) => (
             <div
               key={user.id}
@@ -668,9 +1198,7 @@ function SettingsView({ clientId }: { clientId: string }) {
         <section>
           <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Audit log</h3>
           <div className="app-card overflow-hidden p-0">
-            {logsLoading && (
-              <div className="h-16 animate-pulse bg-[var(--surface-1)]" />
-            )}
+            {logsLoading && <div className="h-16 animate-pulse bg-[var(--surface-1)]" />}
             {logs.map((log, idx) => (
               <div
                 key={log.id}
@@ -694,34 +1222,6 @@ function SettingsView({ clientId }: { clientId: string }) {
   );
 }
 
-// ─── vault notice ─────────────────────────────────────────────────────────────
-
-function VaultNotice() {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <div className="app-card flex items-start gap-3 p-4">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[var(--mist)] text-[var(--brand-700)]">
-        <KeyIcon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Vault required</p>
-        <p className="mt-0.5 text-xs leading-5 text-[var(--text-3)]">
-          Store secrets in vault — never commit credentials.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
-        aria-label="Dismiss"
-      >
-        <XMarkIcon className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
 // ─── tab bar ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -736,10 +1236,11 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 
 export function SupportDashboard() {
   const { data: clientsData, isLoading: clientsLoading } = useSupportClients();
-  const clients = clientsData?.clients ?? [];
+  const clients = useMemo(() => clientsData?.clients ?? [], [clientsData]);
 
   const [activeClientId, setActiveClientId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
+  const [showAddClient, setShowAddClient] = useState(false);
 
   // Set first client when data loads
   useEffect(() => {
@@ -750,7 +1251,6 @@ export function SupportDashboard() {
 
   const client = clients.find((c) => c.id === activeClientId);
 
-  // Inbox unread count for active client (from conversations query if cached)
   const { data: convoData } = useSupportConversations(activeClientId || null);
   const inboxUnread = (convoData?.conversations ?? []).filter((c) => c.unread).length;
 
@@ -767,6 +1267,41 @@ export function SupportDashboard() {
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <p className="text-sm text-[var(--text-4)]">Loading…</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!clientsLoading && clients.length === 0) {
+    return (
+      <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
+        <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+          <div className="px-3 pb-2 pt-4">
+            <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">
+              Clients
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowAddClient(true)}
+              className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add client
+            </button>
+          </div>
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <p className="text-base font-semibold text-[var(--text-1)]">No clients yet</p>
+          <p className="text-sm text-[var(--text-4)]">Add your first support client to get started.</p>
+          <button
+            type="button"
+            onClick={() => setShowAddClient(true)}
+            className="mt-2 flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[var(--brand-800)]"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add client
+          </button>
+        </div>
+        {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}
       </div>
     );
   }
@@ -810,6 +1345,7 @@ export function SupportDashboard() {
 
           <button
             type="button"
+            onClick={() => setShowAddClient(true)}
             className="mx-2 mt-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
           >
             <PlusIcon className="h-3.5 w-3.5" />
@@ -866,8 +1402,7 @@ export function SupportDashboard() {
 
         {/* tab content */}
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
-          <VaultNotice />
-          <div className="mt-4">
+          <div className="mt-0">
             {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
             {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
             {activeTab === "reports" && <ReportsView client={client} />}
@@ -876,6 +1411,8 @@ export function SupportDashboard() {
           </div>
         </div>
       </div>
+
+      {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}
     </div>
   );
 }
