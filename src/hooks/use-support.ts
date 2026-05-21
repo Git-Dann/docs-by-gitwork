@@ -19,6 +19,7 @@ import {
   listSupportTickets,
   listSupportWorkflowRules,
   sendSupportMessage,
+  syncSupportConnection,
   updateSupportClient,
   updateSupportConnection,
   updateSupportConversation,
@@ -181,6 +182,18 @@ export function useGenerateAiDraft(clientId: string | null) {
   return useMutation({
     mutationFn: (convId: string) =>
       generateAiDraft(clientId as string, convId),
+  });
+}
+
+export function useSyncConnection(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (connId: string) =>
+      syncSupportConnection(clientId as string, connId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
+    },
   });
 }
 

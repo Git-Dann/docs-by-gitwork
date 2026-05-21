@@ -762,6 +762,8 @@ model AccountConnection {
   secretRef     String?
   scraperConfig Json?
   nextStep      String?
+  lastSyncedAt  DateTime?
+  syncCursor    String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   channelTokens ChannelToken[]
@@ -821,9 +823,11 @@ model SupportMessage {
   direction      String
   authorLabel    String
   body           String
+  externalId     String?
   createdAt      DateTime            @default(now())
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, externalId])
 }
 
 model SupportTicket {

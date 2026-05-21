@@ -43,7 +43,24 @@ export interface Connection {
   health: ConnectionHealth;
   secretRef?: string;
   nextStep?: string;
-  scraperConfig?: { intervalHours?: number; subreddit?: string; channelId?: string };
+  scraperConfig?: {
+    // Gmail
+    query?: string;
+    intakeAddress?: string;
+    // Discord
+    guildId?: string;
+    channelIds?: string[];
+    botToken?: string;
+    // Reddit
+    subreddit?: string;
+    keywords?: string[];
+    // YouTube
+    youtubeChannelId?: string;
+    videoIds?: string[];
+    // Legacy / generic
+    intervalHours?: number;
+    channelId?: string;
+  };
 }
 
 export interface Conversation {

@@ -45,6 +45,7 @@ import {
   useSupportWorkflowRules,
   useSupportMembers,
   useSupportAuditLogs,
+  useSyncConnection,
 } from "@/hooks/use-support";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -254,34 +255,76 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
 
 // ─── add connector modal ──────────────────────────────────────────────────────
 
-const AUTH_MODE_OPTIONS: { value: Connection["authMode"]; label: string; hint: string }[] = [
-  { value: "oauth", label: "OAuth", hint: "Authorise via the platform's OAuth flow" },
-  { value: "api_key", label: "API key", hint: "Paste in an API key or access token" },
-  { value: "bot_token", label: "Bot token", hint: "A bot or service account token" },
-  { value: "manual", label: "Manual / scraper", hint: "Custom scraper or webhook setup" },
-];
-
 const AUTH_MODE_LABEL: Record<Connection["authMode"], string> = {
   oauth: "OAuth",
   bot_token: "Bot token",
-  manual: "Manual / scraper",
+  manual: "No auth required",
   api_key: "API key",
 };
 
+function sourceAuthMode(s: SupportSource): Connection["authMode"] {
+  if (s === "discord") return "bot_token";
+  if (s === "reddit" || s === "gmail") return "manual";
+  return "api_key";
+}
+
 function AddConnectorModal({
   clientId,
+  clientSlug,
   onClose,
 }: {
   clientId: string;
+  clientSlug: string;
   onClose: () => void;
 }) {
   const [source, setSource] = useState<SupportSource>("gmail");
   const [label, setLabel] = useState("");
-  const [authMode, setAuthMode] = useState<Connection["authMode"]>("api_key");
-  const [secretRef, setSecretRef] = useState("");
-  const [nextStep, setNextStep] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Gmail fields
+  const defaultIntake = `care+${clientSlug}@gitwork.co.uk`;
+  const [gmailQuery, setGmailQuery] = useState(`to:${defaultIntake}`);
+
+  // Discord fields
+  const [discordToken, setDiscordToken] = useState("");
+  const [discordGuildId, setDiscordGuildId] = useState("");
+  const [discordChannelIds, setDiscordChannelIds] = useState("");
+
+  // Reddit fields
+  const [redditSubreddit, setRedditSubreddit] = useState("");
+  const [redditKeywords, setRedditKeywords] = useState("");
+
+  // YouTube fields
+  const [ytChannelId, setYtChannelId] = useState("");
+  const [ytVideoIds, setYtVideoIds] = useState("");
+
   const createConnection = useCreateSupportConnection(clientId);
+
+  function buildScraperConfig(): Connection["scraperConfig"] {
+    if (source === "gmail") {
+      return { query: gmailQuery.trim(), intakeAddress: defaultIntake };
+    }
+    if (source === "discord") {
+      return {
+        guildId: discordGuildId.trim(),
+        channelIds: discordChannelIds.split(",").map((s) => s.trim()).filter(Boolean),
+        botToken: discordToken.trim(),
+      };
+    }
+    if (source === "reddit") {
+      return {
+        subreddit: redditSubreddit.trim(),
+        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+    }
+    if (source === "youtube") {
+      return {
+        youtubeChannelId: ytChannelId.trim() || undefined,
+        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+    }
+    return undefined;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -290,9 +333,8 @@ function AddConnectorModal({
       {
         source,
         label: label.trim() || SOURCE_LABEL[source],
-        authMode,
-        secretRef: secretRef.trim() || undefined,
-        nextStep: nextStep.trim() || undefined,
+        authMode: sourceAuthMode(source),
+        scraperConfig: buildScraperConfig(),
       },
       {
         onSuccess: () => onClose(),
@@ -333,63 +375,138 @@ function AddConnectorModal({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             className="app-input w-full"
-            placeholder={`e.g. ${SOURCE_LABEL[source]} — support inbox`}
+            placeholder={`e.g. ${SOURCE_LABEL[source]} — support`}
           />
         </label>
 
-        <div>
-          <span className="app-field-label mb-2 block">Auth method</span>
-          <div className="grid grid-cols-2 gap-2">
-            {AUTH_MODE_OPTIONS.map((opt) => (
-              <label
-                key={opt.value}
-                className={cn(
-                  "flex cursor-pointer items-start gap-2.5 rounded-[10px] border p-3 transition",
-                  authMode === opt.value
-                    ? "border-[var(--brand-700)] bg-[var(--mist)]"
-                    : "border-[var(--border-2)] hover:border-[var(--border-1)]",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="authMode"
-                  value={opt.value}
-                  checked={authMode === opt.value}
-                  onChange={() => setAuthMode(opt.value)}
-                  className="mt-0.5 h-4 w-4 shrink-0"
-                />
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-1)]">{opt.label}</p>
-                  <p className="text-xs text-[var(--text-4)]">{opt.hint}</p>
-                </div>
-              </label>
-            ))}
+        {/* Gmail config */}
+        {source === "gmail" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-1">
+                <p className="text-xs font-medium text-[var(--text-2)]">Intake address</p>
+                <p className="select-all rounded-[6px] bg-[var(--surface-0)] px-2.5 py-2 font-mono text-xs text-[var(--text-1)]">
+                  {defaultIntake}
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--text-4)]">
+              Ask your client to set up an email forward rule to this address. Emails received here will appear as conversations in Care.
+            </p>
+            <label className="block space-y-1">
+              <span className="app-field-label">Gmail query (optional)</span>
+              <input
+                value={gmailQuery}
+                onChange={(e) => setGmailQuery(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder={`to:${defaultIntake}`}
+              />
+            </label>
           </div>
-        </div>
+        )}
 
-        <label className="block space-y-1.5">
-          <span className="app-field-label">Secret / key reference</span>
-          <input
-            value={secretRef}
-            onChange={(e) => setSecretRef(e.target.value)}
-            className="app-input w-full font-mono text-sm"
-            placeholder="e.g. vault:clients/acme/gmail-token"
-          />
-          <p className="text-xs text-[var(--text-4)]">
-            Store credentials in a vault. Enter the secret reference path, not the actual value.
-          </p>
-        </label>
+        {/* Discord config */}
+        {source === "discord" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <p className="text-[11px] text-[var(--text-4)]">
+              Create a Discord bot at discord.com/developers, invite it to the client&apos;s server, and paste the bot token below.
+            </p>
+            <label className="block space-y-1">
+              <span className="app-field-label">Bot token</span>
+              <input
+                type="password"
+                value={discordToken}
+                onChange={(e) => setDiscordToken(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder="Bot token from Discord Developer Portal"
+                required
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Server (guild) ID</span>
+              <input
+                value={discordGuildId}
+                onChange={(e) => setDiscordGuildId(e.target.value)}
+                className="app-input w-full"
+                placeholder="Right-click server → Copy Server ID"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Channel IDs (comma-separated)</span>
+              <input
+                value={discordChannelIds}
+                onChange={(e) => setDiscordChannelIds(e.target.value)}
+                className="app-input w-full"
+                placeholder="123456789, 987654321"
+              />
+            </label>
+          </div>
+        )}
 
-        <label className="block space-y-1.5">
-          <span className="app-field-label">Setup notes (optional)</span>
-          <textarea
-            value={nextStep}
-            onChange={(e) => setNextStep(e.target.value)}
-            rows={2}
-            className="app-input w-full resize-none"
-            placeholder="Any setup instructions or next steps…"
-          />
-        </label>
+        {/* Reddit config */}
+        {source === "reddit" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <p className="text-[11px] text-[var(--text-4)]">
+              Monitors public subreddit posts and optionally filters by keyword. No account required.
+            </p>
+            <label className="block space-y-1">
+              <span className="app-field-label">Subreddit (without r/)</span>
+              <input
+                value={redditSubreddit}
+                onChange={(e) => setRedditSubreddit(e.target.value)}
+                className="app-input w-full"
+                placeholder="e.g. acmeapp"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Keywords to search for (optional, comma-separated)</span>
+              <input
+                value={redditKeywords}
+                onChange={(e) => setRedditKeywords(e.target.value)}
+                className="app-input w-full"
+                placeholder="e.g. acme, bug report, feature request"
+              />
+            </label>
+          </div>
+        )}
+
+        {/* YouTube config */}
+        {source === "youtube" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <p className="text-[11px] text-[var(--text-4)]">
+              Uses the Google service account from Settings → Integrations to fetch comments. Enter a channel ID or specific video IDs.
+            </p>
+            <label className="block space-y-1">
+              <span className="app-field-label">YouTube channel ID (optional)</span>
+              <input
+                value={ytChannelId}
+                onChange={(e) => setYtChannelId(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder="UCxxxxxxxxxxxxxxxxxxxx"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Video IDs (comma-separated, optional)</span>
+              <input
+                value={ytVideoIds}
+                onChange={(e) => setYtVideoIds(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder="dQw4w9WgXcQ, abc123"
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Instagram / ClickUp / Stripe stubs */}
+        {(source === "instagram" || source === "clickup" || source === "stripe") && (
+          <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-xs text-amber-700">
+              {source === "instagram" && "Instagram integration is coming soon. Save as a placeholder — configuration will be added in a future update."}
+              {source === "clickup" && "ClickUp integration is coming soon. Save as a placeholder — configuration will be added in a future update."}
+              {source === "stripe" && "Stripe sends events via webhooks. Configure your webhook endpoint in the Stripe dashboard to point at /api/webhooks/stripe."}
+            </p>
+          </div>
+        )}
 
         {error && (
           <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
@@ -996,10 +1113,17 @@ function ReportsView({ client }: { client: SupportClient }) {
 
 // ─── connectors view ─────────────────────────────────────────────────────────
 
-function ConnectorsView({ clientId }: { clientId: string }) {
+function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug: string }) {
   const { data, isLoading } = useSupportConnections(clientId);
   const connections = data?.connections ?? [];
   const [showAddModal, setShowAddModal] = useState(false);
+  const syncConn = useSyncConnection(clientId);
+  const [syncResults, setSyncResults] = useState<Record<string, { created: number; errors: string[] }>>({});
+
+  async function handleSync(connId: string) {
+    const result = await syncConn.mutateAsync(connId);
+    setSyncResults((prev) => ({ ...prev, [connId]: result }));
+  }
 
   if (isLoading) {
     return (
@@ -1021,58 +1145,88 @@ function ConnectorsView({ clientId }: { clientId: string }) {
     <div className="space-y-3">
       {connections.length > 0 && (
         <div className="app-card overflow-hidden p-0">
-          {connections.map((conn, idx) => (
-            <div
-              key={conn.id}
-              className={cn(
-                "flex flex-wrap items-start justify-between gap-4 px-5 py-4",
-                idx > 0 && "border-t border-[var(--border-2)]",
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={cn(
-                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
-                    conn.health === "connected"
-                      ? "bg-emerald-50 text-emerald-600"
-                      : "bg-[var(--surface-1)] text-[var(--text-3)]",
-                  )}
-                >
-                  <SourceIcon source={conn.source} className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
-                    <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
-                  {conn.nextStep && (
-                    <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">{conn.nextStep}</p>
-                  )}
-                  {conn.secretRef && (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-[var(--text-4)]">
-                      <KeyIcon className="h-3 w-3" />
-                      {conn.secretRef}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {conn.health === "connected" ? (
-                  <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                    <CheckCircleIcon className="h-3.5 w-3.5" />
-                    Connected
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                    <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                    Needs setup
-                  </span>
+          {connections.map((conn, idx) => {
+            const sr = syncResults[conn.id];
+            return (
+              <div
+                key={conn.id}
+                className={cn(
+                  "flex flex-wrap items-start justify-between gap-4 px-5 py-4",
+                  idx > 0 && "border-t border-[var(--border-2)]",
                 )}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={cn(
+                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+                      conn.health === "connected"
+                        ? "bg-emerald-50 text-emerald-600"
+                        : conn.health === "error"
+                          ? "bg-red-50 text-red-500"
+                          : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                    )}
+                  >
+                    <SourceIcon source={conn.source} className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
+                      <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
+                    {conn.scraperConfig?.intakeAddress && (
+                      <p className="mt-1 select-all font-mono text-[11px] text-[var(--brand-700)]">
+                        {conn.scraperConfig.intakeAddress}
+                      </p>
+                    )}
+                    {conn.scraperConfig?.subreddit && (
+                      <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                        r/{conn.scraperConfig.subreddit}
+                        {conn.scraperConfig.keywords?.length ? ` · keywords: ${conn.scraperConfig.keywords.join(", ")}` : ""}
+                      </p>
+                    )}
+                    {sr && (
+                      <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
+                        {sr.errors.length > 0
+                          ? `Error: ${sr.errors[0]}`
+                          : `Synced — ${sr.created} new conversation${sr.created !== 1 ? "s" : ""}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {conn.health === "connected" ? (
+                    <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                      <CheckCircleIcon className="h-3.5 w-3.5" />
+                      Connected
+                    </span>
+                  ) : conn.health === "error" ? (
+                    <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                      Error
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                      Needs setup
+                    </span>
+                  )}
+                  {(conn.health === "connected" || conn.health === "error") && (
+                    <button
+                      type="button"
+                      onClick={() => handleSync(conn.id)}
+                      disabled={syncConn.isPending}
+                      className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    >
+                      <BoltIcon className="h-3 w-3" />
+                      {syncConn.isPending ? "Syncing…" : "Sync now"}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1086,7 +1240,7 @@ function ConnectorsView({ clientId }: { clientId: string }) {
       </button>
 
       {showAddModal && (
-        <AddConnectorModal clientId={clientId} onClose={() => setShowAddModal(false)} />
+        <AddConnectorModal clientId={clientId} clientSlug={clientSlug} onClose={() => setShowAddModal(false)} />
       )}
     </div>
   );
@@ -1406,7 +1560,7 @@ export function SupportDashboard() {
             {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
             {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
             {activeTab === "reports" && <ReportsView client={client} />}
-            {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} />}
+            {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
             {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
           </div>
         </div>
