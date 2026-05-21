@@ -26,6 +26,11 @@ export async function GET() {
         localLlmUrl: true,
         localLlmModel: true,
         externalApiKey: true,
+        googleServiceAccountJson: true,
+        googleSubjectEmail: true,
+        googleCalendarId: true,
+        slackBotToken: true,
+        slackSummaryChannelId: true,
       },
     });
 
@@ -49,6 +54,11 @@ export async function GET() {
       localLlmModel: workspace?.localLlmModel ?? "llama3.1",
       externalApiKeyMasked: externalKey ? maskKey(externalKey) : null,
       externalApiKeySource: process.env.API_KEY ? "env" : workspace?.externalApiKey ? "database" : null,
+      googleServiceAccountJsonSet: Boolean(workspace?.googleServiceAccountJson),
+      googleSubjectEmail: workspace?.googleSubjectEmail ?? null,
+      googleCalendarId: workspace?.googleCalendarId ?? null,
+      slackBotTokenMasked: workspace?.slackBotToken ? maskKey(workspace.slackBotToken) : null,
+      slackSummaryChannelId: workspace?.slackSummaryChannelId ?? null,
     });
   } catch (error) {
     return fromError(error);
@@ -66,6 +76,11 @@ const updateSchema = z.object({
   localLlmUrl: z.string().trim().optional(),
   localLlmModel: z.string().trim().optional(),
   externalApiKey: z.string().trim().optional(),
+  googleServiceAccountJson: z.string().trim().optional(),
+  googleSubjectEmail: z.string().trim().optional(),
+  googleCalendarId: z.string().trim().optional(),
+  slackBotToken: z.string().trim().optional(),
+  slackSummaryChannelId: z.string().trim().optional(),
 });
 
 export async function PUT(request: NextRequest) {
@@ -83,6 +98,11 @@ export async function PUT(request: NextRequest) {
     if (body.localLlmUrl) data.localLlmUrl = body.localLlmUrl;
     if (body.localLlmModel) data.localLlmModel = body.localLlmModel;
     if (body.externalApiKey) data.externalApiKey = body.externalApiKey;
+    if (body.googleServiceAccountJson) data.googleServiceAccountJson = body.googleServiceAccountJson;
+    if (body.googleSubjectEmail) data.googleSubjectEmail = body.googleSubjectEmail;
+    if (body.googleCalendarId) data.googleCalendarId = body.googleCalendarId;
+    if (body.slackBotToken) data.slackBotToken = body.slackBotToken;
+    if (body.slackSummaryChannelId) data.slackSummaryChannelId = body.slackSummaryChannelId;
 
     if (Object.keys(data).length === 0) return apiOk({ saved: false });
 

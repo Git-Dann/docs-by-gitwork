@@ -1216,6 +1216,12 @@ function IntegrationsTab() {
           </div>
         )}
       </section>
+
+      {/* ── Google Workspace ──────────────────────────────────────── */}
+      <GoogleWorkspaceSection config={config} onSaved={setConfig} />
+
+      {/* ── Slack ─────────────────────────────────────────────────── */}
+      <SlackSection config={config} onSaved={setConfig} />
     </div>
   );
 }
@@ -1789,6 +1795,228 @@ function TeamModal({
         {children}
       </div>
     </div>
+  );
+}
+
+function GoogleWorkspaceSection({
+  config,
+  onSaved,
+}: {
+  config: IntegrationsResponse | null;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [jsonInput, setJsonInput] = useState("");
+  const [subjectEmail, setSubjectEmail] = useState("");
+  const [calendarId, setCalendarId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!config) return;
+    setSubjectEmail(config.googleSubjectEmail ?? "");
+    setCalendarId(config.googleCalendarId ?? "");
+  }, [config]);
+
+  async function handleSave() {
+    if (!jsonInput.trim() && !subjectEmail.trim() && !calendarId.trim()) return;
+    setSaving(true);
+    try {
+      const payload: Parameters<typeof saveIntegrations>[0] = {};
+      if (jsonInput.trim()) payload.googleServiceAccountJson = jsonInput.trim();
+      if (subjectEmail.trim()) payload.googleSubjectEmail = subjectEmail.trim();
+      if (calendarId.trim()) payload.googleCalendarId = calendarId.trim();
+      await saveIntegrations(payload);
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setJsonInput("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Google Workspace</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Gmail &amp; Calendar
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Connect your Google Workspace using a service account with domain-wide delegation enabled.
+        Used by the Mail, Calendar, and Meeting Summary widgets on the HQ dashboard.
+      </p>
+
+      <div className="mt-5 space-y-4">
+        {/* Service account JSON */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+            Service account JSON
+          </label>
+          {config?.googleServiceAccountJsonSet && !jsonInput && (
+            <div className="mb-2 flex items-center gap-2 rounded-[8px] bg-green-50 px-3 py-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              <span className="text-xs text-green-700">Service account configured</span>
+            </div>
+          )}
+          <textarea
+            className="app-input w-full font-mono text-xs"
+            rows={4}
+            placeholder={config?.googleServiceAccountJsonSet ? "Paste new JSON to replace…" : '{ "type": "service_account", … }'}
+            value={jsonInput}
+            onChange={(e) => setJsonInput(e.target.value)}
+          />
+          <p className="mt-1 text-[11px] text-[var(--text-4)]">
+            Create a service account in Google Cloud Console, enable Gmail and Calendar APIs, then enable domain-wide delegation in Google Workspace Admin.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Subject email */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Impersonation email
+            </label>
+            <input
+              type="email"
+              className="app-input w-full"
+              placeholder="dan@gitwork.co.uk"
+              value={subjectEmail}
+              onChange={(e) => setSubjectEmail(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-4)]">
+              The Google Workspace user the service account impersonates.
+            </p>
+          </div>
+
+          {/* Calendar ID */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Calendar ID
+            </label>
+            <input
+              type="text"
+              className="app-input w-full"
+              placeholder="primary"
+              value={calendarId}
+              onChange={(e) => setCalendarId(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-4)]">
+              Leave blank to use the primary calendar.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving || (!jsonInput.trim() && !subjectEmail.trim() && !calendarId.trim())}
+          className="app-button-primary text-sm disabled:opacity-40"
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save Google settings"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SlackSection({
+  config,
+  onSaved,
+}: {
+  config: IntegrationsResponse | null;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [tokenInput, setTokenInput] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!config) return;
+    setChannelId(config.slackSummaryChannelId ?? "");
+  }, [config]);
+
+  async function handleSave() {
+    if (!tokenInput.trim() && !channelId.trim()) return;
+    setSaving(true);
+    try {
+      const payload: Parameters<typeof saveIntegrations>[0] = {};
+      if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
+      if (channelId.trim()) payload.slackSummaryChannelId = channelId.trim();
+      await saveIntegrations(payload);
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setTokenInput("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Slack</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Slack context for meeting summaries
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Create a bot token
+        in your Slack app settings with <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code> scope.
+      </p>
+
+      <div className="mt-5 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Bot token */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Slack bot token
+            </label>
+            {config?.slackBotTokenMasked && !tokenInput && (
+              <div className="mb-2 flex items-center gap-2 rounded-[8px] bg-[var(--surface-1)] px-3 py-2">
+                <span className="font-mono text-xs text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
+              </div>
+            )}
+            <input
+              type="password"
+              className="app-input w-full font-mono text-sm"
+              placeholder={config?.slackBotTokenMasked ? "Paste new token to replace…" : "xoxb-…"}
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+            />
+          </div>
+
+          {/* Channel ID */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Summary channel ID
+            </label>
+            <input
+              type="text"
+              className="app-input w-full font-mono text-sm"
+              placeholder="C0123456789"
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-4)]">
+              The channel the bot reads for meeting context. Right-click the channel in Slack → Copy link to find the ID.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving || (!tokenInput.trim() && !channelId.trim())}
+          className="app-button-primary text-sm disabled:opacity-40"
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}
+        </button>
+      </div>
+    </section>
   );
 }
 

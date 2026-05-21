@@ -144,7 +144,12 @@ model Workspace {
   geminiModel     String?
   localLlmUrl     String?
   localLlmModel   String?
-  externalApiKey  String?
+  externalApiKey            String?
+  googleServiceAccountJson  String?
+  googleSubjectEmail        String?
+  googleCalendarId          String?
+  slackBotToken             String?
+  slackSummaryChannelId     String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]
