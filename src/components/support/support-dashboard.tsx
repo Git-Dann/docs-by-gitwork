@@ -20,6 +20,7 @@ import {
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/format";
 import type {
+  AuditLog,
   Connection,
   Conversation,
   SupportClient,
@@ -1118,7 +1119,9 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const connections = data?.connections ?? [];
   const [showAddModal, setShowAddModal] = useState(false);
   const syncConn = useSyncConnection(clientId);
-  const [syncResults, setSyncResults] = useState<Record<string, { created: number; errors: string[] }>>({});
+  const [syncResults, setSyncResults] = useState<Record<string, { ingested?: number; filtered?: number; errors: string[] }>>({});
+  const { data: logsData } = useSupportAuditLogs(clientId);
+  const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
 
   async function handleSync(connId: string) {
     const result = await syncConn.mutateAsync(connId);
@@ -1189,7 +1192,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : `Synced — ${sr.created} new conversation${sr.created !== 1 ? "s" : ""}`}
+                          : `Synced — ${sr.ingested ?? 0} ingested, ${sr.filtered ?? 0} filtered by agent`}
                       </p>
                     )}
                   </div>
@@ -1238,6 +1241,44 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         <PlusIcon className="h-4 w-4" />
         Add connector
       </button>
+
+      {agentLogs.length > 0 && (
+        <div className="app-card p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+            <span className="text-sm font-semibold text-[var(--text-1)]">Agent activity</span>
+          </div>
+          <div className="space-y-2">
+            {agentLogs.map((log: AuditLog) => {
+              const agentName = log.actor.replace("agent:", "");
+              const agentLabel =
+                agentName === "orchestrator"
+                  ? "Sync complete"
+                  : agentName === "triage"
+                    ? "Triage"
+                    : agentName === "ingest"
+                      ? "Ingest"
+                      : agentName === "draft"
+                        ? "Draft"
+                        : agentName;
+              const actionLabel = log.action
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c: string) => c.toUpperCase());
+              return (
+                <div key={log.id} className="flex items-start justify-between gap-3 text-[12px]">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="mt-0.5 shrink-0 rounded-full bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)]">
+                      {agentLabel}
+                    </span>
+                    <span className="text-[var(--text-2)] truncate">{actionLabel}</span>
+                  </div>
+                  <span className="shrink-0 text-[var(--text-4)]">{formatShort(log.createdAt)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {showAddModal && (
         <AddConnectorModal clientId={clientId} clientSlug={clientSlug} onClose={() => setShowAddModal(false)} />

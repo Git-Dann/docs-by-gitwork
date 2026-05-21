@@ -3,7 +3,6 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { syncConnection } from "@/server/support-sync";
-import type { SyncResult } from "@/server/support-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,7 +19,20 @@ export async function GET(request: NextRequest) {
 
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      select: { id: true, googleServiceAccountJson: true, googleSubjectEmail: true },
+      select: {
+        id: true,
+        googleServiceAccountJson: true,
+        googleSubjectEmail: true,
+        aiProvider: true,
+        anthropicApiKey: true,
+        anthropicModel: true,
+        openaiApiKey: true,
+        openaiModel: true,
+        geminiApiKey: true,
+        geminiModel: true,
+        localLlmUrl: true,
+        localLlmModel: true,
+      },
     });
 
     if (!workspace) return apiError("Workspace not found", 404);
@@ -33,8 +45,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    let totalCreated = 0;
-    let totalSkipped = 0;
+    let totalIngested = 0;
+    let totalFiltered = 0;
     const allErrors: string[] = [];
 
     const results = await Promise.allSettled(
@@ -44,15 +56,15 @@ export async function GET(request: NextRequest) {
           client: conn.client,
           workspace,
         };
-        const result: SyncResult = await syncConnection(ctx);
+        const result = await syncConnection(ctx);
         return { connId: conn.id, source: conn.source, result };
       }),
     );
 
     for (const res of results) {
       if (res.status === "fulfilled") {
-        totalCreated += res.value.result.created;
-        totalSkipped += res.value.result.skipped;
+        totalIngested += res.value.result.ingested;
+        totalFiltered += res.value.result.filtered;
         if (res.value.result.errors.length > 0) {
           allErrors.push(
             ...res.value.result.errors.map((e) => `[${res.value.source}:${res.value.connId.slice(-6)}] ${e}`),
@@ -65,8 +77,8 @@ export async function GET(request: NextRequest) {
 
     return apiOk({
       total: connections.length,
-      created: totalCreated,
-      skipped: totalSkipped,
+      ingested: totalIngested,
+      filtered: totalFiltered,
       errors: allErrors,
     });
   } catch (error) {

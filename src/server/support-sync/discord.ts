@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import type { SyncContext, SyncResult } from "./types";
+import type { RawIngestItem } from "@/server/care-agents/types";
+import type { AgentContext } from "@/server/care-agents/types";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -14,12 +15,11 @@ interface DiscordMessage {
   content: string;
   author: { id: string; username: string; global_name?: string };
   timestamp: string;
-  referenced_message?: { id: string };
 }
 
-export async function syncDiscord(ctx: SyncContext): Promise<SyncResult> {
-  const { connection, client } = ctx;
-  const result: SyncResult = { created: 0, skipped: 0, errors: [] };
+export async function fetchDiscord(ctx: AgentContext): Promise<RawIngestItem[]> {
+  const { connection } = ctx;
+  const results: RawIngestItem[] = [];
 
   const config = (connection.scraperConfig ?? {}) as DiscordScraperConfig;
   const botToken = config.botToken;
@@ -33,41 +33,29 @@ export async function syncDiscord(ctx: SyncContext): Promise<SyncResult> {
     "Content-Type": "application/json",
   };
 
+  const lastSyncedAt = connection.lastSyncedAt;
+  const afterSnowflake = lastSyncedAt
+    ? dateToSnowflake(lastSyncedAt)
+    : dateToSnowflake(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
   for (const channelId of channelIds) {
     try {
-      // Fetch channel info for label
       const channelRes = await fetch(`${DISCORD_API}/channels/${channelId}`, { headers });
-      if (!channelRes.ok) {
-        result.errors.push(`Channel ${channelId}: ${channelRes.status} ${channelRes.statusText}`);
-        continue;
-      }
+      if (!channelRes.ok) continue;
       const channelData = (await channelRes.json()) as { name?: string };
       const channelName = channelData.name ?? channelId;
 
-      // Fetch messages after sync cursor (Discord snowflake) or last 7 days
-      const lastSyncedAt = connection.lastSyncedAt;
-      const afterSnowflake = lastSyncedAt
-        ? dateToSnowflake(lastSyncedAt)
-        : dateToSnowflake(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-
-      const params = new URLSearchParams({
-        limit: "50",
-        after: afterSnowflake,
-      });
-
+      const params = new URLSearchParams({ limit: "50", after: afterSnowflake });
       const msgsRes = await fetch(`${DISCORD_API}/channels/${channelId}/messages?${params}`, { headers });
-      if (!msgsRes.ok) {
-        result.errors.push(`Channel ${channelId} messages: ${msgsRes.status}`);
-        continue;
-      }
+      if (!msgsRes.ok) continue;
 
       const messages = (await msgsRes.json()) as DiscordMessage[];
       if (!Array.isArray(messages) || messages.length === 0) continue;
 
-      // Reverse to chronological order (Discord returns newest first)
+      // Reverse to chronological order
       messages.reverse();
 
-      // Group messages into 30-min conversation windows
+      // Group into 30-min windows
       const windows: DiscordMessage[][] = [];
       let currentWindow: DiscordMessage[] = [];
       let windowStart: Date | null = null;
@@ -86,98 +74,41 @@ export async function syncDiscord(ctx: SyncContext): Promise<SyncResult> {
 
       for (const window of windows) {
         const firstMsg = window[0];
-        const externalId = `discord:${channelId}:${firstMsg.id}`;
-
-        const existing = await prisma.supportConversation.findFirst({
-          where: { clientId: client.id, externalId },
-        });
-
-        if (existing) {
-          // Add any new messages to existing conversation
-          for (const msg of window) {
-            const msgExternalId = `discord:${msg.id}`;
-            const existingMsg = await prisma.supportMessage.findFirst({
-              where: { conversationId: existing.id, externalId: msgExternalId },
-            });
-            if (!existingMsg) {
-              await prisma.supportMessage.create({
-                data: {
-                  conversationId: existing.id,
-                  externalId: msgExternalId,
-                  direction: "inbound",
-                  authorLabel: msg.author.global_name ?? msg.author.username,
-                  body: msg.content || "[no content]",
-                  createdAt: new Date(msg.timestamp),
-                },
-              });
-            }
-          }
-          result.skipped++;
-          continue;
-        }
-
         const authorName = firstMsg.author.global_name ?? firstMsg.author.username;
-        const subject = `#${channelName} — ${authorName}`;
-        const preview = firstMsg.content.slice(0, 120) || "[no content]";
+        const rawBody = window.map((m) => `${m.author.global_name ?? m.author.username}: ${m.content}`).join("\n");
 
-        const conv = await prisma.supportConversation.create({
-          data: {
-            clientId: client.id,
-            source: "DISCORD",
-            externalId,
-            customerLabel: authorName,
-            subject,
-            preview,
-            receivedAt: new Date(firstMsg.timestamp),
-            unread: true,
-            tags: [`#${channelName}`],
-            sentiment: "NEUTRAL",
-          },
-        });
-
-        for (const msg of window) {
-          await prisma.supportMessage.create({
-            data: {
-              conversationId: conv.id,
-              externalId: `discord:${msg.id}`,
-              direction: "inbound",
-              authorLabel: msg.author.global_name ?? msg.author.username,
-              body: msg.content || "[no content]",
-              createdAt: new Date(msg.timestamp),
-            },
-          });
-        }
-
-        result.created++;
-      }
-
-      // Update sync cursor to latest message ID (largest snowflake)
-      const latestId = messages.at(-1)?.id;
-      if (latestId) {
-        await prisma.accountConnection.update({
-          where: { id: connection.id },
-          data: { syncCursor: latestId },
+        results.push({
+          externalId: `discord:${channelId}:${firstMsg.id}`,
+          customerLabel: authorName,
+          rawSubject: `#${channelName} — ${authorName}`,
+          rawBody: rawBody.slice(0, 4000),
+          receivedAt: new Date(firstMsg.timestamp),
+          threadItems: window.map((m) => ({
+            id: `discord:${m.id}`,
+            authorLabel: m.author.global_name ?? m.author.username,
+            body: m.content || "[no content]",
+            createdAt: new Date(m.timestamp),
+            isOutbound: false,
+          })),
+          sourceMetadata: { channelName, channelId },
         });
       }
-    } catch (err) {
-      result.errors.push(
-        `Channel ${channelId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    } catch {
+      // skip channel errors
     }
   }
 
-  await prisma.accountConnection.update({
-    where: { id: connection.id },
-    data: { lastSyncedAt: new Date(), health: "CONNECTED" },
-  });
-
-  return result;
+  return results;
 }
 
-// Convert a Date to a Discord snowflake (approximate — discord epoch is 2015-01-01)
 function dateToSnowflake(date: Date): string {
   const DISCORD_EPOCH = 1420070400000;
   const ms = date.getTime() - DISCORD_EPOCH;
-  // Snowflake = (ms << 22), done via string math to avoid BigInt target issues
   return String(ms * 4194304); // 2^22 = 4194304
+}
+
+export async function syncDiscord(ctx: AgentContext): Promise<{ created: number; skipped: number; errors: string[] }> {
+  const items = await fetchDiscord(ctx);
+  await prisma.accountConnection.update({ where: { id: ctx.connection.id }, data: { lastSyncedAt: new Date(), health: "CONNECTED" } });
+  return { created: items.length, skipped: 0, errors: [] };
 }
