@@ -764,6 +764,58 @@ export async function createWorkflowRule(
   return serializeWorkflowRule(row);
 }
 
+const DEFAULT_WORKFLOW_RULES: Array<{ name: string; when: string; then: string; requiresApproval: boolean }> = [
+  {
+    name: "Bug report → ticket",
+    when: 'Message contains "bug", "broken", "crash", or "not working"',
+    then: "Create a high-priority ticket tagged `bug`. Draft a response acknowledging the issue and asking for reproduction steps.",
+    requiresApproval: true,
+  },
+  {
+    name: "Billing query",
+    when: 'Message contains "invoice", "charge", "refund", "payment", or "billing"',
+    then: "Create a ticket tagged `billing`. Require human approval before sending any reply.",
+    requiresApproval: true,
+  },
+  {
+    name: "Negative sentiment → escalate",
+    when: "Ingest agent scores the conversation sentiment as negative, or message contains words like \"frustrated\", \"angry\", \"disappointed\", or \"terrible\"",
+    then: "Set priority to urgent. Flag conversation as unread. Draft an empathetic apology response for approval.",
+    requiresApproval: true,
+  },
+  {
+    name: "Feature request",
+    when: 'Message contains "feature", "wish", "could you add", "would love", or "suggestion"',
+    then: "Tag conversation `feature-request`. Draft a warm acknowledgement thanking them for the feedback. No ticket needed unless priority is high.",
+    requiresApproval: false,
+  },
+  {
+    name: "Social mention (Reddit / Discord)",
+    when: "Source is Reddit or Discord",
+    then: "Summarise the context in the ticket title. Tag `social`. Set priority to normal. Draft a friendly, community-appropriate reply.",
+    requiresApproval: true,
+  },
+  {
+    name: "No reply after 48 hours",
+    when: "A ticket has been open with no outbound message for 48 hours",
+    then: "Flag ticket as awaiting-customer. Draft a gentle follow-up check-in message for approval.",
+    requiresApproval: true,
+  },
+];
+
+export async function seedDefaultWorkflowRules(clientId: string): Promise<void> {
+  await prisma.supportWorkflowRule.createMany({
+    data: DEFAULT_WORKFLOW_RULES.map((r) => ({
+      clientId,
+      name: r.name,
+      triggerText: r.when,
+      actionsText: r.then,
+      requiresApproval: r.requiresApproval,
+    })),
+    skipDuplicates: true,
+  });
+}
+
 export async function updateWorkflowRule(
   ruleId: string,
   data: Partial<{

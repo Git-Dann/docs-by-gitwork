@@ -121,7 +121,7 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 // ─── tab types ───────────────────────────────────────────────────────────────
 
-type Tab = "inbox" | "tickets" | "reports" | "connectors" | "settings";
+type Tab = "inbox" | "tickets" | "reports" | "connectors" | "agents" | "settings";
 
 // ─── shared modal wrapper ─────────────────────────────────────────────────────
 
@@ -1422,6 +1422,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "tickets", label: "Tickets", icon: ClipboardDocumentListIcon },
   { id: "reports", label: "Reports", icon: DocumentTextIcon },
   { id: "connectors", label: "Connectors", icon: BoltIcon },
+  { id: "agents", label: "Agents", icon: SparklesIcon },
   { id: "settings", label: "Settings", icon: Cog8ToothIcon },
 ];
 
