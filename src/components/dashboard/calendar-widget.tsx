@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CalendarDaysIcon } from "@heroicons/react/24/solid";
 import { useQuery } from "@tanstack/react-query";
 import { getCalendarEvents } from "@/lib/api";
 import type { CalendarEvent } from "@/lib/api";
@@ -27,14 +28,14 @@ function isAllDay(start: string): boolean {
   return !start.includes("T");
 }
 
-function EventCard({ event, compact }: { event: CalendarEvent; compact?: boolean }) {
+function EventRow({ event, compact }: { event: CalendarEvent; compact?: boolean }) {
   return (
     <div className="rounded-[6px] border border-[var(--border-1)] bg-[var(--surface-0)] p-2">
-      <p className={`font-medium text-[var(--text-1)] ${compact ? "truncate text-xs" : "text-sm"}`}>
+      <p className={`font-medium text-[var(--text-1)] ${compact ? "truncate text-xs" : "text-xs"}`}>
         {event.summary}
       </p>
       {!isAllDay(event.start) && (
-        <p className="text-[10px] text-[var(--text-3)]">{formatEventTime(event.start, event.end)}</p>
+        <p className="mt-0.5 text-[10px] text-[var(--text-3)]">{formatEventTime(event.start, event.end)}</p>
       )}
       {!compact && event.attendees.length > 0 && (
         <p className="mt-0.5 text-[10px] text-[var(--text-3)]">
@@ -47,7 +48,7 @@ function EventCard({ event, compact }: { event: CalendarEvent; compact?: boolean
           href={event.meetLink}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1 inline-flex items-center gap-1 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+          className="mt-1 inline-flex items-center gap-1 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-2)]"
           onClick={(e) => e.stopPropagation()}
         >
           Join →
@@ -66,20 +67,26 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
   });
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
   }
 
   if (!data?.connected) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-1)]">
-          <svg className="h-5 w-5 text-[var(--text-3)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-2 text-center">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
+          <CalendarDaysIcon className="h-5 w-5 text-teal-400" />
         </div>
-        <p className="text-xs font-medium text-[var(--text-2)]">Calendar not connected</p>
-        <Link href="/app/settings" className="text-[11px] text-[var(--accent)] hover:underline">
-          Connect in Settings →
+        <div>
+          <p className="text-xs font-semibold text-[var(--text-1)]">Calendar not connected</p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
+            Connect to see upcoming events
+          </p>
+        </div>
+        <Link
+          href="/app/settings"
+          className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+        >
+          Connect Calendar
         </Link>
       </div>
     );
@@ -89,23 +96,28 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
   const displayCount = size.rows >= 3 ? 8 : size.rows >= 2 ? 4 : 2;
 
   return (
-    <div className="flex h-full flex-col gap-2 p-1">
+    <div className="flex h-full flex-col">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-[var(--text-2)]">Calendar</span>
+        <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+          <CalendarDaysIcon className="h-2.5 w-2.5" />
+          Calendar
+        </span>
         <span className="text-[11px] text-[var(--text-3)]">next 14 days</span>
       </div>
 
-      {events.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center text-[11px] text-[var(--text-3)]">
-          No upcoming events
-        </div>
-      ) : (
-        <div className="flex-1 space-y-1.5 overflow-y-auto">
-          {events.slice(0, displayCount).map((ev) => (
-            <EventCard key={ev.id} event={ev} compact={size.cols < 2} />
-          ))}
-        </div>
-      )}
+      {/* Events */}
+      <div className="mt-2 flex-1 space-y-1.5 overflow-y-auto">
+        {events.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-[11px] text-[var(--text-3)]">
+            No upcoming events
+          </div>
+        ) : (
+          events.slice(0, displayCount).map((ev) => (
+            <EventRow key={ev.id} event={ev} compact={size.cols < 2} />
+          ))
+        )}
+      </div>
     </div>
   );
 }
