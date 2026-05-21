@@ -121,7 +121,7 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 // ─── tab types ───────────────────────────────────────────────────────────────
 
-type Tab = "inbox" | "tickets" | "reports" | "connectors" | "settings";
+type Tab = "inbox" | "tickets" | "reports" | "connectors" | "agents" | "settings";
 
 // ─── shared modal wrapper ─────────────────────────────────────────────────────
 
@@ -1285,6 +1285,274 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   );
 }
 
+// ─── agents view ─────────────────────────────────────────────────────────────
+
+type AgentToggles = { ingest: boolean; triage: boolean; draft: boolean };
+
+function AgentsView({ clientId }: { clientId: string }) {
+  const [toggles, setToggles] = useState<AgentToggles>({ ingest: true, triage: true, draft: true });
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`care.agents.${clientId}`);
+      if (stored) {
+        setToggles(JSON.parse(stored) as AgentToggles);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, [clientId]);
+
+  function toggle(key: keyof AgentToggles) {
+    setToggles((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(`care.agents.${clientId}`, JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  }
+
+  const { data: connectionsData } = useSupportConnections(clientId);
+  const connections = connectionsData?.connections ?? [];
+  const syncConn = useSyncConnection(clientId);
+  const [syncResults, setSyncResults] = useState<
+    Record<string, { ingested?: number; filtered?: number; errors: string[] } | null>
+  >({});
+
+  async function handleSync(connId: string) {
+    setSyncResults((prev) => ({ ...prev, [connId]: null }));
+    const result = await syncConn.mutateAsync(connId);
+    setSyncResults((prev) => ({ ...prev, [connId]: result }));
+  }
+
+  const { data: logsData } = useSupportAuditLogs(clientId);
+  const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:"));
+
+  const AGENT_CARDS: {
+    key: keyof AgentToggles;
+    label: string;
+    description: string;
+    icon: React.ElementType;
+    iconBg: string;
+    iconColor: string;
+  }[] = [
+    {
+      key: "ingest",
+      label: "Ingest Filter",
+      description: "AI reviews raw items from all sources and filters noise — only genuine support signals create conversations.",
+      icon: SparklesIcon,
+      iconBg: "bg-[var(--mist)]",
+      iconColor: "text-[var(--brand-700)]",
+    },
+    {
+      key: "triage",
+      label: "Triage",
+      description: "Classifies each conversation, sets priority and sentiment, and creates tickets for trackable issues.",
+      icon: ClipboardDocumentListIcon,
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-700",
+    },
+    {
+      key: "draft",
+      label: "Draft",
+      description: "Generates pending-approval reply drafts for ticketed conversations, ready for your review.",
+      icon: DocumentTextIcon,
+      iconBg: "bg-purple-50",
+      iconColor: "text-purple-700",
+    },
+  ];
+
+  const AGENT_BADGE: Record<string, string> = {
+    ingest: "bg-[var(--mist)] text-[var(--brand-700)]",
+    triage: "bg-amber-50 text-amber-700",
+    draft: "bg-purple-50 text-purple-700",
+    orchestrator: "bg-[var(--mist)] text-[var(--brand-700)]",
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* agent cards */}
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent pipeline</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {AGENT_CARDS.map((agent) => {
+            const enabled = toggles[agent.key];
+            return (
+              <div key={agent.key} className="app-card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]",
+                      agent.iconBg,
+                      agent.iconColor,
+                    )}
+                  >
+                    <agent.icon className="h-5 w-5" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggle(agent.key)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                      enabled ? "bg-[var(--brand-700)]" : "bg-[var(--border-2)]",
+                    )}
+                    aria-checked={enabled}
+                    role="switch"
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform",
+                        enabled ? "translate-x-4" : "translate-x-0",
+                      )}
+                    />
+                  </button>
+                </div>
+                <p className="mt-3 text-sm font-semibold text-[var(--text-1)]">{agent.label}</p>
+                <p className="mt-1 text-xs text-[var(--text-3)]">{agent.description}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* manual sync */}
+      {connections.length > 0 && (
+        <section>
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Manual sync</h3>
+          <div className="app-card overflow-hidden p-0">
+            {connections.map((conn, idx) => {
+              const pending = syncConn.isPending && syncConn.variables === conn.id;
+              const sr = syncResults[conn.id];
+              return (
+                <div
+                  key={conn.id}
+                  className={cn(
+                    "flex flex-wrap items-center justify-between gap-4 px-5 py-4",
+                    idx > 0 && "border-t border-[var(--border-2)]",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+                        conn.health === "connected"
+                          ? "bg-emerald-50 text-emerald-600"
+                          : conn.health === "error"
+                            ? "bg-red-50 text-red-500"
+                            : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                      )}
+                    >
+                      <SourceIcon source={conn.source} className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            conn.health === "connected"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : conn.health === "error"
+                                ? "bg-red-50 text-red-600"
+                                : "bg-amber-50 text-amber-700",
+                          )}
+                        >
+                          {conn.health === "connected" ? "Connected" : conn.health === "error" ? "Error" : "Needs setup"}
+                        </span>
+                      </div>
+                      {sr !== undefined && sr !== null && (
+                        <p className={cn("mt-0.5 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
+                          {sr.errors.length > 0
+                            ? `Error: ${sr.errors[0]}`
+                            : `${sr.ingested ?? 0} ingested, ${sr.filtered ?? 0} filtered`}
+                        </p>
+                      )}
+                      {pending && (
+                        <p className="mt-0.5 text-[11px] text-[var(--text-4)]">Running agents…</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSync(conn.id)}
+                    disabled={syncConn.isPending}
+                    className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                  >
+                    {pending ? (
+                      <>
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                        Running…
+                      </>
+                    ) : (
+                      <>
+                        <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
+                        Run agents now
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* agent activity feed */}
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent activity</h3>
+        {agentLogs.length === 0 ? (
+          <p className="py-6 text-center text-sm text-[var(--text-4)]">
+            No agent activity yet — run a sync to get started.
+          </p>
+        ) : (
+          <div className="app-card overflow-hidden p-0">
+            {agentLogs.map((log: AuditLog, idx: number) => {
+              const agentName = log.actor.replace("agent:", "");
+              const badgeCls = AGENT_BADGE[agentName] ?? "bg-[var(--surface-1)] text-[var(--text-3)]";
+              const actionLabel = log.action
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c: string) => c.toUpperCase());
+              return (
+                <div
+                  key={log.id}
+                  className={cn(
+                    "flex items-start justify-between gap-3 px-5 py-3.5",
+                    idx > 0 && "border-t border-[var(--border-2)]",
+                  )}
+                >
+                  <div className="flex min-w-0 items-start gap-2">
+                    <span
+                      className={cn(
+                        "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        badgeCls,
+                      )}
+                    >
+                      {agentName}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[var(--text-2)]">{actionLabel}</p>
+                      {log.target && (
+                        <p className="mt-0.5 truncate text-xs text-[var(--text-3)]">{log.target}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-[var(--text-4)]">
+                    {formatShort(log.createdAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ─── settings view ───────────────────────────────────────────────────────────
 
 function SettingsView({ clientId }: { clientId: string }) {
@@ -1422,6 +1690,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "tickets", label: "Tickets", icon: ClipboardDocumentListIcon },
   { id: "reports", label: "Reports", icon: DocumentTextIcon },
   { id: "connectors", label: "Connectors", icon: BoltIcon },
+  { id: "agents", label: "Agents", icon: SparklesIcon },
   { id: "settings", label: "Settings", icon: Cog8ToothIcon },
 ];
 
@@ -1648,6 +1917,7 @@ export function SupportDashboard() {
           {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
           {activeTab === "reports" && <ReportsView client={client} />}
           {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
+          {activeTab === "agents" && <AgentsView clientId={activeClientId} />}
           {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
         </div>
       </div>
