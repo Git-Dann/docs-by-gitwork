@@ -19,6 +19,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 import type {
   AuditLog,
   Connection,
@@ -234,20 +235,18 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
+            size="sm"
             disabled={createClient.isPending || !name.trim()}
-            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+            loading={createClient.isPending}
           >
             {createClient.isPending ? "Adding…" : "Add client"}
-          </button>
+          </Button>
         </div>
       </form>
     </CareModal>
@@ -516,20 +515,18 @@ function AddConnectorModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
+            size="sm"
             disabled={createConnection.isPending}
-            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+            loading={createConnection.isPending}
           >
             {createConnection.isPending ? "Saving…" : "Add connector"}
-          </button>
+          </Button>
         </div>
       </form>
     </CareModal>
@@ -629,20 +626,18 @@ function AddRuleModal({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
+            size="sm"
             disabled={createRule.isPending || !name.trim() || !when.trim() || !then.trim()}
-            className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+            loading={createRule.isPending}
           >
             {createRule.isPending ? "Saving…" : "Save rule"}
-          </button>
+          </Button>
         </div>
       </form>
     </CareModal>
@@ -1452,7 +1447,7 @@ export function SupportDashboard() {
   if (clientsLoading) {
     return (
       <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
-        <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+        <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
           <div className="px-3 pb-2 pt-4 space-y-2">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="h-9 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
@@ -1469,32 +1464,38 @@ export function SupportDashboard() {
   if (!clientsLoading && clients.length === 0) {
     return (
       <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
-        <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+        <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
           <div className="px-3 pb-2 pt-4">
-            <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">
-              Clients
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowAddClient(true)}
-              className="mx-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add client
-            </button>
+            <div className="px-2 pb-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full"
+                onClick={() => setShowAddClient(true)}
+                leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+              >
+                Add client
+              </Button>
+            </div>
           </div>
         </aside>
-        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-          <p className="text-base font-semibold text-[var(--text-1)]">No clients yet</p>
-          <p className="text-sm text-[var(--text-4)]">Add your first support client to get started.</p>
-          <button
-            type="button"
-            onClick={() => setShowAddClient(true)}
-            className="mt-2 flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[var(--brand-800)]"
-          >
-            <PlusIcon className="h-4 w-4" />
-            Add client
-          </button>
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
+          <div className="app-card p-8 text-center">
+            <p className="text-base font-semibold text-[var(--text-1)]">No clients yet</p>
+            <p className="mt-2 text-sm text-[var(--text-4)]">Add your first support client to get started.</p>
+            <div className="mt-4 flex justify-center">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => setShowAddClient(true)}
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                Add client
+              </Button>
+            </div>
+          </div>
         </div>
         {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}
       </div>
@@ -1506,11 +1507,20 @@ export function SupportDashboard() {
   return (
     <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
       {/* client sub-sidebar */}
-      <aside className="hidden w-52 shrink-0 border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:flex-col">
+      <aside className="hidden w-56 shrink-0 border-r border-[var(--border-2)] lg:flex lg:flex-col">
         <div className="px-3 pb-2 pt-4">
-          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">
-            Clients
-          </p>
+          <div className="px-2 pb-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full"
+              onClick={() => setShowAddClient(true)}
+              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            >
+              Add client
+            </Button>
+          </div>
           <div className="space-y-0.5">
             {clients.map((c) => (
               <button
@@ -1527,25 +1537,18 @@ export function SupportDashboard() {
                     : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
                 )}
               >
-                <span
-                  className={cn(
-                    "h-2 w-2 shrink-0 rounded-full",
-                    c.id === activeClientId ? "bg-[var(--brand-700)]" : "bg-[var(--text-4)]",
-                  )}
-                />
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-bold text-[var(--brand-700)]">
+                  {c.name.charAt(0).toUpperCase()}
+                </span>
                 <span className="flex-1 truncate font-medium">{c.name}</span>
+                {inboxUnread > 0 && c.id === activeClientId && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-700)] px-1 text-[10px] font-semibold text-white">
+                    {inboxUnread}
+                  </span>
+                )}
               </button>
             ))}
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAddClient(true)}
-            className="mx-2 mt-2 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
-          >
-            <PlusIcon className="h-3.5 w-3.5" />
-            Add client
-          </button>
         </div>
       </aside>
 
@@ -1553,8 +1556,9 @@ export function SupportDashboard() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* client name + tab bar */}
         <div className="border-b border-[var(--border-2)] px-6 sm:px-8">
-          <div className="flex items-center justify-between pt-5 pb-0">
-            <h2 className="text-[15px] font-semibold text-[var(--text-1)]">{client.name}</h2>
+          <div className="flex items-center gap-3 pt-5 pb-0">
+            <h2 className="text-base font-semibold text-[var(--text-1)]">{client.name}</h2>
+            <span className="text-[var(--text-4)]">|</span>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               live
             </span>
