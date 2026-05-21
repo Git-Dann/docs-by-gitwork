@@ -1488,7 +1488,7 @@ export function SupportDashboard() {
   if (!client) return null;
 
   return (
-    <div className="flex min-h-0 gap-0 -mx-6 sm:-mx-8">
+    <div className="flex min-h-0 gap-0">
       {/* client sub-sidebar */}
       <aside
         className={cn(
@@ -1603,7 +1603,7 @@ export function SupportDashboard() {
             <h2 className="text-base font-semibold text-[var(--text-1)]">{client.name}</h2>
             <span className="text-[var(--text-4)]">·</span>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-              live
+              Live
             </span>
           </div>
 
