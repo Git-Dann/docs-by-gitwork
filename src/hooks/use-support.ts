@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSupportClient,
+  createSupportConnection,
   createSupportWorkflowRule,
   deleteSupportTicket,
   deleteSupportWorkflowRule,
+  generateAiDraft,
   getSupportClient,
   listSupportAuditLogs,
   listSupportClients,
@@ -153,6 +155,17 @@ export function useSupportConnections(clientId: string | null) {
   });
 }
 
+export function useCreateSupportConnection(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Parameters<typeof createSupportConnection>[1]) =>
+      createSupportConnection(clientId as string, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "connections", clientId] });
+    },
+  });
+}
+
 export function useUpdateConnection(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -161,6 +174,13 @@ export function useUpdateConnection(clientId: string | null) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "connections", clientId] });
     },
+  });
+}
+
+export function useGenerateAiDraft(clientId: string | null) {
+  return useMutation({
+    mutationFn: (convId: string) =>
+      generateAiDraft(clientId as string, convId),
   });
 }
 

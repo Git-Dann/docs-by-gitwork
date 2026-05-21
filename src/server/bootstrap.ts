@@ -1,4 +1,5 @@
 import { DocumentType, Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { DEFAULT_PROPOSAL_METADATA, getDefaultProposalSections } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import {
@@ -49,9 +50,13 @@ export async function ensureBaseRecords() {
     create: {
       workspaceId: workspace.id,
       userId: user.id,
-      role: "OWNER",
+      role: "ADMIN",
+      permissions: [],
     },
   });
+
+  // Create the initial admin account from env vars on first run
+  await ensureInitialAdmin(workspace.id);
 
   const template = await prisma.documentTemplate.upsert({
     where: {
@@ -176,4 +181,29 @@ async function ensureSampleCodeClearCandidates({
       data: candidate,
     });
   }
+}
+
+// Creates the first admin user from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD
+// env vars. Only runs if those vars are set and the email doesn't exist yet.
+async function ensureInitialAdmin(workspaceId: string) {
+  const email = process.env.INITIAL_ADMIN_EMAIL;
+  const password = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!email || !password) return;
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) return;
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const admin = await prisma.user.create({
+    data: { email, name: email.split("@")[0], passwordHash },
+  });
+
+  await prisma.workspaceMember.create({
+    data: {
+      workspaceId,
+      userId: admin.id,
+      role: "ADMIN",
+      permissions: [],
+    },
+  });
 }
