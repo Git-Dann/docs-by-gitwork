@@ -534,7 +534,7 @@ function FoundryLogo({ compact = false }: { compact?: boolean }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/foundry-logo.png"
+      src="/foundry-logo.svg"
       alt="Foundry by Gitwork"
       className={compact ? "h-7 w-auto" : "h-8 w-auto"}
     />
