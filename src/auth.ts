@@ -4,6 +4,13 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { ensureBaseRecords } from "@/server/bootstrap";
+
+const membershipInclude = {
+  where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+  include: { workspace: true },
+  take: 1,
+} as const;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -16,16 +23,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
+        let user = await prisma.user.findUnique({
           where: { email: credentials.email as string },
-          include: {
-            memberships: {
-              where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-              include: { workspace: true },
-              take: 1,
-            },
-          },
+          include: { memberships: membershipInclude },
         });
+
+        // First-run bootstrap: if the initial admin email is set and that user
+        // doesn't exist yet, create them now rather than requiring an API call first.
+        if (!user && credentials.email === process.env.INITIAL_ADMIN_EMAIL) {
+          await ensureBaseRecords().catch(() => {});
+          user = await prisma.user.findUnique({
+            where: { email: credentials.email as string },
+            include: { memberships: membershipInclude },
+          });
+        }
 
         if (!user?.passwordHash) return null;
 
