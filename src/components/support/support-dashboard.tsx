@@ -1488,7 +1488,7 @@ export function SupportDashboard() {
   if (!client) return null;
 
   return (
-    <div className="flex min-h-0 gap-0">
+    <div className="flex min-h-0 w-full gap-0">
       {/* client sub-sidebar */}
       <aside
         className={cn(
