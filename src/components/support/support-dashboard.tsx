@@ -285,7 +285,7 @@ function AddConnectorModal({
   const [error, setError] = useState<string | null>(null);
 
   // Gmail fields
-  const defaultIntake = `care+${clientSlug}@gitwork.co.uk`;
+  const defaultIntake = `support+${clientSlug}@gitwork.co.uk`;
   const [gmailQuery, setGmailQuery] = useState(`to:${defaultIntake}`);
 
   // Discord fields
