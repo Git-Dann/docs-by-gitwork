@@ -11,21 +11,28 @@ import CalendarWidget from "@/components/dashboard/calendar-widget";
 import MeetingSummaryWidget from "@/components/dashboard/meeting-summary-widget";
 import ProofWidget from "@/components/dashboard/proof-widget";
 
-export type WidgetSize = { cols: 1 | 2 | 3; rows: 1 | 2 | 3 };
+export type WidgetSize = "sm" | "md" | "lg";
+
+type GridEntry = {
+  component: React.ComponentType<{ size: WidgetSize }>;
+  cols: 1 | 2 | 3;
+  rows: 1 | 2 | 3;
+  size: WidgetSize;
+};
 
 const ROW_HEIGHT = 180;
 
-const GRID: Array<{ component: React.ComponentType<{ size: WidgetSize }>; size: WidgetSize }> = [
-  { component: PulseWidget,          size: { cols: 2, rows: 1 } },
-  { component: CodeClearWidget,      size: { cols: 1, rows: 1 } },
-  { component: StudyWidget,          size: { cols: 1, rows: 1 } },
-  { component: CareWidget,           size: { cols: 1, rows: 1 } },
-  { component: ProposalsWidget,      size: { cols: 2, rows: 2 } },
-  { component: ClientsWidget,        size: { cols: 1, rows: 2 } },
-  { component: GmailWidget,          size: { cols: 2, rows: 2 } },
-  { component: CalendarWidget,       size: { cols: 1, rows: 2 } },
-  { component: MeetingSummaryWidget, size: { cols: 3, rows: 2 } },
-  { component: ProofWidget,          size: { cols: 1, rows: 1 } },
+const GRID: GridEntry[] = [
+  { component: PulseWidget,          cols: 2, rows: 1, size: "md" },
+  { component: CodeClearWidget,      cols: 1, rows: 1, size: "sm" },
+  { component: StudyWidget,          cols: 1, rows: 1, size: "sm" },
+  { component: CareWidget,           cols: 1, rows: 1, size: "sm" },
+  { component: ProposalsWidget,      cols: 2, rows: 2, size: "lg" },
+  { component: ClientsWidget,        cols: 1, rows: 2, size: "md" },
+  { component: GmailWidget,          cols: 2, rows: 2, size: "lg" },
+  { component: CalendarWidget,       cols: 1, rows: 2, size: "md" },
+  { component: MeetingSummaryWidget, cols: 3, rows: 2, size: "lg" },
+  { component: ProofWidget,          cols: 1, rows: 1, size: "sm" },
 ];
 
 export function AppOverview() {
@@ -44,11 +51,11 @@ export function AppOverview() {
           gridAutoFlow: "dense",
         }}
       >
-        {GRID.map(({ component: Widget, size }, i) => (
+        {GRID.map(({ component: Widget, cols, rows, size }, i) => (
           <div
             key={i}
             className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-xs)]"
-            style={{ gridColumn: `span ${size.cols}`, gridRow: `span ${size.rows}` }}
+            style={{ gridColumn: `span ${cols}`, gridRow: `span ${rows}` }}
           >
             <Widget size={size} />
           </div>
