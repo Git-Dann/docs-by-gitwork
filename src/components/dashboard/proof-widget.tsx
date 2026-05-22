@@ -14,7 +14,7 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
 
   const docs = data?.documents ?? [];
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
@@ -32,7 +32,7 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size.rows >= 2 ? 7 : 3;
+  const displayCount = size !== "sm" ? 7 : 3;
 
   return (
     <div className="flex h-full flex-col">

@@ -23,7 +23,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
   const stats = data ?? { total: 0, byStatus: [], avgThis: null, passRateThis: null, recheckDue: 0 };
   const countFor = (status: string) => stats.byStatus.find((s) => s.status === status)?.count ?? 0;
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
@@ -85,7 +85,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
                 />
               </div>
               <span className="text-[10px] text-[var(--text-3)]">
-                {size.cols >= 2 ? stage.label : stage.short}
+                {size !== "sm" ? stage.label : stage.short}
               </span>
             </div>
           );

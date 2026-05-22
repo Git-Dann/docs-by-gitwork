@@ -38,7 +38,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
   ).length;
   const draft = proposals.filter((p) => p.status === "DRAFT").length;
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
@@ -61,7 +61,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size.rows >= 2 ? 8 : 4;
+  const displayCount = size !== "sm" ? 8 : 4;
 
   return (
     <div className="flex h-full flex-col">
@@ -93,7 +93,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
       </div>
 
       {/* List */}
-      {size.rows >= 2 && (
+      {size !== "sm" && (
         <div className="mt-2 flex-1 overflow-y-auto">
           {proposals.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-1.5">

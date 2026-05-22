@@ -30,7 +30,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
     : stats.avgHealthScore >= 50 ? "text-amber-500"
     : "text-red-500";
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
@@ -123,7 +123,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
       </div>
 
       {/* Recent scans */}
-      {size.rows >= 2 && (
+      {size !== "sm" && (
         <div className="mt-3 flex-1 overflow-y-auto">
           {stats.recentScans.length === 0 ? (
             <div className="flex h-full items-center justify-center text-[11px] text-[var(--text-3)]">
@@ -133,7 +133,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
             <>
               <p className="mb-1.5 text-[11px] font-medium text-[var(--text-3)]">Recent scans</p>
               <div className="space-y-0.5">
-                {stats.recentScans.slice(0, size.rows >= 3 ? 7 : 4).map((scan) => (
+                {stats.recentScans.slice(0, size === "lg" ? 7 : 4).map((scan) => (
                   <Link
                     key={scan.id}
                     href={`/app/pulse/${scan.id}`}

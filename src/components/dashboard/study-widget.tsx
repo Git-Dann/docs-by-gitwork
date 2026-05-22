@@ -29,7 +29,7 @@ export default function StudyWidget({ size }: { size: WidgetSize }) {
   const list = studies ?? [];
   const running = list.filter((s) => s.status === "RUNNING" || s.status === "PLAN_GENERATING");
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
@@ -55,7 +55,7 @@ export default function StudyWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size.rows >= 2 ? 7 : 3;
+  const displayCount = size !== "sm" ? 7 : 3;
 
   return (
     <div className="flex h-full flex-col">

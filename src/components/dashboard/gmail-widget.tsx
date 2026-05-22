@@ -61,7 +61,7 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
 
   const messages = data.messages ?? [];
   const unread = messages.filter((m) => m.unread).length;
-  const displayCount = size.rows >= 3 ? 10 : size.rows >= 2 ? 7 : 3;
+  const displayCount = size === "lg" ? 10 : size === "md" ? 7 : 3;
 
   return (
     <div className="flex h-full flex-col">
@@ -102,7 +102,7 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
                 <span className="shrink-0 text-[10px] text-[var(--text-3)]">{formatDate(msg.date)}</span>
               </div>
               <p className="truncate text-[11px] text-[var(--text-2)]">{msg.subject}</p>
-              {size.cols >= 2 && (
+              {size !== "sm" && (
                 <p className="truncate text-[10px] text-[var(--text-3)]">{msg.snippet}</p>
               )}
             </div>

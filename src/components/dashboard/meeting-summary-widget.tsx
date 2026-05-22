@@ -98,7 +98,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
   const events = data.events ?? [];
   const activeSummary = selected ? summaries[selected] : null;
   const activeEvent = selected ? events.find((e) => e.id === selected) : null;
-  const displayCount = size.cols >= 2 && !selected ? (size.rows >= 2 ? 6 : 3) : 4;
+  const displayCount = size !== "sm" && !selected ? 6 : 4;
 
   return (
     <div className="flex h-full flex-col gap-0">
@@ -114,7 +114,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
       <div className="mt-2 flex flex-1 gap-3 overflow-hidden">
         {/* Event list */}
         <div
-          className={`flex flex-col gap-1 overflow-y-auto ${selected && size.cols >= 2 ? "w-52 shrink-0" : "flex-1"}`}
+          className={`flex flex-col gap-1 overflow-y-auto ${selected && size !== "sm" ? "w-52 shrink-0" : "flex-1"}`}
         >
           {events.length === 0 ? (
             <p className="text-[11px] text-[var(--text-3)]">No upcoming events</p>
@@ -157,7 +157,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
         </div>
 
         {/* Summary panel */}
-        {selected && activeEvent && size.cols >= 2 && (
+        {selected && activeEvent && size !== "sm" && (
           <div className="flex flex-1 flex-col gap-2 overflow-hidden rounded-[6px] bg-[var(--surface-1)] p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
