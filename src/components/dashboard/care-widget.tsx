@@ -43,7 +43,7 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
 
   const clients = clientsData?.clients ?? [];
 
-  if (size.cols === 1 && size.rows === 1) {
+  if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
         <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
@@ -61,7 +61,7 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size.rows >= 2 ? 7 : 3;
+  const displayCount = size !== "sm" ? 7 : 3;
 
   return (
     <div className="flex h-full flex-col">
