@@ -774,10 +774,10 @@ function InboxView({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="grid min-h-0 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-      {/* conversation list */}
-      <div className="space-y-2">
-        <div className="relative">
+    <div className="flex min-h-0 flex-col gap-3">
+      {/* search + filter bar — full width above columns */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
           <input
             className="h-9 w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
@@ -787,10 +787,8 @@ function InboxView({ clientId }: { clientId: string }) {
           />
         </div>
 
-        {/* filter bar */}
         <div className="flex flex-wrap items-center gap-1.5">
           <FunnelIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-          {/* source chips — only show when multiple sources present */}
           {presentSources.length > 1 && (
             <>
               <button
@@ -823,7 +821,6 @@ function InboxView({ clientId }: { clientId: string }) {
               ))}
             </>
           )}
-          {/* sentiment filter */}
           {(["negative", "neutral", "positive"] as const).map((s) => (
             <button
               key={s}
@@ -843,7 +840,6 @@ function InboxView({ clientId }: { clientId: string }) {
               {s}
             </button>
           ))}
-          {/* unread toggle */}
           <button
             type="button"
             onClick={() => setFilterUnread((v) => !v)}
@@ -857,8 +853,13 @@ function InboxView({ clientId }: { clientId: string }) {
             Unread
           </button>
         </div>
+      </div>
 
-        <div className="max-h-[calc(100vh-20rem)] space-y-2 overflow-y-auto pr-0.5">
+      {/* two-column layout */}
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        {/* conversation list */}
+        <div className="space-y-2">
+          <div className="max-h-[calc(100vh-18rem)] space-y-2 overflow-y-auto pr-0.5">
           {convosLoading && (
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => (
@@ -877,10 +878,10 @@ function InboxView({ clientId }: { clientId: string }) {
               onClick={() => setSelectedConvId(c.id)}
             />
           ))}
+          </div>
         </div>
-      </div>
 
-      {/* detail pane */}
+        {/* detail pane */}
       <div className="app-card flex min-w-0 flex-col overflow-hidden">
         {!activeConvo ? (
           <div className="flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
@@ -1020,6 +1021,7 @@ function InboxView({ clientId }: { clientId: string }) {
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   );
