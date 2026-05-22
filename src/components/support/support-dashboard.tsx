@@ -692,6 +692,147 @@ function AddRuleModal({
 
 type DraftState = { text: string; status: "draft" | "approved" } | null;
 
+// ─── inbox filter dropdown ────────────────────────────────────────────────────
+
+function FilterOption<T extends string | boolean>({
+  value,
+  active,
+  onClick,
+  children,
+}: {
+  value: T;
+  active: boolean;
+  onClick: (v: T) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(value)}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
+        active ? "bg-[var(--mist)] font-medium text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+          active ? "border-[var(--brand-700)] bg-[var(--brand-700)]" : "border-[var(--border-2)]",
+        )}
+      >
+        {active && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+      </span>
+      {children}
+    </button>
+  );
+}
+
+function InboxFiltersDropdown({
+  filterSource,
+  filterSentiment,
+  filterUnread,
+  presentSources,
+  onSourceChange,
+  onSentimentChange,
+  onUnreadChange,
+  onClear,
+}: {
+  filterSource: SupportSource | "all";
+  filterSentiment: "all" | "positive" | "neutral" | "negative";
+  filterUnread: boolean;
+  presentSources: SupportSource[];
+  onSourceChange: (v: SupportSource | "all") => void;
+  onSentimentChange: (v: "all" | "positive" | "neutral" | "negative") => void;
+  onUnreadChange: (v: boolean) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const activeCount = [
+    filterSource !== "all",
+    filterSentiment !== "all",
+    filterUnread,
+  ].filter(Boolean).length;
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex h-9 items-center gap-2 rounded-[8px] border px-3 text-sm font-medium transition",
+          activeCount > 0
+            ? "border-[var(--brand-400)] bg-[var(--mist)] text-[var(--brand-700)]"
+            : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)] hover:bg-white",
+        )}
+      >
+        <FunnelIcon className="h-4 w-4 shrink-0" />
+        <span>Filters</span>
+        {activeCount > 0 && (
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--brand-700)] text-[10px] font-bold text-white">
+            {activeCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1.5 w-52 rounded-[14px] border border-[var(--border-2)] bg-white p-2 shadow-lg">
+          <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Sentiment</p>
+          <FilterOption value={"all" as const} active={filterSentiment === "all"} onClick={onSentimentChange}>All</FilterOption>
+          <FilterOption value={"positive" as const} active={filterSentiment === "positive"} onClick={onSentimentChange}>Positive</FilterOption>
+          <FilterOption value={"neutral" as const} active={filterSentiment === "neutral"} onClick={onSentimentChange}>Neutral</FilterOption>
+          <FilterOption value={"negative" as const} active={filterSentiment === "negative"} onClick={onSentimentChange}>Negative</FilterOption>
+
+          <div className="my-2 border-t border-[var(--border-2)]" />
+
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Status</p>
+          <FilterOption value={false} active={!filterUnread} onClick={onUnreadChange}>All messages</FilterOption>
+          <FilterOption value={true} active={filterUnread} onClick={onUnreadChange}>Unread only</FilterOption>
+
+          {presentSources.length > 1 && (
+            <>
+              <div className="my-2 border-t border-[var(--border-2)]" />
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Source</p>
+              <FilterOption value={"all" as const} active={filterSource === "all"} onClick={onSourceChange}>All sources</FilterOption>
+              {presentSources.map((s) => (
+                <FilterOption key={s} value={s} active={filterSource === s} onClick={onSourceChange}>
+                  <span className="flex items-center gap-1.5">
+                    <SourceIcon source={s} className="h-3.5 w-3.5" />
+                    {SOURCE_LABEL[s]}
+                  </span>
+                </FilterOption>
+              ))}
+            </>
+          )}
+
+          {activeCount > 0 && (
+            <>
+              <div className="my-2 border-t border-[var(--border-2)]" />
+              <button
+                type="button"
+                onClick={() => { onClear(); setOpen(false); }}
+                className="w-full rounded-[8px] px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+              >
+                Clear all filters
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InboxView({ clientId }: { clientId: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
@@ -776,7 +917,7 @@ function InboxView({ clientId }: { clientId: string }) {
   return (
     <div className="flex min-h-0 flex-col gap-3">
       {/* search + filter bar — full width above columns */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
           <input
@@ -786,73 +927,16 @@ function InboxView({ clientId }: { clientId: string }) {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <FunnelIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-          {presentSources.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setFilterSource("all")}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition",
-                  filterSource === "all"
-                    ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
-                    : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--text-4)]",
-                )}
-              >
-                All
-              </button>
-              {presentSources.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setFilterSource(filterSource === s ? "all" : s)}
-                  className={cn(
-                    "flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition",
-                    filterSource === s
-                      ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
-                      : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--text-4)]",
-                  )}
-                >
-                  <SourceIcon source={s} className="h-3 w-3" />
-                  {SOURCE_LABEL[s]}
-                </button>
-              ))}
-            </>
-          )}
-          {(["negative", "neutral", "positive"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setFilterSentiment(filterSentiment === s ? "all" : s)}
-              className={cn(
-                "rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize transition",
-                filterSentiment === s
-                  ? s === "negative"
-                    ? "border-red-300 bg-red-50 text-red-700"
-                    : s === "positive"
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                      : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]"
-                  : "border-[var(--border-2)] text-[var(--text-4)] hover:border-[var(--text-4)]",
-              )}
-            >
-              {s}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFilterUnread((v) => !v)}
-            className={cn(
-              "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition",
-              filterUnread
-                ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
-                : "border-[var(--border-2)] text-[var(--text-4)] hover:border-[var(--text-4)]",
-            )}
-          >
-            Unread
-          </button>
-        </div>
+        <InboxFiltersDropdown
+          filterSource={filterSource}
+          filterSentiment={filterSentiment}
+          filterUnread={filterUnread}
+          presentSources={presentSources}
+          onSourceChange={setFilterSource}
+          onSentimentChange={setFilterSentiment}
+          onUnreadChange={setFilterUnread}
+          onClear={() => { setFilterSource("all"); setFilterSentiment("all"); setFilterUnread(false); }}
+        />
       </div>
 
       {/* two-column layout */}
