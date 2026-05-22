@@ -543,7 +543,7 @@ const CHECKS: Array<{ category: string; checkKey: string; label: string; status:
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function POST(_request: NextRequest) {
+export async function POST() {
   try {
     const workspace = await prisma.workspace.findFirst({
       where: { slug: "gitwork" },

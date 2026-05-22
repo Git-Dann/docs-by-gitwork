@@ -811,7 +811,7 @@ const REPORT = {
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     const { workspace } = await ensureBaseRecords();
 

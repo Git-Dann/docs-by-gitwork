@@ -4,10 +4,7 @@ import { listWorkspaceMembers } from "@/server/support";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _request: NextRequest,
-  _ctx: { params: Promise<{ clientId: string }> },
-) {
+export async function GET() {
   try {
     const members = await listWorkspaceMembers();
     return apiOk({ members });

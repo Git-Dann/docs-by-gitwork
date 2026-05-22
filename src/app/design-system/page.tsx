@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React from "react";
 
 const colorGroups = [
   {
@@ -87,8 +87,6 @@ const shadows = [
 const sections = ["Overview", "Colors", "Typography", "Widget Cards", "Bento Demo", "Buttons", "Badges", "Forms", "Shapes", "Elevation"];
 
 export default function DesignSystemPage() {
-  const [_activeBadge, setActiveBadge] = useState<string | null>(null);
-  void setActiveBadge;
 
   return (
     <div className="min-h-screen" style={{ background: "#FAFAF9", color: "#0F172A" }}>
@@ -537,7 +535,7 @@ function SectionHeader({ number, title }: { number: string; title: string }) {
   return (
     <div style={{ marginBottom: 36 }}>
       <p style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500, letterSpacing: "1.2px", color: "#1D4ED8", margin: "0 0 8px", textTransform: "uppercase" }}>
-        {number} // {title}
+        {`${number} // ${title}`}
       </p>
     </div>
   );
@@ -550,7 +548,7 @@ function WidgetCard({ number, name, rightSlot, dark = false, compact = false, ch
     <div style={{ borderRadius: 10, overflow: "hidden", border: dark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)", background: dark ? "#0F172A" : "#fff", height: "100%" }}>
       <div style={{ height: 36, padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", background: dark ? "rgba(255,255,255,0.04)" : "#FAFAF9", borderBottom: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.06)", flexShrink: 0 }}>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 500, letterSpacing: "1.2px", color: dark ? "rgba(248,250,252,0.35)" : "#94A3B8", textTransform: "uppercase" }}>
-          {number} // {name}
+          {`${number} // ${name}`}
         </span>
         {rightSlot && (
           typeof rightSlot === "string"

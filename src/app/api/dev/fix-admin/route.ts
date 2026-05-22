@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+
 import { prisma } from "@/lib/prisma";
 import { ensureInitialAdmin } from "@/server/bootstrap";
 import { apiOk, apiError } from "@/lib/api-response";

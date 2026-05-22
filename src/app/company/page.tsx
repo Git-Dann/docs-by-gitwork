@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { MarketingLayout, HeroGrid, SectionLabel, CheckIcon } from "@/components/marketing/marketing-layout";
 import { companyValues, deliveryStats, deliveryTimeline } from "@/components/marketing/site-content";
 
@@ -152,9 +153,9 @@ export default function CompanyPage() {
                 They work for our clients and eventually for teams beyond Gitwork.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <a href="/app/proposals" className="app-button app-button-dark app-button-md">
+                <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
                   Open Platform
-                </a>
+                </Link>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -200,9 +201,9 @@ export default function CompanyPage() {
             >
               Book a Call
             </a>
-            <a href="/products" className="app-button app-button-dark app-button-lg">
+            <Link href="/products" className="app-button app-button-dark app-button-lg">
               Explore products
-            </a>
+            </Link>
           </div>
         </div>
       </section>
