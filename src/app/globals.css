@@ -48,9 +48,9 @@
     inset 0 0 0 1px rgba(10, 13, 18, 0.12);
 }
 
-@theme inline {
-  --color-background: var(--surface-canvas);
-  --color-foreground: var(--text-1);
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #171717;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "DM Serif Display", "Times New Roman", Georgia, serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
