@@ -4,8 +4,8 @@ import { AppOverview } from "@/components/app-overview";
 export default function AppDashboardPage() {
   return (
     <AppShell
-      title="Pulse"
-      subtitle="A shared signal layer for proposal delivery, proof work, client context, and hiring workflows."
+      title="Foundry HQ"
+      subtitle="Your workspace at a glance"
     >
       <AppOverview />
     </AppShell>
