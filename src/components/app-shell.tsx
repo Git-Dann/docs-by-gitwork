@@ -103,7 +103,38 @@ export function AppShell({
 
   return (
     <div className="h-[100dvh] bg-[#FAFAF9] text-[var(--text-1)]">
-      <div className="grid h-full w-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "h-full w-full grid-cols-1",
+          "lg:grid lg:grid-cols-[280px_minmax(0,1fr)]",
+          hideContentHeader
+            ? "lg:grid-rows-[minmax(0,1fr)]"
+            : "lg:grid-rows-[auto_minmax(0,1fr)]",
+        )}
+      >
+        {/* ── Row 1 Col 1: Sidebar brand (same grid row as main header) ── */}
+        {!hideContentHeader && (
+          <div className="hidden border-b border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] px-6 pb-5 pt-7 lg:flex lg:items-center lg:justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto" />
+          </div>
+        )}
+
+        {/* ── Row 1 Col 2: Main content header ── */}
+        {!hideContentHeader && (
+          <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
+            <div className="max-w-4xl">
+              <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
+              ) : null}
+            </div>
+          </header>
+        )}
+
+        {/* ── Row 2 Col 1: Sidebar nav ── */}
         <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
             pathname={pathname}
@@ -113,20 +144,8 @@ export function AppShell({
           />
         </aside>
 
+        {/* ── Row 2 Col 2: Main content ── */}
         <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
-          {hideContentHeader ? null : (
-            <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
-              <div className="max-w-4xl">
-                <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-                  {title}
-                </h1>
-                {subtitle ? (
-                  <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
-                ) : null}
-              </div>
-            </header>
-          )}
-
           <main
             className={
               mainClassName ??
@@ -157,17 +176,6 @@ function ExpandedRail({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
-        <div className="flex items-center gap-3">
-          <BrandGlyph className="h-8 w-8 shrink-0" />
-          <div>
-            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Foundry by Gitwork</p>
-            <p className="text-xs text-[var(--text-4)]">Prompt-to-production suite</p>
-          </div>
-        </div>
-
-      </div>
-
       <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
           <nav className="space-y-1">
