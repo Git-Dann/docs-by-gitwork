@@ -57,6 +57,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     inputUrl: record.inputUrl,
     inputGithubRepo: record.inputGithubRepo,
     inputDescription: record.inputDescription,
+    platform: record.platform ?? null,
     status: record.status,
     scanVersion: record.scanVersion,
     startedAt: record.startedAt.toISOString(),
@@ -376,6 +377,7 @@ export async function runAnalysis(
     inputGithubRepo?: string;
     inputDescription?: string;
     projectName: string;
+    platform?: string;
     clientId?: string;
     competitorUrls?: string[];
   },
@@ -417,6 +419,7 @@ export async function runAnalysis(
       inputUrl: input.inputUrl,
       inputGithubRepo: input.inputGithubRepo,
       inputDescription: input.inputDescription,
+      platform: input.platform,
     });
 
     const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
@@ -491,6 +494,7 @@ export async function runAnalysis(
               inputUrl: input.inputUrl ?? null,
               inputGithubRepo: input.inputGithubRepo ?? null,
               inputDescription: input.inputDescription ?? null,
+              platform: input.platform ?? null,
               healthScore,
               techStack,
               checks: allChecks,

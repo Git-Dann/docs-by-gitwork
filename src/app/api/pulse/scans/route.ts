@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       inputUrl: body.inputUrl,
       inputGithubRepo: body.inputGithubRepo,
       inputDescription: body.inputDescription,
+      platform: body.platform,
       clientId: body.clientId,
       aiProvider: body.aiProvider,
       competitorUrls: body.competitorUrls,
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
         inputGithubRepo: body.inputGithubRepo,
         inputDescription: body.inputDescription,
         projectName: body.projectName,
+        platform: body.platform,
         clientId: body.clientId,
         competitorUrls: body.competitorUrls,
       }, aiConfig)

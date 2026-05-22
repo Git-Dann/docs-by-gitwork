@@ -357,7 +357,102 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   };
 }
 
-export async function runUrlChecks(url: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+/**
+ * Returns the categories that are irrelevant for the declared platform,
+ * and a human-readable reason to embed in the SKIPPED detail message.
+ */
+function getSkippedCategoriesForPlatform(platform: string): Array<{ category: string; reason: string }> {
+  const p = platform.toUpperCase();
+
+  if (p === "IOS_APP" || p === "ANDROID_APP") {
+    return [
+      { category: "SEO", reason: "Not applicable — native mobile apps are not indexed by web search engines." },
+      { category: "SaaS Readiness", reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to native mobile apps." },
+      { category: "Missing Pages", reason: "Not applicable — native mobile apps do not have marketing web pages." },
+      { category: "Global Distribution", reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to native apps." },
+    ];
+  }
+
+  if (p === "CROSS_PLATFORM_MOBILE") {
+    return [
+      { category: "SEO", reason: "Lower relevance — cross-platform mobile apps are primarily distributed through app stores, not web search." },
+      { category: "Global Distribution", reason: "Not applicable — web routing internationalisation does not apply to mobile app bundles." },
+    ];
+  }
+
+  if (p === "API_BACKEND") {
+    return [
+      { category: "SEO", reason: "Not applicable — APIs are not web pages and are not indexed by search engines." },
+      { category: "SaaS Readiness", reason: "Not applicable — web UI SaaS patterns (billing portals, live chat, pricing pages) do not apply to API backends." },
+      { category: "Missing Pages", reason: "Not applicable — APIs do not have About/Contact/FAQ pages." },
+      { category: "Trust & Brand", reason: "Not applicable — social proof, testimonials, and press sections are not relevant for API backends." },
+      { category: "App Store & Mobile", reason: "Not applicable — this is a backend API, not a mobile app." },
+      { category: "Mobile & Accessibility", reason: "Not applicable — APIs are not user-facing web interfaces." },
+      { category: "Global Distribution", reason: "Not applicable — web internationalisation (hreflang, language switchers) does not apply to APIs." },
+      { category: "Payments", reason: "Lower relevance — API backends typically do not host their own payment UI." },
+    ];
+  }
+
+  if (p === "CLI_TOOL") {
+    return [
+      { category: "SEO", reason: "Not applicable — CLI tools are distributed via package registries, not web search." },
+      { category: "SaaS Readiness", reason: "Not applicable — web SaaS conversion patterns do not apply to command-line tools." },
+      { category: "Missing Pages", reason: "Not applicable — CLI tools do not have marketing web pages." },
+      { category: "Trust & Brand", reason: "Not applicable — social proof and press coverage sections are not relevant for CLI tools." },
+      { category: "App Store & Mobile", reason: "Not applicable — CLI tools are not distributed through app stores." },
+      { category: "Mobile & Accessibility", reason: "Not applicable — CLI tools are not web interfaces." },
+      { category: "Global Distribution", reason: "Not applicable — web internationalisation does not apply to CLI tools." },
+      { category: "Payments", reason: "Not applicable — CLI tools typically use package managers or separate billing systems." },
+    ];
+  }
+
+  if (p === "DESKTOP_APP") {
+    return [
+      { category: "SEO", reason: "Lower relevance — desktop apps are distributed via installers, not web search." },
+      { category: "App Store & Mobile", reason: "Not applicable — iOS/Android app store checks do not apply to desktop applications." },
+      { category: "Global Distribution", reason: "Not applicable — web routing internationalisation does not apply to desktop app installers." },
+    ];
+  }
+
+  if (p === "CHROME_EXTENSION") {
+    return [
+      { category: "App Store & Mobile", reason: "Not applicable — iOS/Android app store checks do not apply to browser extensions." },
+      { category: "Mobile & Accessibility", reason: "Not applicable — browser extensions do not have responsive mobile web layouts." },
+      { category: "Global Distribution", reason: "Not applicable — web internationalisation does not apply to browser extensions." },
+      { category: "SaaS Readiness", reason: "Lower relevance — standard web SaaS conversion patterns do not apply to browser extension UX." },
+    ];
+  }
+
+  if (p === "MARKETING_SITE") {
+    return [
+      { category: "Authentication", reason: "Lower relevance — pure marketing sites typically do not have user login flows." },
+      { category: "Payments", reason: "Lower relevance — pure marketing sites typically do not have embedded checkout." },
+      { category: "App Store & Mobile", reason: "Not applicable — this is a marketing website, not a mobile app listing." },
+    ];
+  }
+
+  // WEB_APP, SAAS, OTHER, or unrecognised — run all checks
+  return [];
+}
+
+/**
+ * Apply platform-aware filtering: replace checks in irrelevant categories
+ * with SKIPPED status so they don't pollute results or mislead the AI.
+ */
+function applyPlatformFilter(checks: PulseScanCheckInput[], platform: string): PulseScanCheckInput[] {
+  const skipped = getSkippedCategoriesForPlatform(platform);
+  if (skipped.length === 0) return checks;
+
+  const skipMap = new Map(skipped.map((s) => [s.category, s.reason]));
+
+  return checks.map((check) => {
+    const reason = skipMap.get(check.category);
+    if (!reason) return check;
+    return { ...check, status: "SKIPPED" as const, detail: reason };
+  });
+}
+
+export async function runUrlChecks(url: string, platform?: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
     return runMobileStoreChecks(url, urlType);
@@ -2679,7 +2774,9 @@ export async function runUrlChecks(url: string): Promise<{ checks: PulseScanChec
   }
 
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html) : [];
-  return { checks: checks.map((check, i) => ({ ...check, sortOrder: i })), techStack };
+  const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
+  const filteredChecks = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
+  return { checks: filteredChecks, techStack };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };

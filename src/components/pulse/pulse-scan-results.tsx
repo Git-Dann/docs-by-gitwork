@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -976,7 +976,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   }
 
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
-  const missingCount = llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0;
+  const missingCount = (llm?.productionBlockers?.length ?? 0) + (llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0);
 
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
     { id: "overview", label: "Overview" },
@@ -1249,6 +1249,40 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
+          {llm.productionBlockers && llm.productionBlockers.length > 0 && (
+            <div>
+              <p className="app-eyebrow mb-3">Production blockers</p>
+              <div className="divide-y divide-[var(--border-2)] rounded-[14px] border border-red-200 bg-red-50/40">
+                {(llm.productionBlockers as ProductionBlocker[]).map((blocker, i) => (
+                  <div key={i} className="flex items-start gap-3 px-4 py-3.5">
+                    <XCircleIcon className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      blocker.urgency === "CRITICAL" ? "text-red-600" : "text-orange-500",
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-[var(--text-1)]">{blocker.blocker}</p>
+                        <span className={cn(
+                          "rounded-full px-2 py-0.5 text-xs font-medium",
+                          blocker.urgency === "CRITICAL" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700",
+                        )}>
+                          {blocker.urgency}
+                        </span>
+                        {blocker.recommendedService && (
+                          <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]">
+                            → {blocker.recommendedService}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--text-3)]">{blocker.why}</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-[var(--text-4)]">{blocker.category}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {llm.proposalHook && (
             <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
               <p className="app-eyebrow mb-2">Discovery call opener</p>
@@ -1387,6 +1421,44 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {activeTab === "readiness" && llm && (
         <div className="space-y-6">
+          {llm.productionBlockers && llm.productionBlockers.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-semibold text-[var(--text-1)]">Launch blockers</p>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                  {(llm.productionBlockers as ProductionBlocker[]).filter((b) => b.urgency === "CRITICAL").length} critical
+                </span>
+              </div>
+              <div className="divide-y divide-[var(--border-2)] rounded-[12px] border border-red-200">
+                {(llm.productionBlockers as ProductionBlocker[]).map((blocker, i) => (
+                  <div key={i} className="flex items-start gap-3 px-4 py-3">
+                    <XCircleIcon className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400",
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-[var(--text-1)]">{blocker.blocker}</p>
+                        {blocker.recommendedService && (
+                          <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]">
+                            {blocker.recommendedService}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--text-3)]">{blocker.why}</p>
+                    </div>
+                    <span className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                      blocker.urgency === "CRITICAL" ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-700",
+                    )}>
+                      {blocker.urgency}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(!llm.productionReadinessChecklist || llm.productionReadinessChecklist.length === 0) && (
             <p className="text-sm text-[var(--text-3)]">No readiness checklist available.</p>
           )}

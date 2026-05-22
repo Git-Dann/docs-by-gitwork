@@ -94,6 +94,15 @@ export interface ProductionReadinessItem {
   notes: string;
 }
 
+// Pre-production blockers — things the client cannot go live without
+export interface ProductionBlocker {
+  category: string;
+  blocker: string;      // what's missing / broken
+  why: string;          // business/legal/operational risk if not fixed
+  recommendedService?: string;  // specific named service Gitwork recommends, e.g. "Resend", "Mailgun", "Sentry"
+  urgency: "CRITICAL" | "HIGH";
+}
+
 export interface PulseProjectClassification {
   type: string;           // e.g. "E-commerce", "SaaS", "Marketplace", "Service Business"
   subtype: string | null; // e.g. "B2B SaaS", "Caravan / RV aftermarket", "Booking platform"
@@ -112,6 +121,7 @@ export interface PulseAnalysisOutput {
   scalingRoadmap: PulseScalingPhase[];
   techDebt: PulseTechDebt[];
   proposalHook: string;
+  productionBlockers: ProductionBlocker[];
   productionReadinessChecklist: ProductionReadinessItem[];
   techStackAnalysis: PulseTechStackAnalysis;
 }
@@ -126,6 +136,7 @@ export interface PulseScanRecord {
   inputUrl: string | null;
   inputGithubRepo: string | null;
   inputDescription: string | null;
+  platform: string | null;
   status: PulseScanStatus;
   scanVersion: string;
   startedAt: string;
