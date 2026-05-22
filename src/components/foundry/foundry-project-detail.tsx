@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { getProjectSnapshotBySlug } from "@/lib/foundry";
 import { formatDate } from "@/lib/format";
 import { DatePill, HealthBadge, ScoreBadge, SectionHeading } from "./foundry-shared";

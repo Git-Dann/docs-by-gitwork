@@ -1,7 +1,7 @@
 "use client";
 
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
-import { buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { useClientList } from "@/hooks/use-proposals";
 import { getClientLookupKey } from "@/lib/clients";
 import { formatCurrency } from "@/lib/format";

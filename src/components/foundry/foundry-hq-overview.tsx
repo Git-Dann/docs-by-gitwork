@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { getProjectSnapshots, getWorkspaceMetrics } from "@/lib/foundry";
 import { formatDate } from "@/lib/format";
 import { DatePill, HealthBadge, MetricCard, ScoreBadge, SectionHeading } from "./foundry-shared";

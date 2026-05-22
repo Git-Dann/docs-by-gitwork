@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { getDocumentTemplates, getProjectSnapshots } from "@/lib/foundry";
 import { formatDate } from "@/lib/format";
 import { SectionHeading } from "./foundry-shared";

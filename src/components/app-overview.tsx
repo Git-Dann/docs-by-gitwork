@@ -30,7 +30,8 @@ import { useEffect, useRef, useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { useProofDocuments } from "@/hooks/use-proof";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { cn, formatDate } from "@/lib/format";
 
 // ---------------------------------------------------------------------------

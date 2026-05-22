@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 
 export function PrintToolbar({ proposalId }: { proposalId: string }) {
   return (

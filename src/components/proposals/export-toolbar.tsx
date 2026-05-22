@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { ArrowTopRightOnSquareIcon, ClipboardDocumentIcon, DocumentArrowDownIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { useExportProposal } from "@/hooks/use-proposals";
 
 export function ExportToolbar({ proposalId }: { proposalId: string }) {

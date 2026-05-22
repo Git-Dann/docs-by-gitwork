@@ -15,7 +15,8 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { cn, formatDate, statusLabel } from "@/lib/format";
 import { useProofDocuments } from "@/hooks/use-proof";
 import {
