@@ -140,7 +140,7 @@ const DEMO_ANALYSIS: BriefAnalysis = {
 
 export function ProofWorkspace({
   initialBrief,
-  initialScenario: _initialScenario,
+
 }: {
   initialBrief?: string;
   initialScenario?: string;

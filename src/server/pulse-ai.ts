@@ -7,7 +7,7 @@ export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
 export { getModelForTask };
 
 // Always use the workspace-configured model — never override with a hardcoded value.
-function getModelForTask(config: AiConfig, _task: AiTask): string {
+function getModelForTask(config: AiConfig): string {
   return config.model;
 }
 
@@ -462,7 +462,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
     const client = new Anthropic({ apiKey: aiConfig.apiKey });
     const message = await withRetry(() =>
       client.messages.create({
-        model: getModelForTask(aiConfig, "synthesis"),
+        model: getModelForTask(aiConfig),
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
@@ -614,7 +614,7 @@ Generate a discovery call briefing. Return JSON with this shape:
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey });
       const message = await client.messages.create({
-        model: getModelForTask(aiConfig, "discovery"),
+        model: getModelForTask(aiConfig),
         max_tokens: 2048,
         system: DISCOVERY_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
@@ -697,7 +697,7 @@ Return JSON with exactly this shape:
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey });
       const message = await client.messages.create({
-        model: getModelForTask(aiConfig, "competitor"),
+        model: getModelForTask(aiConfig),
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
       });
@@ -708,7 +708,7 @@ Return JSON with exactly this shape:
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({ apiKey: aiConfig.apiKey, baseURL: aiConfig.baseUrl ?? undefined });
       const completion = await client.chat.completions.create({
-        model: getModelForTask(aiConfig, "competitor"),
+        model: getModelForTask(aiConfig),
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
       });

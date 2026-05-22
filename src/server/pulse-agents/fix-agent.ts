@@ -381,7 +381,7 @@ Start by listing the root directory, then dive into relevant files.`;
     const client = new Anthropic({ apiKey: aiConfig.apiKey });
     await runAnthropicLoop(
       client,
-      getModelForTask(aiConfig, "fix-agent"),
+      getModelForTask(aiConfig),
       userMessage,
       owner,
       repo,

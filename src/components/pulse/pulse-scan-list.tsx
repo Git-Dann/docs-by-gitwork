@@ -410,7 +410,7 @@ export function PulseScanListView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
-  const allScans: PulseScanListItem[] = data?.scans ?? [];
+  const allScans = useMemo<PulseScanListItem[]>(() => data?.scans ?? [], [data?.scans]);
 
   const filtered = useMemo(() => {
     let list = allScans;

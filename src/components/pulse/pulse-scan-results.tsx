@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   ArrowRightIcon,
   ArrowPathIcon,
-  BellIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -19,7 +18,6 @@ import {
   LightBulbIcon,
   MinusCircleIcon,
   QuestionMarkCircleIcon,
-  WrenchScrewdriverIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";

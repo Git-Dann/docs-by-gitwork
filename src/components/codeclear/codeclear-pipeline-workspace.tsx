@@ -145,7 +145,7 @@ export function CodeClearPipelineWorkspace() {
     setOverId(id);
   }
 
-  function handleDragEnd(_event: DragEndEvent) {
+  function handleDragEnd() {
     const draggedId = activeId;
     const targetId = overIdRef.current;
 
@@ -298,7 +298,7 @@ function PipelineColumn({
   overId: string | null;
   onOpen: (candidateId: string) => void;
 }) {
-  const { isOver, setNodeRef } = useDroppable({ id: status });
+  const { setNodeRef } = useDroppable({ id: status });
 
   // overId matches a card in this column → show drop line before that card
   const overCardId = candidates.find((c) => c.id === overId && c.id !== activeId)?.id ?? null;

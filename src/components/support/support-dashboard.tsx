@@ -52,7 +52,7 @@ import {
   useUpdateTicket,
   useSupportConnections,
   useSupportWorkflowRules,
-  useSupportMembers,
+
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";

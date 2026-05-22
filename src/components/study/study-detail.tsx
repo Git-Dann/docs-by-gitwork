@@ -54,7 +54,7 @@ function PersonaRow({ ids }: { ids: string[] }) {
 function PlanEditor({ study, onSaved }: { study: StudyRecord; onSaved: () => void }) {
   const { mutateAsync: savePlan, isPending: saving } = useSavePlan(study.id);
   const [questions, setQuestions] = useState<StudyPlanQuestionRecord[]>(study.plan?.questions ?? []);
-  const [notes, setNotes] = useState(study.plan?.notes ?? "");
+  const notes = study.plan?.notes ?? "";
 
   function updateQuestion(i: number, text: string) {
     setQuestions((prev) => prev.map((q, j) => j === i ? { ...q, text } : q));

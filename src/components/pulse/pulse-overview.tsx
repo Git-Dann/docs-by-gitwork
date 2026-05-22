@@ -1,6 +1,6 @@
 "use client";
 
-import { SignalIcon } from "@heroicons/react/24/outline";
+
 import { usePulseStats } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
 

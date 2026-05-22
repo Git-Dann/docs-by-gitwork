@@ -205,7 +205,7 @@ export default function PulseOverviewPage() {
                 desc: "One click. A clean, professional PDF of the full scan. Print it, share it, or use it to open the call.",
                 color: "#7c3aed",
               },
-            ].map(({ icon, title, desc, color }) => (
+            ].map(({ icon, title, desc }) => (
               <div key={title} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 28 }}>
                 <div style={{ fontSize: 28, marginBottom: 14 }}>{icon}</div>
                 <h3 style={{ fontSize: 15, fontWeight: 700, color: "white", margin: "0 0 10px" }}>{title}</h3>

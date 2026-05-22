@@ -41,8 +41,6 @@ const services = [
 ];
 
 export default function HomePage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-
   return (
     <MarketingLayout currentPath="/">
       {/* ── Hero ── */}
