@@ -121,7 +121,7 @@ function ScanRunningState({
 
       {/* Live check preview — appears once Phase 1 completes (~8-10s) */}
       {categories.length > 0 && (
-        <div className="rounded-[14px] border border-[var(--border-2)] p-4">
+        <div className="rounded-[10px] border border-[var(--border-2)] p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
             Checks streaming in — AI analysis still running
           </p>
@@ -161,7 +161,7 @@ function ScanFailedState({
   const { mutate: retry, isPending: retrying } = useRetryPulseScan();
 
   return (
-    <div className={`rounded-[14px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50"}`}>
+    <div className={`rounded-[10px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50"}`}>
       <p className={`text-sm font-medium ${cancelled ? "text-[var(--text-1)]" : "text-red-800"}`}>
         {cancelled ? "Scan cancelled" : "Scan failed"}
       </p>
@@ -219,7 +219,7 @@ export default function PulseScanDetailPage({
         {isLoading && (
           <div className="space-y-3">
             {[1, 2].map((i) => (
-              <div key={i} className="h-20 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+              <div key={i} className="h-20 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
             ))}
           </div>
         )}

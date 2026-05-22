@@ -199,7 +199,7 @@ export function CodeClearCandidatesWorkspace() {
         </div>
 
         {selectedIds.length ? (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
             <p className="text-sm font-medium text-[var(--text-2)]">
               {selectedIds.length} selected
             </p>
@@ -247,7 +247,7 @@ export function CodeClearCandidatesWorkspace() {
         ) : null}
 
         {candidates.length ? (
-          <div className="mt-5 overflow-hidden rounded-[18px] border border-[var(--border-2)]">
+          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
             <table className="app-table">
               <thead>
                 <tr>

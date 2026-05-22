@@ -76,10 +76,10 @@ export function PulseOverview() {
       <div className="space-y-6">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-[14px] bg-[var(--surface-1)]" />
+            <div key={i} className="h-28 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
           ))}
         </div>
-        <div className="h-16 animate-pulse rounded-[14px] bg-[var(--surface-1)]" />
+        <div className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
       </div>
     );
   }

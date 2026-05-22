@@ -56,7 +56,7 @@ export function IconSelect({
         <span className="text-xs text-[var(--text-3)]">Select</span>
       </summary>
 
-      <div className="absolute right-0 z-20 mt-2 grid w-[280px] grid-cols-3 gap-2 rounded-[20px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-lg)]">
+      <div className="absolute right-0 z-20 mt-2 grid w-[280px] grid-cols-3 gap-2 rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-lg)]">
         {objectiveIconOptions.map((option) => {
           const OptionIcon = option.icon;
 

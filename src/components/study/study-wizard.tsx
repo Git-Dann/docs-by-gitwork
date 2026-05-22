@@ -120,7 +120,7 @@ export function StudyWizard() {
                 type="button"
                 onClick={() => setSessionMode(mode)}
                 className={cn(
-                  "rounded-[12px] border p-5 text-left transition",
+                  "rounded-[10px] border p-5 text-left transition",
                   sessionMode === mode ? "border-[var(--brand-700)] bg-[var(--mist)]" : "border-[var(--border-2)] hover:bg-[var(--surface-1)]",
                 )}
               >
@@ -148,7 +148,7 @@ export function StudyWizard() {
                   type="button"
                   onClick={() => togglePersona(p.id)}
                   className={cn(
-                    "flex items-start gap-3 rounded-[12px] border p-3.5 text-left transition",
+                    "flex items-start gap-3 rounded-[10px] border p-3.5 text-left transition",
                     selected ? "border-[var(--brand-700)] bg-[var(--mist)]" : "border-[var(--border-2)] hover:bg-[var(--surface-1)]",
                   )}
                 >

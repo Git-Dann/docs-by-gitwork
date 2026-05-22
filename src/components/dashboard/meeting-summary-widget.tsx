@@ -70,7 +70,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
   }
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   if (!data?.connected) {
@@ -158,7 +158,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
 
         {/* Summary panel */}
         {selected && activeEvent && size.cols >= 2 && (
-          <div className="flex flex-1 flex-col gap-2 overflow-hidden rounded-[8px] bg-[var(--surface-1)] p-3">
+          <div className="flex flex-1 flex-col gap-2 overflow-hidden rounded-[6px] bg-[var(--surface-1)] p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>

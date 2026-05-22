@@ -69,7 +69,7 @@ export function LinkManager({
             return (
               <article
                 key={`${link.id ?? "link"}-${index}`}
-                className="rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
+                className="rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-2)]">
@@ -147,7 +147,7 @@ export function LinkManager({
           })}
         </div>
       ) : (
-        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+        <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No links added yet.
         </p>
       )}

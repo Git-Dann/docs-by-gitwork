@@ -1,57 +1,43 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
-  /* ── Gitwork Pulse brand palette ───────────────────────────────────── */
-  --brand-300: #B9E3FF;
-  --brand-500: #63BDF5;
-  --brand-600: #42C7FF;
-  --brand-700: #0970C8;
-  --brand-800: #075A9F;
-  --brand-900: #064A83;
-
-  /* ── Mist / cool-blue surfaces ─────────────────────────────────────── */
-  --mist: #F1F8FE;
-  --mist-light: #F7FBFF;
-  --mist-deeper: #DDF0FC;
-  --mist-border: #B7D7EE;
-
-  /* ── Surface ────────────────────────────────────────────────────────── */
   --surface-canvas: #ffffff;
   --surface-0: #ffffff;
   --surface-1: #fafafa;
-  --surface-2: #F1F8FE;
-  --surface-brand: #F1F8FE;
-  --surface-brand-soft: #F7FBFF;
-  --surface-code: #1c1c1e;
-
-  /* ── Text ────────────────────────────────────────────────────────────── */
-  --text-1: #1f1f1f;
-  --text-2: #3d3d3d;
-  --text-3: #4a4a4a;
-  --text-4: #8a8a8a;
-
-  /* ── Borders ─────────────────────────────────────────────────────────── */
-  --border-1: #c7c7c7;
-  --border-2: #ededed;
-  --border-3: rgba(10, 13, 18, 0.07);
-
-  /* ── Semantic ────────────────────────────────────────────────────────── */
+  --surface-2: #f5f5f5;
+  --surface-brand: #f1f8fe;
+  --surface-brand-soft: #f7fbff;
+  --surface-brand-strong: #ddf0fc;
+  --text-1: #171717;
+  --text-2: #404040;
+  --text-3: #525252;
+  --text-4: #737373;
+  --border-1: #d4d4d4;
+  --border-2: #e5e5e5;
+  --border-3: rgba(10, 13, 18, 0.08);
+  --brand-200: #d6eeff;
+  --brand-300: #b9e3ff;
+  --brand-400: #63bdf5;
+  --brand-500: #0a82dd;
+  --brand-600: #0970c8;
+  --brand-700: #0970c8;
+  --brand-800: #075a9f;
+  --brand-900: #064a83;
+  --brand-cyan: #42c7ff;
+  --brand-focus-ring: rgba(9, 112, 200, 0.16);
+  --brand-gradient: linear-gradient(135deg, #42c7ff 0%, #0970c8 46%, #075a9f 100%);
+  --signal-stripe: linear-gradient(90deg, #0970c8 0%, #075a9f 28%, #42c7ff 62%, #d6eeff 84%, #f7fbff 100%);
   --success-500: #17b26a;
   --success-50: #ecfdf3;
   --warning-500: #dc6803;
   --warning-50: #fffaeb;
-  --info-500: #0970C8;
-  --info-50: #F1F8FE;
+  --info-500: #1570ef;
+  --info-50: #eff8ff;
   --danger-500: #f04438;
   --danger-50: #fef3f2;
-
-  /* ── Aliases ─────────────────────────────────────────────────────────── */
-  --accent: var(--brand-700);
-  --bg: var(--surface-canvas);
-
-  /* ── Elevation ────────────────────────────────────────────────────────── */
-  --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.04);
-  --shadow-sm: 0 1px 3px rgba(10, 13, 18, 0.06), 0 1px 2px rgba(10, 13, 18, 0.04);
+  --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.05);
+  --shadow-sm: 0 1px 3px rgba(10, 13, 18, 0.08), 0 1px 2px rgba(10, 13, 18, 0.04);
   --shadow-lg:
     0 12px 16px -4px rgba(10, 13, 18, 0.08),
     0 4px 6px -2px rgba(10, 13, 18, 0.03),
@@ -59,7 +45,7 @@
   --shadow-skeuomorphic:
     0 1px 2px rgba(10, 13, 18, 0.05),
     inset 0 -2px 0 rgba(10, 13, 18, 0.05),
-    inset 0 0 0 1px rgba(10, 13, 18, 0.10);
+    inset 0 0 0 1px rgba(10, 13, 18, 0.12);
 }
 
 @theme inline {
@@ -81,68 +67,54 @@ body {
 }
 
 html {
-  background: var(--surface-canvas);
+  background: #FAFAF9;
 }
 
 body {
-  background: #ffffff;
+  background: #FAFAF9;
   color: var(--text-1);
   font-family: "Inter", "Segoe UI", sans-serif;
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 ::selection {
-  background: rgba(9, 112, 200, 0.14);
+  background: var(--brand-focus-ring);
 }
 
-@layer base {
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
 @layer components {
-  /* ── Surfaces & cards ──────────────────────────────────────────────── */
   .app-surface {
-    border: 1px solid var(--border-2);
-    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-card {
-    border: 1px solid var(--border-2);
-    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-muted-card {
-    border: 1px solid var(--border-2);
-    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-1);
   }
 
-  .app-mist-card {
-    border: 1px solid var(--mist-border);
-    border-radius: 12px;
-    background: var(--mist);
-    color: var(--text-1);
-  }
-
   .app-subtle-panel {
-    border: 1px solid var(--border-2);
-    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
-  /* ── Typography helpers ────────────────────────────────────────────── */
   .app-eyebrow {
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-4);
   }
@@ -151,11 +123,6 @@ body {
     color: var(--text-3);
   }
 
-  .font-display {
-    font-family: var(--font-display);
-  }
-
-  /* ── Chip / badge ──────────────────────────────────────────────────── */
   .app-chip {
     display: inline-flex;
     align-items: center;
@@ -170,13 +137,21 @@ body {
     color: var(--text-3);
   }
 
-  /* ── Table ─────────────────────────────────────────────────────────── */
+  .signal-stripe {
+    min-height: 18px;
+    background: var(--signal-stripe);
+  }
+
+  .signal-stripe-thin {
+    min-height: 4px;
+    background: var(--signal-stripe);
+  }
+
   .app-table-shell {
     overflow: hidden;
-    border: 1px solid var(--border-2);
-    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-table {
@@ -210,23 +185,21 @@ body {
   }
 
   .app-table tbody tr:hover {
-    background: var(--mist-light);
+    background: var(--surface-1);
   }
 
-  /* ── Dialog ────────────────────────────────────────────────────────── */
   .app-dialog-backdrop {
     background: rgba(10, 13, 18, 0.42);
     backdrop-filter: blur(6px);
   }
 
   .app-dialog-panel {
-    border: 1px solid var(--border-2);
-    border-radius: 20px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12);
   }
 
-  /* ── Buttons — base ────────────────────────────────────────────────── */
   .app-button {
     display: inline-flex;
     align-items: center;
@@ -236,7 +209,7 @@ body {
     vertical-align: middle;
     text-decoration: none;
     border: 1px solid transparent;
-    font-weight: 500;
+    font-weight: 600;
     line-height: 20px;
     text-align: center;
     transition:
@@ -254,7 +227,7 @@ body {
 
   .app-button:focus-visible {
     box-shadow:
-      0 0 0 4px rgba(9, 112, 200, 0.14),
+      0 0 0 4px var(--brand-focus-ring),
       var(--shadow-xs);
   }
 
@@ -262,10 +235,9 @@ body {
     cursor: not-allowed;
   }
 
-  /* ── Button variants ───────────────────────────────────────────────── */
   .app-button-primary {
     background: var(--brand-700);
-    border-color: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.12);
     color: #ffffff !important;
     box-shadow: var(--shadow-skeuomorphic);
   }
@@ -278,13 +250,13 @@ body {
 
   .app-button-primary:hover:not(:disabled) {
     background: var(--brand-800);
-    border-color: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .app-button-primary:disabled {
     background: var(--brand-300);
-    border-color: rgba(255, 255, 255, 0.10);
-    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--brand-900);
     box-shadow: none;
   }
 
@@ -302,13 +274,13 @@ body {
   }
 
   .app-button-secondary:hover:not(:disabled) {
-    background: var(--mist-light);
+    background: var(--surface-1);
   }
 
   .app-button-secondary:disabled {
     background: #fcfcfd;
     border-color: var(--border-2);
-    color: var(--text-4);
+    color: #a4a7ae;
     box-shadow: none;
   }
 
@@ -319,11 +291,11 @@ body {
   }
 
   .app-button-tertiary:hover:not(:disabled) {
-    background: var(--mist-light);
+    background: var(--surface-1);
   }
 
   .app-button-tertiary:disabled {
-    color: var(--text-4);
+    color: #a4a7ae;
   }
 
   .app-button-link,
@@ -346,17 +318,7 @@ body {
 
   .app-button-link:disabled,
   .app-button-hyperlink:disabled {
-    color: var(--text-4);
-  }
-
-  .app-button-mist {
-    background: var(--mist);
-    border-color: var(--mist-border);
-    color: var(--text-1) !important;
-  }
-
-  .app-button-mist:hover:not(:disabled) {
-    background: var(--mist-deeper);
+    color: #a4a7ae;
   }
 
   .app-button-dark {
@@ -396,42 +358,41 @@ body {
   }
 
   .app-button-utility:hover:not(:disabled) {
-    background: var(--mist-light);
+    background: var(--surface-1);
     color: var(--text-2);
   }
 
   .app-button-utility:disabled {
     background: #fcfcfd;
     border-color: var(--border-2);
-    color: var(--text-4);
+    color: #a4a7ae;
     box-shadow: none;
   }
 
-  /* ── Button sizes ──────────────────────────────────────────────────── */
   .app-button-xs {
     height: 32px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 12px;
     font-size: 13px;
   }
 
   .app-button-sm {
     height: 36px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .app-button-md {
     height: 40px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .app-button-lg {
     height: 44px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 16px;
     font-size: 14px;
   }
@@ -439,18 +400,17 @@ body {
   .app-button-icon-sm {
     height: 36px;
     width: 36px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0;
   }
 
   .app-button-icon-md {
     height: 40px;
     width: 40px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0;
   }
 
-  /* ── Forms ─────────────────────────────────────────────────────────── */
   .app-field-label,
   .proposal-form-theme label > span:first-child {
     display: block;
@@ -476,8 +436,8 @@ body {
   .proposal-form-theme select,
   .proposal-form-theme textarea {
     width: 100%;
-    border: 1px solid var(--border-1);
-    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.14);
+    border-radius: 6px;
     background: var(--surface-0);
     color: var(--text-1);
     box-shadow: var(--shadow-xs);
@@ -493,7 +453,7 @@ body {
   .app-select,
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
   .proposal-form-theme select {
-    min-height: 44px;
+    min-height: 36px;
     padding: 0 12px;
     font-size: 14px;
     line-height: 20px;
@@ -506,7 +466,7 @@ body {
     font-size: 14px;
     line-height: 20px;
     resize: vertical;
-    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10.5 1.5L1.5 10.5' stroke='%23B7D7EE' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.5 5.5L5.5 10.5' stroke='%23B7D7EE' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10.5 1.5L1.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.5 5.5L5.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
     background-position: calc(100% - 5px) calc(100% - 5px);
     background-repeat: no-repeat;
     background-size: 12px 12px;
@@ -546,9 +506,9 @@ body {
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):focus,
   .proposal-form-theme select:focus,
   .proposal-form-theme textarea:focus {
-    border-color: var(--brand-700);
+    border-color: var(--brand-500);
     box-shadow:
-      0 0 0 4px rgba(9, 112, 200, 0.12),
+      0 0 0 4px var(--brand-focus-ring),
       var(--shadow-xs);
   }
 
@@ -586,41 +546,27 @@ body {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a8a8a' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23717680' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
   }
 
   .app-select,
   .proposal-form-theme select {
-    background-position: calc(100% - 20px) center;
+    background-position: calc(100% - 14px) center;
     background-size: 18px 18px;
-    padding-right: 46px;
+    padding-right: 42px;
   }
 
   .app-select-compact {
-    background-position: calc(100% - 16px) center;
+    background-position: calc(100% - 12px) center;
     background-size: 16px 16px;
-    padding-right: 40px;
+    padding-right: 36px;
   }
 
   .app-checkbox {
     width: 16px;
     height: 16px;
-    accent-color: var(--brand-700);
-  }
-
-  /* ── Signal stripe — brand closing band ────────────────────────────── */
-  .signal-stripe {
-    background: linear-gradient(
-      90deg,
-      #064A83 0%,
-      #0970C8 30%,
-      #63BDF5 60%,
-      #42C7FF 80%,
-      #F1F8FE 100%
-    );
-    height: 6px;
-    width: 100%;
+    accent-color: var(--brand-600);
   }
 }
 

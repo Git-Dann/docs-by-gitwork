@@ -96,7 +96,7 @@ export function CoverEditor({
           </label>
         </div>
 
-        <div className="rounded-[12px] border border-[var(--border-2)] bg-white px-4 py-4">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4">
           <p className="app-eyebrow">Resolved copy</p>
           <p className="mt-2 text-sm leading-6 text-[var(--text-2)]">{confidentialityText}</p>
         </div>

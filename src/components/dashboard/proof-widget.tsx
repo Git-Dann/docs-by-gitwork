@@ -9,7 +9,7 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useProofDocuments();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const docs = data?.documents ?? [];

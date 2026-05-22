@@ -113,7 +113,7 @@ export function ObjectivesEditor({
                   />
                 </label>
 
-                <div className="flex items-center gap-2 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3 text-sm text-[var(--text-3)]">
+                <div className="flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3 text-sm text-[var(--text-3)]">
                   {(() => {
                     const SelectedIcon = getObjectiveIcon(item.icon);
                     return <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />;
@@ -127,7 +127,7 @@ export function ObjectivesEditor({
           ))}
         </div>
       ) : (
-        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+        <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No objectives yet.
         </p>
       )}

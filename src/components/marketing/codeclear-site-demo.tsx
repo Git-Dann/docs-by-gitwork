@@ -203,22 +203,22 @@ export function CodeClearSiteDemo() {
             </label>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Work type</p>
                 <p className="mt-2 text-sm text-white/82">{result.workType}</p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Timeline</p>
                 <p className="mt-2 text-sm text-white/82">{result.timeline}</p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Output</p>
                 <p className="mt-2 text-sm text-white/82">3 top matches with delivery fit</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-[#101522] p-5">
+          <div className="rounded-[10px] border border-white/8 bg-[#101522] p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Live matching</p>
               <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/66">
@@ -227,13 +227,13 @@ export function CodeClearSiteDemo() {
             </div>
 
             <div className="mt-6 space-y-3">
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-white/[0.04] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Signal</p>
                 <p className="mt-2 text-sm leading-6 text-white/82">
                   Role framing, stack fit, availability, and delivery signal are combined into one shortlist.
                 </p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-white/[0.04] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Next</p>
                 <p className="mt-2 text-sm leading-6 text-white/82">{result.nextStep}</p>
               </div>

@@ -67,7 +67,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
   });
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   if (!data?.connected) {

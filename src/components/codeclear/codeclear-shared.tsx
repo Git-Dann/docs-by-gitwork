@@ -317,7 +317,7 @@ export function CodeClearActionButton({
       variant="primary"
       size="sm"
       className={cn(
-        "h-8 rounded-[8px] border border-[var(--border-1)] bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] px-[10px] py-[6px] text-[14px] font-semibold leading-[20px] text-white shadow-[var(--shadow-skeuomorphic)] hover:bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] hover:text-white",
+        "h-8 rounded-[6px] border border-[var(--border-1)] bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] px-[10px] py-[6px] text-[14px] font-semibold leading-[20px] text-white shadow-[var(--shadow-skeuomorphic)] hover:bg-[linear-gradient(167.64deg,#72edf2_0%,#5151e5_100%)] hover:text-white",
         className,
       )}
       {...props}

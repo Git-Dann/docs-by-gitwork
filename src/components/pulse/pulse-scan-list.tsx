@@ -79,7 +79,7 @@ function FilterOption<T extends string>({
       type="button"
       onClick={() => onClick(value)}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-[8px] px-3 py-2 text-left text-sm transition",
+        "flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left text-sm transition",
         active
           ? "bg-[var(--brand-50)] font-medium text-[var(--brand-700)]"
           : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
@@ -155,7 +155,7 @@ function FiltersDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1.5 w-56 rounded-[14px] border border-[var(--border-2)] bg-white p-3 shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1.5 w-56 rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-lg">
           <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Status</p>
           <FilterOption value={"ALL" as StatusFilter} active={statusFilter === "ALL"} onClick={onStatusChange}>All statuses</FilterOption>
           <FilterOption value={"COMPLETED" as StatusFilter} active={statusFilter === "COMPLETED"} onClick={onStatusChange}>Completed</FilterOption>
@@ -184,7 +184,7 @@ function FiltersDropdown({
               <button
                 type="button"
                 onClick={() => { onClear(); setOpen(false); }}
-                className="w-full rounded-[8px] px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
+                className="w-full rounded-[6px] px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
               >
                 Clear all filters
               </button>
@@ -266,7 +266,7 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
             right: coords.right,
             transform: "translateY(calc(-100% - 8px))",
           }}
-          className="z-[9999] w-44 rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-xl"
+          className="z-[9999] w-44 rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-xl"
         >
           <div className="absolute -bottom-1.5 right-3 h-3 w-3 rotate-45 border-b border-r border-[var(--border-2)] bg-white" />
           <p className="mb-2.5 text-xs font-medium text-[var(--text-1)]">Delete this scan?</p>
@@ -275,14 +275,14 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
               type="button"
               onClick={handleDelete}
               disabled={isPending}
-              className="flex-1 rounded-[8px] bg-red-600 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition"
+              className="flex-1 rounded-[6px] bg-red-600 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60 transition"
             >
               {isPending ? "Deleting…" : "Delete"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="flex-1 rounded-[8px] border border-[var(--border-2)] py-1.5 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] transition"
+              className="flex-1 rounded-[6px] border border-[var(--border-2)] py-1.5 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] transition"
             >
               Cancel
             </button>
@@ -331,7 +331,7 @@ function ScanRow({
       />
 
       {/* Col 2 — Icon */}
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)]">
         <SignalIcon className="h-4 w-4 text-[var(--text-4)]" />
       </div>
 
@@ -487,7 +487,7 @@ export function PulseScanListView() {
     return (
       <div className="space-y-2">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-14 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+          <div key={i} className="h-14 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
         ))}
       </div>
     );
@@ -568,7 +568,7 @@ export function PulseScanListView() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex flex-col gap-2 rounded-[12px] border border-[var(--brand-200)] bg-[var(--brand-50)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2.5">
+        <div className="flex flex-col gap-2 rounded-[10px] border border-[var(--brand-200)] bg-[var(--brand-50)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2.5">
           <p className="text-sm font-medium text-[var(--brand-700)]">
             {selected.size} scan{selected.size !== 1 ? "s" : ""} selected
           </p>
@@ -580,14 +580,14 @@ export function PulseScanListView() {
                   type="button"
                   onClick={handleBulkDelete}
                   disabled={bulkDeleting}
-                  className="rounded-[8px] bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  className="rounded-[6px] bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
                   {bulkDeleting ? "Deleting…" : "Yes, delete"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmingBulkDelete(false)}
-                  className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)]"
+                  className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)]"
                 >
                   Cancel
                 </button>
@@ -597,7 +597,7 @@ export function PulseScanListView() {
                 <button
                   type="button"
                   onClick={handleBulkDelete}
-                  className="inline-flex items-center gap-1.5 rounded-[8px] border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center gap-1.5 rounded-[6px] border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
                 >
                   <TrashIcon className="h-3.5 w-3.5" />
                   Delete selected
@@ -626,7 +626,7 @@ export function PulseScanListView() {
 
       {/* List */}
       {allScans.length === 0 ? (
-        <div className="rounded-[16px] border border-dashed border-[var(--border-2)] py-16 text-center">
+        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center">
           <SignalIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
           <p className="text-sm font-medium text-[var(--text-2)]">No scans yet</p>
           <p className="mt-1 text-sm text-[var(--text-4)]">
@@ -650,7 +650,7 @@ export function PulseScanListView() {
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[16px] border border-dashed border-[var(--border-2)] py-12 text-center">
+        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-12 text-center">
           <p className="text-sm font-medium text-[var(--text-2)]">No results</p>
           <p className="mt-1 text-sm text-[var(--text-4)]">Try adjusting your search or filters.</p>
           <button
@@ -662,7 +662,7 @@ export function PulseScanListView() {
           </button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[16px] border border-[var(--border-2)]">
+        <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
           {/* Table header — uses the same grid template as ScanRow for exact alignment */}
           <div
             className="flex sm:grid items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5"

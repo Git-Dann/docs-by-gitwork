@@ -134,7 +134,7 @@ export function ProposalProofPanel({
               linkedDocuments.map((document) => (
                 <div
                   key={document.id}
-                  className="rounded-[18px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
+                  className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -169,7 +169,7 @@ export function ProposalProofPanel({
                 </div>
               ))
             ) : (
-              <div className="rounded-[18px] border border-dashed border-[var(--border-2)] bg-white px-4 py-8 text-center text-sm text-[var(--text-3)]">
+              <div className="rounded-[10px] border border-dashed border-[var(--border-2)] bg-white px-4 py-8 text-center text-sm text-[var(--text-3)]">
                 No Proof drafts are linked to this proposal yet.
               </div>
             )}

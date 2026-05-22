@@ -135,7 +135,7 @@ export function StudyList() {
               type="button"
               onClick={() => setFilter(tab.id)}
               className={cn(
-                "rounded-[8px] px-3 py-1.5 text-sm font-medium transition",
+                "rounded-[6px] px-3 py-1.5 text-sm font-medium transition",
                 filter === tab.id
                   ? "bg-white text-[var(--text-1)] shadow-sm"
                   : "text-[var(--text-3)] hover:text-[var(--text-2)]",
@@ -167,10 +167,10 @@ export function StudyList() {
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-44 animate-pulse rounded-[16px] bg-[var(--surface-1)]" />)}
+          {[1, 2, 3].map((i) => <div key={i} className="h-44 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[16px] border border-dashed border-[var(--border-2)] py-16 text-center">
+        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center">
           <BeakerIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
           <p className="text-sm font-medium text-[var(--text-2)]">{filter === "all" ? "No studies yet" : `No ${filter} studies`}</p>
           {filter === "all" && (

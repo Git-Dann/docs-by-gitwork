@@ -28,7 +28,7 @@ export function TouchpointEditor({
   }
 
   return (
-    <div className="rounded-[18px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
       {safeItems.length ? (
         safeItems.map((touchpoint, index) => (
           <article

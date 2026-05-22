@@ -70,7 +70,7 @@ function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: 
             <div
               key={i}
               className={cn(
-                "flex items-center gap-3 rounded-[12px] border p-3",
+                "flex items-center gap-3 rounded-[10px] border p-3",
                 entry.isMain ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)]" : "border-[var(--border-2)] bg-white",
               )}
             >
@@ -102,14 +102,14 @@ function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: 
       {/* AI comparison */}
       {data.comparison && (
         <>
-          <div className="rounded-[14px] border border-[var(--border-2)] p-5">
+          <div className="rounded-[10px] border border-[var(--border-2)] p-5">
             <p className="app-eyebrow mb-2">Summary</p>
             <p className="text-sm leading-relaxed text-[var(--text-2)]">{data.comparison.summary}</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             {data.comparison.advantages.length > 0 && (
-              <div className="rounded-[12px] border border-emerald-200 bg-emerald-50 p-4">
+              <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 p-4">
                 <p className="mb-2 text-sm font-semibold text-emerald-800">Where you lead</p>
                 <ul className="space-y-1.5">
                   {data.comparison.advantages.map((a, i) => (
@@ -122,7 +122,7 @@ function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: 
               </div>
             )}
             {data.comparison.gaps.length > 0 && (
-              <div className="rounded-[12px] border border-red-200 bg-red-50 p-4">
+              <div className="rounded-[10px] border border-red-200 bg-red-50 p-4">
                 <p className="mb-2 text-sm font-semibold text-red-800">Where they lead</p>
                 <ul className="space-y-1.5">
                   {data.comparison.gaps.map((g, i) => (
@@ -136,7 +136,7 @@ function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: 
             )}
           </div>
 
-          <div className="rounded-[14px] border border-amber-200 bg-amber-50 p-5">
+          <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-5">
             <p className="mb-1.5 text-sm font-semibold text-amber-800">How to overtake them</p>
             <p className="text-sm text-amber-700">{data.comparison.recommendation}</p>
           </div>
@@ -150,13 +150,13 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
   return (
     <div className="space-y-6">
       {/* Opening statement */}
-      <div className="rounded-[14px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
+      <div className="rounded-[10px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
         <p className="app-eyebrow mb-2">Opening statement</p>
         <p className="text-sm italic leading-7 text-[var(--text-1)]">&ldquo;{kit.openingStatement}&rdquo;</p>
       </div>
 
       {/* Wow finding */}
-      <div className="rounded-[14px] border border-amber-200 bg-amber-50 p-5">
+      <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-5">
         <div className="mb-1 flex items-center gap-2">
           <LightBulbIcon className="h-4 w-4 text-amber-600" />
           <p className="text-sm font-semibold text-amber-800">Wow finding</p>
@@ -167,7 +167,7 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
 
       {/* Talking points */}
       {kit.talkingPoints.length > 0 && (
-        <div className="rounded-[14px] border border-[var(--border-2)] p-5">
+        <div className="rounded-[10px] border border-[var(--border-2)] p-5">
           <p className="app-eyebrow mb-3">Call talking points</p>
           <ul className="space-y-2">
             {kit.talkingPoints.map((point, i) => (
@@ -186,13 +186,13 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
           <p className="app-eyebrow mb-3">Discovery questions</p>
           <div className="space-y-3">
             {kit.questions.map((q, i) => (
-              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+              <div key={i} className="rounded-[10px] border border-[var(--border-2)] p-4">
                 <div className="mb-2 flex items-start gap-2">
                   <QuestionMarkCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-500)]" />
                   <p className="text-sm font-semibold text-[var(--text-1)]">{q.question}</p>
                 </div>
                 <p className="mb-2 pl-6 text-xs text-[var(--text-3)]">{q.context}</p>
-                <div className="ml-6 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                <div className="ml-6 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Follow-up: </span>
                   <span className="text-xs italic text-[var(--text-3)]">{q.followUp}</span>
                 </div>
@@ -208,7 +208,7 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
           <p className="app-eyebrow mb-3">Anticipated objections</p>
           <div className="space-y-3">
             {kit.anticipatedObjections.map((obj, i) => (
-              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+              <div key={i} className="rounded-[10px] border border-[var(--border-2)] p-4">
                 <p className="mb-2 text-sm font-medium text-red-700">&ldquo;{obj.objection}&rdquo;</p>
                 <p className="text-sm text-[var(--text-2)]">{obj.response}</p>
               </div>
@@ -218,7 +218,7 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
       )}
 
       {/* Pricing anchor */}
-      <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-5">
+      <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 p-5">
         <div className="mb-2 flex items-center gap-2">
           <CurrencyDollarIcon className="h-4 w-4 text-emerald-700" />
           <p className="text-sm font-semibold text-emerald-800">Pricing anchor</p>
@@ -320,7 +320,7 @@ function StackTab({
 
       {/* Detected raw signals (fallback for old scans) */}
       {!analysis.detectedStack && detectedStack.length > 0 && (
-        <div className="rounded-[12px] border border-[var(--border-2)] p-4">
+        <div className="rounded-[10px] border border-[var(--border-2)] p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Detected signals</p>
           <div className="flex flex-wrap gap-2">
             {detectedStack.map((tech) => (
@@ -336,7 +336,7 @@ function StackTab({
       )}
 
       {/* Assessment */}
-      <div className="rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+      <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">Stack assessment</p>
         <p className="text-sm leading-relaxed text-[var(--text-2)]">{analysis.assessment}</p>
       </div>
@@ -365,7 +365,7 @@ function StackTab({
           <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Recommendations</p>
           <div className="space-y-3">
             {analysis.recommendations.map((rec, i) => (
-              <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+              <div key={i} className="rounded-[10px] border border-[var(--border-2)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -408,7 +408,7 @@ function VitalScore({
     : score >= 50 ? "border-amber-300"
     : "border-red-300";
   return (
-    <div className={cn("flex flex-col items-center gap-1 rounded-[12px] border p-3", ring)}>
+    <div className={cn("flex flex-col items-center gap-1 rounded-[10px] border p-3", ring)}>
       <span className={cn("text-xl font-bold tabular-nums", color)}>
         {score !== null ? score : "—"}
       </span>
@@ -442,7 +442,7 @@ function VitalMetric({
 
 function CodeInsightsCard({ insights }: { insights: NonNullable<CodeAgentInsights> }) {
   return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
       <div className="mb-4 flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-[var(--text-1)]">Code Intelligence</p>
         <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
@@ -506,7 +506,7 @@ function DeployInsightsCard({ insights }: { insights: NonNullable<DeployAgentIns
     : null;
 
   return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
       <div className="mb-4 flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-[var(--text-1)]">Deploy Intelligence</p>
         <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
@@ -572,7 +572,7 @@ function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
   const formatMs = (ms: number | null) => ms !== null ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`) : "—";
 
   return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-5">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
       <div className="mb-4 flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-[var(--text-1)]">Core Web Vitals</p>
         <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
@@ -646,7 +646,7 @@ function AgentStatusBadge({ status }: { status: AgentStatus }) {
 function AgentCard({ slot }: { slot: AgentSlot }) {
   return (
     <div className={cn(
-      "flex flex-col gap-2 rounded-[12px] border p-4 transition-colors",
+      "flex flex-col gap-2 rounded-[10px] border p-4 transition-colors",
       slot.status === "completed" ? "border-[var(--border-2)] bg-white"
       : slot.status === "error"     ? "border-red-200 bg-red-50"
       : slot.status === "na"        ? "border-[var(--border-1)] bg-[var(--surface-1)] opacity-60"
@@ -662,7 +662,7 @@ function AgentCard({ slot }: { slot: AgentSlot }) {
           type="button"
           onClick={slot.onAction}
           disabled={slot.loading}
-          className="mt-auto self-start rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+          className="mt-auto self-start rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
         >
           {slot.loading ? "Running…" : slot.actionLabel}
         </button>
@@ -828,7 +828,7 @@ function AgentPanel({
   ];
 
   return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-semibold text-[var(--text-1)]">Scan agents</p>
         <span className="text-xs text-[var(--text-4)]">
@@ -861,7 +861,7 @@ function AgentPanel({
 
 function AiUnavailable({ aiError }: { aiError: string | null }) {
   return (
-    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-8 text-center">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-8 text-center">
       <p className="text-sm font-semibold text-[var(--text-2)]">AI analysis not available</p>
       {aiError ? (
         <p className="mt-2 text-sm text-[var(--text-3)]">{aiError}</p>
@@ -1153,7 +1153,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {/* AI error banner — shown when LLM failed but scan still completed */}
       {scan.aiError && (
-        <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span className="font-semibold">AI analysis unavailable:</span> {scan.aiError} Technical checks and scores above are accurate.
         </div>
       )}
@@ -1179,7 +1179,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
           {/* Project classification */}
           {llm.projectClassification && (
-            <div className="rounded-[14px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
+            <div className="rounded-[10px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="app-eyebrow mb-0.5">Project type detected</p>
@@ -1230,7 +1230,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
-          <div className="rounded-[14px] border border-[var(--border-2)] p-5">
+          <div className="rounded-[10px] border border-[var(--border-2)] p-5">
             <p className="app-eyebrow mb-2">Executive summary</p>
             <p className="text-sm leading-7 text-[var(--text-2)]">{llm.executiveSummary}</p>
           </div>
@@ -1240,7 +1240,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               <p className="app-eyebrow mb-3">Strengths</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {llm.strengths.map((s) => (
-                  <div key={s.title} className="rounded-[12px] border border-emerald-200 bg-emerald-50 p-4">
+                  <div key={s.title} className="rounded-[10px] border border-emerald-200 bg-emerald-50 p-4">
                     <p className="text-sm font-medium text-emerald-800">{s.title}</p>
                     <p className="mt-1 text-sm text-emerald-700">{s.detail}</p>
                   </div>
@@ -1284,7 +1284,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {llm.proposalHook && (
-            <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
               <p className="app-eyebrow mb-2">Discovery call opener</p>
               <p className="text-sm italic leading-7 text-[var(--text-1)]">&ldquo;{llm.proposalHook}&rdquo;</p>
             </div>
@@ -1305,7 +1305,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             const hasIssues = failed > 0 || warned > 0;
 
             return (
-              <div key={category} className="rounded-[12px] border border-[var(--border-2)] overflow-hidden">
+              <div key={category} className="rounded-[10px] border border-[var(--border-2)] overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleCategory(category)}
@@ -1366,7 +1366,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {llm.criticalGaps.map((gap, i) => (
             <div
               key={i}
-              className="rounded-[12px] border border-[var(--border-2)] p-4"
+              className="rounded-[10px] border border-[var(--border-2)] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
@@ -1396,7 +1396,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             <p className="text-sm text-[var(--text-3)]">No build opportunities identified.</p>
           )}
           {llm.buildOpportunities.map((opp, i) => (
-            <div key={i} className="rounded-[12px] border border-[var(--border-2)] p-4">
+            <div key={i} className="rounded-[10px] border border-[var(--border-2)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-[var(--text-1)]">{opp.title}</p>
@@ -1470,7 +1470,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   <p className="text-sm font-semibold text-[var(--text-1)]">{category}</p>
                   <span className="text-xs text-[var(--text-4)]">{done}/{items.length} done</span>
                 </div>
-                <div className="divide-y divide-[var(--border-2)] rounded-[12px] border border-[var(--border-2)]">
+                <div className="divide-y divide-[var(--border-2)] rounded-[10px] border border-[var(--border-2)]">
                   {(items as ProductionReadinessItem[]).map((item: ProductionReadinessItem, i: number) => (
                     <div key={i} className="flex items-start gap-3 px-4 py-3">
                       <span className="mt-0.5 shrink-0">

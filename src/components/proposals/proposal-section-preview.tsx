@@ -20,7 +20,7 @@ function Graphic({
   altText: string;
 }) {
   return (
-    <figure className="proposal-block-avoid overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-0)]">
+    <figure className="proposal-block-avoid overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={url} alt={altText} className="h-56 w-full object-cover" />
       <figcaption className="space-y-1 p-4">
@@ -124,7 +124,7 @@ function SectionBody({
             <p className="text-sm text-[var(--text-3)]">Date: {data.date}</p>
           </div>
 
-          <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
             {data.confidentiality}
           </div>
         </div>
@@ -181,10 +181,10 @@ function SectionBody({
           {data.items.map((item) => (
             <article
               key={item.id}
-              className="proposal-block-avoid rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5"
+              className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5"
             >
               <div className="flex items-start gap-4">
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-[14px] bg-[var(--surface-brand)] text-[var(--brand-700)]">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] bg-[var(--surface-brand)] text-[var(--brand-700)]">
                   {(() => {
                     const Icon = getObjectiveIcon(item.icon);
                     return <Icon className="h-5 w-5" />;
@@ -218,7 +218,7 @@ function SectionBody({
           {data.items.map((touchpoint) => (
             <article
               key={touchpoint.id}
-              className="proposal-block-avoid rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5"
+              className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5"
             >
               <h3 className="text-[20px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">
                 {touchpoint.title}
@@ -242,7 +242,7 @@ function SectionBody({
                 </p>
               ) : null}
               {touchpoint.callout ? (
-                <p className="mt-4 rounded-[14px] bg-[var(--surface-brand)] px-4 py-3 text-sm leading-6 text-[var(--brand-700)]">
+                <p className="mt-4 rounded-[10px] bg-[var(--surface-brand)] px-4 py-3 text-sm leading-6 text-[var(--brand-700)]">
                   {touchpoint.callout}
                 </p>
               ) : null}
@@ -262,7 +262,7 @@ function SectionBody({
             {phases.map((phase) => (
               <div
                 key={phase.id ?? phase.name}
-                className="proposal-block-avoid relative rounded-[18px] border border-[var(--border-2)] p-4"
+                className="proposal-block-avoid relative rounded-[10px] border border-[var(--border-2)] p-4"
               >
                 <span className="absolute -left-[1.35rem] top-3 h-2.5 w-2.5 rounded-full bg-[var(--brand-500)]" />
                 <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
@@ -282,7 +282,7 @@ function SectionBody({
           {phases.map((phase) => (
             <article
               key={phase.id ?? phase.name}
-              className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] p-4"
+              className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] p-4"
             >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
@@ -370,7 +370,7 @@ function SectionBody({
               </table>
             </div>
 
-            <div className="proposal-block-avoid ml-auto max-w-xs space-y-1 rounded-[18px] border border-[var(--border-2)] bg-white p-4 text-sm shadow-[var(--shadow-xs)]">
+            <div className="proposal-block-avoid ml-auto max-w-xs space-y-1 rounded-[10px] border border-[var(--border-2)] bg-white p-4 text-sm shadow-[var(--shadow-xs)]">
               <Row label="Subtotal" value={formatCurrency(subtotal, data.currency)} />
               <Row
                 label={`Discount (${discountPercent}%)`}
@@ -406,7 +406,7 @@ function SectionBody({
                   {paymentSchedule.map((row, index) => (
                     <article
                       key={row.id}
-                      className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+                      className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4"
                     >
                       {row.timelinePhaseId && timelinePhaseById[row.timelinePhaseId] ? (
                         <p className="mb-3 inline-flex rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-4)]">
@@ -448,7 +448,7 @@ function SectionBody({
                 {additionalNotes.map((item, index) => (
                   <li
                     key={`${item}-${index}`}
-                    className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-[16px] leading-8 text-[var(--text-2)]"
+                    className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-[16px] leading-8 text-[var(--text-2)]"
                   >
                     {item}
                   </li>
@@ -466,7 +466,7 @@ function SectionBody({
       const secondary = proposal.ctas.find((cta) => cta.role === "SECONDARY");
 
       return (
-        <div className="proposal-block-avoid rounded-[22px] border border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] p-6">
+        <div className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] p-6">
           <p className="app-eyebrow">Next Step</p>
           <p className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-[var(--text-1)]">
             {data.headline}
@@ -504,7 +504,7 @@ function SectionBody({
             {proposal.links.map((link) => (
               <li
                 key={link.id ?? link.url}
-                className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] p-4"
+                className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] p-4"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-[var(--text-1)]">{link.label}</p>
@@ -551,7 +551,7 @@ function SectionBody({
       };
 
       return (
-        <div className="proposal-block-avoid grid gap-4 rounded-[22px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5 md:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="proposal-block-avoid grid gap-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5 md:grid-cols-[minmax(0,1fr)_220px]">
           <div className="space-y-3 text-sm leading-7 text-[var(--text-2)]">
             <p>
               Prepared by: <span className="font-medium text-[var(--text-1)]">{data.preparedBy}</span>
@@ -561,7 +561,7 @@ function SectionBody({
             {data.footerNote ? <p className="text-sm leading-7 text-[var(--text-3)]">{data.footerNote}</p> : null}
           </div>
           <div className="space-y-3">
-            <div className="space-y-3 rounded-[14px] border border-[var(--border-2)] bg-white p-4">
+            <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
                   Signature
@@ -580,7 +580,7 @@ function SectionBody({
               </div>
             </div>
             {data.showBrandingBlock ? (
-              <div className="rounded-[14px] bg-[var(--surface-brand)] px-4 py-3 text-xs font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
+              <div className="rounded-[10px] bg-[var(--surface-brand)] px-4 py-3 text-xs font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
                 Foundry by Gitwork
               </div>
             ) : null}
@@ -834,7 +834,7 @@ function GitworkMark({ className }: { className?: string }) {
 
 function InfoCard({ title, content }: { title: string; content: string }) {
   return (
-    <article className="proposal-block-avoid rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
+    <article className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
       <p className="text-xs font-semibold tracking-wide text-[var(--text-4)] uppercase">{title}</p>
       <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{content || "Not set"}</p>
     </article>

@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
           <Image src="/foundry-logo.svg" alt="Foundry by Gitwork" width={120} height={36} />
         </div>
 
-        <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-8 shadow-[var(--shadow-sm)]">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-8 shadow-[var(--shadow-sm)]">
           {step === "success" ? (
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-50">

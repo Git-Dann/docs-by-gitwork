@@ -23,7 +23,7 @@ export default function StudyWidget({ size }: { size: WidgetSize }) {
   const { data: studies, isLoading } = useStudyList();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const list = studies ?? [];

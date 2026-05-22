@@ -209,7 +209,7 @@ export function CodeClearPipelineWorkspace() {
       <CodeClearTabs />
 
       <div className="grid gap-3 xl:grid-cols-2">
-        <div className="rounded-[16px] border border-[rgba(63,98,255,0.14)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
+        <div className="rounded-[10px] border border-[rgba(63,98,255,0.14)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
             Signal orchestration
           </p>
@@ -311,7 +311,7 @@ function PipelineColumn({
           ))}
 
           {activeId && isOver && candidates.length === 0 ? (
-            <div className="flex h-20 items-center justify-center rounded-[14px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
+            <div className="flex h-20 items-center justify-center rounded-[10px] border-2 border-dashed border-[var(--brand-400)] bg-[var(--surface-brand-soft)]">
               <p className="text-xs font-medium text-[var(--brand-600)]">Drop here</p>
             </div>
           ) : null}
@@ -352,7 +352,7 @@ function PipelineCard({
       <div
         ref={setNodeRef}
         style={{ ...style, height: 160 }}
-        className="rounded-[18px] border-2 border-dashed border-[var(--border-2)] bg-[var(--surface-2)] opacity-40"
+        className="rounded-[10px] border-2 border-dashed border-[var(--border-2)] bg-[var(--surface-2)] opacity-40"
       />
     );
   }
@@ -362,7 +362,7 @@ function PipelineCard({
       ref={isOverlay ? undefined : setNodeRef}
       style={style}
       className={cn(
-        "rounded-[18px] border bg-white shadow-[var(--shadow-xs)] transition-shadow duration-150",
+        "rounded-[10px] border bg-white shadow-[var(--shadow-xs)] transition-shadow duration-150",
         isOverlay
           ? "rotate-1 scale-[1.02] shadow-[0_16px_48px_rgba(0,0,0,0.18)] ring-2 ring-[var(--brand-400)]/40"
           : "",
@@ -448,7 +448,7 @@ function PipelineCard({
           <div className="mt-4 flex items-center justify-end">
             <Link
               href="/app/proposals?new=1"
-              className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--brand-600)] bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--brand-600)] bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
             >
               <DocumentTextIcon className="h-3.5 w-3.5" />
               Create Doc
@@ -472,7 +472,7 @@ function PipelineStatCard({
   return (
     <div
       className={cn(
-        "rounded-[16px] border px-4 py-4",
+        "rounded-[10px] border px-4 py-4",
         tone === "sky"
           ? "border-sky-200 bg-sky-50/70"
           : "border-violet-200 bg-violet-50/70",

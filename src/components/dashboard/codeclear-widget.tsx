@@ -17,7 +17,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useCodeClearStats();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const stats = data ?? { total: 0, byStatus: [], avgThis: null, passRateThis: null, recheckDue: 0 };

@@ -3,22 +3,19 @@
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
-  Bars3Icon,
-  ChartBarSquareIcon,
-  ChevronUpDownIcon,
   CodeBracketIcon,
+  ChevronUpDownIcon,
   Cog8ToothIcon,
-  HomeIcon,
+  DocumentTextIcon,
+  HomeModernIcon,
   LifebuoyIcon,
   MagnifyingGlassIcon,
   SignalIcon,
-  UsersIcon,
-  XMarkIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
@@ -26,10 +23,9 @@ import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
 type NavItem = {
   href?: string;
   label: string;
-  subtitle?: string;
+  description?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
-  moduleId?: string;
 };
 
 export function AppShell({
@@ -48,84 +44,52 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
-  const { data: session } = useSession();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileMenuOpen]);
-
-  const isAdmin = session?.user?.role === "ADMIN";
-
-  const allModuleNav: NavItem[] = useMemo(
+  const primaryNav = useMemo<NavItem[]>(
     () => [
+      {
+        href: "/app",
+        label: "Foundry HQ",
+        icon: HomeModernIcon,
+      },
       {
         href: "/app/pulse",
         label: "Pulse",
-        subtitle: "Health and delivery tracking",
+        description: "Health and delivery tracking",
         icon: SignalIcon,
-        moduleId: "pulse",
       },
       {
-        href: "/app/codeclear",
+        href: "/app/code",
         label: "Code",
-        subtitle: "Dev review and validation",
+        description: "Dev review and validation",
         icon: CodeBracketIcon,
-        moduleId: "codeclear",
       },
       {
-        href: "/app/proposals",
+        href: "/app/docs",
         label: "Docs",
-        subtitle: "Documentation and client outputs",
-        icon: ChartBarSquareIcon,
-        moduleId: "proposals",
+        description: "Documentation and client outputs",
+        icon: DocumentTextIcon,
       },
       {
-        href: "/app/clients",
+        href: "/app/portal",
         label: "Portal",
-        subtitle: "Client-support workspace",
-        icon: UsersIcon,
-        moduleId: "clients",
+        description: "Client-support workspace",
+        icon: UserGroupIcon,
       },
       {
-        href: "/app/support",
+        href: "/app/care",
         label: "Care",
-        subtitle: "Support and aftercare",
+        description: "Support and aftercare",
         icon: LifebuoyIcon,
-        moduleId: "support",
       },
       {
         href: "/app/study",
         label: "Study",
-        subtitle: "AI-powered user research",
+        description: "AI-powered user research",
         icon: AcademicCapIcon,
-        moduleId: "study",
       },
     ],
     [],
   );
-
-  const primaryNav = useMemo<NavItem[]>(() => {
-    const userPermissions = session?.user?.permissions ?? [];
-    const modules = isAdmin
-      ? allModuleNav
-      : allModuleNav.filter((item) => userPermissions.includes(item.moduleId ?? ""));
-    return [
-      { href: "/app", label: "Foundry HQ", icon: HomeIcon },
-      ...modules,
-    ];
-  }, [isAdmin, session?.user?.permissions, allModuleNav]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
@@ -139,9 +103,9 @@ export function AppShell({
   );
 
   return (
-    <div className="h-[100dvh] bg-white text-[var(--text-1)]">
+    <div className="h-[100dvh] bg-[#FAFAF9] text-[var(--text-1)]">
       <div className="grid h-full w-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:min-h-0">
+        <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
             pathname={pathname}
             primaryNav={primaryNav}
@@ -150,24 +114,11 @@ export function AppShell({
           />
         </aside>
 
-        <div className="flex min-h-0 flex-col bg-white">
-          {/* Mobile top bar */}
-          <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
-            <FoundryLogo compact />
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-              aria-label="Open menu"
-            >
-              <Bars3Icon className="h-5 w-5" />
-            </button>
-          </div>
-
+        <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
           {hideContentHeader ? null : (
-            <header className="border-b border-[var(--border-2)] px-6 pb-5 pt-7 sm:px-8">
+            <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
-                <h1 className="text-[32px] font-normal tracking-[-0.02em] text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
+                <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
                   {title}
                 </h1>
                 {subtitle ? (
@@ -190,51 +141,6 @@ export function AppShell({
           </main>
         </div>
       </div>
-
-      {/* Mobile drawer overlay */}
-      {mobileMenuOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          {/* Drawer */}
-          <div className="absolute inset-y-0 left-0 flex w-[280px] flex-col bg-[var(--surface-0)]">
-            <div className="flex items-center justify-between border-b border-[var(--border-2)] px-5 py-4">
-              <FoundryLogo compact />
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                aria-label="Close menu"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
-              <nav className="space-y-1">
-                {primaryNav.map((item) => (
-                  <SidebarNavItem
-                    key={item.label}
-                    item={item}
-                    active={Boolean(item.href && isActivePath(pathname, item.href))}
-                  />
-                ))}
-              </nav>
-
-              <div className="mt-auto space-y-2 pt-4">
-                <SidebarNavItem
-                  item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
-                  active={Boolean(isActivePath(pathname, "/app/settings"))}
-                />
-                <ProfileMenu account={settings.account} />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -274,7 +180,13 @@ function ExpandedRail({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
-        <FoundryLogo />
+        <div className="flex items-center gap-3">
+          <BrandGlyph className="h-8 w-8 shrink-0" />
+          <div>
+            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Foundry by Gitwork</p>
+            <p className="text-xs text-[var(--text-4)]">Prompt-to-production suite</p>
+          </div>
+        </div>
 
         <label className="relative mt-4 block">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
@@ -335,24 +247,29 @@ function SidebarNavItem({
 }) {
   const Icon = item.icon;
   const classes = cn(
-    "flex w-full items-center gap-3 rounded-[8px] px-3 py-2 text-sm font-medium transition",
+    "flex w-full items-start gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
     active
-      ? "bg-[var(--mist)] text-[var(--brand-700)]"
-      : "text-[var(--text-2)] hover:bg-[var(--mist-light)]",
+      ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)] shadow-[var(--shadow-xs)]"
+      : "border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
     item.disabled ? "cursor-default opacity-70 hover:bg-transparent" : "",
   );
 
   const content = (
     <>
-      <Icon className={cn("h-5 w-5 shrink-0", active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
-      <div className="min-w-0 flex-1">
-        <span className="block leading-tight">{item.label}</span>
-        {item.subtitle ? (
-          <span className="mt-0.5 block text-[11px] font-normal leading-tight text-[var(--text-4)]">
-            {item.subtitle}
+      <Icon
+        className={cn(
+          "mt-0.5 h-5 w-5 shrink-0",
+          active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+        )}
+      />
+      <span className="min-w-0">
+        <span className="block">{item.label}</span>
+        {item.description ? (
+          <span className="mt-0.5 block text-xs font-normal text-[var(--text-4)]">
+            {item.description}
           </span>
         ) : null}
-      </div>
+      </span>
     </>
   );
 
@@ -373,7 +290,6 @@ function SidebarNavItem({
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();
-  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -405,26 +321,22 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-[var(--surface-1)]"
+        className="flex w-full items-center gap-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={account.avatarUrl} alt={account.name} className="h-9 w-9 rounded-full object-cover" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-            {session?.user?.name ?? account.name}
-          </p>
-          <p className="truncate text-xs text-[var(--text-4)]">
-            {session?.user?.email ?? account.email}
-          </p>
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
+          <p className="truncate text-xs text-[var(--text-4)]">{account.email}</p>
         </div>
         <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
       </button>
 
       {open ? (
-        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[16px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
+        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Link
             href="/app/account-settings"
-            className="flex items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <Cog8ToothIcon className="h-5 w-5 text-[var(--text-4)]" />
             <span>Account settings</span>
@@ -446,7 +358,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
           </Button>
 
           {settings.workspace.invitedUsers.length ? (
-            <div className="mt-2 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
+            <div className="mt-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
               <p className="app-eyebrow">Pending invites</p>
               <div className="mt-2 space-y-1">
                 {settings.workspace.invitedUsers.slice(0, 3).map((email) => (
@@ -462,7 +374,6 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
 
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: "/login" })}
             className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />
@@ -530,17 +441,25 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
   );
 }
 
-function FoundryLogo({ compact = false }: { compact?: boolean }) {
+function BrandGlyph({ className }: { className?: string }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/foundry-logo.svg"
-      alt="Foundry by Gitwork"
-      className={compact ? "h-7 w-auto" : "h-8 w-auto"}
-    />
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-[6px] border border-[rgba(9,112,200,0.16)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
+        className,
+      )}
+    >
+      <div className="absolute inset-[18%] rounded-[4px] bg-[var(--brand-gradient)]" />
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--signal-stripe)]" />
+      <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
+    </div>
   );
 }
 
 function isActivePath(pathname: string | null, href: string) {
+  if (href === "/app") {
+    return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
+  }
+
   return pathname === href || (href !== "/app" && Boolean(pathname?.startsWith(href)));
 }

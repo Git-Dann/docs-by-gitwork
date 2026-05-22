@@ -92,7 +92,7 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
   const scoreBg = (s: number | null) => !s ? "bg-gray-50 border-gray-200" : s >= 90 ? "bg-emerald-50 border-emerald-200" : s >= 50 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
 
   return (
-    <div className="overflow-hidden rounded-[16px] border border-gray-200 bg-white p-6">
+    <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">Core Web Vitals</h2>
         <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium text-gray-500">Lighthouse · mobile</span>
@@ -113,25 +113,25 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
       {(insights.lcp !== null || insights.fcp !== null || insights.tbt !== null || insights.cls !== null) && (
         <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
           {insights.lcp !== null && (
-            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+            <div className="flex items-center justify-between rounded-[6px] bg-gray-50 px-3 py-2">
               <span className="font-medium text-gray-500">LCP</span>
               <span className={cn("font-bold", metricColor(lcpStatus))}>{fmt(insights.lcp)}</span>
             </div>
           )}
           {insights.fcp !== null && (
-            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+            <div className="flex items-center justify-between rounded-[6px] bg-gray-50 px-3 py-2">
               <span className="font-medium text-gray-500">FCP</span>
               <span className={cn("font-bold", metricColor(fcpStatus))}>{fmt(insights.fcp)}</span>
             </div>
           )}
           {insights.tbt !== null && (
-            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+            <div className="flex items-center justify-between rounded-[6px] bg-gray-50 px-3 py-2">
               <span className="font-medium text-gray-500">TBT</span>
               <span className={cn("font-bold", metricColor(tbtStatus))}>{fmt(insights.tbt)}</span>
             </div>
           )}
           {insights.cls !== null && (
-            <div className="flex items-center justify-between rounded-[8px] bg-gray-50 px-3 py-2">
+            <div className="flex items-center justify-between rounded-[6px] bg-gray-50 px-3 py-2">
               <span className="font-medium text-gray-500">CLS</span>
               <span className={cn("font-bold", metricColor(clsStatus))}>{insights.cls.toFixed(3)}</span>
             </div>
@@ -231,7 +231,7 @@ export default async function PublicReportPage({
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
 
         {/* Score hero */}
-        <div className="overflow-hidden rounded-[16px] border border-gray-200 bg-white p-6">
+        <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white p-6">
           <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
             <ScoreRing score={scan.healthScore} />
             <div className="min-w-0 flex-1 text-center sm:text-left">
@@ -274,7 +274,7 @@ export default async function PublicReportPage({
 
         {/* Proposal hook — internal sales callout, styled to stand out */}
         {llm?.proposalHook && (
-          <div className="rounded-[16px] border border-indigo-200 bg-indigo-50 px-6 py-5">
+          <div className="rounded-[10px] border border-indigo-200 bg-indigo-50 px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Key finding</p>
             <p className="mt-1.5 text-base font-medium leading-snug text-indigo-900">{llm.proposalHook}</p>
           </div>
@@ -285,21 +285,21 @@ export default async function PublicReportPage({
 
         {/* Health narrative */}
         {llm?.healthNarrative && (
-          <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-2 text-sm font-semibold text-gray-700">Health summary</h2>
             <p className="text-sm leading-relaxed text-gray-600">{llm.healthNarrative}</p>
           </div>
         )}
 
         {/* Check categories */}
-        <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+        <div className="rounded-[10px] border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-sm font-semibold text-gray-700">Check results by category</h2>
           <CategorySummary checks={scan.checks} />
         </div>
 
         {/* Critical gaps */}
         {llm?.criticalGaps && llm.criticalGaps.length > 0 && (
-          <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-4 text-sm font-semibold text-gray-700">Critical gaps to address</h2>
             <div className="space-y-3">
               {llm.criticalGaps.map((gap, i) => (
@@ -320,7 +320,7 @@ export default async function PublicReportPage({
 
         {/* Strengths */}
         {llm?.strengths && llm.strengths.length > 0 && (
-          <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-4 text-sm font-semibold text-gray-700">What&apos;s working well</h2>
             <div className="space-y-3">
               {llm.strengths.slice(0, 4).map((s, i) => (
@@ -338,7 +338,7 @@ export default async function PublicReportPage({
 
         {/* Build opportunities */}
         {llm?.buildOpportunities && llm.buildOpportunities.length > 0 && (
-          <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-4 text-sm font-semibold text-gray-700">Build opportunities</h2>
             <div className="space-y-3">
               {llm.buildOpportunities.map((opp, i) => (
@@ -360,7 +360,7 @@ export default async function PublicReportPage({
 
         {/* Roadmap */}
         {llm?.scalingRoadmap && llm.scalingRoadmap.length > 0 && (
-          <div className="rounded-[16px] border border-gray-200 bg-white p-6">
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-4 text-sm font-semibold text-gray-700">Recommended roadmap</h2>
             <div className="space-y-5">
               {llm.scalingRoadmap.map((phase) => (
@@ -386,7 +386,7 @@ export default async function PublicReportPage({
         )}
 
         {/* CTA footer */}
-        <div className="rounded-[16px] border border-gray-900 bg-gray-900 p-6 text-center">
+        <div className="rounded-[10px] border border-gray-900 bg-gray-900 p-6 text-center">
           <p className="text-sm font-semibold text-white">Want to act on this report?</p>
           <p className="mt-1 text-sm text-gray-400">
             Gitwork specialises in taking AI-built apps from prototype to production.

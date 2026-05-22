@@ -165,7 +165,7 @@ function CareModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -780,7 +780,7 @@ function InboxView({ clientId }: { clientId: string }) {
         <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
           <input
-            className="h-9 w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+            className="h-9 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
             placeholder="Search inbox…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -863,7 +863,7 @@ function InboxView({ clientId }: { clientId: string }) {
           {convosLoading && (
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-24 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+                <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
               ))}
             </div>
           )}
@@ -910,7 +910,7 @@ function InboxView({ clientId }: { clientId: string }) {
                   type="button"
                   onClick={handleGenerateDraft}
                   disabled={generateDraft.isPending}
-                  className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
                 >
                   <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
                   {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
@@ -971,14 +971,14 @@ function InboxView({ clientId }: { clientId: string }) {
                   rows={5}
                   value={draft.text}
                   onChange={(e) => setDraft({ text: e.target.value, status: "draft" })}
-                  className="w-full resize-none rounded-[8px] border border-[var(--mist-border)] bg-white p-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
+                  className="w-full resize-none rounded-[6px] border border-[var(--mist-border)] bg-white p-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
                 />
                 <div className="mt-2 flex items-center justify-end gap-2">
                   {draft.status === "draft" ? (
                     <button
                       type="button"
                       onClick={() => setDraft({ text: draft.text, status: "approved" })}
-                      className="flex items-center gap-1.5 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                      className="flex items-center gap-1.5 rounded-[6px] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
                     >
                       <CheckCircleIcon className="h-4 w-4" />
                       Approve draft
@@ -988,7 +988,7 @@ function InboxView({ clientId }: { clientId: string }) {
                       type="button"
                       onClick={handleSend}
                       disabled={sendMessage.isPending}
-                      className="flex items-center gap-1.5 rounded-[8px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
                     >
                       {sendMessage.isPending ? "Sending…" : "Send reply"}
                     </button>
@@ -1002,7 +1002,7 @@ function InboxView({ clientId }: { clientId: string }) {
               <div className="border-t border-[var(--border-2)] p-4">
                 <textarea
                   rows={3}
-                  className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+                  className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
                   placeholder="Write a reply…"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
@@ -1012,7 +1012,7 @@ function InboxView({ clientId }: { clientId: string }) {
                     type="button"
                     onClick={handleSend}
                     disabled={sendMessage.isPending || !replyText.trim()}
-                    className="rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                    className="rounded-[6px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                   >
                     {sendMessage.isPending ? "Sending…" : "Send reply"}
                   </button>
@@ -1041,7 +1041,7 @@ function ConversationCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-[12px] border p-3.5 text-left transition",
+        "w-full rounded-[10px] border p-3.5 text-left transition",
         active
           ? "border-[var(--mist-border)] bg-[var(--mist)] shadow-sm"
           : "border-[var(--border-2)] bg-white hover:border-[var(--mist-border)] hover:bg-[var(--surface-1)]",
@@ -1094,7 +1094,7 @@ function TicketsView({ clientId }: { clientId: string }) {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-28 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />
+          <div key={i} className="h-28 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
         ))}
       </div>
     );
@@ -1164,7 +1164,7 @@ function TicketCard({ ticket, clientId }: { ticket: Ticket; clientId: string }) 
             type="button"
             onClick={() => updateTicket.mutate({ ticketId: ticket.id, data: { status: "resolved" } })}
             disabled={updateTicket.isPending}
-            className="mt-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+            className="mt-2 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
           >
             Mark resolved
           </button>
@@ -1255,7 +1255,7 @@ function ReportsView({ client }: { client: SupportClient }) {
           rows={12}
           value={reportText}
           onChange={(e) => setReportText(e.target.value)}
-          className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+          className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
           placeholder="Write the monthly support report here… or click Generate to scaffold one."
         />
         <div className="mt-3 flex items-center justify-between">
@@ -1318,7 +1318,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                 <div className="flex items-start gap-3">
                   <div
                     className={cn(
-                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px]",
                       conn.health === "connected"
                         ? "bg-emerald-50 text-emerald-600"
                         : conn.health === "error"
@@ -1391,7 +1391,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
       <button
         type="button"
         onClick={() => setShowAddModal(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+        className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
       >
         <PlusIcon className="h-4 w-4" />
         Add connector
@@ -1665,7 +1665,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px]",
                         conn.health === "connected"
                           ? "bg-emerald-50 text-emerald-600"
                           : conn.health === "error"
@@ -1707,7 +1707,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                     type="button"
                     onClick={() => handleSync(conn.id)}
                     disabled={syncConn.isPending}
-                    className="flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                   >
                     {pending ? (
                       <>
@@ -1862,7 +1862,7 @@ function SettingsView({ clientId }: { clientId: string }) {
         <button
           type="button"
           onClick={() => setShowAddRule(true)}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
         >
           <PlusIcon className="h-4 w-4" />
           Add rule
@@ -1983,7 +1983,7 @@ export function SupportDashboard() {
   if (!clientsLoading && clients.length === 0) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+        <div className="flex h-16 w-16 items-center justify-center rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
           <UsersIcon className="h-8 w-8 text-[var(--text-4)]" />
         </div>
         <div className="space-y-1.5">
@@ -2065,7 +2065,7 @@ export function SupportDashboard() {
                 type="button"
                 onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm transition",
+                  "flex w-full items-center gap-2.5 rounded-[6px] px-2.5 py-2 text-left text-sm transition",
                   isActive
                     ? "bg-[var(--mist)] text-[var(--brand-700)]"
                     : "text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",

@@ -38,7 +38,7 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
   const { data: clientsData, isLoading } = useSupportClients();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const clients = clientsData?.clients ?? [];

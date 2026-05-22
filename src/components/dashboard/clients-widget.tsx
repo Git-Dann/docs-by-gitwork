@@ -9,7 +9,7 @@ export default function ClientsWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useClientList();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const clients = data?.clients ?? [];

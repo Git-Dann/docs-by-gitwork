@@ -29,7 +29,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useProposalList({});
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const proposals = data?.proposals ?? [];
@@ -78,15 +78,15 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
 
       {/* Stats row */}
       <div className="mt-3 flex items-center gap-3">
-        <div className="rounded-[8px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
+        <div className="rounded-[6px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-[var(--text-1)]">{proposals.length}</p>
           <p className="mt-0.5 text-[10px] text-[var(--text-3)]">total</p>
         </div>
-        <div className="rounded-[8px] bg-blue-50 px-3 py-1.5 text-center">
+        <div className="rounded-[6px] bg-blue-50 px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-blue-600">{inReview}</p>
           <p className="mt-0.5 text-[10px] text-blue-400">in review</p>
         </div>
-        <div className="rounded-[8px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
+        <div className="rounded-[6px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-[var(--text-2)]">{draft}</p>
           <p className="mt-0.5 text-[10px] text-[var(--text-3)]">draft</p>
         </div>

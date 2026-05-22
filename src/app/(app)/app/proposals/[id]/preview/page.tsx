@@ -27,7 +27,7 @@ export default function ProposalPreviewPage() {
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)] px-4 py-6 sm:px-8">
       <div className="pointer-events-none fixed inset-x-4 bottom-4 z-30 flex justify-center sm:inset-x-auto sm:right-8 sm:bottom-8">
-        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-[20px] border border-[var(--border-2)] bg-white/92 p-2 shadow-[var(--shadow-lg)] backdrop-blur-md">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white/92 p-2 shadow-[var(--shadow-lg)] backdrop-blur-md">
           <Link
             href={`/app/proposals/${id}`}
             className={buttonStyles({ variant: "secondary", size: "md" })}

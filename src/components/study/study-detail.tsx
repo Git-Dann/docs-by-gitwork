@@ -178,7 +178,7 @@ export function StudyDetail({ studyId }: { studyId: string }) {
   useStudyStream(studyId, () => refetch());
 
   if (isLoading) {
-    return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-[12px] bg-[var(--surface-1)]" />)}</div>;
+    return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />)}</div>;
   }
 
   if (!study) {

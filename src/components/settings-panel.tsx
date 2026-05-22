@@ -282,7 +282,7 @@ function ContentTab() {
             {settings.proposalDefaults.objectiveSnippets.map((snippet, index) => (
               <article
                 key={`${snippet.title}-${index}`}
-                className="grid gap-3 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
+                className="grid gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
               >
                 <FieldInput
                   label="Title"
@@ -557,7 +557,7 @@ function RateCardTab() {
         </div>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,400px)]">
-          <section className="overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-[var(--shadow-xs)]">
+          <section className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-[var(--shadow-xs)]">
             <div className="border-b border-[var(--border-2)] px-5 py-5 sm:px-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -588,7 +588,7 @@ function RateCardTab() {
 
             <div className="max-h-[640px] overflow-y-auto p-3">
               {loading ? (
-                <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
                   Loading People & Rates…
                 </div>
               ) : filteredPeople.length > 0 ? (
@@ -602,7 +602,7 @@ function RateCardTab() {
                         type="button"
                         onClick={() => selectPerson(person)}
                         className={cn(
-                          "group relative w-full overflow-hidden rounded-[18px] border px-4 py-4 text-left transition",
+                          "group relative w-full overflow-hidden rounded-[10px] border px-4 py-4 text-left transition",
                           selected
                             ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)] shadow-[var(--shadow-xs)]"
                             : "border-transparent hover:border-[var(--border-2)] hover:bg-[var(--surface-1)]",
@@ -657,7 +657,7 @@ function RateCardTab() {
                   })}
                 </div>
               ) : (
-                <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
+                <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-8 text-sm text-[var(--text-3)]">
                   {people.length === 0
                     ? "No people saved yet. Add your first team member to start building the shared roster."
                     : "No roster entries match that search."}
@@ -666,7 +666,7 @@ function RateCardTab() {
             </div>
           </section>
 
-          <div className="rounded-[20px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
+          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="app-eyebrow">{isEditingExisting ? "Edit person" : "New person"}</p>
@@ -770,7 +770,7 @@ function RateCardTab() {
               </label>
             </div>
 
-            <div className="mt-5 space-y-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
+            <div className="mt-5 space-y-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-3)]">
               <p>
                 Stored source pricing: <span className="font-medium text-[var(--text-1)]">{formatDraftRate(draft)}</span>
               </p>
@@ -996,7 +996,7 @@ function ProviderRow({
   }
 
   return (
-    <div className="rounded-[14px] border border-[var(--border-2)] bg-white">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white">
       {/* Row summary — always visible */}
       <div className="flex items-center gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
@@ -1155,7 +1155,7 @@ function IntegrationsTab() {
         </p>
 
         {/* ── Default provider selector ──────────────────────────── */}
-        <div className="mt-5 rounded-[14px] border-2 border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-4">
+        <div className="mt-5 rounded-[10px] border-2 border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-600)]">
@@ -1311,7 +1311,7 @@ function TeamTab({ currentUserId }: { currentUserId: string }) {
                     <button
                       type="button"
                       onClick={() => setEditMember(m)}
-                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+                      className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
                       title="Edit"
                     >
                       <PencilIcon className="h-4 w-4" />
@@ -1319,7 +1319,7 @@ function TeamTab({ currentUserId }: { currentUserId: string }) {
                     <button
                       type="button"
                       onClick={() => setResetMember(m)}
-                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+                      className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
                       title="Reset password"
                     >
                       <ArrowPathIcon className="h-4 w-4" />
@@ -1328,7 +1328,7 @@ function TeamTab({ currentUserId }: { currentUserId: string }) {
                       <button
                         type="button"
                         onClick={() => setDeleteTarget(m)}
-                        className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
                         title="Remove"
                       >
                         <TrashIcon className="h-4 w-4" />
@@ -1787,7 +1787,7 @@ function TeamModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)]"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -1856,7 +1856,7 @@ function GoogleWorkspaceSection({
             Service account JSON
           </label>
           {config?.googleServiceAccountJsonSet && !jsonInput && (
-            <div className="mb-2 flex items-center gap-2 rounded-[8px] bg-green-50 px-3 py-2">
+            <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-green-50 px-3 py-2">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               <span className="text-xs text-green-700">Service account configured</span>
             </div>
@@ -1977,7 +1977,7 @@ function SlackSection({
               Slack bot token
             </label>
             {config?.slackBotTokenMasked && !tokenInput && (
-              <div className="mb-2 flex items-center gap-2 rounded-[8px] bg-[var(--surface-1)] px-3 py-2">
+              <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
                 <span className="font-mono text-xs text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
               </div>
             )}
@@ -2214,7 +2214,7 @@ function ApiSection({
           </div>
         </div>
 
-        <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
             Endpoints
           </p>

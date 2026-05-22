@@ -234,7 +234,7 @@ export default function HomePage() {
 
       {/* Statement card */}
       <section className="mx-auto max-w-6xl px-6 py-20">
-        <div className="rounded-[24px] p-10 md:p-14" style={{ backgroundColor: "#1a1a18" }}>
+        <div className="rounded-[10px] p-10 md:p-14" style={{ backgroundColor: "#1a1a18" }}>
           <span className="block text-[80px] leading-none" style={{ color: "#5b52f0", fontFamily: "var(--font-display, serif)" }}>&ldquo;</span>
           <p className="mt-2 max-w-2xl text-[28px] font-normal leading-[1.4] tracking-[-0.02em] text-white" style={{ fontFamily: "var(--font-display, 'DM Serif Display', serif)" }}>
             Most agencies spend 3 months scoping what we ship in 2 weeks. We build for the speed your market demands.
@@ -254,7 +254,7 @@ export default function HomePage() {
           {services.map((svc) => (
             <div
               key={svc.name}
-              className="flex flex-col rounded-[20px] p-8"
+              className="flex flex-col rounded-[10px] p-8"
               style={{
                 backgroundColor: svc.featured ? "#1a1a18" : "white",
                 color: svc.featured ? "white" : "#1a1a18",
@@ -360,7 +360,7 @@ export default function HomePage() {
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             {features.map((f) => (
-              <div key={f.title} className="rounded-[20px] bg-white/70 p-8">
+              <div key={f.title} className="rounded-[10px] bg-white/70 p-8">
                 <h3 className="mb-3 text-[20px] font-normal tracking-[-0.02em]" style={{ fontFamily: "var(--font-display, serif)" }}>
                   {f.title}
                 </h3>
@@ -379,7 +379,7 @@ export default function HomePage() {
         </h2>
         <div className="grid gap-4 md:grid-cols-3">
           {testimonials.map((t) => (
-            <div key={t.name} className="rounded-[20px] bg-white/70 p-8">
+            <div key={t.name} className="rounded-[10px] bg-white/70 p-8">
               <p className="mb-6 text-[16px] leading-[1.65] text-black/70">&ldquo;{t.quote}&rdquo;</p>
               <div>
                 <p className="text-[14px] font-semibold">{t.name}</p>

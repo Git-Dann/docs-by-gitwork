@@ -9,7 +9,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = usePulseStats();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
   const stats = data ?? {
@@ -113,7 +113,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
         </div>
 
         {stats.totalCriticalGaps > 0 && (
-          <div className="rounded-[8px] bg-red-50 px-2 py-1.5 text-center">
+          <div className="rounded-[6px] bg-red-50 px-2 py-1.5 text-center">
             <p className="text-xl font-bold tabular-nums leading-none text-red-600">
               {stats.totalCriticalGaps}
             </p>

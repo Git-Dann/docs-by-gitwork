@@ -524,7 +524,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <div
                 ref={approvalPanelRef}
                 style={{ top: approvalPos.top, right: approvalPos.right }}
-                className="fixed z-[100] w-[360px] rounded-[24px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]"
+                className="fixed z-[100] w-[360px] rounded-[10px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]"
               >
                 <div>
                   <p className="app-eyebrow">Approval Flow</p>
@@ -547,7 +547,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       return (
                         <label
                           key={option.key}
-                          className="flex items-start gap-3 rounded-[16px] border border-[var(--border-2)] bg-white px-3 py-3 text-sm text-[var(--text-2)]"
+                          className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-3 text-sm text-[var(--text-2)]"
                         >
                           <input
                             type="checkbox"
@@ -616,7 +616,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 key={tab.id}
                 type="button"
                 className={cn(
-                  "inline-flex h-[36px] min-w-[92px] items-center justify-center rounded-[8px] px-4 text-sm font-medium transition outline-none",
+                  "inline-flex h-[36px] min-w-[92px] items-center justify-center rounded-[6px] px-4 text-sm font-medium transition outline-none",
                   "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   activeTab === tab.id
                     ? "bg-[rgba(51,92,255,0.14)] text-[var(--brand-700)]"
@@ -709,14 +709,14 @@ function TableOfContentsCard({
                 variant: "secondary",
                 size: "md",
                 className:
-                  "list-none gap-2 rounded-[8px] px-3 [&::-webkit-details-marker]:hidden",
+                  "list-none gap-2 rounded-[6px] px-3 [&::-webkit-details-marker]:hidden",
               })}
             >
               <PlusIcon className="h-4 w-4" />
               Add
             </summary>
 
-            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-white py-2 shadow-[var(--shadow-lg)]">
+            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-2 shadow-[var(--shadow-lg)]">
               {proposalSectionBlueprints.map((module) => (
                 <button
                   key={module.key}
@@ -773,7 +773,7 @@ function TableOfContentsCard({
           </ol>
         )
       ) : (
-        <p className="mt-4 rounded-[16px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+        <p className="mt-4 rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No modules yet. Use Add to start building the proposal.
         </p>
       )}
@@ -817,7 +817,7 @@ function SortableTableOfContentsItem({
         <button
           type="button"
           aria-label={`Reorder ${entry.section.title}`}
-          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
+          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
@@ -844,7 +844,7 @@ function SortableTableOfContentsItem({
             event.stopPropagation();
             onDelete?.(entry.id);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
+          className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
         >
           <MinusIcon className="h-4 w-4" />
         </button>

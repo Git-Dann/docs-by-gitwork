@@ -47,7 +47,7 @@ function LoginForm() {
           <Image src="/foundry-logo.svg" alt="Foundry by Gitwork" width={120} height={36} />
         </div>
 
-        <div className="rounded-[16px] border border-[var(--border-2)] bg-white p-8 shadow-[var(--shadow-sm)]">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-8 shadow-[var(--shadow-sm)]">
           <h1
             className="text-2xl font-normal tracking-[-0.02em] text-[var(--text-1)]"
             style={{ fontFamily: "var(--font-display)" }}
