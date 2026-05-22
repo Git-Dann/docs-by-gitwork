@@ -1003,7 +1003,7 @@ function WidgetSignatureHeader({ id }: { id: WidgetId }) {
           textTransform: "uppercase",
         }}
       >
-        {String(slot).padStart(2, "0")} // {label.toUpperCase()}
+        {`${String(slot).padStart(2, "0")} // ${label.toUpperCase()}`}
       </span>
       <span
         style={{
