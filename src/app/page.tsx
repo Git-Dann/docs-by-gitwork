@@ -178,7 +178,7 @@ export default function HomePage() {
             href={CALENDLY}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full bg-black px-5 py-2 text-[14px] font-medium text-white transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1.5 rounded-[6px] bg-black px-5 py-2 text-[14px] font-medium text-white transition-opacity hover:opacity-80"
           >
             Book a call <span aria-hidden>→</span>
           </a>
@@ -204,14 +204,14 @@ export default function HomePage() {
             href={CALENDLY}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-[6px] px-6 py-3 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
             style={{ backgroundColor: "#5b52f0" }}
           >
             Book a free call
           </a>
           <Link
             href="/app"
-            className="inline-flex items-center gap-2 rounded-full border border-black/12 bg-white/70 px-6 py-3 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
+            className="inline-flex items-center gap-2 rounded-[6px] border border-black/12 bg-white/70 px-6 py-3 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
           >
             Open platform
           </Link>
@@ -299,7 +299,7 @@ export default function HomePage() {
                 href={CALENDLY}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-auto block rounded-full py-3 text-center text-[14px] font-medium transition-opacity hover:opacity-80"
+                className="mt-auto block rounded-[6px] py-3 text-center text-[14px] font-medium transition-opacity hover:opacity-80"
                 style={{
                   backgroundColor: svc.featured ? "#5b52f0" : "transparent",
                   color: svc.featured ? "white" : "#5b52f0",
@@ -432,14 +432,14 @@ export default function HomePage() {
             href={CALENDLY}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-[6px] px-8 py-3.5 text-[15px] font-medium text-white transition-opacity hover:opacity-90"
             style={{ backgroundColor: "#5b52f0" }}
           >
             Book a free call
           </a>
           <Link
             href="/app"
-            className="inline-flex items-center gap-2 rounded-full border border-black/12 bg-white/70 px-8 py-3.5 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
+            className="inline-flex items-center gap-2 rounded-[6px] border border-black/12 bg-white/70 px-8 py-3.5 text-[15px] font-medium text-black/80 transition-colors hover:bg-white"
           >
             Open platform
           </Link>
