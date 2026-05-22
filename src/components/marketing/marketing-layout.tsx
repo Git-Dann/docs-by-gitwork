@@ -59,7 +59,7 @@ export function MarketingLayout({
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-white [color-scheme:dark]">
+    <div className="min-h-screen overflow-x-hidden bg-[#05090d] text-white [color-scheme:dark]">
       <a
         href="#main-content"
         className="absolute left-4 top-4 z-[100] -translate-y-20 rounded-full border border-white/14 bg-[#111] px-4 py-2 text-sm text-white transition focus:translate-y-0 focus:outline-none"
@@ -129,6 +129,8 @@ export function MarketingLayout({
       {/* ── Page content ── */}
       <main id="main-content">{children}</main>
 
+      <div className="signal-stripe" aria-hidden="true" />
+
       {/* ── Footer ── */}
       <footer className="border-t border-white/[0.07] bg-[#0a0a0a] py-16">
         <div className="mx-auto max-w-[1280px] px-6 sm:px-8">
@@ -191,7 +193,7 @@ export function MarketingLayout({
 export function HeroGrid() {
   return (
     <div className="pointer-events-none absolute inset-0">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(59,130,246,0.13),transparent_55%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(9,112,200,0.22),transparent_55%)]" />
       <div className="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] [background-size:72px_72px]" />
     </div>
   );
@@ -203,7 +205,7 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function CheckIcon({ className = "text-blue-400" }: { className?: string }) {
+export function CheckIcon({ className = "text-[var(--brand-cyan)]" }: { className?: string }) {
   return (
     <svg className={`h-4 w-4 shrink-0 ${className}`} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />

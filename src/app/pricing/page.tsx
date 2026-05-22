@@ -37,12 +37,12 @@ export default function PricingPage() {
                 key={plan.name}
                 className={`rounded-[20px] border p-8 ${
                   plan.highlight
-                    ? "border-blue-400/36 bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_24px_60px_rgba(0,0,0,0.4)]"
+                    ? "border-[rgba(9,112,200,0.36)] bg-[linear-gradient(180deg,rgba(9,112,200,0.14),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(9,112,200,0.18),0_24px_60px_rgba(0,0,0,0.4)]"
                     : "border-white/[0.08] bg-[#111] shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
                 }`}
               >
                 {plan.highlight && (
-                  <div className="mb-5 inline-flex rounded-full border border-blue-400/28 bg-blue-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-300">
+                  <div className="mb-5 inline-flex rounded-full border border-[rgba(9,112,200,0.28)] bg-[rgba(9,112,200,0.10)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-300)]">
                     Most popular
                   </div>
                 )}
@@ -56,7 +56,7 @@ export default function PricingPage() {
                 <ul className="space-y-3">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-3">
-                      <CheckIcon className="mt-0.5 text-blue-400" />
+                      <CheckIcon className="mt-0.5 text-[var(--brand-cyan)]" />
                       <span className="text-[15px] leading-6 text-white/70">{f}</span>
                     </li>
                   ))}
@@ -108,7 +108,7 @@ export default function PricingPage() {
                 <ul className="mt-6 space-y-2.5">
                   {offer.points.map((point) => (
                     <li key={point} className="flex items-start gap-3">
-                      <CheckIcon className="mt-0.5 text-blue-400" />
+                      <CheckIcon className="mt-0.5 text-[var(--brand-cyan)]" />
                       <span className="text-[14px] leading-6 text-white/66">{point}</span>
                     </li>
                   ))}

@@ -188,8 +188,8 @@ export function CodeClearCandidateDrawer({
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           {candidateQuery.isLoading ? (
             <div className="space-y-3">
-              <div className="h-24 animate-pulse rounded-[18px] bg-[var(--surface-1)]" />
-              <div className="h-48 animate-pulse rounded-[18px] bg-[var(--surface-1)]" />
+              <div className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+              <div className="h-48 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
             </div>
           ) : candidate ? (
             <div className="space-y-6">
@@ -636,7 +636,7 @@ export function CodeClearCandidateDrawer({
                     return (
                       <div
                         key={source.value}
-                        className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3"
+                        className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3"
                       >
                         <span className="text-sm font-medium text-[var(--text-2)]">
                           {source.label}
@@ -719,7 +719,7 @@ export function CodeClearCandidateDrawer({
                     ) : null}
 
                     {latestRun.llmSummary ? (
-                      <p className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm leading-6 text-[var(--text-2)]">
+                      <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm leading-6 text-[var(--text-2)]">
                         {latestRun.llmSummary}
                       </p>
                     ) : null}
@@ -729,7 +729,7 @@ export function CodeClearCandidateDrawer({
                         {latestRun.redFlags.map((flag) => (
                           <p
                             key={flag}
-                            className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                            className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
                           >
                             {flag}
                           </p>
@@ -742,7 +742,7 @@ export function CodeClearCandidateDrawer({
                     </p>
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-[16px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4">
+                  <div className="mt-4 rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4">
                     <p className="text-sm font-medium text-[var(--text-2)]">
                       No repository signal captured yet.
                     </p>
@@ -793,7 +793,7 @@ export function CodeClearCandidateDrawer({
                   {candidate.notes.slice(0, 6).map((note) => (
                     <div
                       key={note.id}
-                      className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3"
+                      className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3"
                     >
                       <p className="text-sm leading-6 text-[var(--text-2)]">{note.body}</p>
                       <p className="mt-2 text-xs text-[var(--text-4)]">
@@ -810,7 +810,7 @@ export function CodeClearCandidateDrawer({
                   <div className="mt-4 space-y-3">
                     {candidate.placements.length ? (
                       candidate.placements.map((placement) => (
-                        <div key={placement.id} className="rounded-[14px] border border-[var(--border-2)] px-4 py-3">
+                        <div key={placement.id} className="rounded-[10px] border border-[var(--border-2)] px-4 py-3">
                           <p className="text-sm font-semibold text-[var(--text-1)]">
                             {placement.clientName}
                           </p>
@@ -832,7 +832,7 @@ export function CodeClearCandidateDrawer({
                   <p className="text-sm font-semibold text-[var(--text-1)]">Activity</p>
                   <div className="mt-4 space-y-3">
                     {candidate.activityLog.slice(0, 6).map((entry) => (
-                      <div key={entry.id} className="rounded-[14px] border border-[var(--border-2)] px-4 py-3">
+                      <div key={entry.id} className="rounded-[10px] border border-[var(--border-2)] px-4 py-3">
                         <p className="text-sm font-medium text-[var(--text-1)]">{entry.eventType}</p>
                         <p className="mt-1 text-xs text-[var(--text-4)]">{formatDate(entry.createdAt)}</p>
                       </div>
@@ -913,7 +913,7 @@ function ScoreSlider({
             max={100}
             value={value}
             onChange={(e) => onChange(Number(e.target.value))}
-            className="w-16 rounded-[8px] border border-[var(--border-2)] bg-white px-2 py-1 text-center text-sm font-semibold text-[var(--text-1)] focus:border-[var(--brand-500)] focus:outline-none"
+            className="w-16 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-center text-sm font-semibold text-[var(--text-1)] focus:border-[var(--brand-500)] focus:outline-none"
           />
         </div>
       </div>
@@ -982,7 +982,7 @@ function MiniStat({
   value: string;
 }) {
   return (
-    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">
         {label}
       </p>
@@ -1001,7 +1001,7 @@ function SignalCard({
   value: string;
 }) {
   return (
-    <div className="rounded-[16px] border border-[rgba(63,98,255,0.12)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
+    <div className="rounded-[10px] border border-[rgba(63,98,255,0.12)] bg-[linear-gradient(180deg,rgba(63,98,255,0.08),rgba(255,255,255,0.98))] px-4 py-4">
       <div className="flex items-center gap-2 text-[var(--brand-700)]">{icon}</div>
       <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
         {label}

@@ -47,7 +47,7 @@ export function ImagePicker({
 
       <div
         className={cn(
-          "flex items-center justify-center overflow-hidden rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)]",
+          "flex items-center justify-center overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]",
           previewClassName ?? "h-40 w-full",
         )}
       >

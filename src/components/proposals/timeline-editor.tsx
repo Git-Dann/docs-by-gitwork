@@ -50,7 +50,7 @@ export function TimelineEditor({
         sorted.map((phase, index) => (
           <article
             key={phase.id ?? `${phase.name}-${index}`}
-            className="rounded-[18px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
+            className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
@@ -108,7 +108,7 @@ export function TimelineEditor({
           </article>
         ))
       ) : (
-        <div className="rounded-[18px] border border-[var(--border-2)] bg-white px-4 py-10 text-sm text-[var(--text-4)] shadow-[var(--shadow-xs)]">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-10 text-sm text-[var(--text-4)] shadow-[var(--shadow-xs)]">
           Add a phase to build the delivery timeline.
         </div>
       )}

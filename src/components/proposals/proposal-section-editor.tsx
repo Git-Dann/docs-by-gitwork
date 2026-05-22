@@ -385,7 +385,7 @@ export function ProposalSectionEditor({
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <label className="inline-flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
+            <label className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
               <input
                 type="checkbox"
                 checked={data.showBrandingBlock}
@@ -479,7 +479,7 @@ function TextArea({
 
 function EditorHint({ message }: { message: string }) {
   return (
-    <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-3 text-sm leading-6 text-[var(--text-3)]">
+    <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-3 text-sm leading-6 text-[var(--text-3)]">
       {message}
     </p>
   );

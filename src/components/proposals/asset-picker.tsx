@@ -80,7 +80,7 @@ export function AssetPicker({
           {safeAssets.map((asset, index) => (
             <article
               key={`${asset.id ?? "asset"}-${index}`}
-              className="space-y-3 rounded-[18px] border border-[var(--border-2)] bg-white p-4"
+              className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
             >
               <div className="grid gap-2 md:grid-cols-2">
                 <label className="space-y-1.5">
@@ -252,7 +252,7 @@ export function AssetPicker({
           ))}
         </div>
       ) : (
-        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+        <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No assets added yet.
         </p>
       )}

@@ -204,22 +204,22 @@ export function CodeClearSiteDemo() {
             </label>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Work type</p>
                 <p className="mt-2 text-sm text-white/82">{result.workType}</p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Timeline</p>
                 <p className="mt-2 text-sm text-white/82">{result.timeline}</p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-[#101522] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-[#101522] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Output</p>
                 <p className="mt-2 text-sm text-white/82">3 top matches with delivery fit</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-white/8 bg-[#101522] p-5">
+          <div className="rounded-[10px] border border-white/8 bg-[#101522] p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Live matching</p>
               <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/66">
@@ -228,13 +228,13 @@ export function CodeClearSiteDemo() {
             </div>
 
             <div className="mt-6 space-y-3">
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-white/[0.04] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Signal</p>
                 <p className="mt-2 text-sm leading-6 text-white/82">
                   Role framing, stack fit, availability, and delivery signal are combined into one shortlist.
                 </p>
               </div>
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-4">
+              <div className="rounded-[10px] border border-white/8 bg-white/[0.04] px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Next</p>
                 <p className="mt-2 text-sm leading-6 text-white/82">{result.nextStep}</p>
               </div>
@@ -283,7 +283,7 @@ export function CodeClearSiteDemo() {
               <ul className="mt-6 flex-1 space-y-2.5">
                 {features.starter.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
-                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#f4b942]" />
+                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-cyan)]" />
                     <span className="text-[13px] leading-5 text-white/78">{f}</span>
                   </li>
                 ))}
@@ -300,10 +300,10 @@ export function CodeClearSiteDemo() {
 
             {/* Pro — always Recommended, slightly more padding */}
             <div className="flex flex-col">
-              <div className="flex items-center justify-center rounded-t-[20px] bg-[linear-gradient(90deg,#059669,#10b981)] px-6 py-3">
+              <div className="flex items-center justify-center rounded-t-[20px] bg-[var(--brand-gradient)] px-6 py-3">
                 <span className="text-[13px] font-semibold text-white">Recommended</span>
               </div>
-              <article className="flex flex-1 flex-col rounded-b-[26px] rounded-t-none border border-emerald-800/60 bg-[#0a1f15] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+              <article className="flex flex-1 flex-col rounded-b-[26px] rounded-t-none border border-[rgba(9,112,200,0.5)] bg-[#071828] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">Pro</p>
                 <div className="mt-4 flex items-end gap-1">
                   <span className="text-[40px] font-semibold leading-none tracking-[-0.05em] text-white">Custom</span>

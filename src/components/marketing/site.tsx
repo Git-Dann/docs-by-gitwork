@@ -57,7 +57,7 @@ function renderLink(
 
 function MarketingChrome({ children, currentPath }: MarketingChromeProps) {
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#050505] text-white [color-scheme:dark]">
+    <div className="min-h-screen overflow-x-hidden bg-[#05090d] text-white [color-scheme:dark]">
       <a
         href="#main-content"
         className="absolute left-4 top-4 z-[100] -translate-y-20 rounded-full border border-white/14 bg-[#0f0f0f] px-4 py-2 text-sm text-white transition focus:translate-y-0 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/20"
@@ -125,6 +125,8 @@ function MarketingChrome({ children, currentPath }: MarketingChromeProps) {
 
       <main id="main-content">{children}</main>
 
+      <div className="signal-stripe" aria-hidden="true" />
+
       <footer className="border-t border-white/8 bg-[#070707] py-16">
         <div className="mx-auto max-w-[1280px] px-6 sm:px-8">
           <div className="grid gap-12 lg:grid-cols-[1.15fr_repeat(4,1fr)]">
@@ -170,7 +172,7 @@ function MarketingChrome({ children, currentPath }: MarketingChromeProps) {
 function HeroGrid() {
   return (
     <div className="pointer-events-none absolute inset-0">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(73,127,255,0.16),transparent_34%),radial-gradient(circle_at_80%_100%,rgba(255,255,255,0.1),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(9,112,200,0.24),transparent_34%),radial-gradient(circle_at_80%_100%,rgba(66,199,255,0.12),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]" />
       <div className="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:80px_80px]" />
     </div>
   );
@@ -243,7 +245,7 @@ function ProductFeatureGrid({ product }: { product: ProductPage }) {
       {product.featureCards.map((card, index) => (
         <article
           key={card.title}
-          className={`rounded-[24px] border border-white/10 bg-white/[0.03] p-6 ${
+          className={`rounded-[10px] border border-white/10 bg-white/[0.03] p-6 ${
             index === 0 ? "md:col-span-3 lg:col-span-1" : ""
           }`}
         >
@@ -280,12 +282,12 @@ function PricingGrid() {
           key={plan.name}
           className={`rounded-[28px] border p-8 ${
             plan.highlight
-              ? "border-blue-400/38 bg-[linear-gradient(180deg,rgba(59,130,246,0.14),rgba(255,255,255,0.03))] shadow-[0_0_0_1px_rgba(59,130,246,0.14)]"
+              ? "border-[rgba(9,112,200,0.38)] bg-[linear-gradient(180deg,rgba(9,112,200,0.16),rgba(255,255,255,0.03))] shadow-[0_0_0_1px_rgba(9,112,200,0.16)]"
               : "border-white/10 bg-white/[0.03]"
           }`}
         >
           {plan.highlight ? (
-            <div className="mb-5 inline-flex rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-200">
+            <div className="mb-5 inline-flex rounded-full border border-[rgba(9,112,200,0.30)] bg-[rgba(9,112,200,0.10)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-300)]">
               Most Popular
             </div>
           ) : null}
@@ -302,7 +304,7 @@ function PricingGrid() {
           <ul className="space-y-3">
             {plan.features.map((feature) => (
               <li key={feature} className="flex items-start gap-3">
-                <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                 <span className="text-[15px] leading-6 text-white/76">{feature}</span>
               </li>
             ))}
@@ -422,7 +424,7 @@ function HomeHero() {
               <Link
                 key={product.slug}
                 href={`/products/${product.slug}`}
-                className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:border-white/18 hover:bg-white/[0.05]"
+                className="rounded-[10px] border border-white/10 bg-white/[0.03] px-4 py-4 transition hover:border-white/18 hover:bg-white/[0.05]"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">{product.name}</p>
                 <p className="mt-2 text-sm leading-6 text-white/72">{product.eyebrow}</p>
@@ -432,7 +434,7 @@ function HomeHero() {
         </div>
 
         <div className="relative">
-          <div className="absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_50%_18%,rgba(73,127,255,0.3),transparent_40%),radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.12),transparent_40%)] blur-3xl" />
+          <div className="absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_50%_18%,rgba(9,112,200,0.34),transparent_40%),radial-gradient(circle_at_50%_100%,rgba(66,199,255,0.14),transparent_40%)] blur-3xl" />
           <div className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-4 shadow-[0_32px_120px_rgba(0,0,0,0.42)]">
             <Image
               src="/gitwork-header.png"
@@ -445,36 +447,36 @@ function HomeHero() {
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[24px] border border-white/10 bg-[#0d1119] p-5">
+            <div className="rounded-[10px] border border-white/10 bg-[#0d1119] p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">Delivery Layers</p>
               <div className="mt-4 space-y-3">
                 {["Embedded Developers", "Project Delivery", "Docs + Proof", "CodeClear"].map((item) => (
-                  <div key={item} className="flex items-center justify-between rounded-[16px] border border-white/8 bg-white/[0.03] px-4 py-3">
+                  <div key={item} className="flex items-center justify-between rounded-[10px] border border-white/8 bg-white/[0.03] px-4 py-3">
                     <span className="text-sm text-white/80">{item}</span>
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-200">Ready</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-300)]">Ready</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
+            <div className="rounded-[10px] border border-white/10 bg-white/[0.03] p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">Typical Outcomes</p>
               <div className="mt-5 space-y-4">
                 {["Clearer intake", "Stronger proposals", "Better-fit teams"].map((item) => (
                   <div key={item} className="flex items-start gap-3">
-                    <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                    <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                     <span className="text-sm leading-6 text-white/74">{item}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-6 rounded-[18px] border border-white/10 bg-black/20 p-4">
+              <div className="mt-6 rounded-[10px] border border-white/10 bg-black/20 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/38">Onboarding</p>
                 <div className="mt-3 flex items-center gap-3">
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full w-[78%] rounded-full bg-blue-400" />
+                    <div className="h-full w-[78%] rounded-full bg-[var(--brand-700)]" />
                   </div>
-                  <span className="text-sm font-semibold text-blue-200">14 Days</span>
+                  <span className="text-sm font-semibold text-[var(--brand-300)]">14 Days</span>
                 </div>
               </div>
             </div>
@@ -510,7 +512,7 @@ function HomeProductsSection() {
                 <div className="mt-7 space-y-3">
                   {product.quickHits.map((hit) => (
                     <div key={hit} className="flex items-start gap-3">
-                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                       <span className="text-[15px] leading-6 text-white/76">{hit}</span>
                     </div>
                   ))}
@@ -557,7 +559,7 @@ export function MarketingHomePage() {
                 <div className="mt-6 space-y-3">
                   {offer.points.map((point) => (
                     <div key={point} className="flex items-start gap-3">
-                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                       <span className="text-[15px] leading-6 text-white/74">{point}</span>
                     </div>
                   ))}
@@ -644,7 +646,7 @@ export function MarketingProductsPage() {
                 <div className="mt-7 space-y-3">
                   {product.outcomes.map((outcome) => (
                     <div key={outcome} className="flex items-start gap-3">
-                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                      <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                       <span className="text-[15px] leading-6 text-white/76">{outcome}</span>
                     </div>
                   ))}
@@ -741,8 +743,8 @@ export function MarketingProductDetailPage({ slug }: { slug: string }) {
             </div>
             <div className="mt-6 space-y-3">
               {product.quickHits.map((hit) => (
-                <div key={hit} className="flex items-start gap-3 rounded-[18px] border border-white/8 bg-white/[0.03] px-4 py-4">
-                  <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" aria-hidden="true" />
+                <div key={hit} className="flex items-start gap-3 rounded-[10px] border border-white/8 bg-white/[0.03] px-4 py-4">
+                  <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-cyan)]" aria-hidden="true" />
                   <span className="text-[15px] leading-6 text-white/74">{hit}</span>
                 </div>
               ))}
@@ -842,7 +844,7 @@ export function MarketingPricingPage() {
 
           <div className="mt-14 grid gap-8 lg:grid-cols-3">
             {serviceOffers.map((offer) => (
-              <article key={offer.title} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6">
+              <article key={offer.title} className="rounded-[10px] border border-white/10 bg-white/[0.03] p-6">
                 <h3 className="text-[24px] font-semibold tracking-[-0.04em] text-white">{offer.title}</h3>
                 <p className="mt-4 text-[16px] leading-7 text-white/58">{offer.copy}</p>
               </article>
@@ -910,7 +912,7 @@ export function MarketingCustomersPage() {
               "A UK-facing operating rhythm that keeps communication and decision-making clear.",
               "Structured brief and proposal work that reduces churn before engineering starts.",
             ].map((item) => (
-              <article key={item} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6">
+              <article key={item} className="rounded-[10px] border border-white/10 bg-white/[0.03] p-6">
                 <p className="text-[18px] leading-8 text-white/78">{item}</p>
               </article>
             ))}

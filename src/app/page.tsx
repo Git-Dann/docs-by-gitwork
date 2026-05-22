@@ -76,17 +76,17 @@ export default function HomePage() {
 
             {/* Hero decorative card */}
             <div className="relative hidden lg:block">
-              <div className="absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.2),transparent_60%)] blur-3xl" />
+              <div className="absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_50%_0%,rgba(9,112,200,0.24),transparent_60%)] blur-3xl" />
               <div className="relative overflow-hidden rounded-[28px] border border-white/[0.09] bg-[#111] p-6 shadow-[0_32px_80px_rgba(0,0,0,0.5)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/34">Your engagement</p>
                 <div className="mt-4 space-y-2.5">
                   {[
-                    { label: "Remote Developers", status: "Active", color: "text-emerald-400" },
-                    { label: "Dedicated Teams", status: "Active", color: "text-emerald-400" },
-                    { label: "Custom Development", status: "Enabled", color: "text-blue-400" },
-                    { label: "Project Delivery", status: "Enabled", color: "text-blue-400" },
-                    { label: "UK Delivery Team", status: "Included", color: "text-violet-400" },
-                    { label: "Dedicated PM", status: "Included", color: "text-violet-400" },
+                    { label: "Remote Developers", status: "Active", color: "text-[var(--brand-cyan)]" },
+                    { label: "Dedicated Teams", status: "Active", color: "text-[var(--brand-cyan)]" },
+                    { label: "Custom Development", status: "Enabled", color: "text-[var(--brand-cyan)]" },
+                    { label: "Project Delivery", status: "Enabled", color: "text-[var(--brand-cyan)]" },
+                    { label: "UK Delivery Team", status: "Included", color: "text-[var(--brand-300)]" },
+                    { label: "Dedicated PM", status: "Included", color: "text-[var(--brand-300)]" },
                   ].map(({ label, status, color }) => (
                     <div
                       key={label}
@@ -104,9 +104,9 @@ export default function HomePage() {
                   <p className="text-[11px] text-white/38">Onboarding timeline</p>
                   <div className="mt-2 flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full w-[78%] rounded-full bg-blue-500" />
+                      <div className="h-full w-[78%] rounded-full bg-[var(--brand-700)]" />
                     </div>
-                    <span className="text-[11px] font-semibold text-blue-400">14 days</span>
+                    <span className="text-[11px] font-semibold text-[var(--brand-cyan)]">14 days</span>
                   </div>
                 </div>
               </div>
@@ -190,7 +190,7 @@ export default function HomePage() {
                           className="flex items-center gap-4 rounded-[10px] border border-white/[0.06] bg-white/[0.03] px-5 py-3.5"
                           style={{ opacity: 1 - fi * 0.12 }}
                         >
-                          <CheckIcon className="text-blue-400/80" />
+                          <CheckIcon className="text-[var(--brand-cyan)]" />
                           <span className="text-[14px] text-white/70">{f}</span>
                         </div>
                       ))}
@@ -221,12 +221,12 @@ export default function HomePage() {
                 key={plan.name}
                 className={`rounded-[20px] border p-8 ${
                   plan.highlight
-                    ? "border-blue-400/36 bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_24px_60px_rgba(0,0,0,0.4)]"
+                    ? "border-[rgba(9,112,200,0.36)] bg-[linear-gradient(180deg,rgba(9,112,200,0.14),rgba(255,255,255,0.02))] shadow-[0_0_0_1px_rgba(9,112,200,0.18),0_24px_60px_rgba(0,0,0,0.4)]"
                     : "border-white/[0.08] bg-[#111] shadow-[0_20px_50px_rgba(0,0,0,0.28)]"
                 }`}
               >
                 {plan.highlight && (
-                  <div className="mb-5 inline-flex rounded-full border border-blue-400/28 bg-blue-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-300">
+                  <div className="mb-5 inline-flex rounded-full border border-[rgba(9,112,200,0.28)] bg-[rgba(9,112,200,0.10)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-300)]">
                     Most popular
                   </div>
                 )}
@@ -240,7 +240,7 @@ export default function HomePage() {
                 <ul className="space-y-3">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-3">
-                      <CheckIcon className="mt-0.5 text-blue-400" />
+                      <CheckIcon className="mt-0.5 text-[var(--brand-cyan)]" />
                       <span className="text-[14px] leading-6 text-white/68">{f}</span>
                     </li>
                   ))}
@@ -285,7 +285,7 @@ export default function HomePage() {
               <article key={s.company} className="rounded-[20px] border border-white/[0.08] bg-[#111] p-8">
                 <div className="flex items-center gap-1">
                   {[...Array(5)].map((_, i) => (
-                    <svg key={i} className="h-4 w-4 text-yellow-400" viewBox="0 0 16 16" fill="currentColor">
+                    <svg key={i} className="h-4 w-4 text-[var(--brand-cyan)]" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M8 1.5l1.545 3.13 3.455.503-2.5 2.436.59 3.44L8 9.385l-3.09 1.624.59-3.44L3 5.133l3.455-.503L8 1.5z" />
                     </svg>
                   ))}
@@ -316,8 +316,8 @@ export default function HomePage() {
       {/* ── Why Gitwork CTA ── */}
       <section className="border-b border-white/[0.07] bg-[#0d0d0d] py-24">
         <div className="mx-auto max-w-[1280px] px-6 sm:px-8">
-          <div className="relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#0e1628] px-10 py-16 text-center shadow-[0_0_0_1px_rgba(59,130,246,0.1)] sm:px-14">
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(59,130,246,0.15),transparent_62%)]" />
+          <div className="relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#071828] px-10 py-16 text-center shadow-[0_0_0_1px_rgba(9,112,200,0.18)] sm:px-14">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(9,112,200,0.2),transparent_62%)]" />
             <div className="relative">
               <SectionLabel>Why Gitwork</SectionLabel>
               <h2 className="mx-auto mt-4 max-w-[560px] text-balance text-[44px] font-semibold leading-[1.08] tracking-[-0.055em] text-white">

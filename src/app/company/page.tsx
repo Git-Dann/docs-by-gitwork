@@ -171,8 +171,8 @@ export default function CompanyPage() {
                   <p className="text-[16px] font-semibold tracking-[-0.03em] text-white">{p.name}</p>
                   <p className="mt-2 text-[14px] leading-6 text-white/50">{p.desc}</p>
                   <div className="mt-4 flex items-center gap-1">
-                    <CheckIcon className="text-blue-400" />
-                    <span className="text-[12px] text-blue-400/70">Explore</span>
+                    <CheckIcon className="text-[var(--brand-cyan)]" />
+                    <span className="text-[12px] text-[var(--brand-300)]">Explore</span>
                   </div>
                 </a>
               ))}

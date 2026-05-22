@@ -631,7 +631,7 @@ export function CostBreakdownTable({
         </MetricFieldCard>
       </div>
 
-      <section className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
+      <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
         <div className="flex items-center justify-between gap-4">
           <h4 className="text-base font-semibold text-[var(--text-1)]">Budget breakdown</h4>
           <Button
@@ -645,7 +645,7 @@ export function CostBreakdownTable({
           </Button>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+        <div className="mt-4 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
           <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
               <col className="w-[22%]" />
@@ -783,7 +783,7 @@ export function CostBreakdownTable({
         </div>
       </section>
 
-      <section className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
+      <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
         <div className="flex items-center justify-between gap-4">
           <h4 className="text-base font-semibold text-[var(--text-1)]">Payment Schedule</h4>
           <Button
@@ -797,7 +797,7 @@ export function CostBreakdownTable({
           </Button>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-[12px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+        <div className="mt-4 overflow-x-auto rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
           <table className="min-w-[998px] table-fixed border-separate border-spacing-0 text-sm">
             <colgroup>
               <col className="w-[146px]" />
@@ -1052,7 +1052,7 @@ function MetricFieldCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-[16px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 shadow-[var(--shadow-xs)]">
       <p className="text-xs font-medium text-[var(--text-4)]">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
@@ -1071,7 +1071,7 @@ function TotalsCard({
   }>;
 }) {
   return (
-    <div className="w-full max-w-[290px] rounded-[12px] border border-[var(--border-2)] bg-white px-4 py-4 text-right shadow-[var(--shadow-xs)]">
+    <div className="w-full max-w-[290px] rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4 text-right shadow-[var(--shadow-xs)]">
       <div className="space-y-2">
         {lines.map((line) => (
           <div
@@ -1170,7 +1170,7 @@ function InlineCellInput({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(9,112,200,0.16),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
         className,
@@ -1202,7 +1202,7 @@ function InlineCellNumber({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(9,112,200,0.16),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
         className,
@@ -1247,7 +1247,7 @@ function BudgetEditorDialog({
         onClick={onClose}
       />
 
-      <div className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-[20px] border border-[var(--border-2)] bg-white shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_3px_3px_-1.5px_rgba(16,24,40,0.04)]">
+      <div className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_3px_3px_-1.5px_rgba(16,24,40,0.04)]">
         <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">
             {value.index === null ? "Add budget row" : "Edit budget row"}
@@ -1367,7 +1367,7 @@ function BudgetEditorDialog({
 
           <div className="space-y-2">
             <span className="text-sm font-medium text-[var(--text-2)]">Tech Stack</span>
-            <div className="max-h-[168px] overflow-y-auto rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3 shadow-[var(--shadow-xs)]">
+            <div className="max-h-[168px] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3 shadow-[var(--shadow-xs)]">
               <div className="flex flex-wrap gap-2">
                 {techStackOptions.map((option) => {
                   const selected = value.techStack.includes(option);

@@ -49,7 +49,7 @@ export function ListItemsEditor({
           {safeItems.map((item, index) => (
             <div
               key={`${item}-${index}`}
-              className="flex items-center gap-2 rounded-[16px] border border-[var(--border-2)] bg-white p-3"
+              className="flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white p-3"
             >
               <input
                 value={item}
@@ -96,7 +96,7 @@ export function ListItemsEditor({
           ))}
         </div>
       ) : (
-        <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+        <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No items yet.
         </p>
       )}

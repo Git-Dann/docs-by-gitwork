@@ -1,15 +1,17 @@
 "use client";
 
 import {
+  AcademicCapIcon,
   ArrowRightOnRectangleIcon,
-  ChartBarSquareIcon,
-  CheckCircleIcon,
+  CodeBracketIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
+  HomeModernIcon,
+  LifebuoyIcon,
   MagnifyingGlassIcon,
-  Squares2X2Icon,
-  UsersIcon,
+  SignalIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -21,6 +23,7 @@ import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
 type NavItem = {
   href?: string;
   label: string;
+  description?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
 };
@@ -45,28 +48,44 @@ export function AppShell({
     () => [
       {
         href: "/app",
-        label: "Dashboard",
-        icon: Squares2X2Icon,
+        label: "Foundry HQ",
+        icon: HomeModernIcon,
       },
       {
-        href: "/app/proof",
-        label: "Proof",
+        href: "/app/pulse",
+        label: "Pulse",
+        description: "Health and delivery tracking",
+        icon: SignalIcon,
+      },
+      {
+        href: "/app/code",
+        label: "Code",
+        description: "Dev review and validation",
+        icon: CodeBracketIcon,
+      },
+      {
+        href: "/app/docs",
+        label: "Docs",
+        description: "Documentation and client outputs",
         icon: DocumentTextIcon,
       },
       {
-        href: "/app/proposals",
-        label: "Docs",
-        icon: ChartBarSquareIcon,
+        href: "/app/portal",
+        label: "Portal",
+        description: "Client-support workspace",
+        icon: UserGroupIcon,
       },
       {
-        href: "/app/codeclear",
-        label: "CodeClear",
-        icon: CheckCircleIcon,
+        href: "/app/care",
+        label: "Care",
+        description: "Support and aftercare",
+        icon: LifebuoyIcon,
       },
       {
-        href: "/app/clients",
-        label: "Clients",
-        icon: UsersIcon,
+        href: "/app/study",
+        label: "Study",
+        description: "AI-powered user research",
+        icon: AcademicCapIcon,
       },
     ],
     [],
@@ -84,9 +103,9 @@ export function AppShell({
   );
 
   return (
-    <div className="h-[100dvh] bg-white text-[var(--text-1)]">
+    <div className="h-[100dvh] bg-[#FAFAF9] text-[var(--text-1)]">
       <div className="grid h-full w-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-[var(--border-2)] bg-[var(--surface-0)] lg:flex lg:min-h-0">
+        <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
             pathname={pathname}
             primaryNav={primaryNav}
@@ -95,9 +114,9 @@ export function AppShell({
           />
         </aside>
 
-        <div className="flex min-h-0 flex-col bg-white">
+        <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
           {hideContentHeader ? null : (
-            <header className="border-b border-[var(--border-2)] px-6 pb-5 pt-7 sm:px-8">
+            <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
                 <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
                   {title}
@@ -164,7 +183,8 @@ function ExpandedRail({
         <div className="flex items-center gap-3">
           <BrandGlyph className="h-8 w-8 shrink-0" />
           <div>
-            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Gitwork</p>
+            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Foundry by Gitwork</p>
+            <p className="text-xs text-[var(--text-4)]">Prompt-to-production suite</p>
           </div>
         </div>
 
@@ -227,17 +247,29 @@ function SidebarNavItem({
 }) {
   const Icon = item.icon;
   const classes = cn(
-    "flex w-full items-center gap-3 rounded-[8px] px-3 py-2 text-sm font-medium transition",
+    "flex w-full items-start gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
     active
-      ? "bg-[var(--surface-1)] text-[var(--text-1)]"
-      : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)] shadow-[var(--shadow-xs)]"
+      : "border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
     item.disabled ? "cursor-default opacity-70 hover:bg-transparent" : "",
   );
 
   const content = (
     <>
-      <Icon className="h-5 w-5 shrink-0 text-[var(--text-4)]" />
-      <span>{item.label}</span>
+      <Icon
+        className={cn(
+          "mt-0.5 h-5 w-5 shrink-0",
+          active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+        )}
+      />
+      <span className="min-w-0">
+        <span className="block">{item.label}</span>
+        {item.description ? (
+          <span className="mt-0.5 block text-xs font-normal text-[var(--text-4)]">
+            {item.description}
+          </span>
+        ) : null}
+      </span>
     </>
   );
 
@@ -289,7 +321,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-[var(--surface-1)]"
+        className="flex w-full items-center gap-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={account.avatarUrl} alt={account.name} className="h-9 w-9 rounded-full object-cover" />
@@ -301,10 +333,10 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       </button>
 
       {open ? (
-        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[16px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
+        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Link
             href="/app/account-settings"
-            className="flex items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <Cog8ToothIcon className="h-5 w-5 text-[var(--text-4)]" />
             <span>Account settings</span>
@@ -326,7 +358,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
           </Button>
 
           {settings.workspace.invitedUsers.length ? (
-            <div className="mt-2 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
+            <div className="mt-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
               <p className="app-eyebrow">Pending invites</p>
               <div className="mt-2 space-y-1">
                 {settings.workspace.invitedUsers.slice(0, 3).map((email) => (
@@ -413,16 +445,21 @@ function BrandGlyph({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[8px] border border-[rgba(10,13,18,0.08)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
+        "relative overflow-hidden rounded-[6px] border border-[rgba(9,112,200,0.16)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
         className,
       )}
     >
-      <div className="absolute inset-[22%] rounded-[4px] bg-[linear-gradient(135deg,var(--brand-700)_0%,var(--brand-500)_100%)]" />
+      <div className="absolute inset-[18%] rounded-[4px] bg-[var(--brand-gradient)]" />
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--signal-stripe)]" />
       <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
     </div>
   );
 }
 
 function isActivePath(pathname: string | null, href: string) {
+  if (href === "/app") {
+    return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
+  }
+
   return pathname === href || (href !== "/app" && Boolean(pathname?.startsWith(href)));
 }

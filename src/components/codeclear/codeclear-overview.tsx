@@ -150,7 +150,7 @@ export function CodeClearOverview() {
           {neverScanned > 0 ? (
             <Link
               href="/app/codeclear/pipeline"
-              className="flex flex-1 items-center gap-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300"
+              className="flex flex-1 items-center gap-3 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300"
             >
               <BeakerIcon className="h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-sm font-semibold text-amber-700">
@@ -163,7 +163,7 @@ export function CodeClearOverview() {
           {(stats?.recheckDue ?? 0) > 0 ? (
             <Link
               href="/app/codeclear/candidates?status=RECHECK_DUE"
-              className="flex flex-1 items-center gap-3 rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
+              className="flex flex-1 items-center gap-3 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
             >
               <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />
               <p className="text-sm font-semibold text-rose-700">
@@ -245,7 +245,7 @@ export function CodeClearOverview() {
               return (
                 <div
                   key={entry.status}
-                  className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
+                  className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
                 >
                   <CodeClearStatusBadge status={entry.status} />
                   <p className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
@@ -286,7 +286,7 @@ export function CodeClearOverview() {
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-start gap-3 rounded-[14px] border border-[var(--border-2)] bg-white px-4 py-3"
+                    className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
                   >
                     <div
                       className={cn(
@@ -330,7 +330,7 @@ export function CodeClearOverview() {
         </div>
 
         {spotlight.length ? (
-          <div className="mt-5 overflow-hidden rounded-[18px] border border-[var(--border-2)]">
+          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
             <table className="app-table">
               <thead>
                 <tr>
@@ -374,7 +374,7 @@ export function CodeClearOverview() {
                       {candidate.status === "CODECLEAR_COMPLETE" ? (
                         <Link
                           href="/app/proposals?new=1"
-                          className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] shadow-[var(--shadow-xs)] transition hover:border-[var(--brand-500)] hover:bg-[var(--surface-brand-soft)]"
+                          className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] shadow-[var(--shadow-xs)] transition hover:border-[var(--brand-500)] hover:bg-[var(--surface-brand-soft)]"
                         >
                           <DocumentTextIcon className="h-3.5 w-3.5" />
                           Create Doc

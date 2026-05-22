@@ -318,7 +318,7 @@ export function ProofWorkspace({
 
           <div className="mt-5 space-y-3">
             {fromCodeClear ? (
-              <div className="flex items-start gap-2.5 rounded-[12px] border border-[var(--brand-200)] bg-[var(--surface-brand)] px-4 py-3">
+              <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--brand-200)] bg-[var(--surface-brand)] px-4 py-3">
                 <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
                 <p className="text-sm text-[var(--brand-700)]">
                   Brief pre-filled from your CodeClear match. Review it below and run the analysis to continue.
@@ -337,7 +337,7 @@ export function ProofWorkspace({
 
             {uploadedFile ? (
               /* Uploaded state */
-              <div className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <CheckCircleIcon className="h-5 w-5 shrink-0 text-emerald-600" />
                   <span className="truncate text-sm font-medium text-[var(--text-1)]">{uploadedFile}</span>
@@ -363,14 +363,14 @@ export function ProofWorkspace({
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 className={cn(
-                  "flex w-full flex-col items-center gap-3 rounded-[12px] border px-6 py-4 transition",
+                  "flex w-full flex-col items-center gap-3 rounded-[10px] border px-6 py-4 transition",
                   isDragging
                     ? "border-2 border-[var(--brand-500)] bg-white"
                     : "border border-[var(--border-2)] bg-white hover:border-[var(--brand-500)]/50",
                 )}
               >
                 {/* Icon — matches Figma Featured icon container */}
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-white shadow-[var(--shadow-skeuomorphic)]">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[6px] border border-[var(--border-1)] bg-white shadow-[var(--shadow-skeuomorphic)]">
                   <CloudArrowUpIcon className="h-5 w-5 text-[var(--text-3)]" />
                 </div>
 
@@ -435,7 +435,7 @@ export function ProofWorkspace({
             </Button>
 
             {errorMessage ? (
-              <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {errorMessage}
               </div>
             ) : null}
@@ -553,7 +553,7 @@ export function ProofWorkspace({
             </div>
 
             {savedDocument ? (
-              <div className="mt-4 rounded-[12px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="mt-4 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 Saved as <span className="font-semibold">{savedDocument.title}</span>. It will now appear in Docs and can be linked to proposals.
               </div>
             ) : null}
@@ -656,7 +656,7 @@ function ResultCard({
   label: string; children?: React.ReactNode; empty?: boolean; emptyText?: string;
 }) {
   return (
-    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">{label}</p>
       <div className="mt-2.5">
         {empty ? <p className="text-sm text-[var(--text-4)]">{emptyText}</p> : children}
@@ -667,7 +667,7 @@ function ResultCard({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">{label}</p>
       <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">{value}</p>
     </div>

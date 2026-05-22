@@ -176,7 +176,7 @@ export function ProposalList() {
               <ChevronDownIcon className="h-4 w-4 transition group-open:rotate-180" />
             </summary>
 
-            <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[14px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-lg)]">
+            <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-lg)]">
               <div className="space-y-3">
                 <label className="block space-y-1.5">
                   <span className="app-field-label">Status</span>
@@ -411,7 +411,7 @@ export function ProposalList() {
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={currentPage === 1}
               className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
+                "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
                 currentPage === 1 ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
               )}
               aria-label="Previous page"
@@ -430,7 +430,7 @@ export function ProposalList() {
                   type="button"
                   onClick={() => setPage(item)}
                   className={cn(
-                    "inline-flex h-9 min-w-9 items-center justify-center rounded-[8px] px-2 text-sm transition",
+                    "inline-flex h-9 min-w-9 items-center justify-center rounded-[6px] px-2 text-sm transition",
                     item === currentPage
                       ? "border border-[var(--border-2)] bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
                       : "text-[var(--text-3)] hover:bg-[var(--surface-1)]",
@@ -446,7 +446,7 @@ export function ProposalList() {
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={currentPage === totalPages}
               className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
+                "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
                 currentPage === totalPages ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
               )}
               aria-label="Next page"

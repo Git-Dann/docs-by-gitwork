@@ -1,12 +1,14 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
   --surface-canvas: #ffffff;
   --surface-0: #ffffff;
   --surface-1: #fafafa;
   --surface-2: #f5f5f5;
-  --surface-brand: #eff4ff;
-  --surface-brand-soft: #f5f8ff;
+  --surface-brand: #f1f8fe;
+  --surface-brand-soft: #f7fbff;
+  --surface-brand-strong: #ddf0fc;
   --text-1: #171717;
   --text-2: #404040;
   --text-3: #525252;
@@ -14,10 +16,18 @@
   --border-1: #d4d4d4;
   --border-2: #e5e5e5;
   --border-3: rgba(10, 13, 18, 0.08);
-  --brand-500: #5b7cff;
-  --brand-600: #335cff;
-  --brand-700: #2447d5;
-  --brand-800: #1e3aa9;
+  --brand-200: #d6eeff;
+  --brand-300: #b9e3ff;
+  --brand-400: #63bdf5;
+  --brand-500: #0a82dd;
+  --brand-600: #0970c8;
+  --brand-700: #0970c8;
+  --brand-800: #075a9f;
+  --brand-900: #064a83;
+  --brand-cyan: #42c7ff;
+  --brand-focus-ring: rgba(9, 112, 200, 0.16);
+  --brand-gradient: linear-gradient(135deg, #42c7ff 0%, #0970c8 46%, #075a9f 100%);
+  --signal-stripe: linear-gradient(90deg, #0970c8 0%, #075a9f 28%, #42c7ff 62%, #d6eeff 84%, #f7fbff 100%);
   --success-500: #17b26a;
   --success-50: #ecfdf3;
   --warning-500: #dc6803;
@@ -41,8 +51,9 @@
 @theme inline {
   --color-background: var(--surface-canvas);
   --color-foreground: var(--text-1);
-  --font-sans: "Inter";
-  --font-mono: "Inter";
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "DM Serif Display", "Times New Roman", Georgia, serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -56,18 +67,18 @@ body {
 }
 
 html {
-  background: var(--surface-canvas);
+  background: #FAFAF9;
 }
 
 body {
-  background: #ffffff;
+  background: #FAFAF9;
   color: var(--text-1);
   font-family: "Inter", "Segoe UI", sans-serif;
   line-height: 1.45;
 }
 
 ::selection {
-  background: rgba(51, 92, 255, 0.16);
+  background: var(--brand-focus-ring);
 }
 
 a {
@@ -77,30 +88,27 @@ a {
 
 @layer components {
   .app-surface {
-    border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-card {
-    border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-muted-card {
-    border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-1);
   }
 
   .app-subtle-panel {
-    border: 1px solid var(--border-2);
-    border-radius: 14px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-eyebrow {
@@ -129,12 +137,21 @@ a {
     color: var(--text-3);
   }
 
+  .signal-stripe {
+    min-height: 18px;
+    background: var(--signal-stripe);
+  }
+
+  .signal-stripe-thin {
+    min-height: 4px;
+    background: var(--signal-stripe);
+  }
+
   .app-table-shell {
     overflow: hidden;
-    border: 1px solid var(--border-2);
-    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-xs);
   }
 
   .app-table {
@@ -177,10 +194,10 @@ a {
   }
 
   .app-dialog-panel {
-    border: 1px solid var(--border-2);
-    border-radius: 24px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
     background: var(--surface-0);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12);
   }
 
   .app-button {
@@ -210,7 +227,7 @@ a {
 
   .app-button:focus-visible {
     box-shadow:
-      0 0 0 4px rgba(51, 92, 255, 0.12),
+      0 0 0 4px var(--brand-focus-ring),
       var(--shadow-xs);
   }
 
@@ -237,9 +254,9 @@ a {
   }
 
   .app-button-primary:disabled {
-    background: #9db0ff;
+    background: var(--brand-300);
     border-color: rgba(255, 255, 255, 0.12);
-    color: #ffffff;
+    color: var(--brand-900);
     box-shadow: none;
   }
 
@@ -354,28 +371,28 @@ a {
 
   .app-button-xs {
     height: 32px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 12px;
     font-size: 13px;
   }
 
   .app-button-sm {
     height: 36px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .app-button-md {
     height: 40px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .app-button-lg {
     height: 44px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 16px;
     font-size: 14px;
   }
@@ -383,14 +400,14 @@ a {
   .app-button-icon-sm {
     height: 36px;
     width: 36px;
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 0;
   }
 
   .app-button-icon-md {
     height: 40px;
     width: 40px;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0;
   }
 
@@ -419,8 +436,8 @@ a {
   .proposal-form-theme select,
   .proposal-form-theme textarea {
     width: 100%;
-    border: 1px solid var(--border-1);
-    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.14);
+    border-radius: 6px;
     background: var(--surface-0);
     color: var(--text-1);
     box-shadow: var(--shadow-xs);
@@ -491,7 +508,7 @@ a {
   .proposal-form-theme textarea:focus {
     border-color: var(--brand-500);
     box-shadow:
-      0 0 0 4px rgba(51, 92, 255, 0.12),
+      0 0 0 4px var(--brand-focus-ring),
       var(--shadow-xs);
   }
 

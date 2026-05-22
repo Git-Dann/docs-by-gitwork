@@ -101,7 +101,7 @@ export function AccountSettingsPanel() {
             {settings.workspace.invitedUsers.map((email) => (
               <div
                 key={email}
-                className="flex items-center justify-between rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3"
+                className="flex items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3"
               >
                 <span className="text-sm text-[var(--text-2)]">{email}</span>
                 <Button

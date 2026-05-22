@@ -285,7 +285,7 @@ export function AppOverview() {
 
       {/* Widget visibility picker */}
       {customizing && (
-        <div className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+        <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
             Show / hide — drag to reorder — S / M / L to resize
           </p>
@@ -344,8 +344,11 @@ export function AppOverview() {
           {visibleWidgets.map((id) => {
             const size = sizeOf(id);
             return (
-              <div key={id} className={cn("app-card p-5", SPAN_CLASS[size])}>
-                <WidgetContent id={id} size={size} data={data} />
+              <div key={id} className={cn("app-card flex flex-col overflow-hidden", SPAN_CLASS[size])}>
+                <WidgetSignatureHeader id={id} />
+                <div className="min-h-0 flex-1 p-5">
+                  <WidgetContent id={id} size={size} data={data} />
+                </div>
               </div>
             );
           })}
@@ -353,7 +356,7 @@ export function AppOverview() {
       )}
 
       {visibleWidgets.length === 0 && (
-        <div className="rounded-[18px] border border-dashed border-[var(--border-2)] px-6 py-10 text-center">
+        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] px-6 py-10 text-center">
           <p className="text-sm text-[var(--text-4)]">
             All widgets are hidden. Click <strong>Customise</strong> to re-enable them.
           </p>
@@ -392,8 +395,9 @@ function SortableWidget({
         transition,
         opacity: isDragging ? 0.45 : 1,
       }}
-      className={cn("app-card overflow-hidden", SPAN_CLASS[size])}
+      className={cn("app-card flex flex-col overflow-hidden", SPAN_CLASS[size])}
     >
+      <WidgetSignatureHeader id={id} />
       {customizing && (
         <div className="flex items-center justify-between gap-2 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
           {/* Drag area */}
@@ -429,7 +433,7 @@ function SortableWidget({
           </div>
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div className="min-h-0 flex-1 p-5">{children}</div>
     </div>
   );
 }
@@ -556,7 +560,7 @@ function ProposalsWidget({ size, data }: { size: WidgetSize; data: DashData }) {
           </Link>
         </div>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-[14px] border border-[var(--border-2)]">
+        <div className="mt-4 overflow-x-auto rounded-[10px] border border-[var(--border-2)]">
           <table className="app-table min-w-full">
             <thead>
               <tr>
@@ -790,7 +794,7 @@ function ProofWidget({ size, data }: { size: WidgetSize; data: DashData }) {
             <Link
               key={doc.id}
               href="/app/proof"
-              className="flex items-start gap-3 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 transition hover:border-[var(--border-1)] hover:bg-white"
+              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 transition hover:border-[var(--border-1)] hover:bg-white"
             >
               <div className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-white text-[var(--brand-700)] shadow-[var(--shadow-xs)]">
                 <DocumentTextIcon className="h-4 w-4" />
@@ -809,7 +813,7 @@ function ProofWidget({ size, data }: { size: WidgetSize; data: DashData }) {
             </Link>
           ))
         ) : (
-          <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
             No Proof sessions yet.
           </p>
         )}
@@ -853,7 +857,7 @@ function ClientsWidget({ size, data }: { size: WidgetSize; data: DashData }) {
             <Link
               key={client.id}
               href={`/app/clients/${client.slug}`}
-              className="flex items-center gap-3 rounded-[14px] border border-[var(--border-2)] px-4 py-3 transition hover:bg-[var(--surface-1)]"
+              className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] px-4 py-3 transition hover:bg-[var(--surface-1)]"
             >
               <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
                 {client.name.charAt(0).toUpperCase()}
@@ -872,7 +876,7 @@ function ClientsWidget({ size, data }: { size: WidgetSize; data: DashData }) {
             </Link>
           ))
         ) : (
-          <p className="rounded-[14px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
             No clients yet.
           </p>
         )}
@@ -907,7 +911,7 @@ function WidgetHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
         {label}
       </p>
@@ -928,7 +932,7 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <article className="rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4">
+    <article className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4">
       <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">
         {label}
       </p>
@@ -954,9 +958,9 @@ function ActionTile({
   return (
     <Link
       href={href}
-      className="group flex items-start gap-4 rounded-[18px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4 transition hover:border-[var(--border-1)] hover:bg-white"
+      className="group flex items-start gap-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4 transition hover:border-[var(--border-1)] hover:bg-white"
     >
-      <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-white text-[var(--brand-700)] shadow-[var(--shadow-xs)]">
+      <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-white text-[var(--brand-700)] shadow-[var(--shadow-xs)]">
         {icon}
       </div>
       <div className="min-w-0 flex-1">
@@ -965,6 +969,55 @@ function ActionTile({
       </div>
       <ArrowTopRightOnSquareIcon className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--text-2)]" />
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Widget signature header — THE SIGNATURE
+// 36px monospace header row per the Foundry design system
+// ---------------------------------------------------------------------------
+
+function WidgetSignatureHeader({ id }: { id: WidgetId }) {
+  const slot = ALL_WIDGET_IDS.indexOf(id) + 1;
+  const label = WIDGET_META[id].label;
+  return (
+    <div
+      style={{
+        height: 36,
+        padding: "0 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        background: "#FAFAF9",
+        borderBottom: "1px solid rgba(0,0,0,0.06)",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: "1.2px",
+          color: "#94A3B8",
+          textTransform: "uppercase",
+        }}
+      >
+        {String(slot).padStart(2, "0")} // {label.toUpperCase()}
+      </span>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.8px",
+          color: "#16A34A",
+          textTransform: "uppercase",
+        }}
+      >
+        LIVE
+      </span>
+    </div>
   );
 }
 

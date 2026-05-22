@@ -41,7 +41,7 @@ export function TemplateManagement() {
             {data?.templates.map((template) => (
               <article
                 key={template.id}
-                className="rounded-[16px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4"
+                className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-semibold text-[var(--text-1)]">{template.name}</h3>

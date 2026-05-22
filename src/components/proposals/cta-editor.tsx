@@ -90,7 +90,7 @@ function RoleCard({
   const selectedOption = destinationOptions.find((option) => option.value === value.destinationType) ?? destinationOptions[0];
 
   return (
-    <section className="space-y-4 rounded-[18px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
+    <section className="space-y-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold text-[var(--text-1)]">{title}</h4>

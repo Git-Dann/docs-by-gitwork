@@ -64,7 +64,7 @@ export default function ProductsPage() {
                 <ul className="mt-6 space-y-2.5">
                   {offer.points.map((point) => (
                     <li key={point} className="flex items-start gap-3">
-                      <CheckIcon className="mt-0.5 text-blue-400" />
+                      <CheckIcon className="mt-0.5 text-[var(--brand-cyan)]" />
                       <span className="text-[14px] leading-6 text-white/66">{point}</span>
                     </li>
                   ))}
