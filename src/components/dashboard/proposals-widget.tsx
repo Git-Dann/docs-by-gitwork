@@ -61,7 +61,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size !== "sm" ? 8 : 4;
+  const displayCount = 8;
 
   return (
     <div className="flex h-full flex-col">
@@ -93,8 +93,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
       </div>
 
       {/* List */}
-      {size !== "sm" && (
-        <div className="mt-2 flex-1 overflow-y-auto">
+      <div className="mt-2 flex-1 overflow-y-auto">
           {proposals.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-1.5">
               <DocumentTextIcon className="h-6 w-6 text-[var(--text-4)]" />
@@ -127,7 +126,6 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

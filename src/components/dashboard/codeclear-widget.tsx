@@ -85,7 +85,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
                 />
               </div>
               <span className="text-[10px] text-[var(--text-3)]">
-                {size !== "sm" ? stage.label : stage.short}
+                {stage.label}
               </span>
             </div>
           );

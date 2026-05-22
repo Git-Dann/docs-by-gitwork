@@ -123,8 +123,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
       </div>
 
       {/* Recent scans */}
-      {size !== "sm" && (
-        <div className="mt-3 flex-1 overflow-y-auto">
+      <div className="mt-3 flex-1 overflow-y-auto">
           {stats.recentScans.length === 0 ? (
             <div className="flex h-full items-center justify-center text-[11px] text-[var(--text-3)]">
               No scans yet
@@ -161,7 +160,6 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
             </>
           )}
         </div>
-      )}
     </div>
   );
 }

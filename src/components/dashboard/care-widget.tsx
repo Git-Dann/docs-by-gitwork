@@ -61,7 +61,7 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
     );
   }
 
-  const displayCount = size !== "sm" ? 7 : 3;
+  const displayCount = 7;
 
   return (
     <div className="flex h-full flex-col">
