@@ -13,7 +13,6 @@ import {
   SignalIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -182,7 +181,7 @@ function ExpandedRail({
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
         <div className="flex items-center">
-          <Image src="/foundry-logo.png" alt="Foundry" width={32} height={32} className="shrink-0 rounded-[6px]" />
+          <BrandGlyph className="h-8 w-8 shrink-0" />
         </div>
 
         <label className="relative mt-4 block">
