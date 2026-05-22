@@ -93,7 +93,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
   }
 
   const events = data.events ?? [];
-  const displayCount = size.rows >= 3 ? 8 : size.rows >= 2 ? 4 : 2;
+  const displayCount = size === "lg" ? 8 : size === "md" ? 4 : 2;
 
   return (
     <div className="flex h-full flex-col">
@@ -114,7 +114,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
           </div>
         ) : (
           events.slice(0, displayCount).map((ev) => (
-            <EventRow key={ev.id} event={ev} compact={size.cols < 2} />
+            <EventRow key={ev.id} event={ev} compact={size === "sm"} />
           ))
         )}
       </div>
