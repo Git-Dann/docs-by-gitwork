@@ -93,6 +93,14 @@ const pulseProjectClassificationSchema = z.object({
   verticalInsights: z.array(z.string()),
 });
 
+const productionBlockerSchema = z.object({
+  category: z.string(),
+  blocker: z.string(),
+  why: z.string(),
+  recommendedService: z.string().optional(),
+  urgency: z.enum(["CRITICAL", "HIGH"]),
+});
+
 const pulseAnalysisOutputSchema = z.object({
   projectClassification: pulseProjectClassificationSchema,
   executiveSummary: z.string(),
@@ -103,6 +111,7 @@ const pulseAnalysisOutputSchema = z.object({
   scalingRoadmap: z.array(pulseScalingPhaseSchema),
   techDebt: z.array(pulseTechDebtSchema),
   proposalHook: z.string(),
+  productionBlockers: z.array(productionBlockerSchema),
   productionReadinessChecklist: z.array(productionReadinessItemSchema),
   techStackAnalysis: pulseTechStackAnalysisSchema,
 });
@@ -145,6 +154,24 @@ Vibe-coded apps across all verticals share common gaps:
 You are briefing the Gitwork consulting team — not the client directly. Be specific, commercially minded, and prioritise what will have the biggest impact on getting this product to market.
 
 You MUST respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.`;
+
+// Gitwork-preferred vendor list — always recommend specific service names, not generic categories.
+const GITWORK_VENDOR_CONTEXT = `
+Gitwork preferred services (recommend by name):
+  Transactional email: Resend (first choice), Mailgun (second), Postmark (receipts), SendGrid (high-volume)
+  Error monitoring: Sentry (first choice), Highlight.io (second), Datadog (enterprise)
+  Analytics: PostHog (first choice — open source), Plausible (privacy-first EU), GA4 (if already in use)
+  Background jobs: Inngest (first choice — serverless), Trigger.dev (second), BullMQ (self-hosted)
+  Caching / KV: Upstash Redis (serverless, first choice), Vercel KV (if on Vercel)
+  Search: Algolia (managed), Typesense (self-hosted OSS), Meilisearch (alternative OSS)
+  Uptime: Better Uptime (first choice), UptimeRobot (free tier), Checkly (API monitoring)
+  Mobile crash reporting: Sentry (cross-platform), Firebase Crashlytics (native)
+  Push notifications (mobile): OneSignal (first choice), Firebase Cloud Messaging
+  In-app payments (mobile): RevenueCat (manages App Store + Play Store subscriptions)
+  File storage: Cloudflare R2 (first choice — cheap egress), Uploadthing (Next.js), Cloudinary (media transforms)
+  Rate limiting: Upstash Ratelimit (serverless), Redis sliding window (self-hosted)
+  Auth: Clerk (first choice — DX), NextAuth.js / Auth.js (open source), WorkOS (enterprise SSO)
+`;
 
 function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   const byCategory = new Map<string, PulseScanCheckInput[]>();
@@ -208,6 +235,12 @@ export function getMockAnalysis(input: { projectName: string; healthScore: numbe
       { area: "Documentation", description: "No README or developer documentation found in the repo.", severity: "LOW" },
     ],
     proposalHook: `[Mock] ${input.projectName} is a solid concept that needs production hardening before it can scale — we can get it there in 6–8 weeks.`,
+    productionBlockers: [
+      { category: "Email", blocker: "No transactional email provider configured", why: "Password reset, welcome emails, and notifications will silently fail — users cannot recover locked accounts.", recommendedService: "Resend", urgency: "CRITICAL" },
+      { category: "Monitoring", blocker: "No error monitoring", why: "Production crashes are invisible until users report them — mean time to detect (MTTD) is unbounded.", recommendedService: "Sentry", urgency: "CRITICAL" },
+      { category: "Legal", blocker: "No Privacy Policy page", why: "Illegal under GDPR and CCPA — payment processors (Stripe) and app stores (Apple/Google) may reject the app.", urgency: "CRITICAL" },
+      { category: "Legal", blocker: "No cookie consent mechanism", why: "Required by GDPR ePrivacy Directive for any site using cookies — exposes client to ICO fines.", urgency: "HIGH" },
+    ],
     productionReadinessChecklist: [
       { category: "Legal", item: "Privacy Policy page", status: "MISSING", notes: "No privacy policy link detected in the scan." },
       { category: "Legal", item: "Terms of Service page", status: "MISSING", notes: "No terms of service detected." },
@@ -286,6 +319,7 @@ export async function analyseWithClaude(
     inputUrl: string | null;
     inputGithubRepo: string | null;
     inputDescription: string | null;
+    platform: string | null;
     healthScore: number;
     techStack: string[];
     checks: PulseScanCheckInput[];
@@ -306,11 +340,17 @@ export async function analyseWithClaude(
         ? `GitHub repo: ${input.inputGithubRepo}`
         : `Description: ${input.inputDescription}`;
 
+  const platformLabel = input.platform
+    ? `Platform (declared by client): ${input.platform}`
+    : "Platform: not specified (assume web app)";
+
   const userMessage = `Project: ${input.projectName}
 Input type: ${input.inputType}
 ${inputRef}
+${platformLabel}
 Overall health score: ${input.healthScore}/100
 Tech stack detected: ${input.techStack.length > 0 ? input.techStack.join(", ") : "Unknown"}
+${GITWORK_VENDOR_CONTEXT}
 
 === SCAN RESULTS ===
 ${formatChecksForPrompt(input.checks)}
@@ -362,6 +402,15 @@ Return a JSON object with this exact shape:
     }
   ],
   "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client.",
+  "productionBlockers": [
+    {
+      "category": "string — e.g. Email, Monitoring, Legal, Auth, Security",
+      "blocker": "string — what is missing or broken, stated plainly. E.g. 'No transactional email provider configured'",
+      "why": "string — the concrete operational or legal consequence if not fixed before launch. E.g. 'Password reset emails, welcome emails, and receipt notifications will silently fail — users cannot recover locked accounts'",
+      "recommendedService": "string or omit — the specific named service Gitwork recommends for this gap, from the Gitwork vendor list. E.g. 'Resend', 'Sentry', 'Mailgun'. Omit if not applicable.",
+      "urgency": "CRITICAL | HIGH"
+    }
+  ],
   "productionReadinessChecklist": [
     {
       "category": "string — one of: Legal, Auth, Payments, Onboarding, Support, Trust, Observability, Performance, SEO, Accessibility",
@@ -401,9 +450,11 @@ Return a JSON object with this exact shape:
   }
 }
 
-Populate productionReadinessChecklist with 12–20 items. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. Cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime), and any other gaps from the scan.
+For productionBlockers: list 3–8 items that are genuine launch blockers for THIS platform type. Be ruthlessly specific — name the exact consequence of going live without each item. Always include a recommendedService from the Gitwork vendor list where one applies. Do NOT list nice-to-haves here — only things where launching without them will cause a broken user experience, legal liability, or security incident. Skip categories that are irrelevant to the declared platform.
 
-For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type.`;
+Populate productionReadinessChecklist with 12–20 items relevant to the declared platform. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. For web/SaaS cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime). For mobile apps focus on: App Store compliance, crash reporting, push notifications, in-app payments, deep linking, auth flows. For APIs focus on: rate limiting, auth, versioning, documentation, monitoring.
+
+For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Use Gitwork preferred vendor names from the vendor list provided. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type and platform.`;
 
   let rawContent: string;
 

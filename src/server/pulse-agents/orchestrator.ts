@@ -16,6 +16,7 @@ export async function runOrchestratedScan(input: {
   inputUrl?: string;
   inputGithubRepo?: string;
   inputDescription?: string;
+  platform?: string;
 }): Promise<OrchestratorResult> {
   if (input.inputType === "FREE_TEXT") {
     return {
@@ -31,7 +32,7 @@ export async function runOrchestratedScan(input: {
     // Run infra + deploy agents in parallel (fast — 8-10s)
     // Browser agent (PageSpeed) runs separately in Phase 2 alongside AI synthesis
     const [infraResult, deployResult] = await Promise.all([
-      runUrlChecks(input.inputUrl),
+      runUrlChecks(input.inputUrl, input.platform),
       runDeployAgent(input.inputUrl),
     ]);
 
@@ -62,7 +63,7 @@ export async function runOrchestratedScan(input: {
 
     if (homepageUrl) {
       const [urlResult, deployResult] = await Promise.all([
-        runUrlChecks(homepageUrl),
+        runUrlChecks(homepageUrl, input.platform),
         runDeployAgent(homepageUrl),
       ]);
       urlChecks = urlResult.checks;
