@@ -114,9 +114,9 @@ export function AppShell({
       >
         {/* ── Row 1 Col 1: Sidebar brand (same grid row as main header) ── */}
         {!hideContentHeader && (
-          <div className="hidden border-b border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] px-6 pb-5 pt-7 lg:flex lg:items-end">
+          <div className="hidden border-b border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] px-6 pb-5 pt-7 lg:flex lg:items-center lg:justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/foundry-logo.svg" alt="Foundry" className="h-9 w-auto" />
+            <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto" />
           </div>
         )}
 

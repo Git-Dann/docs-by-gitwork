@@ -77,6 +77,10 @@ body {
   line-height: 1.45;
 }
 
+h1, h2, h3, h4, h5 {
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+}
+
 ::selection {
   background: var(--brand-focus-ring);
 }
