@@ -247,10 +247,31 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 
 ### Navigation
 
-**App Sidebar** — Fixed 64px wide left rail.
-- Background `{colors.surface}`, right border `1px solid {colors.hairline}`.
-- Active icon: `{colors.primary}` fill, background `{colors.primary-tint}` 32×32 rounded `{rounded.md}`.
-- Inactive: `{colors.stone}`.
+**App Shell Layout** — 2×2 CSS grid: `grid-cols-[280px_minmax(0,1fr)]`, `grid-rows-[auto_minmax(0,1fr)]`.
+
+```
+┌──────────────────────┬──────────────────────────────┐
+│  Brand cell          │  Content header              │  ← Row 1 (auto height)
+│  foundry-logo.svg    │  <h1>{title}</h1>            │    border-bottom on both cells
+│  centred, h-12       │  + optional subtitle         │    so lines align perfectly
+├──────────────────────┼──────────────────────────────┤
+│  Sidebar nav         │  Main content area           │  ← Row 2 (fills remaining height)
+│  ExpandedRail        │  <main>{children}</main>     │
+└──────────────────────┴──────────────────────────────┘
+```
+
+**Brand cell** (Row 1, Col 1) — same padding as the content header (`px-6 pt-7 pb-5`). Centred logo (`items-center justify-center`). Background: `linear-gradient(180deg, {colors.surface-brand-soft} 0%, #ffffff 38%)`. Right + bottom border `1px solid {colors.hairline}`.
+- Logo: `/foundry-logo.svg`, `h-12 w-auto`. **No text. No icon placeholder. Nothing else.**
+
+**Content header** (Row 1, Col 2) — `px-6 pt-7 pb-5`. Background: `linear-gradient(180deg, #ffffff 0%, {colors.surface-brand-soft} 100%)`. Bottom border `1px solid {colors.hairline}`.
+- `<h1>` uses `{typography.heading-1}`: 44px / weight 400 / DM Serif Display / `leading-[1.15]` / `tracking-[-0.03em]`.
+
+**Sidebar nav** (Row 2, Col 1) — `ExpandedRail` component. Right border `1px solid {colors.hairline}`. Background: same brand-soft gradient. Width 280px fixed.
+- Nav items: 6px radius, 12px padding, Inter 14px/500. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.
+
+**When `hideContentHeader` is true** — grid collapses to single row (`grid-rows-[minmax(0,1fr)]`). Brand cell and content header are both hidden. Sidebar fills full height.
+
+**Do not add** `BrandGlyph` components, "Foundry by Gitwork" text, or "Prompt-to-production suite" subtitles to the sidebar. The logo SVG is the only brand mark in the sidebar.
 
 ### Signature Components
 

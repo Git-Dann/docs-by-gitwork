@@ -414,20 +414,6 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
   );
 }
 
-function BrandGlyph({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-[6px] border border-[rgba(9,112,200,0.16)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
-        className,
-      )}
-    >
-      <div className="absolute inset-[18%] rounded-[4px] bg-[var(--brand-gradient)]" />
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--signal-stripe)]" />
-      <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
-    </div>
-  );
-}
 
 function isActivePath(pathname: string | null, href: string) {
   if (href === "/app") {
