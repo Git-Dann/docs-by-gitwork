@@ -35,6 +35,10 @@
   --brand-gradient: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 46%, #1E3A8A 100%);
   --signal-stripe: linear-gradient(90deg, #1D4ED8 0%, #1E3A8A 28%, #3B82F6 62%, #DBEAFE 84%, #EFF6FF 100%);
 
+  /* Aliases */
+  --accent: var(--brand-700);
+  --bg: var(--surface-canvas);
+
   /* Semantic */
   --success-500: #16A34A;
   --success-50: #DCFCE7;

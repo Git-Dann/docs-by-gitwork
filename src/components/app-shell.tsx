@@ -261,6 +261,33 @@ function SidebarNavItem({
   );
 }
 
+function Avatar({ name, url }: { name: string; url: string }) {
+  const initials = name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "?";
+
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={name}
+        className="h-9 w-9 rounded-full object-cover"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty("display", "flex"); }}
+      />
+    );
+  }
+
+  return (
+    <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
+      {initials}
+    </div>
+  );
+}
+
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();
   const [open, setOpen] = useState(false);
@@ -296,8 +323,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center gap-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={account.avatarUrl} alt={account.name} className="h-9 w-9 rounded-full object-cover" />
+        <Avatar name={account.name} url={account.avatarUrl} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
           <p className="truncate text-xs text-[var(--text-4)]">{account.email}</p>
