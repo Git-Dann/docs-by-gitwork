@@ -9,6 +9,7 @@ import {
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
+  MagnifyingGlassIcon,
   SignalIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
@@ -103,38 +104,7 @@ export function AppShell({
 
   return (
     <div className="h-[100dvh] bg-[#FAFAF9] text-[var(--text-1)]">
-      <div
-        className={cn(
-          "h-full w-full grid-cols-1",
-          "lg:grid lg:grid-cols-[280px_minmax(0,1fr)]",
-          hideContentHeader
-            ? "lg:grid-rows-[minmax(0,1fr)]"
-            : "lg:grid-rows-[auto_minmax(0,1fr)]",
-        )}
-      >
-        {/* ── Row 1 Col 1: Sidebar brand (same grid row as main header) ── */}
-        {!hideContentHeader && (
-          <div className="hidden border-b border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] px-6 pb-5 pt-7 lg:flex lg:items-center lg:justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto" />
-          </div>
-        )}
-
-        {/* ── Row 1 Col 2: Main content header ── */}
-        {!hideContentHeader && (
-          <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
-            <div className="max-w-4xl">
-              <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-                {title}
-              </h1>
-              {subtitle ? (
-                <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
-              ) : null}
-            </div>
-          </header>
-        )}
-
-        {/* ── Row 2 Col 1: Sidebar nav ── */}
+      <div className="grid h-full w-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
             pathname={pathname}
@@ -144,8 +114,20 @@ export function AppShell({
           />
         </aside>
 
-        {/* ── Row 2 Col 2: Main content ── */}
         <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
+          {hideContentHeader ? null : (
+            <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
+              <div className="max-w-4xl">
+                <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                  {title}
+                </h1>
+                {subtitle ? (
+                  <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
+                ) : null}
+              </div>
+            </header>
+          )}
+
           <main
             className={
               mainClassName ??
@@ -176,6 +158,26 @@ function ExpandedRail({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
+        <div className="flex items-center gap-3">
+          <BrandGlyph className="h-8 w-8 shrink-0" />
+          <div>
+            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Foundry by Gitwork</p>
+            <p className="text-xs text-[var(--text-4)]">Prompt-to-production suite</p>
+          </div>
+        </div>
+
+        <label className="relative mt-4 block">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search"
+            className="app-input pl-10"
+          />
+        </label>
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
           <nav className="space-y-1">
@@ -410,6 +412,21 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function BrandGlyph({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-[6px] border border-[rgba(9,112,200,0.16)] bg-white shadow-[0_1px_2px_rgba(10,13,18,0.06)]",
+        className,
+      )}
+    >
+      <div className="absolute inset-[18%] rounded-[4px] bg-[var(--brand-gradient)]" />
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-[var(--signal-stripe)]" />
+      <div className="absolute inset-0 rounded-[inherit] border border-white/60" />
     </div>
   );
 }

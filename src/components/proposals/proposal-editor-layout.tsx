@@ -619,7 +619,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   "inline-flex h-[36px] min-w-[92px] items-center justify-center rounded-[6px] px-4 text-sm font-medium transition outline-none",
                   "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
                   activeTab === tab.id
-                    ? "bg-[rgba(51,92,255,0.14)] text-[var(--brand-700)]"
+                    ? "bg-[var(--brand-focus-ring)] text-[var(--brand-700)]"
                     : "bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
                 )}
                 onClick={() => handleTabChange(tab.id)}

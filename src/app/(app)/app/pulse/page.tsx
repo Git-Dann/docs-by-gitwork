@@ -1,17 +1,13 @@
 import { AppShell } from "@/components/app-shell";
-import { PulseOverview } from "@/components/pulse/pulse-overview";
-import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
+import { PulseWorkspace } from "@/components/foundry/pulse-workspace";
 
 export default function PulsePage() {
   return (
     <AppShell
       title="Pulse"
-      subtitle="Validate and audit client projects — from prompt to production."
+      subtitle="Delivery health from updates, blockers, cadence, and integration signals."
     >
-      <div className="space-y-8">
-        <PulseOverview />
-        <PulseScanListView />
-      </div>
+      <PulseWorkspace />
     </AppShell>
   );
 }

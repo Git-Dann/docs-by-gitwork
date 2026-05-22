@@ -1,16 +1,13 @@
-import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
-import { ProposalList } from "@/components/proposals/proposal-list";
+import { DocsWorkspace } from "@/components/foundry/docs-workspace";
 
 export default function DocsPage() {
   return (
     <AppShell
       title="Docs"
-      subtitle="Draft, structure, and ship proposal documents with Gitwork as the single source of truth."
+      subtitle="Templates and generated outputs linked back to projects, milestones, and approvals."
     >
-      <Suspense fallback={<p className="text-sm text-[var(--text-3)]">Loading proposals...</p>}>
-        <ProposalList />
-      </Suspense>
+      <DocsWorkspace />
     </AppShell>
   );
 }

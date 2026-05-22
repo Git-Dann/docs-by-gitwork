@@ -194,11 +194,12 @@ export function CodeClearSiteDemo() {
                 Build request
               </span>
               <textarea
+                name="buildRequest"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 rows={5}
-                className="mt-3 min-h-[168px] w-full resize-none rounded-[22px] border border-white/10 bg-[#101522] px-5 py-4 text-[16px] leading-7 text-white outline-none placeholder:text-white/28 focus:border-[#7c8cff]/54"
-                placeholder="Describe the team you need, the work to be done, and how long the engagement should run."
+                className="mt-3 min-h-[168px] w-full resize-none rounded-[22px] border border-white/10 bg-[#101522] px-5 py-4 text-[16px] leading-7 text-white outline-none placeholder:text-white/28 focus:border-[#7c8cff]/54 focus-visible:ring-4 focus-visible:ring-[#7c8cff]/18"
+                placeholder="Describe the team you need, the work to be done, and how long the engagement should run…"
               />
             </label>
 
@@ -246,7 +247,7 @@ export function CodeClearSiteDemo() {
               className="app-button app-button-primary app-button-md mt-5 w-full justify-center"
             >
               <SparklesIcon className="h-4 w-4" />
-              {state === "loading" ? "Matching team" : "Show top matches"}
+              {state === "loading" ? "Matching Team…" : "Show Top Matches"}
             </button>
           </div>
         </div>
@@ -268,7 +269,7 @@ export function CodeClearSiteDemo() {
             </p>
           </div>
 
-          <div className="mt-5 grid items-end gap-4 xl:grid-cols-3">
+          <div className="mt-5 grid items-end gap-4 xl:grid-cols-3" aria-live="polite">
             {/* Starter */}
             <article className="flex flex-col rounded-[26px] border border-white/8 bg-[#101522] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">Starter</p>
@@ -282,7 +283,7 @@ export function CodeClearSiteDemo() {
               <ul className="mt-6 flex-1 space-y-2.5">
                 {features.starter.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
-                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#f4b942]" />
+                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-cyan)]" />
                     <span className="text-[13px] leading-5 text-white/78">{f}</span>
                   </li>
                 ))}
@@ -299,10 +300,10 @@ export function CodeClearSiteDemo() {
 
             {/* Pro — always Recommended, slightly more padding */}
             <div className="flex flex-col">
-              <div className="flex items-center justify-center rounded-t-[20px] bg-[linear-gradient(90deg,#059669,#10b981)] px-6 py-3">
+              <div className="flex items-center justify-center rounded-t-[20px] bg-[var(--brand-gradient)] px-6 py-3">
                 <span className="text-[13px] font-semibold text-white">Recommended</span>
               </div>
-              <article className="flex flex-1 flex-col rounded-b-[26px] rounded-t-none border border-emerald-800/60 bg-[#0a1f15] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+              <article className="flex flex-1 flex-col rounded-b-[26px] rounded-t-none border border-[rgba(9,112,200,0.5)] bg-[#071828] px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">Pro</p>
                 <div className="mt-4 flex items-end gap-1">
                   <span className="text-[40px] font-semibold leading-none tracking-[-0.05em] text-white">Custom</span>
@@ -351,7 +352,7 @@ export function CodeClearSiteDemo() {
                 href={`/app/proof?brief=${encodeURIComponent(result.brief)}&scenario=${result.id}`}
                 className="app-button app-button-primary app-button-md mt-7 w-full justify-center"
               >
-                Make Booking
+                Create Brief
               </Link>
             </article>
           </div>

@@ -5,7 +5,7 @@ export default function CodePage() {
   return (
     <AppShell
       title="Code"
-      subtitle="Verification workflows, candidate scoring, GitHub analysis, and pipeline health in one Gitwork workspace."
+      subtitle="Production-readiness checks, reviews, audits, and remediation planning."
     >
       <CodeClearOverview />
     </AppShell>

@@ -1170,7 +1170,7 @@ function InlineCellInput({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(9,112,200,0.16),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
         className,
@@ -1202,7 +1202,7 @@ function InlineCellNumber({
       placeholder={placeholder}
       className={cn(
         variant === "field"
-          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(51,92,255,0.12),var(--shadow-xs)]"
+          ? "h-9 w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-sm font-medium text-[var(--text-2)] shadow-[var(--shadow-xs)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)] focus:border-[var(--brand-500)] focus:shadow-[0_0_0_4px_rgba(9,112,200,0.16),var(--shadow-xs)]"
           : "w-full border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] outline-none placeholder:font-normal placeholder:text-[var(--text-4)]",
         align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left",
         className,
