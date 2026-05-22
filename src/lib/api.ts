@@ -901,6 +901,10 @@ export async function listSupportMembers(
   return apiFetch(`/api/support/clients/${clientId}/members`);
 }
 
+export async function seedSupportDefaultRules(clientId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/support/clients/${clientId}/seed-rules`, { method: "POST" });
+}
+
 // ── Team management ───────────────────────────────────────────────────────────
 
 export interface TeamMember {

@@ -18,6 +18,7 @@ import {
   listSupportMessages,
   listSupportTickets,
   listSupportWorkflowRules,
+  seedSupportDefaultRules,
   sendSupportMessage,
   syncSupportConnection,
   updateSupportClient,
@@ -270,5 +271,15 @@ export function useSupportMembers(clientId: string | null) {
     queryFn: () => listSupportMembers(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 1000 * 60,
+  });
+}
+
+export function useSeedDefaultRules(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => seedSupportDefaultRules(clientId as string),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "workflow-rules", clientId] });
+    },
   });
 }
