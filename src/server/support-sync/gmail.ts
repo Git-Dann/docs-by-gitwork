@@ -34,7 +34,7 @@ export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
   const lastSyncedAt = connection.lastSyncedAt;
   const afterSeconds = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+    : Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
 
   const fullQuery = [query, `after:${afterSeconds}`].filter(Boolean).join(" ");
 

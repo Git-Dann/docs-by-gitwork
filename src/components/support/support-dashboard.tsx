@@ -344,6 +344,11 @@ function AddConnectorModal({
     return undefined;
   }
 
+  // Gmail and Reddit don't need OAuth — mark as connected immediately
+  function initialHealth(): "connected" | "needs_setup" {
+    return source === "gmail" || source === "reddit" ? "connected" : "needs_setup";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -352,6 +357,7 @@ function AddConnectorModal({
         source,
         label: label.trim() || SOURCE_LABEL[source],
         authMode: sourceAuthMode(source),
+        health: initialHealth(),
         scraperConfig: buildScraperConfig(),
       },
       {
@@ -1364,17 +1370,15 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       Needs setup
                     </span>
                   )}
-                  {(conn.health === "connected" || conn.health === "error") && (
-                    <button
-                      type="button"
-                      onClick={() => handleSync(conn.id)}
-                      disabled={syncConn.isPending}
-                      className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                    >
-                      <BoltIcon className="h-3 w-3" />
-                      {syncConn.isPending ? "Syncing…" : "Sync now"}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSync(conn.id)}
+                    disabled={syncConn.isPending}
+                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                  >
+                    <BoltIcon className="h-3 w-3" />
+                    {syncConn.isPending ? "Syncing…" : "Sync now"}
+                  </button>
                 </div>
               </div>
             );
