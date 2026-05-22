@@ -9,13 +9,12 @@ import {
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
-  MagnifyingGlassIcon,
   SignalIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
@@ -156,63 +155,27 @@ function ExpandedRail({
   secondaryNav: ReadonlyArray<NavItem>;
   account: AccountSettings;
 }) {
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-
-  const filteredPrimaryNav = useMemo(() => {
-    const value = deferredQuery.trim().toLowerCase();
-    if (!value) {
-      return primaryNav;
-    }
-
-    return primaryNav.filter((item) => item.label.toLowerCase().includes(value));
-  }, [deferredQuery, primaryNav]);
-
-  const filteredSecondaryNav = useMemo(() => {
-    const value = deferredQuery.trim().toLowerCase();
-    if (!value) {
-      return secondaryNav;
-    }
-
-    return secondaryNav.filter((item) => item.label.toLowerCase().includes(value));
-  }, [deferredQuery, secondaryNav]);
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
-        <div className="flex items-center">
-          <BrandGlyph className="h-8 w-8 shrink-0" />
-        </div>
-
-        <label className="relative mt-4 block">
-          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search"
-            className="app-input pl-10"
-          />
-        </label>
+      <div className="border-b border-[var(--border-2)] px-5 py-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/foundry-logo.svg" alt="Foundry" className="h-7 w-auto" />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
           <nav className="space-y-1">
-            {filteredPrimaryNav.map((item) => (
+            {primaryNav.map((item) => (
               <SidebarNavItem
                 key={item.label}
                 item={item}
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
               />
             ))}
-
-            {!filteredPrimaryNav.length ? (
-              <p className="px-3 py-2 text-sm text-[var(--text-4)]">No matches in the main navigation.</p>
-            ) : null}
           </nav>
 
           <div className="space-y-1">
-            {filteredSecondaryNav.map((item) => (
+            {secondaryNav.map((item) => (
               <SidebarNavItem
                 key={item.label}
                 item={item}
