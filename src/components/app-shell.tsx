@@ -181,12 +181,8 @@ function ExpandedRail({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="border-b border-[var(--border-2)] px-5 pb-4 pt-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center">
           <Image src="/foundry-logo.png" alt="Foundry" width={32} height={32} className="shrink-0 rounded-[6px]" />
-          <div>
-            <p className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Foundry by Gitwork</p>
-            <p className="text-xs text-[var(--text-4)]">Prompt-to-production suite</p>
-          </div>
         </div>
 
         <label className="relative mt-4 block">
