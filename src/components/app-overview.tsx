@@ -1,19 +1,50 @@
 "use client";
 
-import PulseWidget from "@/components/dashboard/pulse-widget";
-import CodeClearWidget from "@/components/dashboard/codeclear-widget";
-import StudyWidget from "@/components/dashboard/study-widget";
-import CareWidget from "@/components/dashboard/care-widget";
-import ProposalsWidget from "@/components/dashboard/proposals-widget";
-import ClientsWidget from "@/components/dashboard/clients-widget";
-import GmailWidget from "@/components/dashboard/gmail-widget";
-import CalendarWidget from "@/components/dashboard/calendar-widget";
-import MeetingSummaryWidget from "@/components/dashboard/meeting-summary-widget";
-import ProofWidget from "@/components/dashboard/proof-widget";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  ArrowTopRightOnSquareIcon,
+  ChartBarSquareIcon,
+  DocumentPlusIcon,
+  DocumentTextIcon,
+  Squares2X2Icon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { StatusBadge } from "@/components/status-badge";
+import { useProofDocuments } from "@/hooks/use-proof";
+import { useClientList, useProposalList } from "@/hooks/use-proposals";
+import { Button, buttonStyles } from "@/components/ui/button";
+import { cn, formatDate } from "@/lib/format";
 
-export type WidgetSize = { cols: 1 | 2 | 3; rows: 1 | 2 | 3 };
+// ---------------------------------------------------------------------------
+// Types & registry
+// ---------------------------------------------------------------------------
 
-const ROW_HEIGHT = 180;
+const ALL_WIDGET_IDS = [
+  "stats",
+  "proposals",
+  "quickstarts",
+  "status",
+  "proof",
+  "clients",
+] as const;
 
 type WidgetId = (typeof ALL_WIDGET_IDS)[number];
 type WidgetSize = "sm" | "md" | "lg";
@@ -348,35 +379,21 @@ function SortableWidget({
 }: {
   id: WidgetId;
   size: WidgetSize;
-  label: string;
-}> = [
-  { component: PulseWidget,          size: { cols: 2, rows: 1 }, label: "Pulse" },
-  { component: CodeClearWidget,      size: { cols: 1, rows: 1 }, label: "Code" },
-  { component: StudyWidget,          size: { cols: 1, rows: 1 }, label: "Study" },
-  { component: CareWidget,           size: { cols: 1, rows: 1 }, label: "Care" },
-  { component: ProposalsWidget,      size: { cols: 2, rows: 2 }, label: "Docs" },
-  { component: ClientsWidget,        size: { cols: 1, rows: 2 }, label: "Portal" },
-  { component: GmailWidget,          size: { cols: 2, rows: 2 }, label: "Gmail" },
-  { component: CalendarWidget,       size: { cols: 1, rows: 2 }, label: "Calendar" },
-  { component: MeetingSummaryWidget, size: { cols: 3, rows: 2 }, label: "Meetings" },
-  { component: ProofWidget,          size: { cols: 1, rows: 1 }, label: "Proof" },
-];
+  customizing: boolean;
+  onSizeChange: (s: WidgetSize) => void;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
 
-// ─── Signature header — THE SIGNATURE ────────────────────────────────────────
-// 36px monospace header row per the Foundry design system
-
-function WidgetSignatureHeader({ slot, label }: { slot: number; label: string }) {
   return (
     <div
+      ref={setNodeRef}
       style={{
-        height: 36,
-        padding: "0 12px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        background: "#FAFAF9",
-        borderBottom: "1px solid rgba(0,0,0,0.06)",
-        flexShrink: 0,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.45 : 1,
       }}
       className={cn("app-card flex flex-col overflow-hidden", SPAN_CLASS[size])}
     >
@@ -396,25 +413,23 @@ function WidgetSignatureHeader({ slot, label }: { slot: number; label: string })
             </span>
           </div>
 
-export function AppOverview() {
-  return (
-    <div
-      className="grid gap-3"
-      style={{
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gridAutoRows: ROW_HEIGHT,
-        gridAutoFlow: "dense",
-      }}
-    >
-      {GRID.map(({ component: Widget, size, label }, i) => (
-        <div
-          key={i}
-          className="flex flex-col overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
-          style={{ gridColumn: `span ${size.cols}`, gridRow: `span ${size.rows}` }}
-        >
-          <WidgetSignatureHeader slot={i + 1} label={label} />
-          <div className="min-h-0 flex-1 overflow-hidden p-3">
-            <Widget size={size} />
+          {/* Size buttons */}
+          <div className="flex items-center gap-1">
+            {(["sm", "md", "lg"] as WidgetSize[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSizeChange(s)}
+                className={cn(
+                  "h-7 min-w-[28px] rounded-[6px] border px-2 text-xs font-semibold uppercase transition",
+                  size === s
+                    ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-white text-[var(--text-4)] hover:text-[var(--text-2)]",
+                )}
+              >
+                {s}
+              </button>
+            ))}
           </div>
         </div>
       )}
