@@ -805,6 +805,7 @@ export async function createSupportConnection(
     source: Connection["source"];
     label: string;
     authMode: Connection["authMode"];
+    health?: Connection["health"];
     secretRef?: string;
     nextStep?: string;
     scraperConfig?: Connection["scraperConfig"];
