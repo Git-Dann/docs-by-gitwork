@@ -47,7 +47,7 @@ const ALL_WIDGET_IDS = [
 ] as const;
 
 type WidgetId = (typeof ALL_WIDGET_IDS)[number];
-type WidgetSize = "sm" | "md" | "lg";
+export type WidgetSize = "sm" | "md" | "lg";
 
 const WIDGET_META: Record<WidgetId, { label: string }> = {
   stats:       { label: "Summary stats" },
