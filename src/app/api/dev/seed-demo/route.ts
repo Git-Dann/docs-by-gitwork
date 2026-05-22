@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";

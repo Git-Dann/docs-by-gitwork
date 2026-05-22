@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listWorkspaceMembers } from "@/server/support";
 
