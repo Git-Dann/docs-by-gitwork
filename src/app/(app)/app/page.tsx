@@ -6,6 +6,7 @@ export default function AppDashboardPage() {
     <AppShell
       title="Foundry HQ"
       subtitle="Your workspace at a glance"
+      hideContentHeader
     >
       <AppOverview />
     </AppShell>
