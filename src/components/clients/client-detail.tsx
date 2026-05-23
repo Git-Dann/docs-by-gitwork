@@ -69,7 +69,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, proposals, proofDocuments, platforms, pulseScans, supportClient } = data;
+  const { client, proposals, proofDocuments, platforms, pulseScans, supportClient, placements } = data;
   const isSuggested = client.source === "SUGGESTED";
 
   function openEdit() {
@@ -504,6 +504,51 @@ export function ClientDetail({ slug }: { slug: string }) {
                         >
                           Open
                         </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Developers */}
+        {placements && placements.length > 0 && (
+          <div className="app-table-shell">
+            <div className="border-b border-[var(--border-3)] px-5 py-4">
+              <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+                Developers
+              </h3>
+              <p className="mt-0.5 text-sm text-[var(--text-3)]">
+                Developers placed with this client via CodeClear
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="app-table min-w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Developer</th>
+                    <th className="text-left">Project</th>
+                    <th className="text-left">Start</th>
+                    <th className="text-left">End</th>
+                    <th className="text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {placements.map((placement) => (
+                    <tr key={placement.id}>
+                      <td className="font-medium text-[var(--text-1)]">{placement.candidateName}</td>
+                      <td className="text-[var(--text-3)]">{placement.projectName}</td>
+                      <td className="text-[var(--text-3)]">{formatDate(placement.startDate)}</td>
+                      <td className="text-[var(--text-3)]">{placement.endDate ? formatDate(placement.endDate) : "Present"}</td>
+                      <td>
+                        <Link
+                          href={`/app/codeclear?candidate=${placement.candidateId}`}
+                          className={buttonStyles({ variant: "secondary", size: "xs" })}
+                        >
+                          Profile
+                        </Link>
                       </td>
                     </tr>
                   ))}

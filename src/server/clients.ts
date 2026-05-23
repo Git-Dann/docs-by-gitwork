@@ -5,6 +5,7 @@ import type {
   ClientDetailFields,
   ClientDetailRecord,
   ClientListItem,
+  ClientPlacementRecord,
   ClientPlatformRecord,
   ClientSource,
 } from "@/types/client";
@@ -479,13 +480,16 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   }
 
   const clientKey = getClientLookupKey(client.name);
-  const matchingProposals = proposals.filter(
-    (proposal) => getClientLookupKey(proposal.clientName) === clientKey,
-  );
-
   const manualRecord = manualClients.find((c) => c.slug === slug) ?? null;
 
-  const [proofDocuments, platforms, pulseScans, supportClient] = await Promise.all([
+  // Match proposals by FK (preferred) or legacy name match
+  const matchingProposals = proposals.filter(
+    (proposal) =>
+      (manualRecord && proposal.clientId === manualRecord.id) ||
+      getClientLookupKey(proposal.clientName) === clientKey,
+  );
+
+  const [proofDocuments, platforms, pulseScans, supportClient, placements] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -525,11 +529,38 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
           select: { id: true, name: true, slug: true },
         })
       : Promise.resolve(null),
+    manualRecord
+      ? prisma.placement.findMany({
+          where: { clientId: manualRecord.id },
+          include: { candidate: { select: { id: true, name: true } } },
+          orderBy: { startDate: "desc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const contactFields: ClientDetailFields = manualRecord
     ? contactFieldsFromRecord(manualRecord)
     : emptyContactFields();
+
+  const serializedPlacements: ClientPlacementRecord[] = (
+    placements as Array<{
+      id: string;
+      candidateId: string;
+      clientName: string;
+      projectName: string;
+      startDate: Date;
+      endDate: Date | null;
+      candidate: { id: string; name: string };
+    }>
+  ).map((p) => ({
+    id: p.id,
+    candidateId: p.candidateId,
+    candidateName: p.candidate.name,
+    clientName: p.clientName,
+    projectName: p.projectName,
+    startDate: p.startDate.toISOString(),
+    endDate: p.endDate?.toISOString() ?? null,
+  }));
 
   return {
     client: {
@@ -547,6 +578,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       createdAt: scan.createdAt.toISOString(),
     })),
     supportClient: supportClient ?? null,
+    placements: serializedPlacements,
   };
 }
 

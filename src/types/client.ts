@@ -59,6 +59,16 @@ export interface ClientSupportSummary {
   slug: string;
 }
 
+export interface ClientPlacementRecord {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  clientName: string;
+  projectName: string;
+  startDate: string;
+  endDate: string | null;
+}
+
 export interface ClientDetailRecord {
   client: ClientListItem & ClientDetailFields;
   platforms: ClientPlatformRecord[];
@@ -66,4 +76,5 @@ export interface ClientDetailRecord {
   proofDocuments: ProofDocumentRecord[];
   pulseScans: ClientPulseScanSummary[];
   supportClient: ClientSupportSummary | null;
+  placements: ClientPlacementRecord[];
 }

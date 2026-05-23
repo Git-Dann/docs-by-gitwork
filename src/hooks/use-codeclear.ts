@@ -6,6 +6,7 @@ import {
   applyCodeClearGitHubRun,
   bulkUpdateCodeClearCandidates,
   createCodeClearCandidate,
+  createPlacement,
   deleteCodeClearCandidate,
   finalizeCodeClearCandidateScore,
   getCodeClearCandidate,
@@ -172,6 +173,18 @@ export function useApplyCodeClearGitHubRun(id: string | null) {
       queryClient.invalidateQueries({ queryKey: ["codeclear", "runs", id] });
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
       queryClient.invalidateQueries({ queryKey: ["codeclear", "stats"] });
+    },
+  });
+}
+
+export function useCreatePlacement(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createPlacement>[1]) =>
+      createPlacement(candidateId as string, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
     },
   });
 }

@@ -9,6 +9,7 @@ import {
   LinkIcon,
   MapPinIcon,
   PlayIcon,
+  PlusIcon,
   SparklesIcon,
   TrashIcon,
   XMarkIcon,
@@ -19,11 +20,13 @@ import {
   useAddCodeClearCandidateNote,
   useApplyCodeClearGitHubRun,
   useCodeClearCandidate,
+  useCreatePlacement,
   useDeleteCodeClearCandidate,
   useFinalizeCodeClearCandidateScore,
   useRunCodeClearGitHubAnalysis,
   useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
+import { useClientList } from "@/hooks/use-proposals";
 import { getCodeClearScorecardUrl } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import {
@@ -72,8 +75,21 @@ export function CodeClearCandidateDrawer({
   const runAnalysis = useRunCodeClearGitHubAnalysis(candidateId);
   const applyRun = useApplyCodeClearGitHubRun(candidateId);
   const deleteCandidate = useDeleteCodeClearCandidate();
+  const createPlacementMutation = useCreatePlacement(candidateId);
+  const clientsQuery = useClientList();
+  const portalClients = clientsQuery.data?.clients.filter(c => c.source === "MANUAL") ?? [];
   const candidate = candidateQuery.data?.candidate ?? null;
   const latestRun = candidate?.latestGitHubAnalysis ?? null;
+
+  const [showPlacementForm, setShowPlacementForm] = useState(false);
+  const [placementForm, setPlacementForm] = useState({
+    clientId: "",
+    clientName: "",
+    projectName: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [placementError, setPlacementError] = useState<string | null>(null);
 
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -131,6 +147,24 @@ export function CodeClearCandidateDrawer({
       taskAiReview: sourceScore?.taskAiReview ?? "",
     });
   }, [candidate]);
+
+  async function handleAddPlacement() {
+    if (!placementForm.clientName.trim() || !placementForm.projectName.trim() || !placementForm.startDate) return;
+    setPlacementError(null);
+    try {
+      await createPlacementMutation.mutateAsync({
+        clientId: placementForm.clientId || undefined,
+        clientName: placementForm.clientName.trim(),
+        projectName: placementForm.projectName.trim(),
+        startDate: new Date(placementForm.startDate),
+        endDate: placementForm.endDate ? new Date(placementForm.endDate) : null,
+      });
+      setShowPlacementForm(false);
+      setPlacementForm({ clientId: "", clientName: "", projectName: "", startDate: "", endDate: "" });
+    } catch (err) {
+      setPlacementError((err as Error).message);
+    }
+  }
 
   if (!candidateId) {
     return null;
@@ -806,7 +840,101 @@ export function CodeClearCandidateDrawer({
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <section className="app-card p-5">
-                  <p className="text-sm font-semibold text-[var(--text-1)]">Placements</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-[var(--text-1)]">Placements</p>
+                    <Button
+                      type="button"
+                      variant="utility"
+                      size="icon-sm"
+                      onClick={() => setShowPlacementForm((v) => !v)}
+                      aria-label="Add placement"
+                      title="Add placement"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {showPlacementForm && (
+                    <div className="mt-4 space-y-3 rounded-[10px] border border-[var(--border-2)] p-4">
+                      {portalClients.length > 0 && (
+                        <label className="block space-y-1">
+                          <span className="app-field-label">Portal client</span>
+                          <select
+                            value={placementForm.clientId}
+                            onChange={(e) => {
+                              const selected = portalClients.find(c => c.id === e.target.value);
+                              setPlacementForm((f) => ({
+                                ...f,
+                                clientId: e.target.value,
+                                clientName: selected?.name ?? f.clientName,
+                              }));
+                            }}
+                            className="app-select w-full"
+                          >
+                            <option value="">— None —</option>
+                            {portalClients.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <label className="block space-y-1">
+                        <span className="app-field-label">Client name</span>
+                        <input
+                          value={placementForm.clientName}
+                          onChange={(e) => setPlacementForm((f) => ({ ...f, clientName: e.target.value }))}
+                          className="app-input w-full"
+                          placeholder="Acme Corp"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="app-field-label">Project name</span>
+                        <input
+                          value={placementForm.projectName}
+                          onChange={(e) => setPlacementForm((f) => ({ ...f, projectName: e.target.value }))}
+                          className="app-input w-full"
+                          placeholder="Platform Rebuild"
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block space-y-1">
+                          <span className="app-field-label">Start date</span>
+                          <input
+                            type="date"
+                            value={placementForm.startDate}
+                            onChange={(e) => setPlacementForm((f) => ({ ...f, startDate: e.target.value }))}
+                            className="app-input w-full"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="app-field-label">End date</span>
+                          <input
+                            type="date"
+                            value={placementForm.endDate}
+                            onChange={(e) => setPlacementForm((f) => ({ ...f, endDate: e.target.value }))}
+                            className="app-input w-full"
+                          />
+                        </label>
+                      </div>
+                      {placementError && (
+                        <p className="text-xs text-rose-600">{placementError}</p>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" size="xs" onClick={() => setShowPlacementForm(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="xs"
+                          loading={createPlacementMutation.isPending}
+                          disabled={createPlacementMutation.isPending || !placementForm.clientName.trim() || !placementForm.projectName.trim() || !placementForm.startDate}
+                          onClick={() => void handleAddPlacement()}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-4 space-y-3">
                     {candidate.placements.length ? (
                       candidate.placements.map((placement) => (
@@ -819,6 +947,7 @@ export function CodeClearCandidateDrawer({
                           </p>
                           <p className="mt-2 text-xs text-[var(--text-4)]">
                             {formatDate(placement.startDate)}
+                            {placement.endDate ? ` – ${formatDate(placement.endDate)}` : " – present"}
                           </p>
                         </div>
                       ))

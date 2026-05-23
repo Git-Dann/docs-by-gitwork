@@ -186,6 +186,7 @@ export interface GitHubAnalysisRunRecord {
 export interface CodeClearPlacementRecord {
   id: string;
   candidateId: string;
+  clientId: string | null;
   clientName: string;
   projectName: string;
   startDate: string;

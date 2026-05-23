@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
         title: body.title,
         productName: body.productName,
         clientName: body.clientName,
+        clientId: body.clientId ?? null,
         summary: "",
         version: "v1.0",
         metadata: {
