@@ -188,7 +188,7 @@ export function AppShell({
 
         {/* ── Row 1 Col 2: Main content header ── */}
         {!hideContentHeader && (
-          <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
+          <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
             <div className="max-w-4xl">
               <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
                 {title}
