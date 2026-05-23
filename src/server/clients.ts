@@ -1,7 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
-import type { ClientDetailRecord, ClientListItem, ClientSource } from "@/types/client";
+import type {
+  ClientDetailFields,
+  ClientDetailRecord,
+  ClientListItem,
+  ClientPlatformRecord,
+  ClientSource,
+} from "@/types/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
@@ -23,6 +29,10 @@ const workspaceClients = (prisma as unknown as {
   workspaceClient: Prisma.WorkspaceClientDelegate;
 }).workspaceClient;
 
+const clientPlatforms = (prisma as unknown as {
+  clientPlatform: Prisma.ClientPlatformDelegate;
+}).clientPlatform;
+
 type ClientAggregateRecord = {
   id: string;
   name: string;
@@ -39,9 +49,82 @@ type ManualClientRecord = {
   name: string;
   slug: string;
   logoUrl: string | null;
+  website: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postcode: string | null;
+  country: string | null;
+  notes: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  googleDriveFolderUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+type ClientContactInput = {
+  website?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  notes?: string;
+  primaryContactName?: string;
+  primaryContactEmail?: string;
+  primaryContactPhone?: string;
+  googleDriveFolderUrl?: string;
+};
+
+function emptyContactFields(): ClientDetailFields {
+  return {
+    website: null,
+    addressLine1: null,
+    addressLine2: null,
+    city: null,
+    postcode: null,
+    country: null,
+    notes: null,
+    primaryContactName: null,
+    primaryContactEmail: null,
+    primaryContactPhone: null,
+    googleDriveFolderUrl: null,
+  };
+}
+
+function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields {
+  return {
+    website: record.website,
+    addressLine1: record.addressLine1,
+    addressLine2: record.addressLine2,
+    city: record.city,
+    postcode: record.postcode,
+    country: record.country,
+    notes: record.notes,
+    primaryContactName: record.primaryContactName,
+    primaryContactEmail: record.primaryContactEmail,
+    primaryContactPhone: record.primaryContactPhone,
+    googleDriveFolderUrl: record.googleDriveFolderUrl,
+  };
+}
+
+function buildContactData(input: ClientContactInput) {
+  return {
+    website: input.website?.trim() || null,
+    addressLine1: input.addressLine1?.trim() || null,
+    addressLine2: input.addressLine2?.trim() || null,
+    city: input.city?.trim() || null,
+    postcode: input.postcode?.trim() || null,
+    country: input.country?.trim() || null,
+    notes: input.notes?.trim() || null,
+    primaryContactName: input.primaryContactName?.trim() || null,
+    primaryContactEmail: input.primaryContactEmail?.trim() || null,
+    primaryContactPhone: input.primaryContactPhone?.trim() || null,
+    googleDriveFolderUrl: input.googleDriveFolderUrl?.trim() || null,
+  };
+}
 
 function summarizeSuggestedClients(
   proposals: Array<{
@@ -139,6 +222,34 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
   };
 }
 
+function serializeClientPlatform(platform: {
+  id: string;
+  clientId: string;
+  name: string;
+  platformType: string | null;
+  url: string | null;
+  stagingUrl: string | null;
+  repoUrl: string | null;
+  credentials: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ClientPlatformRecord {
+  return {
+    id: platform.id,
+    clientId: platform.clientId,
+    name: platform.name,
+    platformType: platform.platformType,
+    url: platform.url,
+    stagingUrl: platform.stagingUrl,
+    repoUrl: platform.repoUrl,
+    credentials: platform.credentials,
+    notes: platform.notes,
+    createdAt: platform.createdAt.toISOString(),
+    updatedAt: platform.updatedAt.toISOString(),
+  };
+}
+
 async function loadClientCollections() {
   const { workspace } = await ensureBaseRecords();
 
@@ -167,7 +278,7 @@ async function loadClientCollections() {
     }),
   ]);
 
-  return { workspace, manualClients, proposals };
+  return { workspace, manualClients: manualClients as ManualClientRecord[], proposals };
 }
 
 async function assertClientSlugAvailable(
@@ -211,7 +322,7 @@ export async function listDerivedClients(filters?: {
 export async function createClientRecord(input: {
   name: string;
   logoUrl?: string;
-}): Promise<ClientListItem> {
+} & ClientContactInput): Promise<ClientListItem> {
   const { workspace, proposals } = await loadClientCollections();
   const name = normalizeClientName(input.name);
   const slug = slugifyClientName(name);
@@ -225,6 +336,7 @@ export async function createClientRecord(input: {
       name,
       slug,
       logoUrl: input.logoUrl?.trim() || null,
+      ...buildContactData(input),
     },
   });
 
@@ -239,9 +351,9 @@ export async function createClientRecord(input: {
     logoUrl: client.logoUrl ?? undefined,
     createdAt: client.createdAt.toISOString(),
     updatedAt: client.updatedAt.toISOString(),
-      proposalCount,
-      source: "MANUAL",
-    });
+    proposalCount,
+    source: "MANUAL",
+  });
 }
 
 export async function updateClientRecord(
@@ -249,7 +361,7 @@ export async function updateClientRecord(
   input: {
     name?: string;
     logoUrl?: string;
-  },
+  } & ClientContactInput,
 ): Promise<ClientListItem | null> {
   const { workspace, manualClients, proposals } = await loadClientCollections();
   const mergedClients = mergeClients(manualClients, proposals);
@@ -265,6 +377,8 @@ export async function updateClientRecord(
 
   await assertClientSlugAvailable(workspace.id, nextSlug, manualClient?.id);
 
+  const contactData = buildContactData(input);
+
   const persisted = manualClient
     ? await workspaceClients.update({
         where: {
@@ -277,6 +391,7 @@ export async function updateClientRecord(
           name: nextName,
           slug: nextSlug,
           ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl.trim() || null } : {}),
+          ...contactData,
         },
       })
     : await workspaceClients.create({
@@ -285,6 +400,7 @@ export async function updateClientRecord(
           name: nextName,
           slug: nextSlug,
           logoUrl: input.logoUrl?.trim() || null,
+          ...contactData,
         },
       });
 
@@ -308,6 +424,17 @@ export async function updateClientRecord(
             name: persisted.name,
             slug: persisted.slug,
             logoUrl: persisted.logoUrl,
+            website: null,
+            addressLine1: null,
+            addressLine2: null,
+            city: null,
+            postcode: null,
+            country: null,
+            notes: null,
+            primaryContactName: null,
+            primaryContactEmail: null,
+            primaryContactPhone: null,
+            googleDriveFolderUrl: null,
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },
@@ -356,9 +483,11 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     (proposal) => getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const proofDocuments =
+  const manualRecord = manualClients.find((c) => c.slug === slug) ?? null;
+
+  const [proofDocuments, platforms, pulseScans, supportClient] = await Promise.all([
     matchingProposals.length > 0
-      ? await prisma.proofDocument.findMany({
+      ? prisma.proofDocument.findMany({
           where: {
             proposalId: {
               in: matchingProposals.map((proposal) => proposal.id),
@@ -369,11 +498,126 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
             lastOpenedAt: "desc",
           },
         })
-      : [];
+      : Promise.resolve([]),
+    manualRecord
+      ? clientPlatforms.findMany({
+          where: { clientId: manualRecord.id },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
+    manualRecord
+      ? prisma.pulseScan.findMany({
+          where: { clientId: manualRecord.id },
+          select: {
+            id: true,
+            projectName: true,
+            healthScore: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        })
+      : Promise.resolve([]),
+    manualRecord
+      ? prisma.supportClient.findFirst({
+          where: { workspaceClientId: manualRecord.id },
+          select: { id: true, name: true, slug: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const contactFields: ClientDetailFields = manualRecord
+    ? contactFieldsFromRecord(manualRecord)
+    : emptyContactFields();
 
   return {
-    client: toClientListItem(client),
+    client: {
+      ...toClientListItem(client),
+      ...contactFields,
+    },
+    platforms: (platforms as Parameters<typeof serializeClientPlatform>[0][]).map(serializeClientPlatform),
     proposals: matchingProposals.map((proposal) => serializeProposalListItem(proposal)),
     proofDocuments: proofDocuments.map((document) => serializeProofDocument(document)),
+    pulseScans: pulseScans.map((scan) => ({
+      id: scan.id,
+      projectName: scan.projectName,
+      healthScore: scan.healthScore,
+      status: scan.status,
+      createdAt: scan.createdAt.toISOString(),
+    })),
+    supportClient: supportClient ?? null,
   };
+}
+
+export async function createClientPlatform(
+  clientId: string,
+  input: {
+    name: string;
+    platformType?: string;
+    url?: string;
+    stagingUrl?: string;
+    repoUrl?: string;
+    credentials?: string;
+    notes?: string;
+  },
+): Promise<ClientPlatformRecord> {
+  const platform = await clientPlatforms.create({
+    data: {
+      clientId,
+      name: input.name.trim(),
+      platformType: input.platformType?.trim() || null,
+      url: input.url?.trim() || null,
+      stagingUrl: input.stagingUrl?.trim() || null,
+      repoUrl: input.repoUrl?.trim() || null,
+      credentials: input.credentials?.trim() || null,
+      notes: input.notes?.trim() || null,
+    },
+  });
+
+  return serializeClientPlatform(platform as Parameters<typeof serializeClientPlatform>[0]);
+}
+
+export async function updateClientPlatform(
+  platformId: string,
+  input: {
+    name?: string;
+    platformType?: string;
+    url?: string;
+    stagingUrl?: string;
+    repoUrl?: string;
+    credentials?: string;
+    notes?: string;
+  },
+): Promise<ClientPlatformRecord | null> {
+  const platform = await clientPlatforms.update({
+    where: { id: platformId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.platformType !== undefined ? { platformType: input.platformType.trim() || null } : {}),
+      ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
+      ...(input.stagingUrl !== undefined ? { stagingUrl: input.stagingUrl.trim() || null } : {}),
+      ...(input.repoUrl !== undefined ? { repoUrl: input.repoUrl.trim() || null } : {}),
+      ...(input.credentials !== undefined ? { credentials: input.credentials.trim() || null } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+    },
+  });
+
+  return serializeClientPlatform(platform as Parameters<typeof serializeClientPlatform>[0]);
+}
+
+export async function deleteClientPlatform(platformId: string): Promise<void> {
+  await clientPlatforms.delete({ where: { id: platformId } });
+}
+
+export async function getClientIdBySlug(
+  workspaceId: string,
+  slug: string,
+): Promise<string | null> {
+  const record = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId, slug } },
+    select: { id: true },
+  });
+
+  return record?.id ?? null;
 }

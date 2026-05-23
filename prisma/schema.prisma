@@ -204,6 +204,8 @@ model Document {
   title          String
   productName    String?
   clientName     String?
+  clientId       String?
+  client         WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   summary        String?
   version        String          @default("v1.0")
   expiresAt      DateTime?
@@ -253,19 +255,51 @@ model ProofDocument {
 }
 
 model WorkspaceClient {
-  id          String      @id @default(cuid())
-  workspaceId String
-  name        String
-  slug        String
-  logoUrl     String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  pulseScans  PulseScan[]
+  id                   String           @id @default(cuid())
+  workspaceId          String
+  name                 String
+  slug                 String
+  logoUrl              String?
+  website              String?
+  addressLine1         String?
+  addressLine2         String?
+  city                 String?
+  postcode             String?
+  country              String?
+  notes                String?          @db.Text
+  primaryContactName   String?
+  primaryContactEmail  String?
+  primaryContactPhone  String?
+  googleDriveFolderUrl String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pulseScans           PulseScan[]
+  platforms            ClientPlatform[]
+  documents            Document[]
+  supportClients       SupportClient[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
   @@map("Client")
+}
+
+model ClientPlatform {
+  id           String          @id @default(cuid())
+  clientId     String
+  client       WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name         String
+  platformType String?
+  url          String?
+  stagingUrl   String?
+  repoUrl      String?
+  credentials  String?         @db.Text
+  notes        String?         @db.Text
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([clientId])
+  @@map("ClientPlatform")
 }
 
 model Candidate {
@@ -724,6 +758,8 @@ model SupportClient {
   supportDaysUsed     Int?                      @default(0)
   reportingRecipient  String?
   reportDueDay        Int?
+  workspaceClientId   String?
+  workspaceClient     WorkspaceClient?          @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
   connections         AccountConnection[]
