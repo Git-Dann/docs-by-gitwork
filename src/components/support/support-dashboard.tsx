@@ -2055,7 +2055,7 @@ export function SupportDashboard() {
 
   if (clientsLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex h-full w-full items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-pulse rounded-full bg-[var(--surface-1)]" />
           <div className="h-3 w-32 animate-pulse rounded-full bg-[var(--surface-1)]" />
@@ -2066,13 +2066,13 @@ export function SupportDashboard() {
 
   if (!clientsLoading && clients.length === 0) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
-          <UsersIcon className="h-8 w-8 text-[var(--text-4)]" />
+      <div className="flex h-full w-full flex-col items-center justify-center gap-6 px-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+          <UsersIcon className="h-7 w-7 text-[var(--text-4)]" />
         </div>
-        <div className="space-y-1.5">
-          <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">No clients yet</h2>
-          <p className="max-w-xs text-sm leading-6 text-[var(--text-3)]">
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold text-[var(--text-1)]">No clients yet</h2>
+          <p className="max-w-[26rem] text-sm leading-6 text-[var(--text-3)]">
             Add your first support client to start monitoring their channels, inbox, and tickets.
           </p>
         </div>
