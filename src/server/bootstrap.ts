@@ -16,7 +16,86 @@ import {
 import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 
+// Adds columns/tables introduced by the Portal schema extension that
+// prisma db push may not apply reliably through a pooler connection.
+async function ensurePortalSchema() {
+  const statements = [
+    // New nullable columns on Client (@@map("Client") = WorkspaceClient model)
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "website" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "addressLine1" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "addressLine2" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "city" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "postcode" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "country" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "notes" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "primaryContactName" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "primaryContactEmail" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "primaryContactPhone" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "googleDriveFolderUrl" TEXT`,
+    // New FK on Document → Client
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "clientId" TEXT`,
+    // New FK on SupportClient → Client
+    `ALTER TABLE "SupportClient" ADD COLUMN IF NOT EXISTS "workspaceClientId" TEXT`,
+    // ClientPlatform table
+    `CREATE TABLE IF NOT EXISTS "ClientPlatform" (
+      "id" TEXT NOT NULL,
+      "clientId" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "platformType" TEXT,
+      "url" TEXT,
+      "stagingUrl" TEXT,
+      "repoUrl" TEXT,
+      "credentials" TEXT,
+      "notes" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "ClientPlatform_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "ClientPlatform_clientId_idx" ON "ClientPlatform"("clientId")`,
+  ];
+
+  for (const sql of statements) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {
+      // Column/table already exists or non-critical — continue
+    }
+  }
+
+  // FK constraints — use DO blocks to guard with IF NOT EXISTS check
+  const fkStatements = [
+    `DO $migration$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ClientPlatform_clientId_fkey') THEN
+         ALTER TABLE "ClientPlatform" ADD CONSTRAINT "ClientPlatform_clientId_fkey"
+           FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+       END IF;
+     END $migration$`,
+    `DO $migration$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Document_clientId_fkey') THEN
+         ALTER TABLE "Document" ADD CONSTRAINT "Document_clientId_fkey"
+           FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+       END IF;
+     END $migration$`,
+    `DO $migration$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SupportClient_workspaceClientId_fkey') THEN
+         ALTER TABLE "SupportClient" ADD CONSTRAINT "SupportClient_workspaceClientId_fkey"
+           FOREIGN KEY ("workspaceClientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+       END IF;
+     END $migration$`,
+  ];
+
+  for (const sql of fkStatements) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {
+      // FK already exists — continue
+    }
+  }
+}
+
 export async function ensureBaseRecords() {
+  await ensurePortalSchema();
+
   const user = await prisma.user.upsert({
     where: {
       email: DEFAULT_USER_EMAIL,
