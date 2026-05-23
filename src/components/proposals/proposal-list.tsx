@@ -21,6 +21,7 @@ import { cn, formatDate, statusLabel } from "@/lib/format";
 import { useProofDocuments } from "@/hooks/use-proof";
 import {
   useArchiveProposal,
+  useClientList,
   useCreateProposal,
   useDeleteProposal,
   useDuplicateProposal,
@@ -62,6 +63,7 @@ export function ProposalList() {
   const [form, setForm] = useState({
     title: "",
     clientName: "",
+    clientId: undefined as string | undefined,
   });
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export function ProposalList() {
     setForm((previous) => ({
       ...previous,
       clientName: clientFilter,
+      clientId: undefined,
     }));
   }, [clientFilter]);
 
@@ -83,6 +86,7 @@ export function ProposalList() {
     status,
     sort,
   });
+  const clientsQuery = useClientList();
   const createMutation = useCreateProposal();
   const duplicateMutation = useDuplicateProposal();
   const archiveMutation = useArchiveProposal();
@@ -118,14 +122,12 @@ export function ProposalList() {
   async function handleCreate() {
     const created = await createMutation.mutateAsync({
       title: form.title || "Untitled Proposal",
-      clientName: form.clientName,
+      clientName: form.clientName || undefined,
+      clientId: form.clientId,
     });
 
     setShowCreate(false);
-    setForm({
-      title: "",
-      clientName: "",
-    });
+    setForm({ title: "", clientName: "", clientId: undefined });
 
     router.push(`/app/proposals/${created.proposal.id}`);
   }
@@ -533,7 +535,7 @@ export function ProposalList() {
             type="button"
             aria-label="Close create document modal"
             className="app-dialog-backdrop absolute inset-0"
-            onClick={() => setShowCreate(false)}
+            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined }); }}
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -543,7 +545,7 @@ export function ProposalList() {
                 Create document
               </h2>
               <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Start with a title and optional client. Any client name you add here will still flow into suggested client records across the platform once the draft is saved.
+                Start with a title and optional client.
               </p>
 
               <div className="mt-5 space-y-4">
@@ -559,23 +561,59 @@ export function ProposalList() {
                   />
                 </label>
 
-                <label className="block">
+                <div className="block">
                   <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                     Client
                   </span>
-                  <input
-                    value={form.clientName}
-                    onChange={(event) =>
-                      setForm((previous) => ({ ...previous, clientName: event.target.value }))
-                    }
-                    className="app-input"
-                    placeholder="Acme Health"
-                  />
-                </label>
+                  {clientsQuery.data?.clients && clientsQuery.data.clients.filter(c => c.source === "MANUAL").length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        value={form.clientId ?? ""}
+                        onChange={(event) => {
+                          const selected = clientsQuery.data?.clients.find(c => c.id === event.target.value);
+                          setForm((previous) => ({
+                            ...previous,
+                            clientId: event.target.value || undefined,
+                            clientName: selected?.name ?? previous.clientName,
+                          }));
+                        }}
+                        className="app-select"
+                      >
+                        <option value="">— Select a Portal client —</option>
+                        {clientsQuery.data.clients
+                          .filter(c => c.source === "MANUAL")
+                          .map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.name}
+                            </option>
+                          ))}
+                      </select>
+                      {!form.clientId && (
+                        <input
+                          value={form.clientName}
+                          onChange={(event) =>
+                            setForm((previous) => ({ ...previous, clientName: event.target.value }))
+                          }
+                          className="app-input"
+                          placeholder="Or type a custom client name"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      value={form.clientName}
+                      onChange={(event) =>
+                        setForm((previous) => ({ ...previous, clientName: event.target.value }))
+                      }
+                      className="app-input"
+                      placeholder="Acme Health"
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="mt-6 flex justify-end gap-2">
-                <Button type="button" onClick={() => setShowCreate(false)} variant="secondary" size="md">
+                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined }); }} variant="secondary" size="md">
                   Cancel
                 </Button>
                 <Button

@@ -85,6 +85,7 @@ export async function listProposals(params: {
 export async function createProposal(input: {
   title: string;
   clientName?: string;
+  clientId?: string;
   productName?: string;
   templateId?: string;
 }): Promise<{ proposal: ProposalDocument }> {
@@ -511,6 +512,23 @@ export async function applyCodeClearGitHubRun(
 
 export function getCodeClearScorecardUrl(id: string) {
   return `/api/codeclear/candidates/${id}/scorecard`;
+}
+
+export async function createPlacement(
+  candidateId: string,
+  input: {
+    clientId?: string;
+    clientName: string;
+    projectName: string;
+    startDate: string | Date;
+    endDate?: string | Date | null;
+  },
+): Promise<{ placement: { id: string; clientId: string | null; clientName: string; projectName: string; startDate: string; endDate: string | null } }> {
+  return apiFetch(`/api/codeclear/candidates/${candidateId}/placements`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getProofHealth(): Promise<ProofHealthResponse> {

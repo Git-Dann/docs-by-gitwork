@@ -331,8 +331,28 @@ export const candidateScoreSchema = z
 export const proposalCreateSchema = z.object({
   title: z.string().min(1).default("Untitled Proposal"),
   clientName: z.string().optional(),
+  clientId: z.string().cuid().optional(),
   productName: z.string().optional(),
   templateId: z.string().optional(),
+});
+
+export const supportClientCreateSchema = z.object({
+  name: requiredTrimmedString,
+  slug: z.string().trim().min(1),
+  status: z.enum(["active", "inactive"]).optional(),
+  supportDaysPerMonth: z.coerce.number().int().positive().optional(),
+  supportDaysUsed: z.coerce.number().int().nonnegative().optional(),
+  reportingRecipient: z.string().trim().optional(),
+  reportDueDay: z.coerce.number().int().min(1).max(31).optional(),
+  workspaceClientId: z.string().cuid().optional(),
+});
+
+export const placementCreateSchema = z.object({
+  clientId: z.string().cuid().optional(),
+  clientName: requiredTrimmedString,
+  projectName: requiredTrimmedString,
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().nullable().optional(),
 });
 
 export const proposalUpdateSchema = z.object({

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listSupportClients, createSupportClient, seedDefaultWorkflowRules } from "@/server/support";
+import { supportClientCreateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = supportClientCreateSchema.parse(await request.json());
     const client = await createSupportClient(body);
     await seedDefaultWorkflowRules(client.id);
     return apiOk({ client }, { status: 201 });

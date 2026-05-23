@@ -24,6 +24,7 @@ export interface SupportClient {
   supportDaysUsed?: number;
   reportingRecipient?: string;
   reportDueDay?: number;
+  workspaceClientId?: string;
 }
 
 export interface SupportUser {

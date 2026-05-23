@@ -56,6 +56,7 @@ import {
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";
+import { useClientList } from "@/hooks/use-proposals";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -182,8 +183,11 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [days, setDays] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [portalClientId, setPortalClientId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const createClient = useCreateSupportClient();
+  const clientsQuery = useClientList();
+  const portalClients = clientsQuery.data?.clients.filter(c => c.source === "MANUAL") ?? [];
 
   function slug(name: string) {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -200,6 +204,7 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
         supportDaysPerMonth: days ? Number(days) : undefined,
         supportDaysUsed: 0,
         reportingRecipient: recipient.trim() || undefined,
+        workspaceClientId: portalClientId || undefined,
       },
       {
         onSuccess: () => onClose(),
@@ -211,6 +216,26 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
   return (
     <CareModal title="Add client" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {portalClients.length > 0 && (
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Link to Portal client <span className="font-normal text-[var(--text-4)]">(optional)</span></span>
+            <select
+              value={portalClientId}
+              onChange={(e) => {
+                setPortalClientId(e.target.value);
+                const selected = portalClients.find(c => c.id === e.target.value);
+                if (selected && !name) setName(selected.name);
+              }}
+              className="app-select w-full"
+            >
+              <option value="">— None —</option>
+              {portalClients.map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <label className="block space-y-1.5">
           <span className="app-field-label">Client name</span>
           <input

@@ -278,6 +278,7 @@ model WorkspaceClient {
   platforms            ClientPlatform[]
   documents            Document[]
   supportClients       SupportClient[]
+  placements           Placement[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -404,16 +405,19 @@ model GitHubAnalysisRun {
 }
 
 model Placement {
-  id          String    @id @default(cuid())
+  id          String          @id @default(cuid())
   candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidate   Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  clientId    String?
+  client      WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientName  String
   projectName String
   startDate   DateTime
   endDate     DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime        @default(now())
 
   @@index([candidateId, startDate])
+  @@index([clientId])
 }
 
 model Note {

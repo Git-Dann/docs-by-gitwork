@@ -368,6 +368,7 @@ export async function createSupportClient(data: {
   supportDaysUsed?: number;
   reportingRecipient?: string;
   reportDueDay?: number;
+  workspaceClientId?: string;
 }): Promise<SupportClient> {
   const workspaceId = await getWorkspaceId();
   const row = await prisma.supportClient.create({
@@ -380,6 +381,7 @@ export async function createSupportClient(data: {
       supportDaysUsed: data.supportDaysUsed ?? null,
       reportingRecipient: data.reportingRecipient ?? null,
       reportDueDay: data.reportDueDay ?? null,
+      workspaceClientId: data.workspaceClientId ?? null,
     },
   });
   return serializeSupportClient(row);

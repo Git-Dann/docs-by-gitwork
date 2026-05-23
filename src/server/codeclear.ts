@@ -338,7 +338,11 @@ export function serializeCandidateDetails(
     latestGitHubAnalysis,
     githubAnalysisRuns,
     placements: candidate.placements.map((placement) => ({
-      ...placement,
+      id: placement.id,
+      candidateId: placement.candidateId,
+      clientId: placement.clientId ?? null,
+      clientName: placement.clientName,
+      projectName: placement.projectName,
       startDate: placement.startDate.toISOString(),
       endDate: toIsoString(placement.endDate),
       createdAt: placement.createdAt.toISOString(),
