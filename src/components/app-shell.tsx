@@ -64,8 +64,8 @@ export function AppShell({
       },
       {
         href: "/app/docs",
-        label: "Docs",
-        description: "Documentation and client outputs",
+        label: "WIP",
+        description: "Work in progress builds",
         icon: DocumentTextIcon,
       },
       {

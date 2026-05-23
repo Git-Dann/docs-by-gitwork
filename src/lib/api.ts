@@ -8,7 +8,7 @@ import type {
   Ticket,
   WorkflowRule,
 } from "@/types/support";
-import type { ClientDetailRecord, ClientListItem } from "@/types/client";
+import type { ClientDetailRecord, ClientListItem, ClientPlatformRecord } from "@/types/client";
 import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
@@ -274,7 +274,21 @@ export async function createClient(
 
 export async function updateClient(
   slug: string,
-  input: { name?: string; logoUrl?: string },
+  input: {
+    name?: string;
+    logoUrl?: string;
+    website?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    postcode?: string;
+    country?: string;
+    notes?: string;
+    primaryContactName?: string;
+    primaryContactEmail?: string;
+    primaryContactPhone?: string;
+    googleDriveFolderUrl?: string;
+  },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {
     method: "PATCH",
@@ -285,6 +299,57 @@ export async function updateClient(
 
 export async function getClientDetail(slug: string): Promise<ClientDetailRecord> {
   return apiFetch<ClientDetailRecord>(`/api/clients/${slug}`);
+}
+
+export async function createClientPlatform(
+  slug: string,
+  input: {
+    name: string;
+    platformType?: string;
+    url?: string;
+    stagingUrl?: string;
+    repoUrl?: string;
+    credentials?: string;
+    notes?: string;
+  },
+): Promise<{ platform: ClientPlatformRecord }> {
+  return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateClientPlatform(
+  slug: string,
+  platformId: string,
+  input: {
+    name?: string;
+    platformType?: string;
+    url?: string;
+    stagingUrl?: string;
+    repoUrl?: string;
+    credentials?: string;
+    notes?: string;
+  },
+): Promise<{ platform: ClientPlatformRecord }> {
+  return apiFetch<{ platform: ClientPlatformRecord }>(
+    `/api/clients/${slug}/platforms/${platformId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteClientPlatform(
+  slug: string,
+  platformId: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/platforms/${platformId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getCodeClearStats(): Promise<CodeClearStatsResponse> {

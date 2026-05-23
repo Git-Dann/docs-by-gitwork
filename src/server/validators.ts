@@ -165,18 +165,50 @@ export const rateCardPersonCreateSchema = z.object({
   billingPeriod: rateBillingPeriodSchema.default("MONTH"),
 });
 
+const clientContactFields = {
+  website: z.string().trim().optional(),
+  addressLine1: z.string().trim().optional(),
+  addressLine2: z.string().trim().optional(),
+  city: z.string().trim().optional(),
+  postcode: z.string().trim().optional(),
+  country: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+  primaryContactName: z.string().trim().optional(),
+  primaryContactEmail: z.string().trim().optional(),
+  primaryContactPhone: z.string().trim().optional(),
+  googleDriveFolderUrl: z.string().trim().optional(),
+};
+
 export const clientCreateSchema = z.object({
   name: requiredTrimmedString,
   logoUrl: z.string().trim().url().optional(),
+  ...clientContactFields,
 });
 
 export const clientUpdateSchema = z
   .object({
     name: requiredTrimmedString.optional(),
     logoUrl: z.string().trim().url().optional(),
+    ...clientContactFields,
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one client field is required.",
+  });
+
+export const clientPlatformCreateSchema = z.object({
+  name: requiredTrimmedString,
+  platformType: z.string().trim().optional(),
+  url: z.string().trim().optional(),
+  stagingUrl: z.string().trim().optional(),
+  repoUrl: z.string().trim().optional(),
+  credentials: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+});
+
+export const clientPlatformUpdateSchema = clientPlatformCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one platform field is required.",
   });
 
 export const proofCreateSchema = z.object({

@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   archiveProposal,
   createClient,
+  createClientPlatform,
   createProposal,
+  deleteClientPlatform,
   deleteProposal,
   duplicateProposal,
   getClientDetail,
@@ -16,8 +18,10 @@ import {
   saveEngagement,
   saveTimeline,
   updateClient,
+  updateClientPlatform,
   updateProposal,
 } from "@/lib/api";
+import type { ClientPlatformRecord } from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
 
 export function useProposalList(filters: {
@@ -79,11 +83,27 @@ export function useClientDetail(slug: string) {
   });
 }
 
+type ClientUpdatePayload = {
+  name?: string;
+  logoUrl?: string;
+  website?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
+  notes?: string;
+  primaryContactName?: string;
+  primaryContactEmail?: string;
+  primaryContactPhone?: string;
+  googleDriveFolderUrl?: string;
+};
+
 export function useUpdateClient(slug: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: { logoUrl?: string }) => updateClient(slug, payload),
+    mutationFn: (payload: ClientUpdatePayload) => updateClient(slug, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
@@ -91,6 +111,58 @@ export function useUpdateClient(slug: string) {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
   });
+}
+
+type PlatformInput = {
+  name: string;
+  platformType?: string;
+  url?: string;
+  stagingUrl?: string;
+  repoUrl?: string;
+  credentials?: string;
+  notes?: string;
+};
+
+export function useCreateClientPlatform(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: PlatformInput) => createClientPlatform(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useUpdateClientPlatform(slug: string, platformId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Partial<PlatformInput>) =>
+      updateClientPlatform(slug, platformId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useDeleteClientPlatform(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (platformId: string) => deleteClientPlatform(slug, platformId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useClientPlatformMutations(slug: string, platform: ClientPlatformRecord | null) {
+  const createMutation = useCreateClientPlatform(slug);
+  const updateMutation = useUpdateClientPlatform(slug, platform?.id ?? "");
+  const deleteMutation = useDeleteClientPlatform(slug);
+
+  return { createMutation, updateMutation, deleteMutation };
 }
 
 export function useUpdateProposal(id: string) {

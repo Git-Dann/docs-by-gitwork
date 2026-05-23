@@ -34,7 +34,7 @@ export function ClientManagement() {
       const result = await createClientMutation.mutateAsync({ name: trimmed });
       setClientName("");
       setShowCreate(false);
-      router.push(`/app/clients/${result.client.slug}`);
+      router.push(`/app/portal/${result.client.slug}`);
     } catch (mutationError) {
       setFormError((mutationError as Error).message);
     }
@@ -132,16 +132,16 @@ export function ClientManagement() {
                       <td>
                         <div className="flex flex-wrap gap-2">
                           <Link
-                            href={`/app/clients/${client.slug}`}
+                            href={`/app/portal/${client.slug}`}
                             className={buttonStyles({ variant: "secondary", size: "xs" })}
                           >
                             Open client
                           </Link>
                           <Link
-                            href={`/app/proposals?new=1&client=${encodeURIComponent(client.name)}`}
+                            href={`/app/docs?new=1&client=${encodeURIComponent(client.name)}`}
                             className={buttonStyles({ variant: "tertiary", size: "xs" })}
                           >
-                            New proposal
+                            New WIP doc
                           </Link>
                         </div>
                       </td>
