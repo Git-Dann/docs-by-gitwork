@@ -3,6 +3,7 @@
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
+  Bars3Icon,
   CodeBracketIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
@@ -11,6 +12,7 @@ import {
   LifebuoyIcon,
   SignalIcon,
   UserGroupIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -43,6 +45,13 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close drawer on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   const primaryNav = useMemo<NavItem[]>(
     () => [
       {
@@ -102,10 +111,79 @@ export function AppShell({
   );
 
   return (
-    <div className="h-[100dvh] bg-[#FAFAF9] text-[var(--text-1)]">
+    <div className="flex h-[100dvh] flex-col bg-[#FAFAF9] text-[var(--text-1)]">
+      {/* ── Mobile top bar (hidden on lg+) ── */}
+      <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-4 py-3 lg:hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto" />
+        <button
+          type="button"
+          aria-label="Open navigation"
+          onClick={() => setMobileOpen(true)}
+          className="rounded-[6px] p-2 text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+        >
+          <Bars3Icon className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* ── Mobile page title (hidden on lg+) ── */}
+      {!hideContentHeader && (
+        <div className="border-b border-[var(--border-2)] bg-white px-4 py-4 lg:hidden">
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
+          ) : null}
+        </div>
+      )}
+
+      {/* ── Mobile drawer overlay ── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileOpen(false)}
+          />
+          {/* Drawer panel */}
+          <div className="absolute inset-y-0 left-0 flex w-[280px] flex-col bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-2)] px-5 py-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto" />
+              <button
+                type="button"
+                aria-label="Close navigation"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-[6px] p-2 text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-4">
+              <nav className="space-y-1">
+                {primaryNav.map((item) => (
+                  <SidebarNavItem
+                    key={item.label}
+                    item={item}
+                    active={Boolean(item.href && isActivePath(pathname, item.href))}
+                  />
+                ))}
+              </nav>
+            </div>
+            <div className="border-t border-[var(--border-2)] px-3 py-3">
+              <SidebarNavItem
+                item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
+                active={Boolean(isActivePath(pathname, "/app/settings"))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className={cn(
-          "h-full w-full grid-cols-1",
+          "min-h-0 flex-1 w-full grid-cols-1",
           "lg:grid lg:grid-cols-[280px_minmax(0,1fr)]",
           hideContentHeader
             ? "lg:grid-rows-[minmax(0,1fr)]"
@@ -122,7 +200,7 @@ export function AppShell({
 
         {/* ── Row 1 Col 2: Main content header ── */}
         {!hideContentHeader && (
-          <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
+          <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
             <div className="max-w-4xl">
               <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
                 {title}
