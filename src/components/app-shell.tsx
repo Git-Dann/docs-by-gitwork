@@ -126,6 +126,18 @@ export function AppShell({
         </button>
       </div>
 
+      {/* ── Mobile page title (hidden on lg+) ── */}
+      {!hideContentHeader && (
+        <div className="border-b border-[var(--border-2)] bg-white px-4 py-4 lg:hidden">
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
+          ) : null}
+        </div>
+      )}
+
       {/* ── Mobile drawer overlay ── */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
