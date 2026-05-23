@@ -1,0 +1,76 @@
+/*
+ * Design Tokens
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CSS custom properties that are the single source of truth for all
+ * colour, shadow, and gradient values used across the app.
+ *
+ * HOW TO USE SAFELY
+ * ✅ Change a value (e.g. update --brand-700 hex) — propagates everywhere intentionally
+ * ✅ Add a new token
+ * ⚠️  Rename or remove an existing token — search the codebase first; it's
+ *    a breaking change because 50+ components depend on these names
+ *
+ * DO NOT add feature-specific one-off values here. Use Tailwind utilities
+ * inline in the feature component instead.
+ */
+
+:root {
+  /* Surfaces */
+  --surface-canvas: #FAFAF9;
+  --surface-0: #FFFFFF;
+  --surface-1: #F5F5F4;
+  --surface-2: #EEEEEC;
+  --surface-brand: #EFF6FF;
+  --surface-brand-soft: #EFF6FF;
+  --surface-brand-strong: #DBEAFE;
+
+  /* Text */
+  --text-1: #0F172A;
+  --text-2: #1E293B;
+  --text-3: #475569;
+  --text-4: #64748B;
+
+  /* Borders */
+  --border-1: rgba(0,0,0,0.14);
+  --border-2: rgba(0,0,0,0.08);
+  --border-3: rgba(0,0,0,0.05);
+
+  /* Brand — Gitwork Blue */
+  --brand-200: #DBEAFE;
+  --brand-300: #BFDBFE;
+  --brand-400: #3B82F6;
+  --brand-500: #2563EB;
+  --brand-600: #1D4ED8;
+  --brand-700: #1D4ED8;
+  --brand-800: #1E3A8A;
+  --brand-900: #1E3A8A;
+  --brand-focus-ring: rgba(29, 78, 216, 0.16);
+  --brand-gradient: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 46%, #1E3A8A 100%);
+  --signal-stripe: linear-gradient(90deg, #1D4ED8 0%, #1E3A8A 28%, #3B82F6 62%, #DBEAFE 84%, #EFF6FF 100%);
+
+  /* Aliases */
+  --accent: var(--brand-700);
+  --bg: var(--surface-canvas);
+
+  /* Semantic */
+  --success-500: #16A34A;
+  --success-50: #DCFCE7;
+  --warning-500: #D97706;
+  --warning-50: #FEF3C7;
+  --info-500: #1570ef;
+  --info-50: #eff8ff;
+  --danger-500: #DC2626;
+  --danger-50: #FEE2E2;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.05);
+  --shadow-sm: 0 1px 3px rgba(10, 13, 18, 0.08), 0 1px 2px rgba(10, 13, 18, 0.04);
+  --shadow-lg:
+    0 12px 16px -4px rgba(10, 13, 18, 0.08),
+    0 4px 6px -2px rgba(10, 13, 18, 0.03),
+    0 2px 2px -1px rgba(10, 13, 18, 0.04);
+  --shadow-skeuomorphic:
+    0 1px 2px rgba(10, 13, 18, 0.05),
+    inset 0 -2px 0 rgba(10, 13, 18, 0.05),
+    inset 0 0 0 1px rgba(10, 13, 18, 0.12);
+}

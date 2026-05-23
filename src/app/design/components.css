@@ -1,0 +1,524 @@
+/*
+ * Shared Component Classes
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Reusable .app-* utility classes used by components across all features.
+ * All values reference tokens from tokens.css via var(--*).
+ *
+ * HOW TO USE SAFELY
+ * ✅ Change a style value inside an existing class
+ * ✅ Add a brand-new .app-* class for a new shared pattern
+ * ⚠️  Rename or remove an existing class — it's a stable API; 100+ usages
+ *    across Pulse, Study, Care, Proposals, etc. Search before removing.
+ *
+ * FEATURE-SPECIFIC STYLES DO NOT BELONG HERE
+ * If a style is used by only one feature, put it inline as a Tailwind utility
+ * in that feature's component file, not here.
+ */
+
+@layer components {
+  /* ── Surfaces & Cards ───────────────────────────────────────────────────── */
+
+  .app-surface {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-0);
+  }
+
+  .app-card {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-0);
+  }
+
+  .app-muted-card {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-1);
+  }
+
+  .app-subtle-panel {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-0);
+  }
+
+  /* ── Typography Utilities ───────────────────────────────────────────────── */
+
+  .app-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .app-copy {
+    color: var(--text-3);
+  }
+
+  /* ── Chip ───────────────────────────────────────────────────────────────── */
+
+  .app-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 22px;
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    background: var(--surface-0);
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-3);
+  }
+
+  /* ── Signal Stripe ──────────────────────────────────────────────────────── */
+
+  .signal-stripe {
+    min-height: 18px;
+    background: var(--signal-stripe);
+  }
+
+  .signal-stripe-thin {
+    min-height: 4px;
+    background: var(--signal-stripe);
+  }
+
+  /* ── Tables ─────────────────────────────────────────────────────────────── */
+
+  .app-table-shell {
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-0);
+  }
+
+  .app-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .app-table thead th {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-3);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-4);
+    background: var(--surface-0);
+  }
+
+  .app-table tbody td {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border-3);
+    color: var(--text-2);
+    vertical-align: middle;
+  }
+
+  .app-table tbody tr:first-child td {
+    border-top: 0;
+  }
+
+  .app-table tbody tr {
+    transition: background-color 0.15s ease;
+  }
+
+  .app-table tbody tr:hover {
+    background: var(--surface-1);
+  }
+
+  /* ── Dialog ─────────────────────────────────────────────────────────────── */
+
+  .app-dialog-backdrop {
+    background: rgba(10, 13, 18, 0.42);
+    backdrop-filter: blur(6px);
+  }
+
+  .app-dialog-panel {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 10px;
+    background: var(--surface-0);
+    box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12);
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+
+  .app-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+    vertical-align: middle;
+    text-decoration: none;
+    border: 1px solid transparent;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: center;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+    outline: none;
+  }
+
+  .app-button:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  .app-button:focus-visible {
+    box-shadow:
+      0 0 0 4px var(--brand-focus-ring),
+      var(--shadow-xs);
+  }
+
+  .app-button:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Primary */
+  .app-button-primary {
+    background: var(--brand-700);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff !important;
+    box-shadow: var(--shadow-skeuomorphic);
+  }
+
+  a.app-button-primary,
+  a.app-button-primary:visited,
+  button.app-button-primary {
+    color: #ffffff !important;
+  }
+
+  .app-button-primary:hover:not(:disabled) {
+    background: var(--brand-800);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .app-button-primary:disabled {
+    background: var(--brand-300);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--brand-900);
+    box-shadow: none;
+  }
+
+  /* Secondary */
+  .app-button-secondary {
+    background: var(--surface-0);
+    border-color: var(--border-1);
+    color: var(--text-1) !important;
+    box-shadow: var(--shadow-skeuomorphic);
+  }
+
+  a.app-button-secondary,
+  a.app-button-secondary:visited,
+  button.app-button-secondary {
+    color: var(--text-1) !important;
+  }
+
+  .app-button-secondary:hover:not(:disabled) {
+    background: var(--surface-1);
+  }
+
+  .app-button-secondary:disabled {
+    background: #fcfcfd;
+    border-color: var(--border-2);
+    color: #a4a7ae;
+    box-shadow: none;
+  }
+
+  /* Tertiary */
+  .app-button-tertiary {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-3);
+  }
+
+  .app-button-tertiary:hover:not(:disabled) {
+    background: var(--surface-1);
+  }
+
+  .app-button-tertiary:disabled {
+    color: #a4a7ae;
+  }
+
+  /* Link / Hyperlink */
+  .app-button-link,
+  .app-button-hyperlink {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--brand-700);
+    box-shadow: none;
+  }
+
+  .app-button-link:hover:not(:disabled),
+  .app-button-hyperlink:hover:not(:disabled) {
+    color: var(--brand-800);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .app-button-link:disabled,
+  .app-button-hyperlink:disabled {
+    color: #a4a7ae;
+  }
+
+  /* Dark */
+  .app-button-dark {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: white !important;
+    box-shadow: none;
+  }
+
+  .app-button-dark:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  /* Danger */
+  .app-button-danger {
+    background: var(--surface-0);
+    border-color: #fecdca;
+    color: #b42318;
+    box-shadow: var(--shadow-skeuomorphic);
+  }
+
+  .app-button-danger:hover:not(:disabled) {
+    background: var(--danger-50);
+  }
+
+  .app-button-danger:disabled {
+    background: #fcfcfd;
+    border-color: var(--border-2);
+    color: #fda29b;
+    box-shadow: none;
+  }
+
+  /* Utility */
+  .app-button-utility {
+    background: var(--surface-0);
+    border-color: var(--border-1);
+    color: var(--text-3);
+    box-shadow: var(--shadow-skeuomorphic);
+  }
+
+  .app-button-utility:hover:not(:disabled) {
+    background: var(--surface-1);
+    color: var(--text-2);
+  }
+
+  .app-button-utility:disabled {
+    background: #fcfcfd;
+    border-color: var(--border-2);
+    color: #a4a7ae;
+    box-shadow: none;
+  }
+
+  /* Sizes */
+  .app-button-xs {
+    height: 32px;
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .app-button-sm {
+    height: 36px;
+    border-radius: 6px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .app-button-md {
+    height: 40px;
+    border-radius: 6px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .app-button-lg {
+    height: 44px;
+    border-radius: 6px;
+    padding: 0 16px;
+    font-size: 14px;
+  }
+
+  .app-button-icon-sm {
+    height: 36px;
+    width: 36px;
+    border-radius: 6px;
+    padding: 0;
+  }
+
+  .app-button-icon-md {
+    height: 40px;
+    width: 40px;
+    border-radius: 6px;
+    padding: 0;
+  }
+
+  /* ── Form Fields ────────────────────────────────────────────────────────── */
+
+  .app-field-label,
+  .proposal-form-theme label > span:first-child {
+    display: block;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+
+  .app-field-hint {
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-3);
+  }
+
+  .app-input,
+  .app-input-compact,
+  .app-select,
+  .app-select-compact,
+  .app-textarea,
+  .proposal-field-compact,
+  .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
+  .proposal-form-theme select,
+  .proposal-form-theme textarea {
+    width: 100%;
+    border: 1px solid rgba(0,0,0,0.14);
+    border-radius: 6px;
+    background: var(--surface-0);
+    color: var(--text-1);
+    box-shadow: var(--shadow-xs);
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .app-input,
+  .app-select,
+  .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
+  .proposal-form-theme select {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .app-textarea,
+  .proposal-form-theme textarea {
+    min-height: 120px;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 20px;
+    resize: vertical;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10.5 1.5L1.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.5 5.5L5.5 10.5' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-position: calc(100% - 5px) calc(100% - 5px);
+    background-repeat: no-repeat;
+    background-size: 12px 12px;
+  }
+
+  .proposal-field-compact,
+  .app-input-compact,
+  .app-select-compact {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  textarea.proposal-field-compact,
+  .proposal-form-theme textarea.proposal-field-compact {
+    min-height: 96px;
+    height: auto;
+    padding: 10px 12px;
+  }
+
+  .app-input::placeholder,
+  .app-input-compact::placeholder,
+  .app-textarea::placeholder,
+  .proposal-field-compact::placeholder,
+  .proposal-form-theme input::placeholder,
+  .proposal-form-theme textarea::placeholder {
+    color: var(--text-4);
+  }
+
+  .app-input:focus,
+  .app-input-compact:focus,
+  .app-select:focus,
+  .app-select-compact:focus,
+  .app-textarea:focus,
+  .proposal-field-compact:focus,
+  .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):focus,
+  .proposal-form-theme select:focus,
+  .proposal-form-theme textarea:focus {
+    border-color: var(--brand-500);
+    box-shadow:
+      0 0 0 4px var(--brand-focus-ring),
+      var(--shadow-xs);
+  }
+
+  .app-input:disabled,
+  .app-input-compact:disabled,
+  .app-select:disabled,
+  .app-select-compact:disabled,
+  .app-textarea:disabled,
+  .proposal-field-compact:disabled,
+  .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):disabled,
+  .proposal-form-theme select:disabled,
+  .proposal-form-theme textarea:disabled {
+    background: #fcfcfd;
+    border-color: var(--border-2);
+    color: var(--text-4);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  .app-input.app-invalid,
+  .app-input-compact.app-invalid,
+  .app-select.app-invalid,
+  .app-select-compact.app-invalid,
+  .app-textarea.app-invalid,
+  .proposal-form-theme [aria-invalid="true"] {
+    border-color: var(--danger-500);
+    box-shadow:
+      0 0 0 4px rgba(240, 68, 56, 0.12),
+      var(--shadow-xs);
+  }
+
+  .app-select,
+  .app-select-compact,
+  .proposal-form-theme select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23717680' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+  }
+
+  .app-select,
+  .proposal-form-theme select {
+    background-position: calc(100% - 14px) center;
+    background-size: 18px 18px;
+    padding-right: 42px;
+  }
+
+  .app-select-compact {
+    background-position: calc(100% - 12px) center;
+    background-size: 16px 16px;
+    padding-right: 36px;
+  }
+
+  .app-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--brand-600);
+  }
+}
