@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
@@ -25,6 +26,7 @@ type NavItem = {
   description?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
+  moduleId?: string;
 };
 
 export function AppShell({
@@ -43,52 +45,67 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { settings } = useLocalSettings();
-  const primaryNav = useMemo<NavItem[]>(
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
+
+  const allModuleNav = useMemo<NavItem[]>(
     () => [
-      {
-        href: "/app",
-        label: "Foundry HQ",
-        icon: HomeModernIcon,
-      },
       {
         href: "/app/pulse",
         label: "Pulse",
         description: "Health and delivery tracking",
         icon: SignalIcon,
+        moduleId: "pulse",
       },
       {
         href: "/app/code",
         label: "Code",
         description: "Dev review and validation",
         icon: CodeBracketIcon,
+        moduleId: "codeclear",
       },
       {
         href: "/app/docs",
         label: "Docs",
         description: "Documentation and client outputs",
         icon: DocumentTextIcon,
+        moduleId: "proposals",
       },
       {
         href: "/app/portal",
         label: "Portal",
         description: "Client-support workspace",
         icon: UserGroupIcon,
+        moduleId: "clients",
       },
       {
         href: "/app/care",
         label: "Care",
         description: "Support and aftercare",
         icon: LifebuoyIcon,
+        moduleId: "support",
       },
       {
         href: "/app/study",
         label: "Study",
         description: "AI-powered user research",
         icon: AcademicCapIcon,
+        moduleId: "study",
       },
     ],
     [],
   );
+
+  const primaryNav = useMemo<NavItem[]>(() => {
+    const userPermissions = session?.user?.permissions ?? [];
+    const modules = isAdmin
+      ? allModuleNav
+      : allModuleNav.filter((item) => userPermissions.includes(item.moduleId ?? ""));
+    return [
+      { href: "/app", label: "Foundry HQ", icon: HomeModernIcon },
+      ...modules,
+    ];
+  }, [isAdmin, session?.user?.permissions, allModuleNav]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
@@ -290,6 +307,7 @@ function Avatar({ name, url }: { name: string; url: string }) {
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -325,8 +343,8 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       >
         <Avatar name={account.name} url={account.avatarUrl} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
-          <p className="truncate text-xs text-[var(--text-4)]">{account.email}</p>
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{session?.user?.name ?? account.name}</p>
+          <p className="truncate text-xs text-[var(--text-4)]">{session?.user?.email ?? account.email}</p>
         </div>
         <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
       </button>
@@ -373,6 +391,7 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
 
           <button
             type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
             className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />

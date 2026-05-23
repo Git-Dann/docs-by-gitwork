@@ -16,14 +16,14 @@ const CORS_HEADERS = {
   "Access-Control-Max-Age": "86400",
 };
 
-// Maps module IDs to their /app/* path prefixes
-const MODULE_PATHS: Record<string, string> = {
-  pulse: "/app/pulse",
-  codeclear: "/app/codeclear",
-  proposals: "/app/proposals",
-  clients: "/app/clients",
-  support: "/app/support",
-  study: "/app/study",
+// Maps module IDs to their /app/* path prefixes (both canonical and alias routes)
+const MODULE_PATHS: Record<string, string[]> = {
+  pulse: ["/app/pulse"],
+  codeclear: ["/app/codeclear", "/app/code"],
+  proposals: ["/app/proposals", "/app/docs"],
+  clients: ["/app/clients", "/app/portal"],
+  support: ["/app/support", "/app/care"],
+  study: ["/app/study"],
 };
 
 function configuredApiKey() {
@@ -31,8 +31,8 @@ function configuredApiKey() {
 }
 
 function hasModuleAccess(pathname: string, permissions: string[]): boolean {
-  for (const [module, prefix] of Object.entries(MODULE_PATHS)) {
-    if (pathname.startsWith(prefix)) {
+  for (const [module, prefixes] of Object.entries(MODULE_PATHS)) {
+    if (prefixes.some((prefix) => pathname.startsWith(prefix))) {
       return permissions.includes(module);
     }
   }
