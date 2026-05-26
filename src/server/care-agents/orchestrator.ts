@@ -32,6 +32,7 @@ export async function buildAgentContext(connId: string): Promise<AgentContext> {
     select: {
       googleServiceAccountJson: true,
       googleSubjectEmail: true,
+      googleOAuthRefreshToken: true,
       aiProvider: true,
       anthropicApiKey: true,
       anthropicModel: true,

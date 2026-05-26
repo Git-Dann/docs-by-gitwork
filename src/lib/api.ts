@@ -53,7 +53,7 @@ export interface CodeClearRunsResponse {
   runs: GitHubAnalysisRunRecord[];
 }
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...options,
     headers: {
@@ -732,6 +732,7 @@ export interface IntegrationsResponse {
   googleServiceAccountJsonSet: boolean;
   googleSubjectEmail: string | null;
   googleCalendarId: string | null;
+  googleOAuthConnected: boolean;
   slackBotTokenMasked: string | null;
   slackSummaryChannelId: string | null;
 }

@@ -29,6 +29,7 @@ export async function GET() {
         googleServiceAccountJson: true,
         googleSubjectEmail: true,
         googleCalendarId: true,
+        googleOAuthRefreshToken: true,
         slackBotToken: true,
         slackSummaryChannelId: true,
       },
@@ -57,6 +58,7 @@ export async function GET() {
       googleServiceAccountJsonSet: Boolean(workspace?.googleServiceAccountJson),
       googleSubjectEmail: workspace?.googleSubjectEmail ?? null,
       googleCalendarId: workspace?.googleCalendarId ?? null,
+      googleOAuthConnected: Boolean(workspace?.googleOAuthRefreshToken),
       slackBotTokenMasked: workspace?.slackBotToken ? maskKey(workspace.slackBotToken) : null,
       slackSummaryChannelId: workspace?.slackSummaryChannelId ?? null,
     });

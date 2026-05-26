@@ -148,6 +148,7 @@ model Workspace {
   googleServiceAccountJson  String?
   googleSubjectEmail        String?
   googleCalendarId          String?
+  googleOAuthRefreshToken   String?
   slackBotToken             String?
   slackSummaryChannelId     String?
   createdAt       DateTime          @default(now())
