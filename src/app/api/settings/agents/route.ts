@@ -19,7 +19,7 @@ const saveSchema = z.object({
   enabled: z.boolean().optional(),
   systemPromptOverride: z.string().nullable().optional(),
   modelOverride: z.string().nullable().optional(),
-  configJson: z.record(z.unknown()).nullable().optional(),
+  configJson: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
