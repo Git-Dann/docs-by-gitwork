@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowPathIcon,
   BoltIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
@@ -1389,9 +1390,47 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
 
+  // Auto-sync interval (minutes): 0 = manual only
+  const INTERVAL_OPTIONS = [
+    { label: "Manual", value: 0 },
+    { label: "30 min", value: 30 },
+    { label: "1 hr", value: 60 },
+    { label: "6 hrs", value: 360 },
+  ];
+  const [autoInterval, setAutoInterval] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    return Number(localStorage.getItem(`care-sync-interval-${clientId}`) ?? 0);
+  });
+
+  function changeInterval(minutes: number) {
+    setAutoInterval(minutes);
+    localStorage.setItem(`care-sync-interval-${clientId}`, String(minutes));
+  }
+
+  // Fire sync on all connected connections at the chosen interval
+  useEffect(() => {
+    if (autoInterval === 0) return;
+    const connectedIds = connections.filter((c) => c.health === "connected").map((c) => c.id);
+    if (connectedIds.length === 0) return;
+    const id = setInterval(() => {
+      connectedIds.forEach((cid) => {
+        syncConn.mutate(cid);
+      });
+    }, autoInterval * 60 * 1000);
+    return () => clearInterval(id);
+  }, [autoInterval, connections, syncConn]);
+
   async function handleSync(connId: string) {
     const result = await syncConn.mutateAsync(connId);
     setSyncResults((prev) => ({ ...prev, [connId]: result }));
+  }
+
+  async function handleSyncAll() {
+    const connectedIds = connections.filter((c) => c.health === "connected").map((c) => c.id);
+    for (const cid of connectedIds) {
+      const result = await syncConn.mutateAsync(cid);
+      setSyncResults((prev) => ({ ...prev, [cid]: result }));
+    }
   }
 
   if (isLoading) {
@@ -1412,6 +1451,45 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
 
   return (
     <div className="space-y-3">
+      {/* ── Fetch schedule ── */}
+      {connections.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <ArrowPathIcon className="h-4 w-4 text-[var(--text-3)]" />
+            <span className="text-sm font-medium text-[var(--text-2)]">Auto-fetch</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-[6px] border border-[var(--border-2)] overflow-hidden">
+              {INTERVAL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => changeInterval(opt.value)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium transition",
+                    opt.value !== INTERVAL_OPTIONS[INTERVAL_OPTIONS.length - 1].value && "border-r border-[var(--border-2)]",
+                    autoInterval === opt.value
+                      ? "bg-[var(--brand-700)] text-white"
+                      : "bg-[var(--surface-0)] text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSyncAll()}
+              disabled={syncConn.isPending}
+              className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+            >
+              <ArrowPathIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
+              {syncConn.isPending ? "Syncing…" : "Refresh now"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {connections.length > 0 && (
         <div className="app-card overflow-hidden p-0">
           {connections.map((conn, idx) => {
