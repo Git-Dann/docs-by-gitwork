@@ -12,7 +12,6 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
@@ -1808,9 +1807,15 @@ function GoogleWorkspaceSection({
   onSaved: (updated: IntegrationsResponse) => void;
 }) {
   const [disconnecting, setDisconnecting] = useState(false);
-  const searchParams = useSearchParams();
-  const oauthSuccess = searchParams.get("gmail_connected") === "1";
-  const oauthError = searchParams.get("gmail_error");
+  const [oauthSuccess, setOauthSuccess] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gmail_connected") === "1") setOauthSuccess(true);
+    if (params.get("gmail_error")) setOauthError(params.get("gmail_error"));
+  }, []);
 
   async function handleDisconnect() {
     setDisconnecting(true);
