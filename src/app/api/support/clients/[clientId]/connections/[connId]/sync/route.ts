@@ -1,15 +1,25 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
 import { buildSyncContext, syncConnection } from "@/server/support-sync";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string; connId: string }> },
 ) {
   try {
     const { connId } = await params;
+    const resync = request.nextUrl.searchParams.get("resync") === "1";
+
+    if (resync) {
+      await prisma.accountConnection.update({
+        where: { id: connId },
+        data: { lastSyncedAt: null },
+      });
+    }
+
     const ctx = await buildSyncContext(connId);
     const result = await syncConnection(ctx);
     return apiOk(result);
