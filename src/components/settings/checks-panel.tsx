@@ -342,7 +342,7 @@ function CheckDrawer({
               Severity override
             </label>
             <p className="mb-2 text-xs text-[var(--text-3)]">
-              Treat this check's issues as warnings or failures regardless of the built-in logic.
+              Treat this check&apos;s issues as warnings or failures regardless of the built-in logic.
             </p>
             <select
               value={severityOverride}
