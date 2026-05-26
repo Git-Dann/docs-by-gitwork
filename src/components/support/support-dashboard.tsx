@@ -1749,68 +1749,78 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {conn.health === "connected" ? (
-                    <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                      <CheckCircleIcon className="h-3.5 w-3.5" />
-                      Connected
-                    </span>
-                  ) : conn.health === "error" ? (
-                    <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
-                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                      Error
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                      Needs setup
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleSync(conn.id)}
-                    disabled={syncConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                  >
-                    <BoltIcon className="h-3 w-3" />
-                    {syncConn.isPending ? "Syncing…" : "Sync now"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
-                        void handleSync(conn.id, true);
-                      }
-                    }}
-                    disabled={syncConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                    title="Clear last-synced timestamp and pull the last 30 days of history"
-                  >
-                    <ArrowPathIcon className="h-3 w-3" />
-                    Re-sync history
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingConn(conn)}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                  >
-                    <PencilSquareIcon className="h-3 w-3" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
-                        deleteConn.mutate(conn.id);
-                      }
-                    }}
-                    disabled={deleteConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <TrashIcon className="h-3 w-3" />
-                    Delete
-                  </button>
-                </div>
+                {(() => {
+                  const pendingConnId = syncConn.isPending
+                    ? typeof syncConn.variables === "string"
+                      ? syncConn.variables
+                      : syncConn.variables?.connId
+                    : null;
+                  const isThisPending = pendingConnId === conn.id;
+                  return (
+                    <div className="flex items-center gap-2">
+                      {conn.health === "connected" ? (
+                        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                          <CheckCircleIcon className="h-3.5 w-3.5" />
+                          Connected
+                        </span>
+                      ) : conn.health === "error" ? (
+                        <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                          Error
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                          Needs setup
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSync(conn.id)}
+                        disabled={isThisPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                      >
+                        <BoltIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
+                        {isThisPending ? "Syncing…" : "Sync now"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
+                            void handleSync(conn.id, true);
+                          }
+                        }}
+                        disabled={isThisPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                        title="Clear last-synced timestamp and pull the last 30 days of history"
+                      >
+                        <ArrowPathIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
+                        Re-sync history
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingConn(conn)}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        <PencilSquareIcon className="h-3 w-3" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
+                            deleteConn.mutate(conn.id);
+                          }
+                        }}
+                        disabled={deleteConn.isPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <TrashIcon className="h-3 w-3" />
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
