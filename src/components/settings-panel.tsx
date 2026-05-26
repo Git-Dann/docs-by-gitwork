@@ -1985,7 +1985,7 @@ function SlackSection({
         <button
           onClick={() => void handleSave()}
           disabled={saving || (!tokenInput.trim() && !channelId.trim())}
-          className="app-button-primary text-sm disabled:opacity-40"
+          className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
         >
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}
         </button>
