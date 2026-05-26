@@ -977,7 +977,10 @@ function InboxView({ clientId }: { clientId: string }) {
             </div>
           )}
           {!convosLoading && filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
+            <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-10 text-center">
+              <p className="text-sm font-medium text-[var(--text-2)]">No conversations found</p>
+              <p className="mt-1 text-sm text-[var(--text-4)]">Try adjusting your search or filters.</p>
+            </div>
           )}
           {filtered.map((c) => (
             <ConversationCard
@@ -1211,8 +1214,9 @@ function TicketsView({ clientId }: { clientId: string }) {
 
   if (tickets.length === 0) {
     return (
-      <div className="app-card flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
-        No tickets for this client yet.
+      <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-12 text-center">
+        <p className="text-sm font-medium text-[var(--text-2)]">No tickets yet</p>
+        <p className="mt-1 text-sm text-[var(--text-4)]">No tickets have been created for this client.</p>
       </div>
     );
   }
@@ -1841,9 +1845,10 @@ function AgentsView({ clientId }: { clientId: string }) {
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent activity</h3>
         {agentLogs.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--text-4)]">
-            No agent activity yet — run a sync to get started.
-          </p>
+          <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-10 text-center">
+            <p className="text-sm font-medium text-[var(--text-2)]">No agent activity yet</p>
+            <p className="mt-1 text-sm text-[var(--text-4)]">Run a sync to get started.</p>
+          </div>
         ) : (
           <div className="app-card overflow-hidden p-0">
             {agentLogs.map((log: AuditLog, idx: number) => {
