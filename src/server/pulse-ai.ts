@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, DiscoveryKit } from "@/types/pulse";
+import { resolveAgentPrompt } from "@/server/agent-config";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -456,6 +457,9 @@ Populate productionReadinessChecklist with 12–20 items relevant to the declare
 
 For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Use Gitwork preferred vendor names from the vendor list provided. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type and platform.`;
 
+  // Resolve system prompt — workspace override takes precedence over built-in default
+  const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
+
   let rawContent: string;
 
   if (aiConfig.provider === "ANTHROPIC") {
@@ -464,7 +468,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
       client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
+        system: resolvedSystemPrompt,
         messages: [{ role: "user", content: userMessage }],
       })
     );
@@ -483,7 +487,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
         model: aiConfig.model,
         max_tokens: 4096,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: resolvedSystemPrompt },
           { role: "user", content: userMessage },
         ],
       })

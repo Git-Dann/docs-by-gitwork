@@ -1,6 +1,7 @@
 import { runUrlChecks, runGithubChecks, skipAllChecks } from "@/server/pulse-scan";
 import { runCodeAgent } from "./code-agent";
 import { runDeployAgent } from "./deploy-agent";
+import { getDisabledCheckKeys, getCheckOverrides } from "@/server/check-config";
 import type { PulseScanCheckInput, PulseScanInputType, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
 
 export interface OrchestratorResult {
@@ -36,10 +37,10 @@ export async function runOrchestratedScan(input: {
       runDeployAgent(input.inputUrl),
     ]);
 
-    const allChecks = deduplicateChecks([
+    const allChecks = await applyCheckConfigs(deduplicateChecks([
       ...infraResult.checks,
       ...deployResult.checks,
-    ]);
+    ]));
 
     return {
       checks: allChecks,
@@ -71,11 +72,11 @@ export async function runOrchestratedScan(input: {
       deployInsights = deployResult.insights;
     }
 
-    const allChecks = deduplicateChecks([
+    const allChecks = await applyCheckConfigs(deduplicateChecks([
       ...infraResult.checks,
       ...codeResult.checks,
       ...urlChecks,
-    ]);
+    ]));
 
     return {
       checks: allChecks,
@@ -103,4 +104,51 @@ function deduplicateChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[]
     }
   }
   return Array.from(seen.values());
+}
+
+/**
+ * Applies workspace check configs to a list of checks:
+ * - Disabled checks → status SKIPPED
+ * - Label overrides → replaces label
+ * - Severity overrides → clamps status to WARN/FAIL when appropriate
+ */
+async function applyCheckConfigs(checks: PulseScanCheckInput[]): Promise<PulseScanCheckInput[]> {
+  try {
+    const [disabled, overrides] = await Promise.all([
+      getDisabledCheckKeys(),
+      getCheckOverrides(),
+    ]);
+
+    if (disabled.size === 0 && overrides.size === 0) return checks;
+
+    return checks.map((check) => {
+      let result = { ...check };
+
+      // Disabled → mark as skipped
+      if (disabled.has(check.checkKey)) {
+        result = {
+          ...result,
+          status: "SKIPPED",
+          detail: "Check disabled in workspace settings.",
+        };
+      }
+
+      const override = overrides.get(check.checkKey);
+      if (override) {
+        // Label override
+        if (override.labelOverride) {
+          result = { ...result, label: override.labelOverride };
+        }
+        // Severity override — only applies when check has an issue (WARN/FAIL)
+        if (override.severityOverride && result.status !== "PASS" && result.status !== "SKIPPED") {
+          result = { ...result, status: override.severityOverride as "WARN" | "FAIL" };
+        }
+      }
+
+      return result;
+    });
+  } catch {
+    // Never let config errors break a scan
+    return checks;
+  }
 }

@@ -27,8 +27,10 @@ import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 import { MODULE_PERMISSIONS } from "@/types/auth";
+import { AgentsPanel } from "@/components/settings/agents-panel";
+import { ChecksPanel } from "@/components/settings/checks-panel";
 
-type TabId = "general" | "branding" | "content" | "people" | "integrations" | "team" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "integrations" | "agents" | "team" | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -44,6 +46,7 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
+  { id: "agents", label: "Agents & Checks" },
   { id: "team", label: "Team", adminOnly: true },
   { id: "developer", label: "Developer", adminOnly: true },
 ];
@@ -89,6 +92,7 @@ export function SettingsPanel({
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}
+      {activeTab === "agents" && <AgentsAndChecksTab />}
       {activeTab === "team" && isAdmin && <TeamTab currentUserId={session?.user?.id ?? ""} />}
       {activeTab === "developer" && isAdmin && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
@@ -1116,6 +1120,56 @@ function ProviderRow({
     </div>
   );
 }
+
+// ── Agents & Checks Tab ──────────────────────────────────────────────────────
+
+function AgentsAndChecksTab() {
+  const [subTab, setSubTab] = useState<"agents" | "checks">("agents");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--text-1)]">Agents & Checks</h2>
+        <p className="mt-1 text-sm text-[var(--text-3)]">
+          Customise the AI agents that power Pulse and Study, and manage which automated checks run during Pulse scans.
+        </p>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setSubTab("agents")}
+          className={cn(
+            "rounded-lg px-4 py-1.5 text-sm font-semibold transition",
+            subTab === "agents"
+              ? "bg-[var(--bg-1)] text-[var(--text-1)] shadow-sm"
+              : "text-[var(--text-3)] hover:text-[var(--text-2)]",
+          )}
+        >
+          Agents
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab("checks")}
+          className={cn(
+            "rounded-lg px-4 py-1.5 text-sm font-semibold transition",
+            subTab === "checks"
+              ? "bg-[var(--bg-1)] text-[var(--text-1)] shadow-sm"
+              : "text-[var(--text-3)] hover:text-[var(--text-2)]",
+          )}
+        >
+          Pulse Checks
+        </button>
+      </div>
+
+      {subTab === "agents" && <AgentsPanel />}
+      {subTab === "checks" && <ChecksPanel />}
+    </div>
+  );
+}
+
+// ── Integrations Tab ─────────────────────────────────────────────────────────
 
 function IntegrationsTab() {
   const [config, setConfig] = useState<IntegrationsResponse | null>(null);

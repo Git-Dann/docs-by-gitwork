@@ -164,6 +164,8 @@ model Workspace {
   pulseMonitors   PulseMonitor[]
   supportClients  SupportClient[]
   studies         Study[]
+  agentConfigs    AgentConfig[]
+  checkConfigs    PulseCheckConfig[]
 }
 
 model WorkspaceMember {
@@ -1055,4 +1057,41 @@ model StudyReport {
   payload   Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── Agent & Check Configuration ────────────────────────────────────────────
+
+model AgentConfig {
+  id                   String    @id @default(cuid())
+  workspaceId          String
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentKey             String    // e.g. "pulse:synthesis", "study:researcher"
+  product              String    // "pulse" | "study"
+  enabled              Boolean   @default(true)
+  systemPromptOverride String?   @db.Text
+  modelOverride        String?
+  configJson           Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([workspaceId, agentKey])
+  @@index([workspaceId])
+}
+
+model PulseCheckConfig {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  checkKey         String    // matches hardcoded checkKey, or cuid() for custom checks
+  enabled          Boolean   @default(true)
+  labelOverride    String?
+  severityOverride String?   // "WARN" | "FAIL" — downgrade/upgrade threshold
+  isCustom         Boolean   @default(false)
+  customConfig     Json?     // for custom checks: { type, pattern, url, expected, ... }
+  sortOrder        Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([workspaceId, checkKey])
+  @@index([workspaceId])
 }
