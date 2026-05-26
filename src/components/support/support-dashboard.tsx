@@ -326,7 +326,7 @@ function AddConnectorModal({
 
   // Gmail fields
   const defaultIntake = `support+${clientSlug}@gitwork.co.uk`;
-  const [gmailQuery, setGmailQuery] = useState(`to:${defaultIntake}`);
+  const [gmailQuery, setGmailQuery] = useState(`deliveredto:${defaultIntake}`);
 
   // Discord fields
   const [discordToken, setDiscordToken] = useState("");
@@ -479,7 +479,7 @@ function AddConnectorModal({
                 value={gmailQuery}
                 onChange={(e) => setGmailQuery(e.target.value)}
                 className="app-input w-full font-mono text-xs"
-                placeholder={`to:${defaultIntake}`}
+                placeholder={`deliveredto:${defaultIntake}`}
               />
             </label>
           </div>
