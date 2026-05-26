@@ -12,22 +12,35 @@ interface GmailScraperConfig {
 export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
   const { connection, workspace } = ctx;
 
-  if (!workspace.googleServiceAccountJson) {
-    throw new Error("Google service account not configured in Settings → Integrations");
+  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+
+  if (workspace.googleOAuthRefreshToken) {
+    // OAuth path — user connected via "Sign in with Google"
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars not configured");
+    }
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken });
+    gmailAuth = oauth2Client as Parameters<typeof google.gmail>[0]["auth"];
+  } else if (workspace.googleServiceAccountJson) {
+    // Service account fallback — domain-wide delegation
+    const credentials = JSON.parse(workspace.googleServiceAccountJson);
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+    });
+    const authClient = await auth.getClient();
+    if (workspace.googleSubjectEmail && "subject" in authClient) {
+      (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
+    }
+    gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+  } else {
+    throw new Error("Gmail not connected — go to Settings → Google Workspace and click Connect Gmail");
   }
 
-  const credentials = JSON.parse(workspace.googleServiceAccountJson);
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-  });
-
-  const authClient = await auth.getClient();
-  if (workspace.googleSubjectEmail && "subject" in authClient) {
-    (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
-  }
-
-  const gmail = google.gmail({ version: "v1", auth: authClient as Parameters<typeof google.gmail>[0]["auth"] });
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
   const config = (connection.scraperConfig ?? {}) as GmailScraperConfig;
   const query = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
 

@@ -57,6 +57,7 @@ export interface AgentContext {
   workspace: {
     googleServiceAccountJson?: string | null;
     googleSubjectEmail?: string | null;
+    googleOAuthRefreshToken?: string | null;
     aiProvider: string;
     anthropicApiKey?: string | null;
     anthropicModel?: string | null;
