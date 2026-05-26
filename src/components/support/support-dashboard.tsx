@@ -869,6 +869,8 @@ function InboxView({ clientId }: { clientId: string }) {
   const [filterSource, setFilterSource] = useState<SupportSource | "all">("all");
   const [filterSentiment, setFilterSentiment] = useState<"all" | "positive" | "neutral" | "negative">("all");
   const [filterUnread, setFilterUnread] = useState(false);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 15;
   const [replyText, setReplyText] = useState("");
   const [draft, setDraft] = useState<DraftState>(null);
 
@@ -916,6 +918,12 @@ function InboxView({ clientId }: { clientId: string }) {
     if (filterUnread && !c.unread) return false;
     return true;
   });
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // Reset to first page when filters or search changes
+  useEffect(() => { setPage(0); }, [deferred, filterSource, filterSentiment, filterUnread]);
 
   const activeConvo = convos.find((c) => c.id === selectedConvId) ?? null;
 
@@ -980,7 +988,7 @@ function InboxView({ clientId }: { clientId: string }) {
           {!convosLoading && filtered.length === 0 && (
             <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
           )}
-          {filtered.map((c) => (
+          {paginated.map((c) => (
             <ConversationCard
               key={c.id}
               convo={c}
@@ -989,6 +997,27 @@ function InboxView({ clientId }: { clientId: string }) {
             />
           ))}
           </div>
+          {totalPages > 1 && (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+              >
+                ← Prev
+              </button>
+              <span className="text-xs text-[var(--text-4)]">{page + 1} / {totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* detail pane */}

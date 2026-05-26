@@ -54,7 +54,7 @@ export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
   const listRes = await gmail.users.messages.list({
     userId: "me",
     q: fullQuery,
-    maxResults: 50,
+    maxResults: 100,
   });
 
   const messageItems = listRes.data.messages ?? [];
