@@ -917,8 +917,10 @@ export async function updateSupportConnection(
 export async function syncSupportConnection(
   clientId: string,
   connId: string,
+  options?: { resync?: boolean },
 ): Promise<{ created: number; skipped: number; errors: string[] }> {
-  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}/sync`, {
+  const qs = options?.resync ? "?resync=1" : "";
+  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}/sync${qs}`, {
     method: "POST",
   });
 }

@@ -1443,21 +1443,21 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
     if (connectedIds.length === 0) return;
     const id = setInterval(() => {
       connectedIds.forEach((cid) => {
-        syncConn.mutate(cid);
+        syncConn.mutate({ connId: cid, resync: false });
       });
     }, autoInterval * 60 * 1000);
     return () => clearInterval(id);
   }, [autoInterval, connections, syncConn]);
 
-  async function handleSync(connId: string) {
-    const result = await syncConn.mutateAsync(connId);
+  async function handleSync(connId: string, resync = false) {
+    const result = await syncConn.mutateAsync({ connId, resync });
     setSyncResults((prev) => ({ ...prev, [connId]: result }));
   }
 
   async function handleSyncAll() {
     const connectedIds = connections.filter((c) => c.health === "connected").map((c) => c.id);
     for (const cid of connectedIds) {
-      const result = await syncConn.mutateAsync(cid);
+      const result = await syncConn.mutateAsync({ connId: cid, resync: false });
       setSyncResults((prev) => ({ ...prev, [cid]: result }));
     }
   }
@@ -1596,6 +1596,20 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   >
                     <BoltIcon className="h-3 w-3" />
                     {syncConn.isPending ? "Syncing…" : "Sync now"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
+                        void handleSync(conn.id, true);
+                      }
+                    }}
+                    disabled={syncConn.isPending}
+                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    title="Clear last-synced timestamp and pull the last 30 days of history"
+                  >
+                    <ArrowPathIcon className="h-3 w-3" />
+                    Re-sync history
                   </button>
                 </div>
               </div>
@@ -1784,7 +1798,7 @@ function AgentsView({ clientId }: { clientId: string }) {
 
   async function handleSync(connId: string) {
     setSyncResults((prev) => ({ ...prev, [connId]: null }));
-    const result = await syncConn.mutateAsync(connId);
+    const result = await syncConn.mutateAsync({ connId, resync: false });
     setSyncResults((prev) => ({ ...prev, [connId]: result }));
   }
 

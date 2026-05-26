@@ -189,8 +189,10 @@ export function useGenerateAiDraft(clientId: string | null) {
 export function useSyncConnection(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (connId: string) =>
-      syncSupportConnection(clientId as string, connId),
+    mutationFn: (input: string | { connId: string; resync?: boolean }) => {
+      const { connId, resync } = typeof input === "string" ? { connId: input, resync: false } : input;
+      return syncSupportConnection(clientId as string, connId, { resync });
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
       void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
