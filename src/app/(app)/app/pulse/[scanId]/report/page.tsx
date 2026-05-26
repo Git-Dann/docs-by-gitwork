@@ -53,28 +53,18 @@ export default async function PulseReportPage({
   const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
   const skipCount = scan.checks.filter((c) => c.status === "SKIPPED").length;
 
-  // SVG score ring — circumference of r=80 circle ≈ 502
-  const R = 80;
-  const CIRC = 2 * Math.PI * R;
-  const offset = CIRC * (1 - score / 100);
-  const ringColor = score >= 75 ? "#16a34a" : score >= 50 ? "#d97706" : "#dc2626";
-  const ringBg = score >= 75 ? "#dcfce7" : score >= 50 ? "#fef3c7" : "#fee2e2";
-  const projectType = analysis?.projectClassification?.type ?? null;
-  const projectSubtype = analysis?.projectClassification?.subtype ?? null;
-  const blockerCount = (analysis?.productionBlockers ?? []).length;
-
   return (
     <>
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { background: white; margin: 0; }
-          .page-break { page-break-before: always; break-before: page; }
-          .cover-page { page-break-after: always; break-after: page; }
+          body { background: white; }
+          .page-break { page-break-before: always; }
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; margin: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
         .report { max-width: 820px; margin: 0 auto; background: white; }
-        @media screen { .report { box-shadow: 0 1px 3px rgba(0,0,0,0.1); } }
+        @media screen { .report { padding: 48px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); } }
+        @media print { .report { padding: 24px; } }
       `}</style>
 
       {/* Print button — hidden in print */}
@@ -86,205 +76,35 @@ export default async function PulseReportPage({
       </div>
 
       <div className="report">
-
-        {/* ══════════ COVER PAGE ══════════ */}
-        <div className="cover-page" style={{
-          background: "linear-gradient(160deg, #0f172a 0%, #1e1b4b 60%, #1e293b 100%)",
-          minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
-          padding: "48px 56px",
-          boxSizing: "border-box",
-          position: "relative",
-          overflow: "hidden",
-        }}>
-          {/* Subtle background texture ring */}
-          <div style={{
-            position: "absolute", top: -120, right: -120,
-            width: 480, height: 480,
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.04)",
-            pointerEvents: "none",
-          }} />
-          <div style={{
-            position: "absolute", top: -60, right: -60,
-            width: 320, height: 320,
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.06)",
-            pointerEvents: "none",
-          }} />
-
-          {/* Top bar: brand + date */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: 6,
-                background: "linear-gradient(135deg, #6d28d9, #4f46e5)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 800, color: "white", letterSpacing: "-0.02em",
-              }}>P</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "white", letterSpacing: "0.04em", textTransform: "uppercase" }}>Pulse</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: -1 }}>by Gitwork</div>
-              </div>
-            </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", letterSpacing: "0.02em" }}>
-              {generatedAt}
-            </div>
-          </div>
-
-          {/* Center: score ring + project name */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0, paddingTop: 32, paddingBottom: 32 }}>
-            {/* Score ring */}
-            <div style={{ position: "relative", marginBottom: 40 }}>
-              <svg width={200} height={200} style={{ transform: "rotate(-90deg)" }}>
-                {/* Track */}
-                <circle cx={100} cy={100} r={R}
-                  fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={10} />
-                {/* Score arc */}
-                <circle cx={100} cy={100} r={R}
-                  fill="none" stroke={ringColor} strokeWidth={10}
-                  strokeLinecap="round"
-                  strokeDasharray={CIRC}
-                  strokeDashoffset={offset}
-                  style={{ transition: "stroke-dashoffset 0.6s ease" }}
-                />
-              </svg>
-              {/* Score number overlay */}
-              <div style={{
-                position: "absolute", inset: 0,
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              }}>
-                <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1, color: "white", letterSpacing: "-0.04em" }}>
-                  {scoreStr}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginTop: 2 }}>
-                  / 100
-                </div>
-              </div>
-            </div>
-
-            {/* Project name + label */}
-            <p style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 10 }}>
-              Project Health Report
-            </p>
-            <h1 style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.04em", color: "white", textAlign: "center", marginBottom: 10, lineHeight: 1.1 }}>
-              {scan.projectName}
-            </h1>
-            {(scan.inputUrl || scan.inputGithubRepo) && (
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 28, letterSpacing: "-0.01em" }}>
-                {scan.inputUrl ?? scan.inputGithubRepo}
+        {/* Header */}
+        <div style={{ borderBottom: "2px solid #e5e7eb", paddingBottom: 24, marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "#6b7280", marginBottom: 6 }}>
+                Pulse — Project Health Report
               </p>
-            )}
-
-            {/* Classification badge */}
-            {projectType && (
-              <div style={{ marginBottom: 32 }}>
-                <span style={{
-                  fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 999,
-                  background: "rgba(109,40,217,0.3)", color: "rgba(196,181,253,1)",
-                  border: "1px solid rgba(109,40,217,0.5)",
-                  letterSpacing: "0.02em",
-                }}>
-                  {projectType}{projectSubtype ? ` · ${projectSubtype}` : ""}
-                </span>
-              </div>
-            )}
-
-            {/* Stat pills */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-                background: "rgba(22,163,74,0.15)", border: "1px solid rgba(22,163,74,0.3)",
-                borderRadius: 999,
-              }}>
-                <span style={{ fontSize: 14, color: "#4ade80" }}>✓</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#4ade80" }}>{passCount}</span>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>passing</span>
-              </div>
-              {warnCount > 0 && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-                  background: "rgba(217,119,6,0.15)", border: "1px solid rgba(217,119,6,0.3)",
-                  borderRadius: 999,
-                }}>
-                  <span style={{ fontSize: 14, color: "#fbbf24" }}>⚠</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#fbbf24" }}>{warnCount}</span>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>warnings</span>
-                </div>
-              )}
-              {failCount > 0 && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-                  background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)",
-                  borderRadius: 999,
-                }}>
-                  <span style={{ fontSize: 14, color: "#f87171" }}>✗</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#f87171" }}>{failCount}</span>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>failed</span>
-                </div>
-              )}
-              {skipCount > 0 && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 999,
-                }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>–</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{skipCount}</span>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>skipped</span>
-                </div>
-              )}
-              {blockerCount > 0 && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
-                  background: "rgba(239,68,68,0.18)", border: "1px solid rgba(239,68,68,0.4)",
-                  borderRadius: 999,
-                }}>
-                  <span style={{ fontSize: 13, color: "#fca5a5" }}>⛔</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5" }}>{blockerCount}</span>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>blockers</span>
-                </div>
-              )}
+              <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", color: "#111827", marginBottom: 4 }}>
+                {scan.projectName}
+              </h1>
+              <p style={{ fontSize: 13, color: "#6b7280" }}>
+                Scan generated {generatedAt}
+                {scan.inputUrl ? ` · ${scan.inputUrl}` : scan.inputGithubRepo ? ` · ${scan.inputGithubRepo}` : ""}
+              </p>
             </div>
-          </div>
-
-          {/* Cover footer */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            paddingTop: 24, borderTop: "1px solid rgba(255,255,255,0.08)",
-            marginTop: "auto",
-          }}>
-            <div style={{ display: "flex", align: "center", gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>
-                Gitwork
-              </span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}> · </span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>foundry-by-gitwork.vercel.app</span>
+            <div style={{ textAlign: "center", flexShrink: 0 }}>
+              <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, color: scoreColor(score) }}>
+                {scoreStr}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginTop: 2 }}>
+                Health score
+              </div>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, fontSize: 12, justifyContent: "center" }}>
+                <span style={{ color: "#16a34a" }}>✓ {passCount}</span>
+                <span style={{ color: "#d97706" }}>⚠ {warnCount}</span>
+                <span style={{ color: "#dc2626" }}>✗ {failCount}</span>
+                {skipCount > 0 && <span style={{ color: "#9ca3af" }}>– {skipCount}</span>}
+              </div>
             </div>
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", letterSpacing: "0.04em" }}>
-              Confidential
-            </span>
-          </div>
-        </div>
-        {/* ══════════ END COVER PAGE ══════════ */}
-
-        {/* Page 2+ content */}
-        <div style={{ padding: "48px 56px" }}>
-
-        {/* Compact page header (page 2 onwards) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 36, paddingBottom: 20, borderBottom: "1px solid #e5e7eb" }}>
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9ca3af", marginBottom: 3 }}>
-              Pulse · Project Health Report
-            </p>
-            <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: "#111827", margin: 0 }}>
-              {scan.projectName}
-            </h2>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: ringColor }}>{scoreStr}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "#9ca3af", marginTop: 2 }}>Health score</div>
           </div>
         </div>
 
@@ -460,10 +280,6 @@ export default async function PulseReportPage({
           <span style={{ fontSize: 12, color: "#9ca3af" }}>Generated by Gitwork Pulse</span>
           <span style={{ fontSize: 12, color: "#9ca3af" }}>{generatedAt}</span>
         </div>
-
-        </div>
-        {/* ══════════ END PAGE 2+ CONTENT ══════════ */}
-
       </div>
     </>
   );
