@@ -22,12 +22,12 @@ export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   });
 
-  if (workspace.googleSubjectEmail) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (auth as any).subject = workspace.googleSubjectEmail;
+  const authClient = await auth.getClient();
+  if (workspace.googleSubjectEmail && "subject" in authClient) {
+    (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
   }
 
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = google.gmail({ version: "v1", auth: authClient as Parameters<typeof google.gmail>[0]["auth"] });
   const config = (connection.scraperConfig ?? {}) as GmailScraperConfig;
   const query = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
 
