@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { AGENTS_REGISTRY, type AgentDefinition } from "./agents-registry";
 import { DEFAULT_WORKSPACE_SLUG } from "./proposals";
 
@@ -71,13 +72,13 @@ export async function saveAgentConfig(input: AgentConfigInput): Promise<void> {
       enabled: input.enabled ?? true,
       systemPromptOverride: input.systemPromptOverride ?? null,
       modelOverride: input.modelOverride ?? null,
-      configJson: (input.configJson as object | null | undefined) ?? null,
+      configJson: (input.configJson ?? Prisma.DbNull) as Prisma.InputJsonValue,
     },
     update: {
       ...(input.enabled !== undefined && { enabled: input.enabled }),
       ...(input.systemPromptOverride !== undefined && { systemPromptOverride: input.systemPromptOverride }),
       ...(input.modelOverride !== undefined && { modelOverride: input.modelOverride }),
-      ...(input.configJson !== undefined && { configJson: (input.configJson as object | null) }),
+      ...(input.configJson !== undefined && { configJson: (input.configJson ?? Prisma.DbNull) as Prisma.InputJsonValue }),
     },
   });
 }
