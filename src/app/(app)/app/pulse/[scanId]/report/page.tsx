@@ -21,6 +21,10 @@ const DOMAIN_DEFS: DomainDef[] = [
   { label: "Production Readiness",         categories: ["SaaS Readiness", "Missing Pages"],                                      color: "#d97706" },
   { label: "SEO & Presence",               categories: ["SEO", "Store Listing", "Trust & Brand", "Global Distribution"],        color: "#059669" },
   { label: "Mobile & Accessibility",       categories: ["Mobile & Accessibility", "App Store & Mobile", "Accessibility"],       color: "#db2777" },
+  { label: "Roles & Permissions",          categories: ["Roles & Permissions"],                                                  color: "#7c3aed" },
+  { label: "Email Deliverability",         categories: ["Email Deliverability"],                                                 color: "#0891b2" },
+  { label: "Business Operations",          categories: ["Business Operations"],                                                  color: "#d97706" },
+  { label: "API Quality",                  categories: ["API Quality"],                                                          color: "#059669" },
 ];
 
 interface DomainEntry {
