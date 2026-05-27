@@ -30,7 +30,7 @@ import { MODULE_PERMISSIONS } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
 
-type TabId = "general" | "branding" | "content" | "people" | "integrations" | "agents" | "team" | "developer";
+type TabId = "general" | "branding" | "content" | "people" | "integrations" | "agents" | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -47,7 +47,6 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
   { id: "agents", label: "Agents & Checks" },
-  { id: "team", label: "Team", adminOnly: true },
   { id: "developer", label: "Developer", adminOnly: true },
 ];
 
@@ -93,7 +92,6 @@ export function SettingsPanel({
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}
       {activeTab === "agents" && <AgentsAndChecksTab />}
-      {activeTab === "team" && isAdmin && <TeamTab currentUserId={session?.user?.id ?? ""} />}
       {activeTab === "developer" && isAdmin && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
