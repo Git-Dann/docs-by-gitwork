@@ -187,7 +187,10 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
     lines.push(`${category}:`);
     for (const check of categoryChecks) {
       const icon = check.status === "PASS" ? "✓" : check.status === "WARN" ? "⚠" : check.status === "FAIL" ? "✗" : "—";
-      lines.push(`  ${icon} ${check.label}: ${check.detail ?? check.status}`);
+      // PASS checks: label only — detail isn't needed for gap analysis
+      // WARN/FAIL: include full detail — the AI needs this to generate specific recommendations
+      const detail = check.status === "PASS" ? "" : `: ${check.detail ?? check.status}`;
+      lines.push(`  ${icon} ${check.label}${detail}`);
     }
   }
   return lines.join("\n");
@@ -313,6 +316,34 @@ function extractJson(raw: string): string {
   return raw;
 }
 
+const PULSE_ANALYSIS_TOOL = {
+  name: "submit_pulse_analysis",
+  description: "Submit the completed Pulse scan analysis.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      projectClassification: { type: "object" as const },
+      executiveSummary: { type: "string" as const },
+      healthNarrative: { type: "string" as const },
+      strengths: { type: "array" as const },
+      criticalGaps: { type: "array" as const },
+      buildOpportunities: { type: "array" as const },
+      scalingRoadmap: { type: "array" as const },
+      techDebt: { type: "array" as const },
+      proposalHook: { type: "string" as const },
+      productionBlockers: { type: "array" as const },
+      productionReadinessChecklist: { type: "array" as const },
+      techStackAnalysis: { type: "object" as const },
+    },
+    required: [
+      "projectClassification", "executiveSummary", "healthNarrative",
+      "strengths", "criticalGaps", "buildOpportunities", "scalingRoadmap",
+      "techDebt", "proposalHook", "productionBlockers",
+      "productionReadinessChecklist", "techStackAnalysis",
+    ],
+  },
+};
+
 export async function analyseWithClaude(
   input: {
     projectName: string;
@@ -351,7 +382,6 @@ ${inputRef}
 ${platformLabel}
 Overall health score: ${input.healthScore}/100
 Tech stack detected: ${input.techStack.length > 0 ? input.techStack.join(", ") : "Unknown"}
-${GITWORK_VENDOR_CONTEXT}
 
 === SCAN RESULTS ===
 ${formatChecksForPrompt(input.checks)}
@@ -460,45 +490,50 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   // Resolve system prompt — workspace override takes precedence over built-in default
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
 
-  let rawContent: string;
-
   if (aiConfig.provider === "ANTHROPIC") {
     const client = new Anthropic({ apiKey: aiConfig.apiKey });
     const message = await withRetry(() =>
       client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 4096,
-        system: resolvedSystemPrompt,
-        messages: [{ role: "user", content: userMessage }],
-      })
-    );
-    const block = message.content[0];
-    if (!block || block.type !== "text") throw new Error("Unexpected response format from AI.");
-    rawContent = block.text.trim();
-  } else {
-    // OpenAI SDK handles OpenAI, Gemini (via compatible endpoint), and local/Ollama
-    const { default: OpenAI } = await import("openai");
-    const client = new OpenAI({
-      apiKey: aiConfig.apiKey ?? "local",
-      ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
-    });
-    const completion = await withRetry(() =>
-      client.chat.completions.create({
-        model: aiConfig.model,
-        max_tokens: 4096,
-        messages: [
-          { role: "system", content: resolvedSystemPrompt },
-          { role: "user", content: userMessage },
+        system: [
+          { type: "text", text: resolvedSystemPrompt, cache_control: { type: "ephemeral" } },
+          { type: "text", text: GITWORK_VENDOR_CONTEXT, cache_control: { type: "ephemeral" } },
         ],
+        messages: [{ role: "user", content: userMessage }],
+        tools: [PULSE_ANALYSIS_TOOL],
+        tool_choice: { type: "tool", name: "submit_pulse_analysis" },
       })
     );
-    rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
+    const toolBlock = message.content.find((b) => b.type === "tool_use");
+    if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Unexpected response format from AI.");
+    const result = pulseAnalysisOutputSchema.safeParse(toolBlock.input);
+    if (!result.success) {
+      throw new Error(`AI response did not match expected schema: ${result.error.issues[0]?.message}`);
+    }
+    return result.data;
   }
 
-  // Gemini and some local models wrap JSON in markdown code fences.
-  // Strip ```json ... ``` or ``` ... ``` wrappers before parsing.
-  const extracted = extractJson(rawContent);
+  // OpenAI SDK handles OpenAI, Gemini (via compatible endpoint), and local/Ollama
+  const { default: OpenAI } = await import("openai");
+  const openaiClient = new OpenAI({
+    apiKey: aiConfig.apiKey ?? "local",
+    ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
+  });
+  const completion = await withRetry(() =>
+    openaiClient.chat.completions.create({
+      model: aiConfig.model,
+      max_tokens: 4096,
+      messages: [
+        { role: "system", content: `${resolvedSystemPrompt}\n\n${GITWORK_VENDOR_CONTEXT}` },
+        { role: "user", content: userMessage },
+      ],
+    })
+  );
+  const rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
 
+  // Gemini and some local models wrap JSON in markdown code fences.
+  const extracted = extractJson(rawContent);
   let parsed: unknown;
   try {
     parsed = JSON.parse(extracted);
@@ -510,7 +545,6 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   if (!result.success) {
     throw new Error(`AI response did not match expected schema: ${result.error.issues[0]?.message}`);
   }
-
   return result.data;
 }
 
@@ -620,7 +654,7 @@ Generate a discovery call briefing. Return JSON with this shape:
       const message = await client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 2048,
-        system: DISCOVERY_SYSTEM_PROMPT,
+        system: [{ type: "text", text: DISCOVERY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
       });
       const dBlock = message.content[0];
