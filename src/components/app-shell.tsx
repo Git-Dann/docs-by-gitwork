@@ -354,7 +354,7 @@ function Avatar({ name, url }: { name: string; url: string }) {
 }
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
-  const { settings, updateSettings } = useLocalSettings();
+  const { settings } = useLocalSettings();
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
 
@@ -362,8 +362,6 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
   const displayName = session?.user?.name ?? account.name;
   const displayEmail = session?.user?.email ?? account.email;
   const displayAvatar = session?.user?.image ?? account.avatarUrl;
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -405,45 +403,19 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Link
-            href="/app/account-settings"
+            href="/app/team"
+            onClick={() => setOpen(false)}
             className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
-            <Cog8ToothIcon className="h-5 w-5 text-[var(--text-4)]" />
-            <span>Account settings</span>
+            <UserGroupIcon className="h-5 w-5 text-[var(--text-4)]" />
+            <span>+ Add user</span>
           </Link>
-
-          <div className="my-2 border-t border-[var(--border-2)]" />
-
-          <Button
-            className="w-full justify-center"
-            variant="secondary"
-            size="sm"
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              setShowInviteModal(true);
-            }}
-          >
-            + Add user
-          </Button>
-
-          {settings.workspace.invitedUsers.length ? (
-            <div className="mt-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
-              <p className="app-eyebrow">Pending invites</p>
-              <div className="mt-2 space-y-1">
-                {settings.workspace.invitedUsers.slice(0, 3).map((email) => (
-                  <p key={email} className="truncate text-sm text-[var(--text-2)]">
-                    {email}
-                  </p>
-                ))}
-              </div>
-            </div>
-          ) : null}
 
           <div className="my-2 border-t border-[var(--border-2)]" />
 
           <button
             type="button"
+            onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}
             className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />
@@ -452,61 +424,6 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
         </div>
       ) : null}
 
-      {showInviteModal ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-          <div className="app-dialog-backdrop absolute inset-0" />
-          <div className="app-dialog-panel relative z-10 w-full max-w-md p-6">
-            <div>
-              <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Add user</h3>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Add an email address to the invited users list.
-              </p>
-            </div>
-
-            <label className="mt-5 block space-y-1.5">
-              <span className="app-field-label">Email address</span>
-              <input
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                type="email"
-                className="app-input"
-                placeholder="name@company.com"
-              />
-            </label>
-
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => setShowInviteModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  const nextEmail = inviteEmail.trim().toLowerCase();
-                  if (!nextEmail) {
-                    return;
-                  }
-
-                  updateSettings((current) => ({
-                    ...current,
-                    workspace: {
-                      ...current.workspace,
-                      invitedUsers: current.workspace.invitedUsers.includes(nextEmail)
-                        ? current.workspace.invitedUsers
-                        : [...current.workspace.invitedUsers, nextEmail],
-                    },
-                  }));
-                  setInviteEmail("");
-                  setShowInviteModal(false);
-                }}
-              >
-                Add user
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
