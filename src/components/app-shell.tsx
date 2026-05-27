@@ -16,6 +16,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
@@ -354,7 +355,13 @@ function Avatar({ name, url }: { name: string; url: string }) {
 
 function ProfileMenu({ account }: { account: AccountSettings }) {
   const { settings, updateSettings } = useLocalSettings();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
+
+  // Use Google session data when available, fall back to local settings
+  const displayName = session?.user?.name ?? account.name;
+  const displayEmail = session?.user?.email ?? account.email;
+  const displayAvatar = session?.user?.image ?? account.avatarUrl;
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -387,10 +394,10 @@ function ProfileMenu({ account }: { account: AccountSettings }) {
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center gap-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
       >
-        <Avatar name={account.name} url={account.avatarUrl} />
+        <Avatar name={displayName} url={displayAvatar} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{account.name}</p>
-          <p className="truncate text-xs text-[var(--text-4)]">{account.email}</p>
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{displayName}</p>
+          <p className="truncate text-xs text-[var(--text-4)]">{displayEmail}</p>
         </div>
         <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
       </button>
