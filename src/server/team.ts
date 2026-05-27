@@ -5,10 +5,16 @@ export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
 }
 
+// Bootstrap placeholder — never a real team member
+const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
+
 export async function listMembers() {
   const workspace = await getWorkspace();
   return prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.id },
+    where: {
+      workspaceId: workspace.id,
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
