@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { ClipboardDocumentIcon, TrashIcon, UserPlusIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentIcon, TrashIcon, UserPlusIcon, CheckIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";
 
 type Invite = {
@@ -34,6 +34,8 @@ export default function TeamPage() {
   const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
 
   const load = useCallback(async () => {
     const [membersRes, invitesRes] = await Promise.all([
@@ -63,6 +65,11 @@ export default function TeamPage() {
     await load();
   }
 
+  async function removeInvite(id: string) {
+    await fetch(`/api/team/invites/${id}`, { method: "DELETE" });
+    await load();
+  }
+
   async function removeMember(id: string) {
     if (!confirm("Remove this member from the workspace?")) return;
     await fetch(`/api/team/members/${id}`, { method: "DELETE" });
@@ -73,6 +80,21 @@ export default function TeamPage() {
     navigator.clipboard.writeText(`${baseUrl}/invite/${token}`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  function startEditLabel(invite: Invite) {
+    setEditingId(invite.id);
+    setEditingLabel(invite.label ?? "");
+  }
+
+  async function saveLabel(id: string) {
+    await fetch(`/api/team/invites/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: editingLabel.trim() || null }),
+    });
+    setEditingId(null);
+    await load();
   }
 
   const pendingInvites = invites.filter((i) => i.status === "PENDING");
@@ -119,9 +141,32 @@ export default function TeamPage() {
             {pendingInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-1)] truncate">
-                    {inv.label ?? "Invite link"}
-                  </p>
+                  {/* Editable label */}
+                  {editingId === inv.id ? (
+                    <input
+                      autoFocus
+                      value={editingLabel}
+                      onChange={(e) => setEditingLabel(e.target.value)}
+                      onBlur={() => saveLabel(inv.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveLabel(inv.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="app-input w-full text-sm font-medium py-1 px-2 mb-0.5"
+                      placeholder="Add a label…"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => isAdmin && startEditLabel(inv)}
+                      className={`flex items-center gap-1.5 text-sm font-medium text-[var(--text-1)] truncate max-w-full text-left group ${isAdmin ? "hover:text-[var(--brand-700)]" : "cursor-default"}`}
+                      title={isAdmin ? "Click to edit label" : undefined}
+                    >
+                      <span className="truncate">{inv.label ?? "Invite link"}</span>
+                      {isAdmin && (
+                        <PencilIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  )}
                   <p className="text-xs text-[var(--text-4)] mt-0.5 truncate">
                     {`${baseUrl}/invite/${inv.token}`}
                   </p>
@@ -214,6 +259,15 @@ export default function TeamPage() {
                 }`}>
                   {inv.status.charAt(0) + inv.status.slice(1).toLowerCase()}
                 </span>
+                {isAdmin && (
+                  <button
+                    onClick={() => removeInvite(inv.id)}
+                    className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                    title="Remove from list"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
