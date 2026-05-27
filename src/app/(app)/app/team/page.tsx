@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { ClipboardDocumentIcon, TrashIcon, UserPlusIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { AppShell } from "@/components/app-shell";
 
 type Invite = {
   id: string;
@@ -78,13 +79,8 @@ export default function TeamPage() {
   const pastInvites = invites.filter((i) => i.status !== "PENDING");
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10 space-y-10">
-
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Team</h1>
-        <p className="mt-1 text-sm text-[var(--text-3)]">Manage workspace members and invite links.</p>
-      </div>
+    <AppShell title="Team" subtitle="Manage workspace members and invite links.">
+    <div className="max-w-3xl space-y-8">
 
       {/* Create invite */}
       {isAdmin && (
@@ -225,5 +221,6 @@ export default function TeamPage() {
       )}
 
     </div>
+    </AppShell>
   );
 }
