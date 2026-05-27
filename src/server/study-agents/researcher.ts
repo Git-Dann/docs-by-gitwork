@@ -9,7 +9,7 @@ async function callAI(config: AiConfig, system: string, user: string): Promise<s
     const msg = await client.messages.create({
       model: config.model,
       max_tokens: 4096,
-      system,
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     });
     const block = msg.content.find((b) => b.type === "text");
