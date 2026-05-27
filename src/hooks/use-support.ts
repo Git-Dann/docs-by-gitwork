@@ -292,7 +292,7 @@ export function useSeedDefaultRules(clientId: string | null) {
   return useMutation({
     mutationFn: () => seedSupportDefaultRules(clientId as string),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "workflow-rules", clientId] });
+      void qc.invalidateQueries({ queryKey: ["support", "rules", clientId] });
     },
   });
 }

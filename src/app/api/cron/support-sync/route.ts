@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         id: true,
         googleServiceAccountJson: true,
         googleSubjectEmail: true,
+        googleOAuthRefreshToken: true,
         aiProvider: true,
         anthropicApiKey: true,
         anthropicModel: true,

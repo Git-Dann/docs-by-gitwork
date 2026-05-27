@@ -2394,17 +2394,25 @@ export function SupportDashboard() {
   const { data: clientsData, isLoading: clientsLoading } = useSupportClients();
   const clients = useMemo(() => clientsData?.clients ?? [], [clientsData]);
 
-  const [activeClientId, setActiveClientId] = useState<string>("");
+  const [activeClientId, setActiveClientId] = useState<string>(() => {
+    try { return localStorage.getItem("care-active-client") ?? ""; } catch { return ""; }
+  });
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
   const [showAddClient, setShowAddClient] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Set first client when data loads
+  function selectClient(id: string) {
+    setActiveClientId(id);
+    try { localStorage.setItem("care-active-client", id); } catch { /* ignore */ }
+  }
+
+  // Set first client when data loads (or if stored ID no longer exists)
   useEffect(() => {
-    if (clients.length > 0 && !activeClientId) {
-      setActiveClientId(clients[0].id);
+    if (clients.length > 0 && (!activeClientId || !clients.find((c) => c.id === activeClientId))) {
+      selectClient(clients[0].id);
     }
-  }, [clients, activeClientId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
 
   const client = clients.find((c) => c.id === activeClientId);
 
@@ -2481,7 +2489,7 @@ export function SupportDashboard() {
                 key={c.id}
                 type="button"
                 title={c.name}
-                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                onClick={() => { selectClient(c.id); setActiveTab("inbox"); }}
                 className={cn(
                   "relative flex w-full items-center justify-center rounded-[10px] py-1.5 transition",
                   isActive ? "bg-[var(--mist)]" : "hover:bg-[var(--surface-1)]",
@@ -2505,7 +2513,7 @@ export function SupportDashboard() {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                onClick={() => { selectClient(c.id); setActiveTab("inbox"); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-[6px] px-2.5 py-2 text-left text-sm transition",
                   isActive
