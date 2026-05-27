@@ -24,6 +24,10 @@ const DOMAIN_DEFS = [
   { label: "Production Readiness",      categories: ["SaaS Readiness", "Missing Pages"] },
   { label: "SEO & Presence",            categories: ["SEO", "Store Listing", "Trust & Brand", "Global Distribution"] },
   { label: "Mobile & Accessibility",    categories: ["Mobile & Accessibility", "App Store & Mobile", "Accessibility"] },
+  { label: "Roles & Permissions",       categories: ["Roles & Permissions"] },
+  { label: "Email Deliverability",      categories: ["Email Deliverability"] },
+  { label: "Business Operations",       categories: ["Business Operations"] },
+  { label: "API Quality",               categories: ["API Quality"] },
 ];
 
 // ─── Metadata ───────────────────────────────────────────────────────────────

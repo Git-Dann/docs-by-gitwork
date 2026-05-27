@@ -4,12 +4,17 @@ import { authConfig } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
+// The placeholder email created by bootstrap — never a real team member
+const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Uses AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET env vars
+      // (separate from GOOGLE_CLIENT_ID/SECRET used by the Care Gmail connector)
+      clientId: process.env.AUTH_GOOGLE_ID!,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
     }),
   ],
   callbacks: {
@@ -34,6 +39,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           },
         });
 
+        // Check if any real admin exists (excluding bootstrap placeholder)
+        const realAdminCount = await prisma.workspaceMember.count({
+          where: {
+            workspace: { slug: DEFAULT_WORKSPACE_SLUG },
+            role: "ADMIN",
+            user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+          },
+        });
+        const shouldBeAdmin = realAdminCount === 0;
+
         // Auto-provision new Gitwork team members
         if (!dbUser) {
           dbUser = await prisma.user.create({
@@ -42,7 +57,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               name: user.name ?? user.email.split("@")[0],
               memberships: {
                 create: {
-                  role: "STAFF",
+                  role: shouldBeAdmin ? "ADMIN" : "STAFF",
                   permissions: [],
                   workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
                 },
@@ -55,6 +70,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               },
             },
           });
+        } else if (shouldBeAdmin && dbUser.memberships[0]?.role === "STAFF") {
+          // Promote existing STAFF user to ADMIN when no real admin exists yet
+          await prisma.workspaceMember.update({
+            where: { id: dbUser.memberships[0].id },
+            data: { role: "ADMIN" },
+          });
+          dbUser.memberships[0].role = "ADMIN";
         }
 
         const membership = dbUser.memberships[0];
@@ -63,8 +85,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.permissions = (membership?.permissions as string[]) ?? [];
       }
 
-      // Delegate remaining JWT logic to authConfig
-      return authConfig.callbacks?.jwt?.({ token, user } as Parameters<NonNullable<typeof authConfig.callbacks.jwt>>[0]) ?? token;
+      // Return token directly — authConfig.callbacks.jwt is for credentials provider
+      // and would overwrite the role we just set from the database
+      return token;
     },
   },
 });
