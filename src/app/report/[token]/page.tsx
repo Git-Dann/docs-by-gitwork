@@ -14,6 +14,20 @@ import type { PulseScanRecord } from "@/types/pulse";
 
 export const dynamic = "force-dynamic";
 
+// ─── Domain groupings ────────────────────────────────────────────────────────
+
+const DOMAIN_DEFS = [
+  { label: "Infrastructure & DevOps",   categories: ["Infrastructure", "Observability", "Performance"] },
+  { label: "Security & Authentication", categories: ["Security", "Authentication", "Payments"] },
+  { label: "Code Quality",              categories: ["Code Quality"] },
+  { label: "Legal & Compliance",        categories: ["Legal & Compliance"] },
+  { label: "Production Readiness",      categories: ["SaaS Readiness", "Missing Pages"] },
+  { label: "SEO & Presence",            categories: ["SEO", "Store Listing", "Trust & Brand", "Global Distribution"] },
+  { label: "Mobile & Accessibility",    categories: ["Mobile & Accessibility", "App Store & Mobile", "Accessibility"] },
+];
+
+// ─── Metadata ───────────────────────────────────────────────────────────────
+
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const record = await prisma.pulseScan.findUnique({
@@ -26,6 +40,8 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
     description: `Technical audit for ${record.projectName}. Health score: ${record.healthScore ?? "—"}/100. Powered by Gitwork Pulse.`,
   };
 }
+
+// ─── Components ─────────────────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number | null }) {
   const value = score ?? 0;
@@ -40,11 +56,14 @@ function ScoreRing({ score }: { score: number | null }) {
           <span className="text-xs text-gray-400">/100</span>
         </div>
       </div>
-      <span className={cn("rounded-full px-3 py-0.5 text-xs font-semibold",
+      <span className={cn(
+        "rounded-full px-3 py-0.5 text-xs font-semibold",
         value >= 75 ? "bg-emerald-100 text-emerald-700"
         : value >= 50 ? "bg-amber-100 text-amber-700"
-        : "bg-red-100 text-red-700"
-      )}>{label}</span>
+        : "bg-red-100 text-red-700",
+      )}>
+        {label}
+      </span>
     </div>
   );
 }
@@ -84,12 +103,11 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
   const fmt = (ms: number | null) => ms !== null ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`) : "—";
   const lcpStatus = (insights.lcp ?? 99999) <= 2500 ? "good" : (insights.lcp ?? 99999) <= 4000 ? "ok" : "poor";
   const fcpStatus = (insights.fcp ?? 99999) <= 1800 ? "good" : (insights.fcp ?? 99999) <= 3000 ? "ok" : "poor";
-  const tbtStatus = (insights.tbt ?? 99999) <= 200 ? "good" : (insights.tbt ?? 99999) <= 600 ? "ok" : "poor";
-  const clsStatus = (insights.cls ?? 99) <= 0.1 ? "good" : (insights.cls ?? 99) <= 0.25 ? "ok" : "poor";
+  const tbtStatus = (insights.tbt ?? 99999) <= 200  ? "good" : (insights.tbt ?? 99999) <= 600  ? "ok" : "poor";
+  const clsStatus = (insights.cls ?? 99)    <= 0.1  ? "good" : (insights.cls ?? 99)    <= 0.25 ? "ok" : "poor";
   const metricColor = (s: string) => s === "good" ? "text-emerald-600" : s === "ok" ? "text-amber-500" : "text-red-500";
-
-  const scoreColor = (s: number | null) => !s ? "text-gray-400" : s >= 90 ? "text-emerald-600" : s >= 50 ? "text-amber-500" : "text-red-500";
-  const scoreBg = (s: number | null) => !s ? "bg-gray-50 border-gray-200" : s >= 90 ? "bg-emerald-50 border-emerald-200" : s >= 50 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
+  const scoreColor  = (s: number | null) => !s ? "text-gray-400" : s >= 90 ? "text-emerald-600" : s >= 50 ? "text-amber-500" : "text-red-500";
+  const scoreBg     = (s: number | null) => !s ? "bg-gray-50 border-gray-200" : s >= 90 ? "bg-emerald-50 border-emerald-200" : s >= 50 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
 
   return (
     <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white p-6">
@@ -99,9 +117,9 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
       </div>
       <div className="mb-4 grid grid-cols-4 gap-2">
         {[
-          { label: "Performance", score: insights.performanceScore },
-          { label: "Accessibility", score: insights.accessibilityScore },
-          { label: "SEO", score: insights.seoScore },
+          { label: "Performance",    score: insights.performanceScore },
+          { label: "Accessibility",  score: insights.accessibilityScore },
+          { label: "SEO",            score: insights.seoScore },
           { label: "Best practices", score: insights.bestPracticesScore },
         ].map(({ label, score }) => (
           <div key={label} className={cn("flex flex-col items-center gap-1 rounded-[10px] border p-3", scoreBg(score))}>
@@ -141,7 +159,8 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
       {insights.cruxCategory && (
         <p className="mt-3 text-xs text-gray-400">
           Real-user experience (Chrome UX Report):{" "}
-          <span className={cn("font-semibold",
+          <span className={cn(
+            "font-semibold",
             insights.cruxCategory === "FAST" ? "text-emerald-600"
             : insights.cruxCategory === "AVERAGE" ? "text-amber-500"
             : "text-red-500",
@@ -155,6 +174,7 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
 }
 
 function CategorySummary({ checks }: { checks: PulseScanRecord["checks"] }) {
+  // Build per-category stats
   const byCategory = new Map<string, { pass: number; warn: number; fail: number }>();
   for (const check of checks) {
     if (check.status === "SKIPPED") continue;
@@ -165,32 +185,63 @@ function CategorySummary({ checks }: { checks: PulseScanRecord["checks"] }) {
     byCategory.set(check.category, s);
   }
 
-  const categories = [...byCategory.entries()]
-    .filter(([, s]) => s.pass + s.warn + s.fail > 0)
-    .sort(([, a], [, b]) => (b.fail + b.warn) - (a.fail + a.warn));
+  // Group by domain
+  const assignedCats = new Set<string>();
+  const domainGroups = DOMAIN_DEFS.map((def) => {
+    const cats = def.categories
+      .filter((cat) => byCategory.has(cat))
+      .map((cat) => { assignedCats.add(cat); return { name: cat, stats: byCategory.get(cat)! }; })
+      .sort((a, b) => (b.stats.fail + b.stats.warn) - (a.stats.fail + a.stats.warn));
+    return { label: def.label, categories: cats };
+  }).filter((d) => d.categories.length > 0);
+
+  // Catch-all for any unassigned categories
+  const otherCats = [...byCategory.entries()]
+    .filter(([cat]) => !assignedCats.has(cat))
+    .map(([name, stats]) => ({ name, stats }))
+    .sort((a, b) => (b.stats.fail + b.stats.warn) - (a.stats.fail + a.stats.warn));
+
+  const renderCategoryCard = (name: string, stats: { pass: number; warn: number; fail: number }) => {
+    const total = stats.pass + stats.warn + stats.fail;
+    const score = total > 0 ? Math.round(((stats.pass + stats.warn * 0.5) / total) * 100) : 100;
+    const tone = score >= 75 ? "border-emerald-200 bg-emerald-50"
+      : score >= 50 ? "border-amber-200 bg-amber-50"
+      : "border-red-200 bg-red-50";
+    return (
+      <div key={name} className={cn("flex items-center justify-between rounded-[10px] border px-3 py-2.5", tone)}>
+        <span className="min-w-0 text-sm font-medium text-gray-700 [overflow-wrap:break-word]">{name}</span>
+        <div className="ml-3 flex shrink-0 items-center gap-2 text-xs">
+          {stats.pass > 0 && <span className="flex items-center gap-1 text-emerald-700"><CheckCircleIcon className="h-3.5 w-3.5" />{stats.pass}</span>}
+          {stats.warn > 0 && <span className="flex items-center gap-1 text-amber-700"><ExclamationTriangleIcon className="h-3.5 w-3.5" />{stats.warn}</span>}
+          {stats.fail > 0 && <span className="flex items-center gap-1 text-red-700"><XCircleIcon className="h-3.5 w-3.5" />{stats.fail}</span>}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {categories.slice(0, 10).map(([category, s]) => {
-        const total = s.pass + s.warn + s.fail;
-        const score = Math.round(((s.pass + s.warn * 0.5) / total) * 100);
-        const tone = score >= 75 ? "border-emerald-200 bg-emerald-50"
-          : score >= 50 ? "border-amber-200 bg-amber-50"
-          : "border-red-200 bg-red-50";
-        return (
-          <div key={category} className={cn("flex items-center justify-between rounded-[10px] border px-3 py-2.5", tone)}>
-            <span className="text-sm font-medium text-gray-700">{category}</span>
-            <div className="flex items-center gap-2 text-xs">
-              {s.pass > 0 && <span className="flex items-center gap-1 text-emerald-700"><CheckCircleIcon className="h-3.5 w-3.5" />{s.pass}</span>}
-              {s.warn > 0 && <span className="flex items-center gap-1 text-amber-700"><ExclamationTriangleIcon className="h-3.5 w-3.5" />{s.warn}</span>}
-              {s.fail > 0 && <span className="flex items-center gap-1 text-red-700"><XCircleIcon className="h-3.5 w-3.5" />{s.fail}</span>}
-            </div>
+    <div className="space-y-6">
+      {domainGroups.map((domain) => (
+        <div key={domain.label}>
+          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{domain.label}</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {domain.categories.map(({ name, stats }) => renderCategoryCard(name, stats))}
           </div>
-        );
-      })}
+        </div>
+      ))}
+      {otherCats.length > 0 && (
+        <div>
+          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Other</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {otherCats.map(({ name, stats }) => renderCategoryCard(name, stats))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default async function PublicReportPage({
   params,
@@ -213,16 +264,17 @@ export default async function PublicReportPage({
 
   return (
     <div className="min-h-screen bg-gray-50">
+
       {/* Header */}
       <div className="border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-gray-900">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-gray-900">
               <SignalIcon className="h-5 w-5 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-medium uppercase tracking-widest text-gray-400">Gitwork Pulse · Technical Audit</p>
-              <h1 className="text-lg font-semibold text-gray-900">{scan.projectName}</h1>
+              <h1 className="truncate text-lg font-semibold text-gray-900">{scan.projectName}</h1>
             </div>
           </div>
         </div>
@@ -236,7 +288,7 @@ export default async function PublicReportPage({
             <ScoreRing score={scan.healthScore} />
             <div className="min-w-0 flex-1 text-center sm:text-left">
               <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-                {llm?.projectClassification.type && (
+                {llm?.projectClassification?.type && (
                   <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
                     {llm.projectClassification.type}
                     {llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}
@@ -247,14 +299,14 @@ export default async function PublicReportPage({
                     href={scan.inputUrl ?? `https://github.com/${scan.inputGithubRepo}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 hover:bg-gray-200"
+                    className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 hover:bg-gray-200 [overflow-wrap:break-word]"
                   >
                     {inputRef}
                   </a>
                 )}
               </div>
               {llm?.executiveSummary && (
-                <p className="mt-3 text-sm leading-relaxed text-gray-600">{llm.executiveSummary}</p>
+                <p className="mt-3 text-sm leading-relaxed text-gray-600 [overflow-wrap:break-word]">{llm.executiveSummary}</p>
               )}
               {scan.techStack && scan.techStack.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -272,11 +324,11 @@ export default async function PublicReportPage({
           </div>
         </div>
 
-        {/* Proposal hook — internal sales callout, styled to stand out */}
+        {/* Proposal hook */}
         {llm?.proposalHook && (
           <div className="rounded-[10px] border border-indigo-200 bg-indigo-50 px-6 py-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Key finding</p>
-            <p className="mt-1.5 text-base font-medium leading-snug text-indigo-900">{llm.proposalHook}</p>
+            <p className="mt-1.5 text-base font-medium leading-snug text-indigo-900 [overflow-wrap:break-word]">{llm.proposalHook}</p>
           </div>
         )}
 
@@ -287,13 +339,13 @@ export default async function PublicReportPage({
         {llm?.healthNarrative && (
           <div className="rounded-[10px] border border-gray-200 bg-white p-6">
             <h2 className="mb-2 text-sm font-semibold text-gray-700">Health summary</h2>
-            <p className="text-sm leading-relaxed text-gray-600">{llm.healthNarrative}</p>
+            <p className="text-sm leading-relaxed text-gray-600 [overflow-wrap:break-word]">{llm.healthNarrative}</p>
           </div>
         )}
 
-        {/* Check categories */}
+        {/* Check categories — domain-grouped */}
         <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-sm font-semibold text-gray-700">Check results by category</h2>
+          <h2 className="mb-5 text-sm font-semibold text-gray-700">Automated check results</h2>
           <CategorySummary checks={scan.checks} />
         </div>
 
@@ -307,10 +359,10 @@ export default async function PublicReportPage({
                   <XCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800">{gap.gap}</span>
+                      <span className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{gap.gap}</span>
                       <UrgencyBadge urgency={gap.urgency} />
                     </div>
-                    <p className="mt-0.5 text-xs text-gray-500">{gap.impact}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{gap.impact}</p>
                   </div>
                 </div>
               ))}
@@ -326,9 +378,9 @@ export default async function PublicReportPage({
               {llm.strengths.slice(0, 4).map((s, i) => (
                 <div key={i} className="flex gap-3">
                   <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{s.title}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{s.detail}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{s.title}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{s.detail}</p>
                   </div>
                 </div>
               ))}
@@ -346,11 +398,11 @@ export default async function PublicReportPage({
                   <ArrowRightIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800">{opp.title}</span>
+                      <span className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{opp.title}</span>
                       <EffortBadge effort={opp.estimatedEffort} />
                       <ValueBadge value={opp.businessValue} />
                     </div>
-                    <p className="mt-0.5 text-xs text-gray-500">{opp.description}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{opp.description}</p>
                   </div>
                 </div>
               ))}
@@ -369,13 +421,13 @@ export default async function PublicReportPage({
                     {phase.phase}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-800">{phase.title}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-800 [overflow-wrap:break-word]">{phase.title}</p>
                       <span className="text-xs text-gray-400">{phase.duration}</span>
                     </div>
                     <ul className="mt-1.5 space-y-0.5">
-                      {phase.goals.map((g, i) => (
-                        <li key={i} className="text-xs text-gray-500">· {g}</li>
+                      {phase.goals.map((g, gi) => (
+                        <li key={gi} className="text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">· {g}</li>
                       ))}
                     </ul>
                   </div>
