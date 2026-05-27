@@ -55,6 +55,17 @@ export async function revokeInvite(inviteId: string) {
   });
 }
 
+export async function deleteInvite(inviteId: string) {
+  return prisma.workspaceInvite.delete({ where: { id: inviteId } });
+}
+
+export async function updateInviteLabel(inviteId: string, label: string | null) {
+  return prisma.workspaceInvite.update({
+    where: { id: inviteId },
+    data: { label: label?.trim() || null },
+  });
+}
+
 export async function acceptInvite(token: string, userId: string) {
   const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
   if (!invite || invite.status !== "PENDING") return null;
