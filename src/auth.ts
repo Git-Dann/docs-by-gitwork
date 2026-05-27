@@ -8,8 +8,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Uses AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET env vars
+      // (separate from GOOGLE_CLIENT_ID/SECRET used by the Care Gmail connector)
+      clientId: process.env.AUTH_GOOGLE_ID!,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
     }),
   ],
   callbacks: {
@@ -63,7 +65,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.permissions = (membership?.permissions as string[]) ?? [];
       }
 
-      // Delegate remaining JWT logic to authConfig
       return authConfig.callbacks?.jwt?.({ token, user } as Parameters<NonNullable<typeof authConfig.callbacks.jwt>>[0]) ?? token;
     },
   },
