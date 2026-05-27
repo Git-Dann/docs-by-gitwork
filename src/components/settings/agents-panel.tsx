@@ -78,7 +78,7 @@ function AgentRow({
     <div className="flex items-center gap-4 px-4 py-3.5">
       <div className={cn(
         "flex size-8 shrink-0 items-center justify-center rounded-lg",
-        agent.enabled ? "bg-[var(--brand-50)] text-[var(--brand-600)]" : "bg-[var(--bg-3)] text-[var(--text-3)]",
+        agent.enabled ? "bg-[var(--brand-50)] text-[var(--brand-600)]" : "bg-[var(--surface-2)] text-[var(--text-3)]",
       )}>
         <CpuChipIcon className="size-4" />
       </div>
@@ -92,7 +92,7 @@ function AgentRow({
             </span>
           )}
           {!agent.enabled && (
-            <span className="rounded-full bg-[var(--bg-3)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+            <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
               disabled
             </span>
           )}
@@ -124,7 +124,7 @@ function AgentRow({
           <button
             type="button"
             onClick={onEdit}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--border-2)] bg-[var(--bg-1)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-600)]"
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-600)]"
           >
             <PencilIcon className="size-3.5" />
             Edit
@@ -173,7 +173,7 @@ function AgentDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/30" onClick={onClose}>
       <div
-        className="flex h-full w-full max-w-xl flex-col bg-[var(--bg-1)] shadow-2xl"
+        className="flex h-full w-full max-w-xl flex-col bg-[var(--surface-0)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -182,7 +182,7 @@ function AgentDrawer({
             <p className="app-eyebrow mb-0.5">{PRODUCT_LABELS[agent.product] ?? agent.product}</p>
             <h3 className="text-base font-semibold text-[var(--text-1)]">{agent.name}</h3>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-[var(--bg-3)]">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-[var(--surface-2)]">
             <XMarkIcon className="size-5 text-[var(--text-3)]" />
           </button>
         </div>
@@ -203,7 +203,7 @@ function AgentDrawer({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Paste a custom system prompt here…"
-              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-3 py-2.5 font-mono text-xs text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 font-mono text-xs text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
               rows={14}
             />
             {prompt && (
@@ -226,7 +226,7 @@ function AgentDrawer({
               value={modelOverride}
               onChange={(e) => setModelOverride(e.target.value)}
               placeholder="e.g. claude-opus-4-5"
-              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-3 py-2 font-mono text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
             />
           </div>
         </div>
@@ -246,7 +246,7 @@ function AgentDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--bg-3)]"
+              className="rounded-xl border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)]"
             >
               Cancel
             </button>
