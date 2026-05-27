@@ -97,7 +97,7 @@ export default function TeamPage() {
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Label (e.g. "For Sarah") — optional"
+              placeholder='Label (e.g. "For Sarah") — optional'
               className="app-input flex-1"
               onKeyDown={(e) => e.key === "Enter" && createInvite()}
             />
