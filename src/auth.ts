@@ -1,57 +1,70 @@
 import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import Google from "next-auth/providers/google";
 import { authConfig } from "./auth.config";
+import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { ensureInitialAdmin } from "@/server/bootstrap";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
-    Credentials({
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-        remember: { label: "Remember me", type: "text" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
-
-        // Ensure the initial admin account exists before attempting login.
-        // Fast no-op after first run.
-        await ensureInitialAdmin().catch(() => null);
-
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
+  callbacks: {
+    ...authConfig.callbacks,
+    async signIn({ user }) {
+      // Restrict to @gitwork.co.uk accounts only
+      if (!user.email?.endsWith("@gitwork.co.uk")) {
+        return false;
+      }
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      // On first sign-in, look up or create the user in the DB
+      if (account && user?.email) {
+        let dbUser = await prisma.user.findUnique({
+          where: { email: user.email },
           include: {
             memberships: {
               where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-              include: { workspace: true },
               take: 1,
             },
           },
         });
 
-        if (!user?.passwordHash) return null;
+        // Auto-provision new Gitwork team members
+        if (!dbUser) {
+          dbUser = await prisma.user.create({
+            data: {
+              email: user.email,
+              name: user.name ?? user.email.split("@")[0],
+              memberships: {
+                create: {
+                  role: "STAFF",
+                  permissions: [],
+                  workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
+                },
+              },
+            },
+            include: {
+              memberships: {
+                where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+                take: 1,
+              },
+            },
+          });
+        }
 
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          user.passwordHash,
-        );
-        if (!valid) return null;
+        const membership = dbUser.memberships[0];
+        token.id = dbUser.id;
+        token.role = membership?.role ?? "STAFF";
+        token.permissions = (membership?.permissions as string[]) ?? [];
+      }
 
-        const membership = user.memberships[0];
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: membership?.role ?? "STAFF",
-          permissions: (membership?.permissions as string[]) ?? [],
-          remember: credentials.remember === "1",
-        };
-      },
-    }),
-  ],
+      // Delegate remaining JWT logic to authConfig
+      return authConfig.callbacks?.jwt?.({ token, user } as Parameters<NonNullable<typeof authConfig.callbacks.jwt>>[0]) ?? token;
+    },
+  },
 });
