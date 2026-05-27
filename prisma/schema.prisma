@@ -126,8 +126,10 @@ model User {
   passwordHash  String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
-  memberships   WorkspaceMember[]
-  documents     Document[]        @relation("DocumentOwner")
+  memberships      WorkspaceMember[]
+  documents        Document[]        @relation("DocumentOwner")
+  invitesSent      WorkspaceInvite[] @relation("InvitesSent")
+  invitesAccepted  WorkspaceInvite[] @relation("InvitesAccepted")
   proofDocuments ProofDocument[]
 }
 
@@ -154,6 +156,7 @@ model Workspace {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]
+  invites         WorkspaceInvite[]
   documents       Document[]
   templates       DocumentTemplate[]
   clients         WorkspaceClient[]
@@ -179,6 +182,21 @@ model WorkspaceMember {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+}
+
+model WorkspaceInvite {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  token        String    @unique @default(cuid())
+  label        String?
+  status       String    @default("PENDING")  // PENDING | ACCEPTED | REVOKED
+  invitedById  String
+  acceptedById String?
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime?
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy    User      @relation("InvitesSent", fields: [invitedById], references: [id])
+  acceptedBy   User?     @relation("InvitesAccepted", fields: [acceptedById], references: [id])
 }
 
 model DocumentTemplate {
