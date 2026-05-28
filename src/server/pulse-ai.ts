@@ -500,7 +500,9 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
 
   if (aiConfig.provider === "ANTHROPIC") {
-    const client = new Anthropic({ apiKey: aiConfig.apiKey });
+    // timeout: 90s — prevents the default 600s SDK timeout from hanging scans.
+    // maxRetries: 0 — withRetry() above handles 429 retries; SDK retries would compound wait time.
+    const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 90_000, maxRetries: 0 });
     const message = await withRetry(() =>
       client.messages.create({
         model: getModelForTask(aiConfig),
@@ -659,7 +661,7 @@ Generate a discovery call briefing. Return JSON with this shape:
     let rawContent: string;
 
     if (aiConfig.provider === "ANTHROPIC") {
-      const client = new Anthropic({ apiKey: aiConfig.apiKey });
+      const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 45_000, maxRetries: 0 });
       const message = await client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 2048,
@@ -742,7 +744,7 @@ Return JSON with exactly this shape:
     let rawContent: string;
 
     if (aiConfig.provider === "ANTHROPIC") {
-      const client = new Anthropic({ apiKey: aiConfig.apiKey });
+      const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 30_000, maxRetries: 0 });
       const message = await client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 1024,
