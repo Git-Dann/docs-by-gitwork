@@ -78,6 +78,27 @@ async function fetchHeaders(url: string): Promise<Record<string, string>> {
   }
 }
 
+/** Detect hosting platform from HTTP response headers. */
+function detectPlatformFromHeaders(
+  headers: Record<string, string>,
+): DeployAgentInsights["platform"] {
+  const server = headers["server"]?.toLowerCase() ?? "";
+  if (headers["x-vercel-id"] || headers["x-vercel-cache"] || server.includes("vercel")) return "vercel";
+  if (headers["x-nf-request-id"] || server.includes("netlify")) return "netlify";
+  if (headers["railway-request-id"] || headers["x-railway-request-id"]) return "railway";
+  // Catch-all for other detected hosting (Cloudflare, Render, Fly, GitHub Pages, Heroku, AWS…)
+  if (
+    headers["cf-ray"] ||
+    server.includes("github") ||
+    headers["x-render-origin-server"] ||
+    headers["fly-request-id"] ||
+    (headers["via"] && headers["via"].includes("vegur")) || // Heroku
+    headers["x-amz-cf-id"] ||
+    headers["x-amz-request-id"]
+  ) return "other";
+  return null;
+}
+
 export async function runDeployAgent(
   urlOrAppName: string,
 ): Promise<{ checks: PulseScanCheckInput[]; insights: DeployAgentInsights }> {
@@ -89,17 +110,19 @@ export async function runDeployAgent(
 
   const isVercelHostname = /\.vercel\.app$/i.test(hostname);
   let isVercel = isVercelHostname;
+  let detectedPlatform: DeployAgentInsights["platform"] = isVercelHostname ? "vercel" : null;
 
-  if (!isVercel) {
+  if (!isVercelHostname) {
     const headers = await fetchHeaders(rawUrl);
-    isVercel = Boolean(headers["x-vercel-id"]);
+    detectedPlatform = detectPlatformFromHeaders(headers);
+    isVercel = detectedPlatform === "vercel";
   }
 
   if (!isVercel || !token) {
     return {
       checks: [],
       insights: {
-        platform: isVercel ? "vercel" : null,
+        platform: detectedPlatform,
         recentDeployments: null,
         failedDeployments: null,
         avgBuildMs: null,

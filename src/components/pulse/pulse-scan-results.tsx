@@ -286,35 +286,33 @@ function StackTab({
 }) {
   return (
     <div className="space-y-6">
-      {/* Infrastructure map */}
-      {analysis.detectedStack && (
-        <div>
-          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Infrastructure map</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {INFRA_LABELS.map(({ key, label }) => {
-              const value = analysis.detectedStack[key];
-              return (
+      {/* Infrastructure map — only show layers where something was detected */}
+      {analysis.detectedStack && (() => {
+        const detectedLayers = INFRA_LABELS.filter(({ key }) => Boolean(analysis.detectedStack[key]));
+        return detectedLayers.length > 0 ? (
+          <div>
+            <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Infrastructure map</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {detectedLayers.map(({ key, label }) => (
                 <div
                   key={key}
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-[10px] border px-3 py-2.5",
-                    value
-                      ? "border-[var(--border-2)] bg-white"
-                      : "border-dashed border-[var(--border-2)] bg-[var(--surface-1)]",
-                  )}
+                  className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2.5"
                 >
                   <span className="text-xs font-medium text-[var(--text-3)]">{label}</span>
-                  {value ? (
-                    <span className="text-xs font-semibold text-[var(--text-1)]">{value}</span>
-                  ) : (
-                    <span className="text-xs text-[var(--text-4)]">Not detected</span>
-                  )}
+                  <span className="text-xs font-semibold text-[var(--text-1)]">{analysis.detectedStack[key]}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-5 text-center">
+            <p className="text-sm font-semibold text-[var(--text-2)]">Stack could not be detected from URL alone</p>
+            <p className="mt-1 text-xs text-[var(--text-3)]">
+              Provide a GitHub repo URL for code-level stack detection — framework, database, auth provider, and more.
+            </p>
+          </div>
+        );
+      })()}
 
       {/* Detected raw signals (fallback for old scans) */}
       {!analysis.detectedStack && detectedStack.length > 0 && (
@@ -715,10 +713,14 @@ function AgentPanel({
       description: "GitHub GraphQL — vulnerabilities, branch protection, PR culture",
       status: scan.inputType === "GITHUB_REPO"
         ? (scan.codeInsights ? "completed" : "error")
-        : "na",
+        : "available",
       summary: scan.codeInsights
         ? `${scan.codeInsights.vulnerabilities.length === 0 ? "No vulnerabilities" : `${scan.codeInsights.vulnerabilities.length} vuln${scan.codeInsights.vulnerabilities.length !== 1 ? "s" : ""}`} · ${scan.codeInsights.commitVelocity !== null ? `${scan.codeInsights.commitVelocity} commits/wk` : "commit data"}`
-        : scan.inputType === "GITHUB_REPO" ? "GraphQL query failed" : "GitHub repo scans only",
+        : scan.inputType === "GITHUB_REPO"
+          ? "GraphQL query failed — check your GitHub token has repo read access"
+          : "Rescan with a GitHub repo URL to unlock vulnerability scanning, branch protection, and commit history analysis",
+      actionLabel: scan.inputType !== "GITHUB_REPO" ? "Start repo scan" : undefined,
+      onAction: scan.inputType !== "GITHUB_REPO" ? () => { window.location.href = "/app/pulse"; } : undefined,
     },
     // Browser & Performance
     {
@@ -740,7 +742,14 @@ function AgentPanel({
       onAction: async () => {
         setBrowserError(null);
         try { await runBrowser(scan.id); }
-        catch (err) { setBrowserError(err instanceof Error ? err.message : "Browser analysis failed. Check the URL is reachable."); }
+        catch (err) {
+          const msg = err instanceof Error ? err.message : "Browser analysis failed.";
+          // Improve common PSI error messages
+          const friendly = msg.includes("No data") || msg.includes("unreachable")
+            ? "PageSpeed could not reach the URL — confirm it is publicly accessible (no login required) and not behind a firewall. Add a GOOGLE_PSI_API_KEY env var to avoid rate limits."
+            : msg;
+          setBrowserError(friendly);
+        }
       },
       loading: runningBrowser,
     },
@@ -748,13 +757,24 @@ function AgentPanel({
     {
       id: "deploy",
       label: "Deploy Intelligence",
-      description: "Vercel deployment logs — build time, success rate, warnings",
-      status: scan.deployInsights?.platform
-        ? "completed"
-        : "na",
-      summary: scan.deployInsights?.platform
-        ? `${scan.deployInsights.platform} · ${scan.deployInsights.recentDeployments ?? 0} deployments · ${scan.deployInsights.avgBuildMs !== null ? `${Math.round(scan.deployInsights.avgBuildMs / 1000)}s avg build` : "build data unavailable"}`
-        : "Not a Vercel-hosted project",
+      description: "Hosting & deployment intelligence — CDN layer, platform detection, build health",
+      status: (() => {
+        const di = scan.deployInsights;
+        if (!di) return "na" as const;
+        if (di.recentDeployments !== null) return "completed" as const;
+        if (di.platform) return "completed" as const; // platform detected but no logs
+        return "na" as const;
+      })(),
+      summary: (() => {
+        const di = scan.deployInsights;
+        if (!di?.platform) return "Hosting platform not identified from HTTP headers";
+        const platformName: Record<string, string> = {
+          vercel: "Vercel", netlify: "Netlify", railway: "Railway", other: "External hosting",
+        };
+        const name = platformName[di.platform] ?? di.platform;
+        if (di.recentDeployments === null) return `${name} detected — deployment logs not available`;
+        return `${name} · ${di.recentDeployments} deployments · ${di.avgBuildMs !== null ? `${Math.round(di.avgBuildMs / 1000)}s avg build` : "build data unavailable"}`;
+      })(),
     },
     // AI Synthesis
     {
@@ -798,16 +818,23 @@ function AgentPanel({
       id: "fix",
       label: "Auto-fix",
       description: "AI reads your repo files and opens a GitHub PR with targeted fixes",
-      status: fixError ? "error" : fixResult ? "completed" : scan.inputType === "GITHUB_REPO" ? "available" : "na",
+      status: fixError ? "error" : fixResult ? "completed" : "available",
       summary: fixError
         ? fixError
         : fixResult
           ? fixResult.summary
           : scan.inputType === "GITHUB_REPO"
             ? `Fix the ${scan.checks.filter((c) => c.status === "FAIL").length} failing checks automatically`
-            : "GitHub repo scans only",
-      actionLabel: fixError ? "Retry" : fixResult?.prUrl ? "View PR" : "Run fix agent",
-      onAction: fixResult?.prUrl ? () => window.open(fixResult.prUrl!, "_blank") : onAutoFix,
+            : "Rescan with a GitHub repo URL — AI will read your code and open a PR fixing failing checks",
+      actionLabel: fixError ? "Retry"
+        : fixResult?.prUrl ? "View PR"
+        : scan.inputType === "GITHUB_REPO" ? "Run fix agent"
+        : "Start repo scan",
+      onAction: fixResult?.prUrl
+        ? () => window.open(fixResult.prUrl!, "_blank")
+        : scan.inputType !== "GITHUB_REPO"
+          ? () => { window.location.href = "/app/pulse"; }
+          : onAutoFix,
       loading: fixing,
     },
     // Monitor
