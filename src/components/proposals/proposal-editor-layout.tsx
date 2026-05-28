@@ -38,6 +38,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
+import { CollabPanel } from "@/components/proposals/collab-panel";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
@@ -786,6 +787,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         <div className="space-y-5">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
           <SignaturePanel documentId={proposalId} />
+          <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} />
           <ActivityFeed documentId={proposalId} />
           <ProposalProofPanel proposalId={proposalId} />
         </div>

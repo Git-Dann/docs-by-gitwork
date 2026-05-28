@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { DocsViewBeacon } from "./view-beacon";
+import { PublicComments } from "./public-comments";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,8 @@ export default async function PublicDocumentPage({ params }: PageProps) {
           className="mx-auto w-full max-w-[880px]"
         />
       </div>
+
+      <PublicComments token={token} />
 
       {/* CTA footer — same pattern as the Pulse public report */}
       <div className="border-t border-[var(--border-2)] bg-white">
