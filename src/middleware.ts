@@ -6,7 +6,8 @@ const { auth } = NextAuth(authConfig);
 
 // API paths that do not require API_KEY authentication.
 // `/api/sign` is the public signer endpoint family — token in the URL is its own auth.
-const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign"];
+// `/api/docs` is the public document view-tracking beacon — token in the URL is its own auth.
+const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign", "/api/docs"];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
 

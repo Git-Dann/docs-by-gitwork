@@ -15,6 +15,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
+import { DocsViewBeacon } from "./view-beacon";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,7 @@ export default async function PublicDocumentPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
+      <DocsViewBeacon token={token} />
       {/*
        * The cover (with Foundry logo, doc number, type label, dated) now comes from
        * <DocumentCover/> inside the proposal sections — so we don't need a separate header

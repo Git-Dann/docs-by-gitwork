@@ -1,9 +1,11 @@
 "use client";
 
-import { PlusIcon } from "@heroicons/react/24/outline";
-import type { ReactNode } from "react";
+import { PlusIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { useState, type ReactNode } from "react";
 import { ProposalSectionEditor } from "@/components/proposals/proposal-section-editor";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
+import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type {
   ObjectiveItem,
   ProposalDocument,
@@ -169,6 +171,8 @@ export function ProposalBuilderPanel({
 
   const moduleNumber = String((activeEntry?.order ?? sectionIndex + 1) || 1).padStart(2, "0");
   const moduleLabel = activeSection.title.toUpperCase();
+  const sectionType = SECTION_REGISTRY[activeSection.key];
+  const aiExpandable = sectionType?.aiExpandable === true;
 
   return (
     <article className="proposal-form-theme widget-card overflow-hidden">
@@ -189,7 +193,16 @@ export function ProposalBuilderPanel({
             ) : null}
           </div>
 
-          {headerAction ? <div className="pt-1">{headerAction}</div> : null}
+          <div className="flex items-center gap-2 pt-1">
+            {aiExpandable ? (
+              <AiExpandControl
+                documentId={proposal.id}
+                sectionKey={activeSection.key}
+                onApplied={onProposalChange}
+              />
+            ) : null}
+            {headerAction}
+          </div>
         </div>
 
         <div className="pt-1">
@@ -206,5 +219,107 @@ export function ProposalBuilderPanel({
         </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * Per-section "Expand with AI" control.
+ *
+ * Compact button → click to open an inline instruction box → submit calls the section-AI
+ * endpoint and patches the local draft. Designed to live in the builder panel header next to
+ * the existing "Add" action.
+ */
+function AiExpandControl({
+  documentId,
+  sectionKey,
+  onApplied,
+}: {
+  documentId: string;
+  sectionKey: string;
+  onApplied: (next: ProposalDocument) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (instruction.trim().length < 2) {
+      setError("Add a short instruction so the model knows what to change.");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<{ proposal: ProposalDocument }>(
+        `/api/documents/${documentId}/ai/section`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sectionKey, instruction: instruction.trim() }),
+        },
+      );
+      onApplied(res.proposal);
+      setOpen(false);
+      setInstruction("");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        size="md"
+        leadingIcon={<SparklesIcon className="h-4 w-4" />}
+        onClick={() => setOpen(true)}
+      >
+        Expand with AI
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-[10px] border border-[var(--brand-300)] bg-[var(--brand-200)]/30 p-3" style={{ minWidth: 280 }}>
+      <textarea
+        value={instruction}
+        onChange={(e) => setInstruction(e.target.value)}
+        className="app-textarea"
+        rows={2}
+        placeholder="e.g. Make this more concise and remove the marketing language"
+        maxLength={2000}
+      />
+      {error ? (
+        <p className="text-xs font-medium text-[var(--danger-500)]">{error}</p>
+      ) : null}
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={handleSubmit}
+          loading={submitting}
+          leadingIcon={<SparklesIcon className="h-3.5 w-3.5" />}
+        >
+          Generate
+        </Button>
+        <Button
+          type="button"
+          variant="tertiary"
+          size="sm"
+          onClick={() => {
+            setOpen(false);
+            setInstruction("");
+            setError(null);
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }

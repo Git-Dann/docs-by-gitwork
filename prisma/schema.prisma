@@ -261,10 +261,34 @@ model Document {
   exports        Export[]
   proofDocuments ProofDocument[]
   signatureRequests SignatureRequest[]
+  views             DocumentView[]
 
   @@index([workspaceId, status])
   @@index([updatedAt])
   @@index([shareToken])
+}
+
+/**
+ * Audit row for each visit to a document's public share URL or signing URL. Powers the view
+ * count + last-viewed-at displays in the editor's sidebar, and feeds the activity feed.
+ *
+ * Recorded by the public pages via fire-and-forget POSTs. `signerId` is set when the visit
+ * originated from /sign/[token]; null otherwise (visits to /docs/[token]).
+ */
+model DocumentView {
+  id          String           @id @default(cuid())
+  documentId  String
+  signerId    String?
+  ip          String?
+  userAgent   String?          @db.Text
+  referer     String?
+  /** Origin of the view — DOCS for /docs/[token], SIGN for /sign/[token]. */
+  origin      String           @default("DOCS")
+  createdAt   DateTime         @default(now())
+  document    Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signer      SignatureSigner? @relation(fields: [signerId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, createdAt])
 }
 
 // Per-workspace + per-doc-type + per-year counter for atomic document numbering.
@@ -382,6 +406,7 @@ model SignatureSigner {
   firstViewedAt     DateTime?
   request           SignatureRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
   events            SignatureEvent[]
+  documentViews     DocumentView[]
 
   @@index([requestId, signingOrder])
 }

@@ -32,8 +32,11 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityFeed } from "@/components/proposals/activity-feed";
+import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
+import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
@@ -79,6 +82,18 @@ const ProposalBuilderPanel = dynamic(
     ),
   },
 );
+
+/**
+ * Build a mailto: URL that pre-fills a sensible subject + body for sharing a doc. Used by the
+ * "Email link" affordance on the share popover.
+ */
+function buildShareMailto(documentTitle: string, shareUrl: string): string {
+  const subject = `Document for your review: ${documentTitle}`;
+  const body =
+    `Hi,\n\nPlease find the document for your review at the link below.\n\n${shareUrl}\n\n` +
+    `If you have any questions, just reply to this email.\n\nBest,\nGitwork`;
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 function getSectionEntryId(section: ProposalSection) {
   return section.id ?? section.key;
@@ -130,6 +145,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
@@ -526,6 +542,14 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAiDraftOpen(true)}
+              className={buttonStyles({ variant: "secondary", size: "md" })}
+            >
+              <SparklesIcon className="h-4 w-4" />
+              Draft with AI
+            </button>
             <Link
               href={`/app/proposals/${proposalId}/preview`}
               className={buttonStyles({
@@ -619,14 +643,24 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                         value={publicShareUrl}
                         className="app-input mt-3"
                       />
-                      <Link
-                        href={publicSharePath}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-3 inline-flex text-sm font-medium text-[var(--brand-700)] hover:underline"
-                      >
-                        Open shared preview
-                      </Link>
+                      <div className="mt-3 flex items-center gap-3 text-sm">
+                        <Link
+                          href={publicSharePath}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-[var(--brand-700)] hover:underline"
+                        >
+                          Open shared preview
+                        </Link>
+                        <span className="text-[var(--text-4)]">·</span>
+                        <a
+                          href={buildShareMailto(draft.title, publicShareUrl)}
+                          className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
+                        >
+                          <EnvelopeIcon className="h-3.5 w-3.5" />
+                          Email link
+                        </a>
+                      </div>
                     </>
                   ) : (
                     <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
@@ -689,6 +723,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         <div className="space-y-5">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
           <SignaturePanel documentId={proposalId} />
+          <ActivityFeed documentId={proposalId} />
           <ProposalProofPanel proposalId={proposalId} />
         </div>
       ) : (
@@ -711,6 +746,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </section>
       )}
+
+      <AiDraftModal
+        open={aiDraftOpen}
+        onClose={() => setAiDraftOpen(false)}
+        documentId={proposalId}
+        onApply={(proposal) => {
+          // AI mutates the document server-side; update local draft so the editor reflects
+          // the new section data without a refetch dance.
+          setLocalDraft(proposal);
+          baselineRef.current = JSON.stringify(proposal);
+        }}
+      />
     </div>
   );
 }
