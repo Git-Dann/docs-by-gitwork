@@ -23,7 +23,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             "https://www.googleapis.com/auth/gmail.readonly " +
             "https://www.googleapis.com/auth/calendar.readonly",
           access_type: "offline",
-          prompt: "consent",
+          // No prompt override — Google shows consent only when needed (new scopes
+          // or first authorisation). Refresh token is stored in the DB permanently
+          // so subsequent logins are frictionless.
         },
       },
     }),
