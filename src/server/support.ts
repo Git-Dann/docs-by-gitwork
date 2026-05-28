@@ -353,6 +353,50 @@ export async function listSupportClients(): Promise<SupportClient[]> {
   return rows.map(serializeSupportClient);
 }
 
+// ─── Dashboard aggregation ───────────────────────────────────────────────────
+// Single round-trip replacement for fanning out listClients → listTickets per
+// client → listConversations per client. Used by the iOS dashboard.
+
+export type SupportDashboardSummary = {
+  clientCount: number;
+  openTicketCount: number;
+  recentConversations: Array<
+    Conversation & { client: SupportClient }
+  >;
+};
+
+export async function getSupportDashboardSummary(options?: {
+  recentConversationLimit?: number;
+}): Promise<SupportDashboardSummary> {
+  const workspaceId = await getWorkspaceId();
+  const limit = options?.recentConversationLimit ?? 8;
+
+  const [clientCount, openTicketCount, conversationRows] = await Promise.all([
+    prisma.supportClient.count({ where: { workspaceId } }),
+    prisma.supportTicket.count({
+      where: { status: "OPEN", client: { workspaceId } },
+    }),
+    prisma.supportConversation.findMany({
+      where: { client: { workspaceId } },
+      orderBy: { receivedAt: "desc" },
+      take: limit,
+      include: {
+        client: true,
+        tickets: { select: { id: true }, take: 1 },
+      },
+    }),
+  ]);
+
+  return {
+    clientCount,
+    openTicketCount,
+    recentConversations: conversationRows.map((row) => ({
+      ...serializeConversation(row),
+      client: serializeSupportClient(row.client),
+    })),
+  };
+}
+
 export async function getSupportClient(clientId: string): Promise<SupportClient> {
   const row = await prisma.supportClient.findUniqueOrThrow({
     where: { id: clientId },
