@@ -380,6 +380,9 @@ export const proposalUpdateSchema = z.object({
   links: z.array(linkSchema).optional(),
   ctas: z.array(ctaSchema).optional(),
   assets: z.array(assetSchema).optional(),
+  // P0.4 + P5.18
+  labels: z.array(z.string().min(1).max(40)).max(20).optional(),
+  parentId: z.string().nullable().optional(),
 });
 
 export const proposalCostingSchema = z.object({

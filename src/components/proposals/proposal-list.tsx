@@ -126,6 +126,36 @@ export function ProposalList() {
   const allOnPageSelected =
     pagedProposals.length > 0 && pagedProposals.every((proposal) => selectedIds.includes(proposal.id));
 
+  const [bulkBusy, setBulkBusy] = useState<null | "archive" | "unarchive" | "revoke-share" | "delete">(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "grouped">("table");
+
+  async function runBulkAction(action: "archive" | "unarchive" | "revoke-share" | "delete") {
+    if (selectedIds.length === 0 || bulkBusy) return;
+    if (action === "delete" && !confirm(`Permanently delete ${selectedIds.length} documents? This cannot be undone.`)) {
+      return;
+    }
+    setBulkBusy(action);
+    setBulkError(null);
+    try {
+      const res = await fetch("/api/proposals/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds, action }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Bulk action failed");
+      // Optimistic — clear selection + invalidate list via the hook's query key.
+      setSelectedIds([]);
+      // The useProposalList hook re-fetches when the query invalidates; force a reload.
+      window.location.reload();
+    } catch (err) {
+      setBulkError((err as Error).message);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
@@ -265,8 +295,39 @@ export function ProposalList() {
               </div>
             </div>
           </details>
+
+          <div className="ml-auto inline-flex items-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+            {(["table", "grouped"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                className={cn(
+                  "h-7 rounded-[6px] px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] transition",
+                  viewMode === mode
+                    ? "bg-white text-[var(--text-1)] shadow-[var(--shadow-xs)]"
+                    : "text-[var(--text-4)] hover:text-[var(--text-2)]",
+                )}
+              >
+                {mode === "table" ? "Table" : "By client"}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {viewMode === "grouped" ? (
+          <GroupedList
+            proposals={pagedProposals}
+            selectedIds={selectedIds}
+            onToggleSelect={(id) =>
+              setSelectedIds((current) =>
+                current.includes(id)
+                  ? current.filter((entry) => entry !== id)
+                  : [...current, id],
+              )
+            }
+          />
+        ) : (
         <div className="overflow-x-auto">
           <table className="app-table proposals-table min-w-full">
             <thead>
@@ -346,9 +407,19 @@ export function ProposalList() {
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-0.5 text-sm text-[var(--text-3)]">
-                          {proposal.clientName || "No client assigned"}
-                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                          <p className="text-sm text-[var(--text-3)]">
+                            {proposal.clientName || "No client assigned"}
+                          </p>
+                          {(proposal.labels ?? []).slice(0, 4).map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td>
                         <StatusBadge status={proposal.status} />
@@ -419,6 +490,7 @@ export function ProposalList() {
             </tbody>
           </table>
         </div>
+        )}
 
         <div className="flex flex-col gap-3 border-t border-[var(--border-2)] px-4 py-3 text-sm text-[var(--text-3)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
@@ -714,6 +786,141 @@ export function ProposalList() {
           </div>
         </div>
       ) : null}
+
+      {selectedIds.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-6">
+          <div className="widget-card flex w-full max-w-[640px] items-center gap-3 px-4 py-3 shadow-[var(--shadow-lg)]">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+              {selectedIds.length} SELECTED
+            </span>
+            <span className="text-sm text-[var(--text-3)]">·</span>
+            <button
+              type="button"
+              onClick={() => runBulkAction("archive")}
+              disabled={bulkBusy !== null}
+              className="text-sm font-medium text-[var(--text-2)] hover:text-[var(--text-1)] disabled:opacity-40"
+            >
+              {bulkBusy === "archive" ? "Archiving…" : "Archive"}
+            </button>
+            <span className="text-[var(--border-1)]">|</span>
+            <button
+              type="button"
+              onClick={() => runBulkAction("revoke-share")}
+              disabled={bulkBusy !== null}
+              className="text-sm font-medium text-[var(--text-2)] hover:text-[var(--text-1)] disabled:opacity-40"
+            >
+              {bulkBusy === "revoke-share" ? "Revoking…" : "Revoke share"}
+            </button>
+            <span className="text-[var(--border-1)]">|</span>
+            <button
+              type="button"
+              onClick={() => runBulkAction("delete")}
+              disabled={bulkBusy !== null}
+              className="text-sm font-medium text-rose-600 hover:text-rose-700 disabled:opacity-40"
+            >
+              {bulkBusy === "delete" ? "Deleting…" : "Delete"}
+            </button>
+            <span className="flex-1" />
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-[var(--text-4)] hover:text-[var(--text-2)]"
+            >
+              Clear
+            </button>
+          </div>
+          {bulkError ? (
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-[6px] bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">
+              {bulkError}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GroupedList({
+  proposals,
+  selectedIds,
+  onToggleSelect,
+}: {
+  proposals: Array<{ id: string; title: string; clientName?: string | null; status: string; updatedAt: string; documentNumber?: string | null; documentType?: string }>;
+  selectedIds: string[];
+  onToggleSelect: (id: string) => void;
+}) {
+  // Group docs by clientName; "Unassigned" bucket at the end.
+  const groups = new Map<string, typeof proposals>();
+  for (const p of proposals) {
+    const key = p.clientName?.trim() || "Unassigned";
+    const list = groups.get(key) ?? [];
+    list.push(p);
+    groups.set(key, list);
+  }
+  // Sort: named clients alphabetical, Unassigned last
+  const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === "Unassigned") return 1;
+    if (b === "Unassigned") return -1;
+    return a.localeCompare(b);
+  });
+
+  if (proposals.length === 0) {
+    return (
+      <div className="px-6 py-8 text-sm text-[var(--text-4)]">No documents found.</div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 px-4 py-4 sm:px-6">
+      {orderedKeys.map((key) => {
+        const docs = groups.get(key)!;
+        return (
+          <div key={key} className="rounded-[10px] border border-[var(--border-2)] bg-white">
+            <div className="flex items-baseline justify-between border-b border-[var(--border-3)] px-4 py-3">
+              <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-3)]">
+                {key}
+              </h3>
+              <span className="text-xs text-[var(--text-4)]">
+                {docs.length} document{docs.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <ul className="divide-y divide-[var(--border-3)]">
+              {docs.map((doc) => {
+                const checked = selectedIds.includes(doc.id);
+                return (
+                  <li
+                    key={doc.id}
+                    className={cn("flex items-center gap-3 px-4 py-3 text-sm", checked && "bg-[var(--surface-1)]")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleSelect(doc.id)}
+                      className="app-checkbox"
+                      aria-label={`Select ${doc.title}`}
+                    />
+                    <Link
+                      href={`/app/proposals/${doc.id}`}
+                      className="flex-1 truncate font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
+                    >
+                      {doc.title}
+                    </Link>
+                    {doc.documentNumber ? (
+                      <span className="hidden font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)] sm:inline">
+                        {doc.documentNumber}
+                      </span>
+                    ) : null}
+                    <StatusBadge status={doc.status as never} />
+                    <span className="hidden text-xs text-[var(--text-4)] sm:inline">
+                      {new Date(doc.updatedAt).toLocaleDateString()}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }

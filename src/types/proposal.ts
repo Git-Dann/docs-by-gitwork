@@ -446,6 +446,10 @@ export interface ProposalDocument {
   shareToken?: string | null;
   /** Sharing is "on" — public link returns the document. False = link 404s. */
   isShared: boolean;
+  /** Workspace-defined labels for filtering/grouping (P0.4). */
+  labels: string[];
+  /** Optional parent document (P5.18). SOW → MSA, CO → SOW. */
+  parentId?: string | null;
   expiresAt?: string | null;
   metadata: ProposalMetadata;
   exportSettings: Record<string, unknown>;
@@ -481,4 +485,6 @@ export interface ProposalListItem {
   ownerName?: string | null;
   documentNumber?: string | null;
   documentType: DocumentType;
+  labels?: string[];
+  parentId?: string | null;
 }

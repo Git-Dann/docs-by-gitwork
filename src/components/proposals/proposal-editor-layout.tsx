@@ -151,6 +151,29 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [copied, setCopied] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
+
+  async function handleSaveAsTemplate() {
+    if (!draft) return;
+    const name = prompt(
+      "Name this template",
+      `${draft.title} — template`,
+    );
+    if (!name?.trim()) return;
+    try {
+      const res = await fetch(`/api/templates/from-document/${proposalId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to save template");
+      setTemplateSavedAt(name.trim());
+      setTimeout(() => setTemplateSavedAt(null), 4000);
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
@@ -559,6 +582,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       : "Waiting to save"}
               </span>
             </div>
+
+            <LabelEditor
+              labels={draft.labels ?? []}
+              onChange={(labels) => updateDraft({ ...draft, labels })}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -711,6 +739,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   >
                     Export
                   </Button>
+                </div>
+
+                <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveAsTemplate}
+                    className="text-sm font-medium text-[var(--brand-700)] hover:underline"
+                  >
+                    Save current structure as a template…
+                  </button>
+                  {templateSavedAt ? (
+                    <p className="mt-1 text-xs text-[var(--success-500)]">
+                      Saved as &ldquo;{templateSavedAt}&rdquo;
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -1352,4 +1395,84 @@ function serializeDraft(draft: ProposalDocument) {
       sortOrder: index,
     })),
   };
+}
+
+/**
+ * Compact label editor — chips for each existing label + an inline input that adds a new label
+ * on Enter. Lives in the editor header so the operator can tag a document without leaving the
+ * canvas. Labels are persisted via the same draft → autosave pipeline as everything else.
+ */
+function LabelEditor({
+  labels,
+  onChange,
+}: {
+  labels: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  function commit() {
+    const value = draft.trim();
+    if (!value) {
+      setAdding(false);
+      setDraft("");
+      return;
+    }
+    if (labels.includes(value)) {
+      setDraft("");
+      return;
+    }
+    onChange([...labels, value]);
+    setDraft("");
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {labels.map((label) => (
+        <span
+          key={label}
+          className="inline-flex items-center gap-1 rounded-[4px] bg-[var(--brand-200)] px-2 py-0.5 text-[11px] font-medium text-[var(--brand-700)]"
+        >
+          {label}
+          <button
+            type="button"
+            onClick={() => onChange(labels.filter((entry) => entry !== label))}
+            className="text-[var(--brand-700)] hover:text-[var(--brand-800)]"
+            aria-label={`Remove ${label} label`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              setAdding(false);
+              setDraft("");
+            }
+          }}
+          maxLength={40}
+          placeholder="New label"
+          className="h-6 w-32 rounded-[4px] border border-[var(--border-2)] bg-white px-2 text-[11px] focus:border-[var(--brand-500)] focus:outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center rounded-[4px] border border-dashed border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-4)] hover:border-[var(--brand-500)] hover:text-[var(--brand-700)]"
+        >
+          + label
+        </button>
+      )}
+    </div>
+  );
 }

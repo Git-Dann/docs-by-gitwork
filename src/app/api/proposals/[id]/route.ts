@@ -51,6 +51,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return apiError("Proposal not found", 404);
     }
 
+    // ── P1.7: Edit lock when document is SENT ─────────────────────────────────────────
+    // A SENT document is mid-signature. Block any PATCH that isn't just changing status
+    // (e.g. a revoke that flips status back to DRAFT/APPROVED). Operators must explicitly
+    // revoke the signature request before editing again.
+    if (existing.status === "SENT") {
+      const flippingStatusOnly =
+        payload.status &&
+        payload.status !== "SENT" &&
+        Object.keys(payload).every((k) => k === "status");
+      if (!flippingStatusOnly) {
+        return apiError(
+          "This document is out for signature. Revoke the signature request before editing.",
+          423, // 423 Locked — semantically accurate
+        );
+      }
+    }
+
     const nextMetadata = {
       ...(existing.metadata as Record<string, unknown> | null),
       ...DEFAULT_PROPOSAL_METADATA,
@@ -72,6 +89,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : payload.expiresAt,
           metadata: nextMetadata,
           exportSettings: payload.exportSettings as unknown as Prisma.InputJsonValue | undefined,
+          // P0.4 labels + P5.18 parent
+          labels:
+            payload.labels !== undefined
+              ? (payload.labels as unknown as Prisma.InputJsonValue)
+              : undefined,
+          parentId: payload.parentId === undefined ? undefined : payload.parentId,
         },
       });
 

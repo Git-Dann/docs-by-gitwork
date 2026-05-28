@@ -160,6 +160,10 @@ model Workspace {
   slackSummaryChannelId     String?   // legacy single-channel — kept for migration
   slackChannels             Json?     // Array<{ id: string; name: string }>
   branding                  Json?             // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
+  // ── Public-share branding (P5.19) ───────────────────────────────────
+  customHostname            String?   @unique  // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
+  customHostnameVerified    Boolean   @default(false)
+  customHostnameToken       String?   // Random CNAME challenge value for DNS verification
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]
@@ -178,6 +182,7 @@ model Workspace {
   agentConfigs    AgentConfig[]
   checkConfigs    PulseCheckConfig[]
   signatureRequests SignatureRequest[]
+  slackWebhooks   SlackWebhookSubscription[]
 }
 
 model WorkspaceMember {
@@ -246,6 +251,12 @@ model Document {
   isShared       Boolean         @default(false)
   // ── Numbering (Sprint 1) ────────────────────────────────────────────
   documentNumber String?         @unique     // e.g. PROP-2026-014, SLA-2026-003
+  // ── Organisation (P0) ───────────────────────────────────────────────
+  labels         Json?           // Array of workspace-defined label strings (["Q2", "Renewal", …])
+  // ── Document relationships (P5) ─────────────────────────────────────
+  parentId       String?         // Self-ref: SOW under MSA, CO under SOW
+  parent         Document?       @relation("DocumentChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Document[]      @relation("DocumentChildren")
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   archivedAt     DateTime?
@@ -262,10 +273,100 @@ model Document {
   proofDocuments ProofDocument[]
   signatureRequests SignatureRequest[]
   views             DocumentView[]
+  comments       DocumentComment[]
+  versions       DocumentVersion[]
+  presence       EditorPresence[]
 
   @@index([workspaceId, status])
   @@index([updatedAt])
   @@index([shareToken])
+  @@index([parentId])
+}
+
+/**
+ * Public commenters or workspace operators leave threaded feedback against a document. Public
+ * comments arrive via /docs/[token] (anonymous name + email captured per comment). Workspace
+ * comments arrive via the editor and are tied to a User. `sectionId` is optional so a comment
+ * can attach to a specific section or to the document overall.
+ */
+enum DocumentCommentAuthorKind {
+  PUBLIC      // From the share URL — viewer typed a name + email
+  WORKSPACE   // From the editor — tied to a User
+}
+
+enum DocumentCommentStatus {
+  OPEN
+  RESOLVED
+}
+
+model DocumentComment {
+  id           String                     @id @default(cuid())
+  documentId   String
+  sectionId    String?                    // null = comment on the document as a whole
+  parentId     String?                    // For replies — points to the root comment
+  authorKind   DocumentCommentAuthorKind
+  authorName   String                     // Always required — public: typed in form, workspace: User.name
+  authorEmail  String?                    // Required for PUBLIC, optional for WORKSPACE (we have the User)
+  authorUserId String?                    // Set when authorKind = WORKSPACE
+  body         String                     @db.Text
+  status       DocumentCommentStatus      @default(OPEN)
+  createdAt    DateTime                   @default(now())
+  resolvedAt   DateTime?
+  resolvedBy   String?                    // User.id who resolved
+  document     Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parent       DocumentComment?           @relation("DocumentCommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies      DocumentComment[]          @relation("DocumentCommentReplies")
+
+  @@index([documentId, status, createdAt])
+  @@index([documentId, sectionId])
+}
+
+/**
+ * Frozen snapshot of a document at a particular version bump. Stores everything needed to
+ * render the document in a read-only "viewing v1.2" mode and to diff against any other version.
+ *
+ * Created when the operator clicks "Save version" or bumps the version field in the editor.
+ * Independent of the SignatureRequest.documentSnapshot frozen at send-time (which is signing-
+ * scoped, not user-driven).
+ */
+model DocumentVersion {
+  id              String   @id @default(cuid())
+  documentId      String
+  version         String   // e.g. "v1.0", "v1.1", "v2.0" — matches Document.version at snapshot time
+  /** Full snapshot of the document's sections array at this version. */
+  sectionsSnapshot Json
+  /** Frozen cost line items (denormalized at snapshot time). */
+  costSnapshot     Json
+  /** Frozen timeline phases. */
+  timelineSnapshot Json
+  /** Free-text changelog the operator typed when bumping the version. */
+  changelog       String?  @db.Text
+  createdById     String
+  createdAt       DateTime @default(now())
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@index([documentId, createdAt])
+}
+
+/**
+ * Lightweight presence heartbeats. The editor pings POST /api/documents/[id]/presence every
+ * ~8s with a session token; old rows are pruned. A SELECT for rows seen in the last 30s gives
+ * the "who's here" list for the avatar bubbles in the editor header.
+ *
+ * Not a CRDT or real-time channel — just a polling-friendly "saw you" log.
+ */
+model EditorPresence {
+  id          String   @id @default(cuid())
+  documentId  String
+  userId      String?  // Null for unauthenticated/system writes; usually populated for workspace operators
+  sessionId   String   // Browser-tab-scoped UUID
+  userName    String   // Snapshot for display so we don't join through User
+  lastSeenAt  DateTime @default(now()) @updatedAt
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sessionId])
+  @@index([documentId, lastSeenAt])
 }
 
 /**
@@ -426,6 +527,38 @@ model SignatureEvent {
   signer      SignatureSigner?     @relation(fields: [signerId], references: [id], onDelete: SetNull)
 
   @@index([requestId, createdAt])
+}
+
+/**
+ * Workspace-level Slack webhook subscriptions (P5). One row per (workspace × event class)
+ * pairing. When the matching event fires (doc viewed, signed, completed, comment added), the
+ * server POSTs a formatted Slack Block Kit message to `webhookUrl`.
+ *
+ * Distinct from Workspace.slackBotToken (which authenticates a full Slack bot for the meeting-
+ * summary feature) — webhooks are simpler and per-event-class.
+ */
+enum DocumentEventKind {
+  DOC_SHARED       // Workspace minted a share link
+  DOC_VIEWED       // Public visitor opened the share URL
+  DOC_SENT         // Sent for signature
+  DOC_SIGNED       // A signer signed
+  DOC_COMPLETED    // All signers signed
+  DOC_DECLINED     // A signer declined
+  COMMENT_ADDED    // Public or workspace comment added
+}
+
+model SlackWebhookSubscription {
+  id            String              @id @default(cuid())
+  workspaceId   String
+  label         String              // Operator-facing label ("#proposals notifications")
+  webhookUrl    String              @db.Text
+  eventKinds    Json                // Array<DocumentEventKind>
+  enabled       Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, enabled])
 }
 
 model ProofDocument {
