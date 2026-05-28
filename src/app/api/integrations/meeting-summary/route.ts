@@ -49,21 +49,34 @@ export async function POST(req: NextRequest) {
 
     // ── Fetch related Gmail threads ────────────────────────────────────────────
     let emailContext = "";
-    if (workspace.googleServiceAccountJson && workspace.googleSubjectEmail) {
+    const hasServiceAccount = !!(workspace.googleServiceAccountJson && workspace.googleSubjectEmail);
+    const hasOAuthToken = !!workspace.googleOAuthRefreshToken;
+
+    if (hasServiceAccount || hasOAuthToken) {
       try {
-        const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
-        const auth = new google.auth.GoogleAuth({
-          credentials,
-          scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-        });
-        const authClient = await auth.getClient();
-        if ("subject" in authClient) {
-          (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
+        let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+
+        if (hasServiceAccount) {
+          const credentials = JSON.parse(workspace.googleServiceAccountJson!) as Record<string, unknown>;
+          const serviceAuth = new google.auth.GoogleAuth({
+            credentials,
+            scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+          });
+          const authClient = await serviceAuth.getClient();
+          if ("subject" in authClient) {
+            (authClient as { subject?: string }).subject = workspace.googleSubjectEmail!;
+          }
+          gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+        } else {
+          // OAuth path — user's Google login token
+          const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
+          const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+          const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+          oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken! });
+          gmailAuth = oauth2Client;
         }
-        const gmail = google.gmail({
-          version: "v1",
-          auth: authClient as Parameters<typeof google.gmail>[0]["auth"],
-        });
+
+        const gmail = google.gmail({ version: "v1", auth: gmailAuth });
 
         // Search for emails related to this meeting
         const searchQuery = [

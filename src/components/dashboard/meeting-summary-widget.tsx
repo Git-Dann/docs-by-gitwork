@@ -11,13 +11,27 @@ import type { WidgetSize } from "@/components/app-overview";
 
 function formatDate(iso: string): string {
   try {
-    const d = new Date(iso);
+    // Compare calendar days, not timestamps, so "08:00 tomorrow" doesn't
+    // show as "Today" when the current time is past 08:00.
+    const eventDay = iso.includes("T") ? iso.slice(0, 10) : iso;
     const today = new Date();
-    const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
-    if (diff === 0) return "Today";
-    if (diff === 1) return "Tomorrow";
-    if (diff === -1) return "Yesterday";
-    return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    const todayStr = today.toISOString().slice(0, 10);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    if (eventDay === todayStr) return "Today";
+    if (eventDay === tomorrowStr) return "Tomorrow";
+    if (eventDay === yesterdayStr) return "Yesterday";
+
+    return new Date(eventDay).toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
   } catch {
     return iso;
   }
@@ -192,7 +206,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                   <SparklesIcon className="h-3.5 w-3.5" />
                   Generate Summary
                 </button>
-                <p className="text-[10px] text-[var(--text-3)]">Uses AI + related emails</p>
+                <p className="text-[10px] text-[var(--text-3)]">Uses AI + emails + Slack</p>
               </div>
             )}
           </div>
