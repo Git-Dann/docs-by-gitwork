@@ -1,5 +1,11 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+/*
+ * Fonts are self-hosted via `next/font/google` in `src/app/layout.tsx`
+ * (Inter, DM Serif Display, JetBrains Mono — same as DESIGN.md).
+ * next/font binds them to --font-sans, --font-display, --font-mono on <html>
+ * which override the @theme fallbacks below via cascade specificity.
+ */
 
 :root {
   /* Surfaces */
@@ -591,6 +597,146 @@ h2, h3, h4, h5 {
     width: 16px;
     height: 16px;
     accent-color: var(--brand-600);
+  }
+
+  /* Foundry Design System — Widget primitives (DESIGN.md §Components → Widget Cards) */
+
+  .widget-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    background: var(--surface-0);
+    overflow: hidden;
+  }
+
+  .widget-card-dark {
+    background: #0F172A;
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #F8FAFC;
+  }
+
+  .widget-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 36px;
+    padding: 0 16px;
+    background: var(--surface-canvas);
+    border-bottom: 1px solid var(--border-3);
+    flex-shrink: 0;
+  }
+
+  .widget-card-dark .widget-header {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .widget-header-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  .widget-card-dark .widget-header-label {
+    color: rgba(248, 250, 252, 0.4);
+  }
+
+  .widget-header-right {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-4);
+    white-space: nowrap;
+  }
+
+  .widget-card-dark .widget-header-right {
+    color: rgba(248, 250, 252, 0.45);
+  }
+
+  .widget-body {
+    padding: 20px;
+    flex: 1 1 auto;
+  }
+
+  .widget-body-compact {
+    padding: 14px 16px;
+  }
+
+  .widget-stat {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 48px;
+    line-height: 1.05;
+    letter-spacing: -1px;
+    color: var(--text-1);
+    margin: 0;
+  }
+
+  .widget-stat-sm {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 32px;
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+    color: var(--text-1);
+    margin: 0;
+  }
+
+  .widget-data-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .widget-data-label-bright {
+    color: var(--brand-700);
+  }
+
+  .widget-timestamp {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--text-4);
+  }
+
+  .signal-dot-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .signal-dot-live::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--success-500);
+  }
+
+  /* Mono-styled column heads used on Foundry-design tables (e.g. proposals, proof drafts) */
+  .proposals-table thead th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-4);
   }
 }
 

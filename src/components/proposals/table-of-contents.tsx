@@ -9,7 +9,7 @@ export function TableOfContents({
 }) {
   return (
     <nav className={className} aria-label="Table of contents">
-      <p className="app-eyebrow">Contents</p>
+      <p className="widget-header-label widget-data-label-bright">01 // CONTENTS</p>
       <ol className="mt-3 space-y-1.5 text-sm">
         {sections
           .filter((section) => section.isVisible)

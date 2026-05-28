@@ -28,8 +28,14 @@ export function ProposalBuilderPanel({
 
   if (!activeSection) {
     return (
-      <article className="app-card p-6">
-        <p className="text-sm text-[var(--text-3)]">No section selected.</p>
+      <article className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header-label">07 // BUILDER</span>
+          <span className="widget-header-right">IDLE</span>
+        </div>
+        <div className="widget-body">
+          <p className="text-sm text-[var(--text-3)]">No section selected.</p>
+        </div>
       </article>
     );
   }
@@ -161,34 +167,43 @@ export function ProposalBuilderPanel({
     }
   }
 
+  const moduleNumber = String((activeEntry?.order ?? sectionIndex + 1) || 1).padStart(2, "0");
+  const moduleLabel = activeSection.title.toUpperCase();
+
   return (
-    <article className="proposal-form-theme app-card space-y-5 p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-3xl">
-          <h3 className="text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-            {activeSection.title}
-          </h3>
-          {activeSection.description ? (
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              {activeSection.description}
-            </p>
-          ) : null}
+    <article className="proposal-form-theme widget-card overflow-hidden">
+      <div className="widget-header">
+        <span className="widget-header-label">{moduleNumber} // {moduleLabel}</span>
+        <span className="widget-header-right">BUILDER</span>
+      </div>
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <h3 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
+              {activeSection.title}
+            </h3>
+            {activeSection.description ? (
+              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                {activeSection.description}
+              </p>
+            ) : null}
+          </div>
+
+          {headerAction ? <div className="pt-1">{headerAction}</div> : null}
         </div>
 
-        {headerAction ? <div className="pt-1">{headerAction}</div> : null}
-      </div>
-
-      <div className="pt-1">
-        {sectionIndex >= 0 ? (
-          <ProposalSectionEditor
-            proposal={proposal}
-            section={activeSection}
-            sectionIndex={sectionIndex}
-            onProposalChange={onProposalChange}
-          />
-        ) : (
-          <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
-        )}
+        <div className="pt-1">
+          {sectionIndex >= 0 ? (
+            <ProposalSectionEditor
+              proposal={proposal}
+              section={activeSection}
+              sectionIndex={sectionIndex}
+              onProposalChange={onProposalChange}
+            />
+          ) : (
+            <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
+          )}
+        </div>
       </div>
     </article>
   );

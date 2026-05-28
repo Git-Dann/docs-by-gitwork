@@ -66,8 +66,14 @@ const ProposalBuilderPanel = dynamic(
     })),
   {
     loading: () => (
-      <article className="app-card p-6">
-        <p className="text-sm text-[var(--text-3)]">Loading builder...</p>
+      <article className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header-label">00 // BUILDER</span>
+          <span className="widget-header-right">LOADING</span>
+        </div>
+        <div className="widget-body">
+          <p className="text-sm text-[var(--text-3)]">Loading builder...</p>
+        </div>
       </article>
     ),
   },
@@ -438,8 +444,14 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
   return (
     <div className="space-y-5">
-      <section className="app-card overflow-hidden px-4 py-5 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">01 // DOCUMENT</span>
+          <span className="widget-header-right">
+            {draft.version ? `V${draft.version} · ` : ""}{statusLabel(draft.status).toUpperCase()}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-5 sm:px-6">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-3)]">
               <HomeIcon className="h-4 w-4" />
@@ -462,7 +474,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
 
-            <h1 className="mt-4 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)] sm:text-[34px]">
+            <h1 className="mt-4 font-[family-name:var(--font-display)] text-[40px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[44px]">
               {draft.title}
             </h1>
 
@@ -610,7 +622,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
         </div>
 
-        <div className="mt-5">
+        <div className="border-t border-[var(--border-2)] px-4 py-4 sm:px-6">
           <div className="inline-flex items-center rounded-[10px] bg-[var(--surface-1)] p-1">
             {tabs.map((tab) => (
               <button
@@ -698,11 +710,13 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="app-card p-4 xl:sticky xl:top-6">
-      <div className="flex items-start justify-between gap-3 pb-2">
-        <div>
-          <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-1)]">Contents</h2>
-        </div>
+    <aside className="widget-card overflow-hidden xl:sticky xl:top-6">
+      <div className="widget-header">
+        <span className="widget-header-label">06 // CONTENTS</span>
+        <span className="widget-header-right">{sections.length} MODULES</span>
+      </div>
+      <div className="p-4">
+      <div className="flex items-center justify-end gap-3 pb-2">
         {editable ? (
           <details className="group relative">
             <summary
@@ -778,6 +792,7 @@ function TableOfContentsCard({
           No modules yet. Use Add to start building the proposal.
         </p>
       )}
+      </div>
     </aside>
   );
 }
@@ -1006,90 +1021,127 @@ function OverviewCanvas({
     !assetsCount &&
     !ctaCount;
 
-  return (
-    <article className="app-card space-y-7 p-6 sm:p-7">
-      <header>
-        <p className="app-eyebrow">Overview</p>
-        <h3 className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-          Proposal overview
-        </h3>
-        <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
-          A light snapshot of the proposal setup, delivery shape, and commercial status.
-        </p>
-      </header>
-
-      {isEmptyProposal ? (
-        <section className="app-subtle-panel p-6">
-          <h4 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+  if (isEmptyProposal) {
+    return (
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">02 // OVERVIEW</span>
+          <span className="widget-header-right">EMPTY</span>
+        </div>
+        <div className="widget-body">
+          <h4 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
             Nothing to summarise yet
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
-            New proposals now start blank. Use Builder to add client details, scope, timeline, and pricing. The overview will stay empty until there is something real to summarise.
+            New proposals start blank. Use Builder to add client details, scope, timeline, and pricing. The overview will stay empty until there is something real to summarise.
           </p>
-        </section>
-      ) : (
-        <section className="grid gap-4 xl:grid-cols-2">
-          <OverviewMetricCard
-            eyebrow="Commercial"
-            title={formatCurrency(grandTotal, currency)}
-            subtitle="Current proposal value"
-          >
-            <OverviewStatRow label="Billable people" value={billableTeamCount} />
-            <OverviewStatRow label="One-off" value={formatCurrency(oneOffTotal, currency)} />
-            <OverviewStatRow label="Recurring" value={formatCurrency(recurringTotal, currency)} />
-            <OverviewStatRow label={`Discount (${discount}%)`} value={formatCurrency(discountAmount, currency)} />
-            <OverviewStatRow label={`VAT (${taxRate}%)`} value={formatCurrency(taxAmount, currency)} />
-          </OverviewMetricCard>
+        </div>
+      </section>
+    );
+  }
 
-          <OverviewMetricCard eyebrow="Delivery" title={`${phasesCount} phases`} subtitle="Implementation shape">
-            <OverviewStatRow label="Deliverables" value={deliverablesCount} />
-            <OverviewStatRow label="Workstreams" value={workstreamCount} />
-            <OverviewStatRow label="Milestones" value={paymentMilestoneCount} />
-            <OverviewStatRow
-              label="Timeline mode"
-              value={(timeline?.viewMode ?? "LIST").toLowerCase().replace(/^\w/, (char) => char.toUpperCase())}
-            />
-            <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
-          </OverviewMetricCard>
+  return (
+    <section className="grid gap-3 xl:grid-cols-2">
+      <OverviewWidget
+        number="02"
+        name="COMMERCIAL"
+        rightSlot="VALUE"
+        figure={formatCurrency(grandTotal, currency)}
+        figureLabel="CURRENT PROPOSAL VALUE"
+      >
+        <OverviewStatRow label="Billable people" value={billableTeamCount} />
+        <OverviewStatRow label="One-off" value={formatCurrency(oneOffTotal, currency)} />
+        <OverviewStatRow label="Recurring" value={formatCurrency(recurringTotal, currency)} />
+        <OverviewStatRow label={`Discount (${discount}%)`} value={formatCurrency(discountAmount, currency)} />
+        <OverviewStatRow label={`VAT (${taxRate}%)`} value={formatCurrency(taxAmount, currency)} />
+      </OverviewWidget>
 
-          <OverviewMetricCard eyebrow="Scope" title={`${touchpointCount} touchpoints`} subtitle="Structured proposal coverage">
-            <OverviewStatRow label="Objectives" value={objectiveCount} />
-            <OverviewStatRow label="Features" value={featureCount} />
-            <OverviewStatRow label="Visible modules" value={visibleSectionsCount} />
-            <OverviewStatRow label="Assumptions" value={assumptionCount} />
-            <OverviewStatRow label="Out of scope" value={outOfScopeCount} />
-          </OverviewMetricCard>
+      <OverviewWidget
+        number="03"
+        name="DELIVERY"
+        rightSlot="SHAPE"
+        figure={String(phasesCount)}
+        figureLabel="PHASES · IMPLEMENTATION SHAPE"
+      >
+        <OverviewStatRow label="Deliverables" value={deliverablesCount} />
+        <OverviewStatRow label="Workstreams" value={workstreamCount} />
+        <OverviewStatRow label="Milestones" value={paymentMilestoneCount} />
+        <OverviewStatRow
+          label="Timeline mode"
+          value={(timeline?.viewMode ?? "LIST").toLowerCase().replace(/^\w/, (char) => char.toUpperCase())}
+        />
+        <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
+      </OverviewWidget>
 
-          <OverviewMetricCard eyebrow="Stakeholders" title={clientName || "No client set"} subtitle="Client and ownership">
-            <OverviewStatRow label="Owner" value={owner || "Not set"} />
-            <OverviewStatRow label="Prepared by" value={signoff?.preparedBy || "Not set"} />
-            <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
-            <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
-            <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
-          </OverviewMetricCard>
-        </section>
-      )}
-    </article>
+      <OverviewWidget
+        number="04"
+        name="SCOPE"
+        rightSlot="COVERAGE"
+        figure={String(touchpointCount)}
+        figureLabel="TOUCHPOINTS · PROPOSAL COVERAGE"
+      >
+        <OverviewStatRow label="Objectives" value={objectiveCount} />
+        <OverviewStatRow label="Features" value={featureCount} />
+        <OverviewStatRow label="Visible modules" value={visibleSectionsCount} />
+        <OverviewStatRow label="Assumptions" value={assumptionCount} />
+        <OverviewStatRow label="Out of scope" value={outOfScopeCount} />
+      </OverviewWidget>
+
+      <OverviewWidget
+        number="05"
+        name="STAKEHOLDERS"
+        rightSlot="OWNERSHIP"
+        figure={clientName || "—"}
+        figureLabel="CLIENT · OWNERSHIP"
+        figureLong
+      >
+        <OverviewStatRow label="Owner" value={owner || "Not set"} />
+        <OverviewStatRow label="Prepared by" value={signoff?.preparedBy || "Not set"} />
+        <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
+        <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
+        <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
+      </OverviewWidget>
+    </section>
   );
 }
 
-function OverviewMetricCard({
-  eyebrow,
-  title,
-  subtitle,
+function OverviewWidget({
+  number,
+  name,
+  rightSlot,
+  figure,
+  figureLabel,
+  figureLong,
   children,
 }: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
+  number: string;
+  name: string;
+  rightSlot?: string;
+  figure: string;
+  figureLabel: string;
+  figureLong?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="app-subtle-panel p-5">
-      <p className="app-eyebrow">{eyebrow}</p>
-      <h4 className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">{title}</h4>
-      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
-      <div className="mt-4 space-y-2.5">{children}</div>
+    <section className="widget-card overflow-hidden">
+      <div className="widget-header">
+        <span className="widget-header-label">{number} // {name}</span>
+        {rightSlot ? <span className="widget-header-right">{rightSlot}</span> : null}
+      </div>
+      <div className="widget-body">
+        <p
+          className={cn(
+            "font-[family-name:var(--font-display)] font-normal leading-[1.05] tracking-[-1px] text-[var(--text-1)]",
+            figureLong ? "text-[28px]" : "text-[44px]",
+          )}
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          title={figure}
+        >
+          {figure}
+        </p>
+        <p className="widget-data-label mt-2">{figureLabel}</p>
+        <div className="mt-4 space-y-2 border-t border-[var(--border-3)] pt-4">{children}</div>
+      </div>
     </section>
   );
 }
@@ -1104,7 +1156,7 @@ function OverviewStatRow({
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
       <span className="text-[var(--text-3)]">{label}</span>
-      <span className="text-right font-semibold text-[var(--text-1)]">{value}</span>
+      <span className="text-right font-medium text-[var(--text-1)]">{value}</span>
     </div>
   );
 }

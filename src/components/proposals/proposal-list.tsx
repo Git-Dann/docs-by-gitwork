@@ -132,13 +132,29 @@ export function ProposalList() {
     router.push(`/app/proposals/${created.proposal.id}`);
   }
 
+  const totalCount = proposals.length;
+  const activeCount = proposals.filter(
+    (entry) => entry.status !== "ARCHIVED" && entry.status !== "APPROVED",
+  ).length;
+  const approvedCount = proposals.filter((entry) => entry.status === "APPROVED").length;
+
   return (
     <>
-      <section className="app-card overflow-hidden">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="DOCUMENTS" value={String(totalCount).padStart(2, "0")} hint="IN VIEW" widgetNumber="01" />
+        <StatTile label="IN FLIGHT" value={String(activeCount).padStart(2, "0")} hint="DRAFT · REVIEW" widgetNumber="02" />
+        <StatTile label="APPROVED" value={String(approvedCount).padStart(2, "0")} hint="SHIPPED" widgetNumber="03" tone="success" />
+        <StatTile label="PROOF DRAFTS" value={String(proofDocuments.length).padStart(2, "0")} hint="SAVED" widgetNumber="04" />
+      </section>
+
+      <section className="widget-card mt-4 overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">05 // PROPOSALS</span>
+          <span className="widget-header-right">{totalCount} TOTAL · {activeCount} ACTIVE</span>
+        </div>
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Proposals</h2>
-            <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+            <p className="text-sm leading-6 text-[var(--text-3)]">
               Proposal workstreams, review state, and delivery ownership managed inside Docs.
             </p>
           </div>
@@ -233,7 +249,7 @@ export function ProposalList() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="app-table min-w-full">
+          <table className="app-table proposals-table min-w-full">
             <thead>
               <tr>
                 <th className="w-[44px]">
@@ -256,11 +272,11 @@ export function ProposalList() {
                     aria-label="Select all documents on page"
                   />
                 </th>
-                <th className="text-left">Document</th>
-                <th className="text-left">Status</th>
-                <th className="text-left">Owner</th>
-                <th className="text-left">Updated</th>
-                <th className="text-right">Actions</th>
+                <th className="text-left">DOCUMENT</th>
+                <th className="text-left">STATUS</th>
+                <th className="text-left">OWNER</th>
+                <th className="text-left">UPDATED</th>
+                <th className="text-right">ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -460,27 +476,27 @@ export function ProposalList() {
         </div>
       </section>
 
-      <section className="app-card overflow-hidden">
+      <section className="widget-card mt-4 overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">06 // PROOF DRAFTS</span>
+          <span className="widget-header-right">{proofDocuments.length} SAVED</span>
+        </div>
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Proof drafts</h2>
-            <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">
+            <p className="text-sm leading-6 text-[var(--text-3)]">
               Working drafts saved from Proof now sit inside Docs so they can be attached to proposals later.
             </p>
           </div>
-          <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-3)]">
-            {proofDocuments.length} saved
-          </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="app-table min-w-full">
+          <table className="app-table proposals-table min-w-full">
             <thead>
               <tr>
-                <th className="text-left">Draft</th>
-                <th className="text-left">Linked proposal</th>
-                <th className="text-left">Updated</th>
-                <th className="text-right">Actions</th>
+                <th className="text-left">DRAFT</th>
+                <th className="text-left">LINKED PROPOSAL</th>
+                <th className="text-left">UPDATED</th>
+                <th className="text-right">ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -540,8 +556,8 @@ export function ProposalList() {
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
             <div className="app-dialog-panel w-full max-w-lg p-6">
-              <p className="app-eyebrow">Create</p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+              <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
+              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[32px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
                 Create document
               </h2>
               <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
@@ -631,6 +647,33 @@ export function ProposalList() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function StatTile({
+  widgetNumber,
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  widgetNumber: string;
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "default" | "success";
+}) {
+  const valueColor = tone === "success" ? "text-[var(--success-500)]" : "text-[var(--text-1)]";
+  return (
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">{widgetNumber} // {label}</span>
+      </div>
+      <div className="widget-body">
+        <p className={cn("widget-stat-sm", valueColor)}>{value}</p>
+        <p className="widget-data-label mt-2">{hint}</p>
+      </div>
+    </div>
   );
 }
 
