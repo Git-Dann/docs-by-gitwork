@@ -1300,12 +1300,12 @@ function ConversationCard({
       <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{convo.preview}</p>
       {convo.tags.length > 0 && (
         <div className="mt-2.5 flex flex-wrap gap-1">
-          {convo.tags.map((tag) => (
+          {[...new Set(convo.tags)].map((tag) => (
             <span
               key={tag}
               className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]"
             >
-              {tag}
+              {tag.replace(/_/g, " ")}
             </span>
           ))}
         </div>
@@ -1588,7 +1588,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
-  const [syncResults, setSyncResults] = useState<Record<string, { ingested?: number; filtered?: number; errors: string[] }>>({});
+  const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
 
@@ -1743,74 +1743,86 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : `Synced — ${sr.ingested ?? 0} ingested, ${sr.filtered ?? 0} filtered by agent`}
+                          : sr.fetched === 0
+                            ? "Synced — no new emails since last sync"
+                            : `Synced — ${sr.fetched} fetched, ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered by AI`}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {conn.health === "connected" ? (
-                    <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                      <CheckCircleIcon className="h-3.5 w-3.5" />
-                      Connected
-                    </span>
-                  ) : conn.health === "error" ? (
-                    <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
-                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                      Error
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                      Needs setup
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleSync(conn.id)}
-                    disabled={syncConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                  >
-                    <BoltIcon className="h-3 w-3" />
-                    {syncConn.isPending ? "Syncing…" : "Sync now"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
-                        void handleSync(conn.id, true);
-                      }
-                    }}
-                    disabled={syncConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                    title="Clear last-synced timestamp and pull the last 30 days of history"
-                  >
-                    <ArrowPathIcon className="h-3 w-3" />
-                    Re-sync history
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingConn(conn)}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                  >
-                    <PencilSquareIcon className="h-3 w-3" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
-                        deleteConn.mutate(conn.id);
-                      }
-                    }}
-                    disabled={deleteConn.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <TrashIcon className="h-3 w-3" />
-                    Delete
-                  </button>
-                </div>
+                {(() => {
+                  const pendingConnId = syncConn.isPending
+                    ? typeof syncConn.variables === "string"
+                      ? syncConn.variables
+                      : syncConn.variables?.connId
+                    : null;
+                  const isThisPending = pendingConnId === conn.id;
+                  return (
+                    <div className="flex items-center gap-2">
+                      {conn.health === "connected" ? (
+                        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                          <CheckCircleIcon className="h-3.5 w-3.5" />
+                          Connected
+                        </span>
+                      ) : conn.health === "error" ? (
+                        <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                          Error
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                          Needs setup
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSync(conn.id)}
+                        disabled={isThisPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                      >
+                        <BoltIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
+                        {isThisPending ? "Syncing…" : "Sync now"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
+                            void handleSync(conn.id, true);
+                          }
+                        }}
+                        disabled={isThisPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                        title="Clear last-synced timestamp and pull the last 30 days of history"
+                      >
+                        <ArrowPathIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
+                        Re-sync history
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingConn(conn)}
+                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        <PencilSquareIcon className="h-3 w-3" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
+                            deleteConn.mutate(conn.id);
+                          }
+                        }}
+                        disabled={deleteConn.isPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <TrashIcon className="h-3 w-3" />
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -2384,17 +2396,25 @@ export function SupportDashboard() {
   const { data: clientsData, isLoading: clientsLoading } = useSupportClients();
   const clients = useMemo(() => clientsData?.clients ?? [], [clientsData]);
 
-  const [activeClientId, setActiveClientId] = useState<string>("");
+  const [activeClientId, setActiveClientId] = useState<string>(() => {
+    try { return localStorage.getItem("care-active-client") ?? ""; } catch { return ""; }
+  });
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
   const [showAddClient, setShowAddClient] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Set first client when data loads
+  function selectClient(id: string) {
+    setActiveClientId(id);
+    try { localStorage.setItem("care-active-client", id); } catch { /* ignore */ }
+  }
+
+  // Set first client when data loads (or if stored ID no longer exists)
   useEffect(() => {
-    if (clients.length > 0 && !activeClientId) {
-      setActiveClientId(clients[0].id);
+    if (clients.length > 0 && (!activeClientId || !clients.find((c) => c.id === activeClientId))) {
+      selectClient(clients[0].id);
     }
-  }, [clients, activeClientId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
 
   const client = clients.find((c) => c.id === activeClientId);
 
@@ -2471,7 +2491,7 @@ export function SupportDashboard() {
                 key={c.id}
                 type="button"
                 title={c.name}
-                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                onClick={() => { selectClient(c.id); setActiveTab("inbox"); }}
                 className={cn(
                   "relative flex w-full items-center justify-center rounded-[10px] py-1.5 transition",
                   isActive ? "bg-[var(--mist)]" : "hover:bg-[var(--surface-1)]",
@@ -2495,7 +2515,7 @@ export function SupportDashboard() {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => { setActiveClientId(c.id); setActiveTab("inbox"); }}
+                onClick={() => { selectClient(c.id); setActiveTab("inbox"); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-[6px] px-2.5 py-2 text-left text-sm transition",
                   isActive
