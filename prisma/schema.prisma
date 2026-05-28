@@ -152,7 +152,8 @@ model Workspace {
   googleCalendarId          String?
   googleOAuthRefreshToken   String?
   slackBotToken             String?
-  slackSummaryChannelId     String?
+  slackSummaryChannelId     String?   // legacy single-channel — kept for migration
+  slackChannels             Json?     // Array<{ id: string; name: string }>
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]

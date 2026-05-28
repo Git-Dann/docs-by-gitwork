@@ -1955,22 +1955,50 @@ function SlackSection({
   onSaved: (updated: IntegrationsResponse) => void;
 }) {
   const [tokenInput, setTokenInput] = useState("");
-  const [channelId, setChannelId] = useState("");
+  const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
+  const [newChannelId, setNewChannelId] = useState("");
+  const [newChannelName, setNewChannelName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!config) return;
-    setChannelId(config.slackSummaryChannelId ?? "");
+    const saved = (config.slackChannels ?? []) as Array<{ id: string; name: string }>;
+    // If no multi-channel data yet but legacy single channel exists, seed from that
+    if (saved.length === 0 && config.slackSummaryChannelId) {
+      setChannels([{ id: config.slackSummaryChannelId, name: "General" }]);
+    } else {
+      setChannels(saved);
+    }
   }, [config]);
 
+  function addChannel() {
+    const id = newChannelId.trim();
+    const name = newChannelName.trim() || id;
+    if (!id) return;
+    if (channels.some((c) => c.id === id)) return; // already added
+    setChannels((prev) => [...prev, { id, name }]);
+    setNewChannelId("");
+    setNewChannelName("");
+  }
+
+  function removeChannel(id: string) {
+    setChannels((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  function updateChannelName(id: string, name: string) {
+    setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  }
+
   async function handleSave() {
-    if (!tokenInput.trim() && !channelId.trim()) return;
+    const hasToken = tokenInput.trim().length > 0;
+    const dirty = hasToken || true; // always allow saving channel list changes
+    if (!dirty) return;
     setSaving(true);
     try {
       const payload: Parameters<typeof saveIntegrations>[0] = {};
-      if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
-      if (channelId.trim()) payload.slackSummaryChannelId = channelId.trim();
+      if (hasToken) payload.slackBotToken = tokenInput.trim();
+      payload.slackChannels = channels;
       await saveIntegrations(payload);
       const updated = await getIntegrations();
       onSaved(updated);
@@ -1991,52 +2019,94 @@ function SlackSection({
         Slack context for meeting summaries
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Create a bot token
-        in your Slack app settings with <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code> scope.
+        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Add the channels
+        you want available — you can pick which ones to search per meeting. Requires a bot token with{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code> scope.
       </p>
 
-      <div className="mt-5 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          {/* Bot token */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-              Slack bot token
-            </label>
-            {config?.slackBotTokenMasked && !tokenInput && (
-              <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
-                <span className="font-mono text-xs text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
-              </div>
-            )}
-            <input
-              type="password"
-              className="app-input w-full font-mono text-sm"
-              placeholder={config?.slackBotTokenMasked ? "Paste new token to replace…" : "xoxb-…"}
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-            />
-          </div>
+      <div className="mt-5 space-y-5">
+        {/* Bot token */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+            Slack bot token
+          </label>
+          {config?.slackBotTokenMasked && !tokenInput && (
+            <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
+              <span className="font-mono text-xs text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
+              <span className="ml-auto text-[10px] text-emerald-600">Connected</span>
+            </div>
+          )}
+          <input
+            type="password"
+            className="app-input w-full font-mono text-sm"
+            placeholder={config?.slackBotTokenMasked ? "Paste new token to replace…" : "xoxb-…"}
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+          />
+        </div>
 
-          {/* Channel ID */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-              Summary channel ID
-            </label>
+        {/* Channel list */}
+        <div>
+          <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
+            Channels
+          </label>
+          {channels.length > 0 && (
+            <div className="mb-3 space-y-2">
+              {channels.map((ch) => (
+                <div key={ch.id} className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                  <input
+                    type="text"
+                    className="min-w-0 flex-1 bg-transparent text-xs font-medium text-[var(--text-1)] outline-none"
+                    value={ch.name}
+                    onChange={(e) => updateChannelName(ch.id, e.target.value)}
+                    placeholder="Channel name"
+                  />
+                  <span className="font-mono text-[10px] text-[var(--text-4)]">{ch.id}</span>
+                  <button
+                    onClick={() => removeChannel(ch.id)}
+                    className="ml-1 rounded p-0.5 text-[var(--text-4)] hover:text-red-500"
+                  >
+                    <XMarkIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add channel row */}
+          <div className="flex gap-2">
             <input
               type="text"
-              className="app-input w-full font-mono text-sm"
+              className="app-input w-40 font-mono text-sm"
               placeholder="C0123456789"
-              value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
+              value={newChannelId}
+              onChange={(e) => setNewChannelId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addChannel()}
             />
-            <p className="mt-1 text-[11px] text-[var(--text-4)]">
-              The channel the bot reads for meeting context. Right-click the channel in Slack → Copy link to find the ID.
-            </p>
+            <input
+              type="text"
+              className="app-input flex-1 text-sm"
+              placeholder="Label (e.g. #general)"
+              value={newChannelName}
+              onChange={(e) => setNewChannelName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addChannel()}
+            />
+            <button
+              onClick={addChannel}
+              disabled={!newChannelId.trim()}
+              className="app-button app-button-secondary px-3 py-2 text-sm disabled:opacity-40"
+            >
+              <PlusIcon className="h-4 w-4" />
+            </button>
           </div>
+          <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
+            Right-click a channel in Slack → Copy link — the ID is the last segment (e.g. <span className="font-mono">C0123456789</span>).
+          </p>
         </div>
 
         <button
           onClick={() => void handleSave()}
-          disabled={saving || (!tokenInput.trim() && !channelId.trim())}
+          disabled={saving}
           className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
         >
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}

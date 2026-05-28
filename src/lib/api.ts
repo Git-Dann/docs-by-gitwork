@@ -748,7 +748,13 @@ export interface IntegrationsResponse {
   googleCalendarId: string | null;
   googleOAuthConnected: boolean;
   slackBotTokenMasked: string | null;
-  slackSummaryChannelId: string | null;
+  slackSummaryChannelId: string | null; // legacy
+  slackChannels: SlackChannel[];
+}
+
+export interface SlackChannel {
+  id: string;
+  name: string;
 }
 
 export interface ModelOption {
@@ -785,6 +791,7 @@ export async function saveIntegrations(data: {
   googleCalendarId?: string;
   slackBotToken?: string;
   slackSummaryChannelId?: string;
+  slackChannels?: SlackChannel[];
 }): Promise<{ saved: boolean }> {
   return apiFetch("/api/settings/integrations", {
     method: "PUT",
@@ -1105,6 +1112,7 @@ export async function generateMeetingSummary(data: {
   eventTitle: string;
   eventDate: string;
   attendees: string[];
+  channelIds?: string[];
 }): Promise<{ summary: string }> {
   return apiFetch("/api/integrations/meeting-summary", {
     method: "POST",

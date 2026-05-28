@@ -32,6 +32,7 @@ export async function GET() {
         googleOAuthRefreshToken: true,
         slackBotToken: true,
         slackSummaryChannelId: true,
+        slackChannels: true,
       },
     });
 
@@ -61,6 +62,7 @@ export async function GET() {
       googleOAuthConnected: Boolean(workspace?.googleOAuthRefreshToken),
       slackBotTokenMasked: workspace?.slackBotToken ? maskKey(workspace.slackBotToken) : null,
       slackSummaryChannelId: workspace?.slackSummaryChannelId ?? null,
+      slackChannels: workspace?.slackChannels ?? [],
     });
   } catch (error) {
     return fromError(error);
@@ -83,6 +85,7 @@ const updateSchema = z.object({
   googleCalendarId: z.string().trim().optional(),
   slackBotToken: z.string().trim().optional(),
   slackSummaryChannelId: z.string().trim().optional(),
+  slackChannels: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
 });
 
 export async function PUT(request: NextRequest) {
@@ -106,11 +109,14 @@ export async function PUT(request: NextRequest) {
     if (body.slackBotToken) data.slackBotToken = body.slackBotToken;
     if (body.slackSummaryChannelId) data.slackSummaryChannelId = body.slackSummaryChannelId;
 
-    if (Object.keys(data).length === 0) return apiOk({ saved: false });
+    const fullData: Record<string, unknown> = { ...data };
+    if (body.slackChannels !== undefined) fullData.slackChannels = body.slackChannels;
+
+    if (Object.keys(fullData).length === 0) return apiOk({ saved: false });
 
     await prisma.workspace.updateMany({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      data,
+      data: fullData,
     });
 
     return apiOk({ saved: true });

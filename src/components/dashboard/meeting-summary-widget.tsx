@@ -5,8 +5,8 @@ import { VideoCameraIcon, SparklesIcon } from "@heroicons/react/24/solid";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, generateMeetingSummary } from "@/lib/api";
-import type { CalendarEvent } from "@/lib/api";
+import { getCalendarEvents, generateMeetingSummary, getIntegrations } from "@/lib/api";
+import type { CalendarEvent, SlackChannel } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
 
 function formatDate(iso: string): string {
@@ -50,6 +50,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
     queryKey: ["integrations", "calendar"],
@@ -57,6 +58,24 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
+
+  const { data: integrations } = useQuery({
+    queryKey: ["integrations", "settings"],
+    queryFn: getIntegrations,
+    staleTime: 1000 * 60 * 10,
+    retry: false,
+  });
+
+  const slackChannels = (integrations?.slackChannels ?? []) as SlackChannel[];
+
+  function toggleChannel(id: string) {
+    setSelectedChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function handleSummarise(event: CalendarEvent) {
     if (summaries[event.id]) {
@@ -66,11 +85,13 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
     setGenerating(event.id);
     setSelected(event.id);
     try {
+      const channelIds = selectedChannels.size > 0 ? Array.from(selectedChannels) : undefined;
       const res = await generateMeetingSummary({
         eventId: event.id,
         eventTitle: event.summary,
         eventDate: event.start,
         attendees: event.attendees,
+        channelIds,
       });
       setSummaries((prev) => ({ ...prev, [event.id]: res.summary }));
     } catch {
@@ -198,7 +219,31 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                 {activeSummary}
               </div>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2">
+              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                {/* Slack channel picker */}
+                {slackChannels.length > 0 && (
+                  <div className="w-full space-y-1.5">
+                    <p className="text-[10px] font-medium text-[var(--text-3)]">Slack channels to include</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {slackChannels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => toggleChannel(ch.id)}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                            selectedChannels.has(ch.id)
+                              ? "border-[var(--accent)] bg-blue-50 text-[var(--accent)]"
+                              : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                          }`}
+                        >
+                          #{ch.name}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedChannels.size === 0 && (
+                      <p className="text-[10px] text-[var(--text-4)]">No channels selected — all saved channels will be searched</p>
+                    )}
+                  </div>
+                )}
                 <button
                   onClick={() => void handleSummarise(activeEvent)}
                   className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"

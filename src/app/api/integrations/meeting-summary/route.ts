@@ -14,6 +14,7 @@ const bodySchema = z.object({
   eventTitle: z.string(),
   eventDate: z.string(),
   attendees: z.array(z.string()).default([]),
+  channelIds: z.array(z.string()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -112,23 +113,47 @@ export async function POST(req: NextRequest) {
 
     // ── Fetch Slack messages around event date ────────────────────────────────
     let slackContext = "";
-    if (workspace.slackBotToken && workspace.slackSummaryChannelId) {
+    if (workspace.slackBotToken) {
       try {
-        const eventTime = new Date(body.eventDate).getTime() / 1000;
-        const dayBefore = eventTime - 86400;
-        const dayAfter = eventTime + 86400;
+        // Resolve which channel IDs to search:
+        // 1. Use channelIds from request body if provided
+        // 2. Fall back to all saved channels on workspace
+        // 3. Fall back to legacy single-channel setting
+        const savedChannels = (workspace.slackChannels as Array<{ id: string; name: string }> | null) ?? [];
+        let targetIds: string[] = body.channelIds ?? savedChannels.map((c) => c.id);
+        if (targetIds.length === 0 && workspace.slackSummaryChannelId) {
+          targetIds = [workspace.slackSummaryChannelId];
+        }
 
-        const res = await fetch(
-          `https://slack.com/api/conversations.history?channel=${workspace.slackSummaryChannelId}&oldest=${dayBefore}&latest=${dayAfter}&limit=30`,
-          { headers: { Authorization: `Bearer ${workspace.slackBotToken}` } },
-        );
-        const data = (await res.json()) as { ok: boolean; messages?: Array<{ text: string; ts: string }> };
-        if (data.ok && data.messages) {
-          slackContext = data.messages
-            .filter((m) => m.text && m.text.toLowerCase().includes(body.eventTitle.toLowerCase().split(" ")[0]))
-            .map((m) => m.text)
-            .slice(0, 10)
-            .join("\n");
+        if (targetIds.length > 0) {
+          const eventTime = new Date(body.eventDate).getTime() / 1000;
+          const dayBefore = eventTime - 86400;
+          const dayAfter = eventTime + 86400;
+          const keyword = body.eventTitle.toLowerCase().split(" ")[0];
+
+          const allMessages: string[] = [];
+          await Promise.all(
+            targetIds.map(async (channelId) => {
+              try {
+                const res = await fetch(
+                  `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${dayBefore}&latest=${dayAfter}&limit=30`,
+                  { headers: { Authorization: `Bearer ${workspace.slackBotToken}` } },
+                );
+                const data = (await res.json()) as { ok: boolean; messages?: Array<{ text: string; ts: string }> };
+                if (data.ok && data.messages) {
+                  const matches = data.messages
+                    .filter((m) => m.text && m.text.toLowerCase().includes(keyword))
+                    .map((m) => m.text)
+                    .slice(0, 5);
+                  allMessages.push(...matches);
+                }
+              } catch {
+                // Channel unavailable — skip
+              }
+            }),
+          );
+
+          slackContext = allMessages.slice(0, 15).join("\n");
         }
       } catch {
         // Slack unavailable — continue without Slack context
