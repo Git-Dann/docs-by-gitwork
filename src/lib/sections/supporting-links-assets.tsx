@@ -1,5 +1,6 @@
 /** Section type: `supporting_links_assets` — links, deck refs, supporting graphics. */
 
+import { PaperClipIcon } from "@heroicons/react/24/outline";
 import { AssetPicker } from "@/components/proposals/asset-picker";
 import { LinkManager } from "@/components/proposals/link-manager";
 import { defineSection } from "@/lib/sections/types";
@@ -30,6 +31,11 @@ export const supportingLinksAssetsSection = defineSection<SupportingLinksSection
   key: "supporting_links_assets",
   displayName: "Supporting links & assets",
   description: "Decks, docs, graphics, and other supporting material.",
+  category: "media",
+  icon: PaperClipIcon,
+  defaultData: { notes: "" },
+  defaultTitle: "Supporting links & assets",
+  defaultDescription: "Decks, docs, graphics, and other supporting material.",
   aiExpandable: false,
   Editor: ({ data, onChange, proposal, onProposalChange }) => (
     <div className="space-y-3">

@@ -24,7 +24,32 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
-import type { ProposalDocument, ProposalSection, ProposalSectionData, SectionKey } from "@/types/proposal";
+import type { DocumentType, ProposalDocument, ProposalSection, ProposalSectionData, SectionKey } from "@/types/proposal";
+
+/**
+ * Block taxonomy used by the slide-in palette to group related blocks together. Each section
+ * type declares one category — the palette renders one collapsible group per category.
+ */
+export type SectionCategory =
+  | "structure"   // cover, headings, dividers, spacers — defines doc shape
+  | "narrative"   // intro, product overview, prose, callouts — long-form writing
+  | "lists"       // objectives, touchpoints, assumptions, exclusions — repeating items
+  | "tables"      // service tiers, response times, penalties, costing — tabular data
+  | "people"      // parties, signatures, signoff — counterparties + signers
+  | "commercials" // costing, timeline — money + dates
+  | "closing"     // CTA, supporting links, signatures — end-of-doc
+  | "media";      // images, supporting links — visual content
+
+export const SECTION_CATEGORIES: Array<{ key: SectionCategory; label: string; hint: string }> = [
+  { key: "structure",   label: "Structure",   hint: "Cover, headings, dividers" },
+  { key: "narrative",   label: "Narrative",   hint: "Long-form writing and prose" },
+  { key: "lists",       label: "Lists",       hint: "Repeating items, checklists" },
+  { key: "tables",      label: "Tables",      hint: "Structured tabular data" },
+  { key: "people",      label: "People",      hint: "Parties, signatures, sign-off" },
+  { key: "commercials", label: "Commercials", hint: "Pricing and timeline" },
+  { key: "media",       label: "Media",       hint: "Images and links" },
+  { key: "closing",     label: "Closing",     hint: "Calls to action and footers" },
+];
 
 export interface SectionEditorProps<TData = ProposalSectionData> {
   data: TData;
@@ -65,8 +90,30 @@ export interface SectionType<TData = ProposalSectionData> {
   displayName: string;
   /** Short description shown under the section in the builder panel + add menu. */
   description: string;
+  /** Category for grouping in the slide-in palette. */
+  category: SectionCategory;
+  /**
+   * Heroicons component used as the block's icon in the outline + palette. Stored as the
+   * component itself so the palette can render at any size; we use heroicons throughout the
+   * platform so they're already in the bundle.
+   */
+  icon: ComponentType<{ className?: string }>;
+  /**
+   * Document types where this block is recommended (shown at the top of the palette). All
+   * blocks are still available under "All blocks" regardless. Omit for "universal" blocks
+   * that suit every document type.
+   */
+  recommendedFor?: DocumentType[];
   /** Whether this section is prose-heavy enough to benefit from "Expand with AI". */
   aiExpandable?: boolean;
+  /** Default data shape used when the palette inserts a fresh instance. */
+  defaultData: TData;
+  /** Default visibility when inserted. Almost always true; cover defaults to true too. */
+  defaultVisible?: boolean;
+  /** Default title shown in the outline when first inserted. Used by the palette. */
+  defaultTitle: string;
+  /** Default description used for the section card under its title. */
+  defaultDescription?: string;
   /** The Builder-panel editor for this section type. */
   Editor: ComponentType<SectionEditorProps<TData>>;
   /** The print/preview render for this section type. */

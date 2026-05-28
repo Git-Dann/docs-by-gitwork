@@ -1,5 +1,6 @@
 /** Section type: `penalties` — service credit schedule. */
 
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { PenaltiesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { PrintTable, SectionIntro, Td, Th } from "@/lib/sections/_shared";
@@ -9,6 +10,12 @@ export const penaltiesSection = defineSection<PenaltiesSectionData>({
   key: "penalties",
   displayName: "Service Credits",
   description: "Service credits payable when targets are missed.",
+  category: "tables",
+  icon: ExclamationTriangleIcon,
+  defaultData: { intro: "", tiers: [] },
+  defaultTitle: "Service Credits",
+  defaultDescription: "Service credits payable when targets are missed.",
+  recommendedFor: ["SLA"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => <PenaltiesEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

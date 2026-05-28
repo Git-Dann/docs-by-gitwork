@@ -1,5 +1,6 @@
 /** Section type: `response_times` — priority + first-response + resolution table. */
 
+import { BoltIcon } from "@heroicons/react/24/outline";
 import { ResponseTimesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { PrintTable, SectionIntro, Td, Th } from "@/lib/sections/_shared";
@@ -9,6 +10,12 @@ export const responseTimesSection = defineSection<ResponseTimesSectionData>({
   key: "response_times",
   displayName: "Response & Resolution",
   description: "Time-to-respond and time-to-resolve targets by priority.",
+  category: "tables",
+  icon: BoltIcon,
+  defaultData: { intro: "", priorities: [] },
+  defaultTitle: "Response & Resolution",
+  defaultDescription: "Time-to-respond and time-to-resolve targets by priority.",
+  recommendedFor: ["SLA"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => <ResponseTimesEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

@@ -1,13 +1,22 @@
 /** Section type: `introduction` — company statement and positioning summary. */
 
+import { ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import type { IntroductionSectionData } from "@/types/proposal";
+
+const DEFAULT: IntroductionSectionData = { statement: "", summary: "", graphic: "" };
 
 export const introductionSection = defineSection<IntroductionSectionData>({
   key: "introduction",
   displayName: "Introduction",
   description: "Company statement and positioning summary.",
+  category: "narrative",
+  icon: ChatBubbleLeftEllipsisIcon,
+  defaultData: DEFAULT,
+  defaultTitle: "Introduction",
+  defaultDescription: "Company statement and positioning summary.",
+  recommendedFor: ["PROPOSAL", "SOW", "MSA"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <SimpleForm>

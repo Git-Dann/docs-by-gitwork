@@ -1,5 +1,6 @@
 /** Section type: `objectives` — what the engagement needs to achieve. */
 
+import { FlagIcon } from "@heroicons/react/24/outline";
 import { ObjectivesEditor } from "@/components/proposals/objectives-editor";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { defineSection } from "@/lib/sections/types";
@@ -9,6 +10,12 @@ export const objectivesSection = defineSection<ObjectivesSectionData>({
   key: "objectives",
   displayName: "Objectives",
   description: "What this engagement needs to achieve.",
+  category: "lists",
+  icon: FlagIcon,
+  defaultData: { items: [] },
+  defaultTitle: "Objectives",
+  defaultDescription: "What this engagement needs to achieve.",
+  recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <ObjectivesEditor

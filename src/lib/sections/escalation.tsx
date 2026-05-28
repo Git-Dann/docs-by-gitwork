@@ -1,5 +1,6 @@
 /** Section type: `escalation` — escalation ladder for unresolved incidents. */
 
+import { ArrowTrendingUpIcon } from "@heroicons/react/24/outline";
 import { EscalationEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { SectionIntro } from "@/lib/sections/_shared";
@@ -9,6 +10,12 @@ export const escalationSection = defineSection<EscalationSectionData>({
   key: "escalation",
   displayName: "Escalation",
   description: "Ladder for escalating unresolved incidents.",
+  category: "structure",
+  icon: ArrowTrendingUpIcon,
+  defaultData: { intro: "", levels: [] },
+  defaultTitle: "Escalation",
+  defaultDescription: "Ladder for escalating unresolved incidents.",
+  recommendedFor: ["SLA"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => <EscalationEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

@@ -1,5 +1,6 @@
 /** Section type: `touchpoints` — features/deliverables grouped by area. */
 
+import { SquaresPlusIcon } from "@heroicons/react/24/outline";
 import { TouchpointEditor } from "@/components/proposals/touchpoint-editor";
 import { defineSection } from "@/lib/sections/types";
 import type { TouchpointsSectionData } from "@/types/proposal";
@@ -8,6 +9,12 @@ export const touchpointsSection = defineSection<TouchpointsSectionData>({
   key: "touchpoints",
   displayName: "Touchpoints",
   description: "Features or deliverables grouped by area.",
+  category: "lists",
+  icon: SquaresPlusIcon,
+  defaultData: { items: [] },
+  defaultTitle: "Touchpoints",
+  defaultDescription: "Features or deliverables grouped by area.",
+  recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <TouchpointEditor

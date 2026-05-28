@@ -1,5 +1,6 @@
 /** Section type: `assumptions` — working assumptions about scope, dependencies, constraints. */
 
+import { CheckCircleIcon } from "@heroicons/react/24/outline";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { defineSection } from "@/lib/sections/types";
 import type { ListSectionData } from "@/types/proposal";
@@ -8,6 +9,12 @@ export const assumptionsSection = defineSection<ListSectionData>({
   key: "assumptions",
   displayName: "Assumptions",
   description: "Working assumptions about scope, dependencies, and constraints.",
+  category: "lists",
+  icon: CheckCircleIcon,
+  defaultData: { items: [] },
+  defaultTitle: "Assumptions",
+  defaultDescription: "Working assumptions about scope, dependencies, and constraints.",
+  recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <ListItemsEditor

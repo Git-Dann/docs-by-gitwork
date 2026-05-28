@@ -6,6 +6,7 @@
  * load it uniformly. Previews print as a 2-column card grid.
  */
 
+import { UserGroupIcon } from "@heroicons/react/24/outline";
 import { PartiesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import type { PartiesSectionData } from "@/types/proposal";
@@ -19,6 +20,12 @@ export const partiesSection = defineSection<PartiesSectionData>({
   key: "parties",
   displayName: "Parties",
   description: "Counterparties to this Agreement.",
+  category: "people",
+  icon: UserGroupIcon,
+  defaultData: DEFAULT,
+  defaultTitle: "Parties",
+  defaultDescription: "Counterparties to this Agreement.",
+  recommendedFor: ["SLA", "SOW", "MSA", "NDA", "CO"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => <PartiesEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

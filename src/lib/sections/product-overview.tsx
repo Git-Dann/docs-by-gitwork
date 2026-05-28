@@ -1,15 +1,30 @@
 /** Section type: `product_overview` — what the platform is, who it's for, value, supported platforms. */
 
+import { CubeIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormInput, FormTextArea, PlatformSupportField, SimpleForm } from "@/lib/sections/_shared";
 import type { ProductOverviewSectionData } from "@/types/proposal";
 
 const PLATFORM_OPTIONS = ["iOS", "Android", "Web", "Cross Platform"] as const;
 
+const DEFAULT: ProductOverviewSectionData = {
+  platformDescription: "",
+  audience: "",
+  valueProposition: "",
+  platformsSupported: "",
+  workflowGraphic: "",
+};
+
 export const productOverviewSection = defineSection<ProductOverviewSectionData>({
   key: "product_overview",
   displayName: "Product Overview",
   description: "What the platform is, who it's for, and the value it delivers.",
+  category: "narrative",
+  icon: CubeIcon,
+  defaultData: DEFAULT,
+  defaultTitle: "Product overview",
+  defaultDescription: "Platform, audience, value proposition.",
+  recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <SimpleForm>

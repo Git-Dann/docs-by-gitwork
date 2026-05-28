@@ -14,17 +14,22 @@
  */
 
 import { assumptionsSection } from "@/lib/sections/assumptions";
+import { calloutSection } from "@/lib/sections/callout";
 import { costingSection } from "@/lib/sections/costing";
 import { coverSection } from "@/lib/sections/cover";
 import { ctaNextStepsSection } from "@/lib/sections/cta-next-steps";
+import { dividerSection } from "@/lib/sections/divider";
 import { escalationSection } from "@/lib/sections/escalation";
 import { exclusionsSection } from "@/lib/sections/exclusions";
+import { headingSection } from "@/lib/sections/heading";
+import { imageSection } from "@/lib/sections/image";
 import { introductionSection } from "@/lib/sections/introduction";
 import { objectivesSection } from "@/lib/sections/objectives";
 import { outOfScopeSection } from "@/lib/sections/out-of-scope";
 import { partiesSection } from "@/lib/sections/parties";
 import { penaltiesSection } from "@/lib/sections/penalties";
 import { productOverviewSection } from "@/lib/sections/product-overview";
+import { proseSection } from "@/lib/sections/prose";
 import { responseTimesSection } from "@/lib/sections/response-times";
 import { serviceTiersSection } from "@/lib/sections/service-tiers";
 import { signaturesSection } from "@/lib/sections/signatures";
@@ -34,17 +39,22 @@ import { termSection } from "@/lib/sections/term";
 import { timelineSection } from "@/lib/sections/timeline";
 import { touchpointsSection } from "@/lib/sections/touchpoints";
 import type { SectionType } from "@/lib/sections/types";
-import type { SectionKey } from "@/types/proposal";
+import type { DocumentType, SectionKey } from "@/types/proposal";
 
 export const SECTION_REGISTRY: Record<SectionKey, SectionType> = {
   cover: coverSection,
+  heading: headingSection,
+  divider: dividerSection,
   introduction: introductionSection,
+  prose: proseSection,
   product_overview: productOverviewSection,
+  callout: calloutSection,
   objectives: objectivesSection,
   touchpoints: touchpointsSection,
   timeline: timelineSection,
   costing: costingSection,
   cta_next_steps: ctaNextStepsSection,
+  image: imageSection,
   supporting_links_assets: supportingLinksAssetsSection,
   assumptions: assumptionsSection,
   out_of_scope: outOfScopeSection,
@@ -73,4 +83,39 @@ export function allSectionKeys(): SectionKey[] {
 /** Section keys that the AI flow can target with the per-section expand action. */
 export function aiExpandableSectionKeys(): SectionKey[] {
   return allSectionKeys().filter((key) => SECTION_REGISTRY[key].aiExpandable === true);
+}
+
+/**
+ * Sort section keys for the palette: blocks recommended for the given doc type come first
+ * (in registry order), followed by everything else. Used by the slide-in palette to put
+ * doc-type-appropriate blocks at the top without hiding the rest.
+ */
+export function sortedKeysForDocumentType(documentType: DocumentType | undefined): SectionKey[] {
+  const all = allSectionKeys();
+  if (!documentType) return all;
+
+  const recommended: SectionKey[] = [];
+  const rest: SectionKey[] = [];
+  for (const key of all) {
+    const section = SECTION_REGISTRY[key];
+    const isRecommended =
+      section.recommendedFor === undefined || section.recommendedFor.includes(documentType);
+    (isRecommended ? recommended : rest).push(key);
+  }
+  return [...recommended, ...rest];
+}
+
+/** Group section keys by category, preserving the SECTION_CATEGORIES order. */
+export function sectionsByCategory(keys: SectionKey[]): Array<{
+  category: string;
+  keys: SectionKey[];
+}> {
+  const groups = new Map<string, SectionKey[]>();
+  for (const key of keys) {
+    const cat = SECTION_REGISTRY[key].category;
+    const list = groups.get(cat) ?? [];
+    list.push(key);
+    groups.set(cat, list);
+  }
+  return Array.from(groups.entries()).map(([category, keys]) => ({ category, keys }));
 }

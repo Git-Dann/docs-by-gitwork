@@ -10,6 +10,7 @@
  * (linked to timeline phases by id), and any free-text commercial notes.
  */
 
+import { CurrencyPoundIcon } from "@heroicons/react/24/outline";
 import { CostBreakdownTable } from "@/components/proposals/cost-breakdown-table";
 import { proposalSectionBlueprints } from "@/lib/default-template";
 import { formatCurrency } from "@/lib/format";
@@ -40,6 +41,12 @@ export const costingSection = defineSection<CostingSectionData>({
   key: "costing",
   displayName: "Costing",
   description: "Budget, payment schedule, and commercial notes.",
+  category: "commercials",
+  icon: CurrencyPoundIcon,
+  defaultData: DEFAULT_COSTING,
+  defaultTitle: "Costing",
+  defaultDescription: "Budget, payment schedule, and commercial notes.",
+  recommendedFor: ["PROPOSAL", "SOW", "CO"],
   aiExpandable: false,
   Editor: ({ data, proposal, sectionIndex, onProposalChange }) => (
     <CostBreakdownTable

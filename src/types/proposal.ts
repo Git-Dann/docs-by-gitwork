@@ -31,7 +31,13 @@ export type SectionKey =
   | "exclusions"       // bulleted exclusions with rationale
   | "penalties"        // service credit / penalty schedule
   | "term"             // effective date, duration, renewal, notice period
-  | "signatures";      // signature blocks for each party
+  | "signatures"       // signature blocks for each party
+  // ── Generic blocks (Sprint 7 — new) ────────────────────────────────────────
+  | "heading"          // visual section heading, three sizes
+  | "prose"            // freeform markdown-ish prose
+  | "callout"          // highlighted note (info / warning / success / danger)
+  | "image"            // standalone image with caption + alignment
+  | "divider";         // visual rule, spacer, or page break
 
 export type CostKind = "ONE_OFF" | "RECURRING";
 
@@ -282,6 +288,44 @@ export interface SignaturesSectionData {
   blocks: SignatureBlockItem[];
 }
 
+// ── Generic blocks (Sprint 7 — new) ───────────────────────────────────────────────────────
+
+export interface HeadingSectionData {
+  /** Visual size — h1 (page-level), h2 (section), h3 (subsection). */
+  level: "h1" | "h2" | "h3";
+  text: string;
+  /** Optional eyebrow above the heading (mono caps). */
+  eyebrow?: string;
+}
+
+export interface ProseSectionData {
+  /** Markdown-ish content. The preview renders paragraphs split on \n\n and trims line breaks. */
+  content: string;
+}
+
+export interface CalloutSectionData {
+  tone: "info" | "warning" | "success" | "danger" | "neutral";
+  /** Optional headline above the body. */
+  headline?: string;
+  body: string;
+}
+
+export interface ImageSectionData {
+  url: string;
+  altText: string;
+  caption?: string;
+  /** Image width — fits to its alignment. */
+  size: "small" | "medium" | "large" | "full";
+  alignment: "left" | "center" | "right";
+}
+
+export interface DividerSectionData {
+  /** Variant determines visual: rule = hairline; spacer = empty whitespace; page-break = forces a new page on print. */
+  variant: "rule" | "spacer" | "page-break";
+  /** Used by `spacer` variant — controls the gap height (px). */
+  spacing?: number;
+}
+
 export type ProposalSectionData =
   | CoverSectionData
   | IntroductionSectionData
@@ -301,7 +345,12 @@ export type ProposalSectionData =
   | ExclusionsSectionData
   | PenaltiesSectionData
   | TermSectionData
-  | SignaturesSectionData;
+  | SignaturesSectionData
+  | HeadingSectionData
+  | ProseSectionData
+  | CalloutSectionData
+  | ImageSectionData
+  | DividerSectionData;
 
 export interface ProposalSection {
   id?: string;

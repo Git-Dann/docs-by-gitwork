@@ -1,14 +1,31 @@
 /** Section type: `term` — effective date, duration, renewal, notice period, governing law. */
 
+import { ScaleIcon } from "@heroicons/react/24/outline";
 import { TermEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { PrintTable, Td } from "@/lib/sections/_shared";
 import type { TermSectionData } from "@/types/proposal";
 
+const DEFAULT: TermSectionData = {
+  effectiveDate: new Date().toISOString().slice(0, 10),
+  initialTermMonths: 12,
+  autoRenew: true,
+  renewalTerm: "",
+  noticePeriodDays: 60,
+  governingLaw: "",
+  terminationForCause: "",
+};
+
 export const termSection = defineSection<TermSectionData>({
   key: "term",
   displayName: "Term & Termination",
   description: "Duration, renewal, notice period, governing law.",
+  category: "structure",
+  icon: ScaleIcon,
+  defaultData: DEFAULT,
+  defaultTitle: "Term & Termination",
+  defaultDescription: "Duration, renewal, notice period, governing law.",
+  recommendedFor: ["SLA", "MSA", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => <TermEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => {

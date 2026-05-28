@@ -1,5 +1,6 @@
 /** Section type: `out_of_scope` — items expressly excluded from scope. */
 
+import { XCircleIcon } from "@heroicons/react/24/outline";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { defineSection } from "@/lib/sections/types";
 import type { ListSectionData } from "@/types/proposal";
@@ -8,6 +9,12 @@ export const outOfScopeSection = defineSection<ListSectionData>({
   key: "out_of_scope",
   displayName: "Out of Scope",
   description: "Items expressly excluded from this engagement.",
+  category: "lists",
+  icon: XCircleIcon,
+  defaultData: { items: [] },
+  defaultTitle: "Out of scope",
+  defaultDescription: "Items expressly excluded.",
+  recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => (
     <ListItemsEditor

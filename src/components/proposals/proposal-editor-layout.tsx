@@ -24,9 +24,12 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
+  EyeIcon,
+  EyeSlashIcon,
   HomeIcon,
   MinusIcon,
   PlusIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -34,9 +37,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
+import { BlockPalette } from "@/components/proposals/block-palette";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
@@ -146,6 +151,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [copied, setCopied] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
+  const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
@@ -329,37 +336,50 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     });
   }
 
-  function handleAddSection(key: SectionKey) {
-    if (!draft) {
-      return;
-    }
+  /**
+   * Insert a new block at `insertAt` (defaults to end). Uses the section registry's defaultData
+   * so every block type — including the new heading/prose/callout/image/divider — works without
+   * needing a parallel blueprint table.
+   */
+  function handleAddSection(key: SectionKey, insertAt?: number) {
+    if (!draft) return;
+    const sectionType = SECTION_REGISTRY[key];
+    if (!sectionType) return;
 
-    const blueprint = proposalSectionBlueprints.find((entry) => entry.key === key);
-    if (!blueprint) {
-      return;
-    }
+    const insertIndex =
+      typeof insertAt === "number"
+        ? Math.max(0, Math.min(insertAt, draft.sections.length))
+        : draft.sections.length;
 
     const nextSection: ProposalSection = {
       id: createDraftSectionId(),
-      key: blueprint.key,
-      title: blueprint.title,
-      description: blueprint.description,
-      sortOrder: draft.sections.length,
-      isVisible: blueprint.visible ?? true,
-      data: cloneSectionData(blueprint.data),
+      key: sectionType.key,
+      title: sectionType.defaultTitle,
+      description: sectionType.defaultDescription ?? "",
+      sortOrder: insertIndex,
+      isVisible: sectionType.defaultVisible !== false,
+      data: cloneSectionData(sectionType.defaultData as ProposalSection["data"]),
     };
 
-    const nextSections = [...draft.sections, nextSection].map((section, index) => ({
-      ...section,
-      sortOrder: index,
-    }));
+    const ordered = [...draft.sections].sort((a, b) => a.sortOrder - b.sortOrder);
+    ordered.splice(insertIndex, 0, nextSection);
+    const nextSections = ordered.map((section, index) => ({ ...section, sortOrder: index }));
 
-    updateDraft({
-      ...draft,
-      sections: nextSections,
-    });
+    updateDraft({ ...draft, sections: nextSections });
     setActiveSectionId(getSectionEntryId(nextSection));
     setActiveTab("builder");
+  }
+
+  function handleToggleVisibility(sectionId: string, nextVisible: boolean) {
+    if (!draft) return;
+    updateDraft({
+      ...draft,
+      sections: draft.sections.map((section) =>
+        getSectionEntryId(section) === sectionId
+          ? { ...section, isVisible: nextVisible }
+          : section,
+      ),
+    });
   }
 
   function handleDeleteSection(sectionId: string) {
@@ -733,9 +753,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             activeId={activeEntry?.id ?? null}
             editable
             onSelect={(id) => setActiveSectionId(id)}
-            onAddSection={handleAddSection}
+            onInsertAt={(index) => setPaletteInsertAt(index)}
             onDeleteSection={handleDeleteSection}
             onReorder={updateSectionOrder}
+            onToggleVisibility={handleToggleVisibility}
           />
 
           <ProposalBuilderPanel
@@ -758,6 +779,24 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           baselineRef.current = JSON.stringify(proposal);
         }}
       />
+
+      <BlockPalette
+        open={paletteInsertAt !== null}
+        onClose={() => setPaletteInsertAt(null)}
+        onPick={(key) => {
+          if (paletteInsertAt !== null) {
+            handleAddSection(key, paletteInsertAt);
+          }
+        }}
+        documentType={draft.documentType}
+        insertContextLabel={
+          paletteInsertAt !== null && paletteInsertAt < sectionEntries.length
+            ? `Inserting before block ${paletteInsertAt + 1}: ${sectionEntries[paletteInsertAt]?.section.title}`
+            : paletteInsertAt === sectionEntries.length
+              ? "Inserting at the end"
+              : undefined
+        }
+      />
     </div>
   );
 }
@@ -767,120 +806,98 @@ function TableOfContentsCard({
   activeId,
   editable,
   onSelect,
-  onAddSection,
+  onInsertAt,
   onDeleteSection,
   onReorder,
+  onToggleVisibility,
 }: {
   sections: Array<{ id: string; section: ProposalSection; order: number }>;
   activeId: string | null;
   editable?: boolean;
   onSelect: (id: string) => void;
-  onAddSection?: (key: SectionKey) => void;
+  /** Open the block palette to insert at the given index (0 = top, sections.length = end). */
+  onInsertAt?: (index: number) => void;
   onDeleteSection?: (id: string) => void;
   onReorder?: (activeId: string, overId: string) => void;
+  onToggleVisibility?: (id: string, nextVisible: boolean) => void;
 }) {
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 6,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   function handleDragEnd(event: DragEndEvent) {
-    if (!editable || !event.over || !onReorder) {
-      return;
-    }
-
+    if (!editable || !event.over || !onReorder) return;
     onReorder(String(event.active.id), String(event.over.id));
   }
 
   return (
     <aside className="widget-card overflow-hidden xl:sticky xl:top-6">
       <div className="widget-header">
-        <span className="widget-header-label">06 // CONTENTS</span>
-        <span className="widget-header-right">{sections.length} MODULES</span>
+        <span className="widget-header-label">06 {"// "}OUTLINE</span>
+        <span className="widget-header-right">
+          {sections.length} BLOCK{sections.length === 1 ? "" : "S"}
+        </span>
       </div>
-      <div className="p-4">
-      <div className="flex items-center justify-end gap-3 pb-2">
-        {editable ? (
-          <details className="group relative">
-            <summary
-              className={buttonStyles({
-                variant: "secondary",
-                size: "md",
-                className:
-                  "list-none gap-2 rounded-[6px] px-3 [&::-webkit-details-marker]:hidden",
-              })}
-            >
-              <PlusIcon className="h-4 w-4" />
-              Add
-            </summary>
-
-            <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-2 shadow-[var(--shadow-lg)]">
-              {proposalSectionBlueprints.map((module) => (
-                <button
-                  key={module.key}
-                  type="button"
-                  onClick={(event) => {
-                    onAddSection?.(module.key);
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                  }}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-base font-medium tracking-[-0.01em] text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                >
-                  <span>{module.title}</span>
-                </button>
+      <div className="p-3">
+        {sections.length ? (
+          editable ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={sections.map((entry) => entry.id)} strategy={verticalListSortingStrategy}>
+                <ol className="space-y-0">
+                  {sections.map((entry, index) => (
+                    <SortableTableOfContentsItem
+                      key={entry.id}
+                      entry={entry}
+                      isActive={entry.id === activeId}
+                      onSelect={onSelect}
+                      onDelete={onDeleteSection}
+                      onToggleVisibility={onToggleVisibility}
+                      onInsertAt={onInsertAt}
+                      insertIndex={index}
+                    />
+                  ))}
+                </ol>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <ol className="space-y-1">
+              {sections.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(entry.id)}
+                    className={cn(
+                      "w-full rounded-[10px] px-3 py-2.5 text-left text-sm tracking-[-0.01em] transition",
+                      entry.id === activeId
+                        ? "bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
+                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    {entry.order}. {entry.section.title}
+                  </button>
+                </li>
               ))}
-            </div>
-          </details>
-        ) : null}
-      </div>
-
-      {sections.length ? (
-        editable ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={sections.map((entry) => entry.id)} strategy={verticalListSortingStrategy}>
-              <ol className="mt-4 space-y-1.5">
-                {sections.map((entry) => (
-                  <SortableTableOfContentsItem
-                    key={entry.id}
-                    entry={entry}
-                    isActive={entry.id === activeId}
-                    onSelect={onSelect}
-                    onDelete={onDeleteSection}
-                  />
-                ))}
-              </ol>
-            </SortableContext>
-          </DndContext>
+            </ol>
+          )
         ) : (
-          <ol className="mt-4 space-y-1.5">
-            {sections.map((entry) => (
-              <li key={entry.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(entry.id)}
-                  className={cn(
-                    "w-full rounded-[10px] px-3 py-3 text-left text-sm tracking-[-0.01em] transition",
-                    entry.id === activeId
-                      ? "bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
-                      : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-                  )}
-                >
-                  {entry.order}. {entry.section.title}
-                </button>
-              </li>
-            ))}
-          </ol>
-        )
-      ) : (
-        <p className="mt-4 rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-          No modules yet. Use Add to start building the proposal.
-        </p>
-      )}
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-sm text-[var(--text-4)]">
+            No blocks yet. Use the button below to add your first.
+          </p>
+        )}
+
+        {editable ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => onInsertAt?.(sections.length)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-300)] hover:bg-[var(--brand-200)]/30 hover:text-[var(--brand-700)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add block
+            </button>
+          </div>
+        ) : null}
       </div>
     </aside>
   );
@@ -889,17 +906,27 @@ function TableOfContentsCard({
 function SortableTableOfContentsItem({
   entry,
   isActive,
+  insertIndex,
   onSelect,
   onDelete,
+  onInsertAt,
+  onToggleVisibility,
 }: {
   entry: { id: string; section: ProposalSection; order: number };
   isActive: boolean;
+  /** This row's index in the section list. Used by the hover-"+" to know where to insert. */
+  insertIndex: number;
   onSelect: (id: string) => void;
   onDelete?: (id: string) => void;
+  onInsertAt?: (index: number) => void;
+  onToggleVisibility?: (id: string, nextVisible: boolean) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
   });
+  const sectionType = SECTION_REGISTRY[entry.section.key];
+  const Icon = sectionType?.icon;
+  const isVisible = entry.section.isVisible !== false;
 
   return (
     <li
@@ -908,26 +935,48 @@ function SortableTableOfContentsItem({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={cn(isDragging ? "relative z-10" : "")}
+      className={cn("relative", isDragging ? "z-10" : "")}
     >
+      {/* Hover-reveal "+ insert above" — sits above each row, becomes a thin clickable region */}
+      {onInsertAt ? (
+        <button
+          type="button"
+          onClick={() => onInsertAt(insertIndex)}
+          className="group/insert absolute -top-2 left-0 right-0 z-10 flex h-3 cursor-pointer items-center justify-center"
+          aria-label={`Insert block before ${entry.section.title}`}
+        >
+          <span className="h-px w-full bg-transparent transition group-hover/insert:bg-[var(--brand-300)]" />
+          <span className="absolute flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-white text-[var(--text-3)] opacity-0 transition group-hover/insert:opacity-100">
+            <PlusIcon className="h-3 w-3" />
+          </span>
+        </button>
+      ) : null}
+
       <div
         className={cn(
-          "flex items-center gap-2 rounded-[10px] border px-2.5 py-2.5 transition",
+          "group flex items-center gap-1.5 rounded-[10px] border px-1.5 py-1.5 transition",
           isActive
             ? "border-[var(--border-2)] bg-[var(--surface-1)]"
             : "border-transparent hover:bg-[var(--surface-1)]",
           isDragging ? "border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]" : "",
+          !isVisible ? "opacity-50" : "",
         )}
       >
         <button
           type="button"
           aria-label={`Reorder ${entry.section.title}`}
-          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white active:cursor-grabbing"
+          className="flex h-7 w-5 cursor-grab items-center justify-center text-[var(--text-4)] transition hover:text-[var(--text-2)] active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
           <GrabberHandle />
         </button>
+
+        {Icon ? (
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--text-3)]">
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
 
         <button
           type="button"
@@ -937,22 +986,40 @@ function SortableTableOfContentsItem({
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
           )}
         >
-          <span className="block truncate whitespace-nowrap">
-            {entry.order}. {entry.section.title}
-          </span>
+          <span className="block truncate whitespace-nowrap">{entry.section.title}</span>
         </button>
 
-        <button
-          type="button"
-          aria-label={`Delete ${entry.section.title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete?.(entry.id);
-          }}
-          className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
-        >
-          <MinusIcon className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+          {onToggleVisibility ? (
+            <button
+              type="button"
+              aria-label={isVisible ? `Hide ${entry.section.title}` : `Show ${entry.section.title}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleVisibility(entry.id, !isVisible);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-[var(--text-1)]"
+              title={isVisible ? "Hide from preview + print" : "Show in preview + print"}
+            >
+              {isVisible ? (
+                <EyeIcon className="h-3.5 w-3.5" />
+              ) : (
+                <EyeSlashIcon className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={`Delete ${entry.section.title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete?.(entry.id);
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-rose-600"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </li>
   );

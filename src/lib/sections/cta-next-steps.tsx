@@ -1,5 +1,6 @@
 /** Section type: `cta_next_steps` — closing call-to-action with primary + secondary buttons. */
 
+import { ArrowRightCircleIcon } from "@heroicons/react/24/outline";
 import { CTAEditor } from "@/components/proposals/cta-editor";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { defineSection } from "@/lib/sections/types";
@@ -10,6 +11,12 @@ export const ctaNextStepsSection = defineSection<CtaSectionData>({
   key: "cta_next_steps",
   displayName: "Next steps",
   description: "Closing CTA — primary + secondary actions.",
+  category: "closing",
+  icon: ArrowRightCircleIcon,
+  defaultData: { headline: "", body: "" },
+  defaultTitle: "Next steps",
+  defaultDescription: "Closing call to action.",
+  recommendedFor: ["PROPOSAL"],
   aiExpandable: true,
   Editor: ({ data, onChange, proposal, onProposalChange }) => (
     <div className="space-y-3">

@@ -1,5 +1,6 @@
 /** Section type: `service_tiers` — service-tier table for SLAs. */
 
+import { ServerStackIcon } from "@heroicons/react/24/outline";
 import { ServiceTiersEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { PrintTable, SectionIntro, Td, Th } from "@/lib/sections/_shared";
@@ -9,6 +10,12 @@ export const serviceTiersSection = defineSection<ServiceTiersSectionData>({
   key: "service_tiers",
   displayName: "Services & Service Tiers",
   description: "Services covered, grouped by tier.",
+  category: "tables",
+  icon: ServerStackIcon,
+  defaultData: { intro: "", tiers: [] },
+  defaultTitle: "Services & Service Tiers",
+  defaultDescription: "Services covered, grouped by tier.",
+  recommendedFor: ["SLA"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => <ServiceTiersEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

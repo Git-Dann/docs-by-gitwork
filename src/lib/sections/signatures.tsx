@@ -1,5 +1,6 @@
 /** Section type: `signatures` — signature blocks for each party. */
 
+import { FingerPrintIcon } from "@heroicons/react/24/outline";
 import { SignaturesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { SectionIntro } from "@/lib/sections/_shared";
@@ -9,6 +10,12 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
   key: "signatures",
   displayName: "Signatures",
   description: "Authorised signatories for each party.",
+  category: "people",
+  icon: FingerPrintIcon,
+  defaultData: { intro: "", blocks: [] },
+  defaultTitle: "Signatures",
+  defaultDescription: "Authorised signatories for each party.",
+  recommendedFor: ["SLA", "SOW", "MSA", "NDA", "CO"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => <SignaturesEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

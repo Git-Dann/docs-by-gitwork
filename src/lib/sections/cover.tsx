@@ -6,11 +6,24 @@
  * `renderShell: false` so the dispatcher renders the cover at full bleed.
  */
 
+import { BookOpenIcon } from "@heroicons/react/24/outline";
 import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
 import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
 import { defineSection } from "@/lib/sections/types";
 import type { CoverSectionData } from "@/types/proposal";
+
+const DEFAULT_COVER_DATA: CoverSectionData = {
+  proposalTitle: "Untitled document",
+  productName: "",
+  clientName: "",
+  subtitle: "v1.0",
+  date: new Date().toISOString().slice(0, 10),
+  confidentiality: "Confidential.",
+  confidentialityMode: "INTERNAL",
+  heroImage: "",
+  brandLockup: "GITWORK",
+};
 
 function pickWatermark(status: string): string | undefined {
   switch (status) {
@@ -37,6 +50,11 @@ export const coverSection = defineSection<CoverSectionData>({
   key: "cover",
   displayName: "Cover",
   description: "Front page and confidentiality metadata.",
+  category: "structure",
+  icon: BookOpenIcon,
+  defaultData: DEFAULT_COVER_DATA,
+  defaultTitle: "Cover",
+  defaultDescription: "Front page and confidentiality metadata.",
   aiExpandable: false,
   // Cover opts out of the section shell — DocumentCover provides its own full-page layout.
   renderShell: false,

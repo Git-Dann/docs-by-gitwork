@@ -1,5 +1,6 @@
 /** Section type: `exclusions` — events excluded from SLA targets. */
 
+import { MinusCircleIcon } from "@heroicons/react/24/outline";
 import { ExclusionsEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { SectionIntro } from "@/lib/sections/_shared";
@@ -8,7 +9,13 @@ import type { ExclusionsSectionData } from "@/types/proposal";
 export const exclusionsSection = defineSection<ExclusionsSectionData>({
   key: "exclusions",
   displayName: "Exclusions",
-  description: "Events that don't count against the SLA targets.",
+  description: "Items excluded with a stated rationale.",
+  category: "lists",
+  icon: MinusCircleIcon,
+  defaultData: { intro: "", items: [] },
+  defaultTitle: "Exclusions",
+  defaultDescription: "Items excluded with a stated rationale.",
+  recommendedFor: ["SLA", "MSA"],
   aiExpandable: true,
   Editor: ({ data, onChange }) => <ExclusionsEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => (

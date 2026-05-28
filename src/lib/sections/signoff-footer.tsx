@@ -1,13 +1,30 @@
 /** Section type: `signoff_footer` — closing block with prepared-by + signature placeholders. */
 
+import { IdentificationIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { FormInput, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import type { SignoffFooterSectionData } from "@/types/proposal";
+
+const DEFAULT: SignoffFooterSectionData = {
+  preparedBy: "",
+  team: "",
+  contactDetails: "",
+  footerNote: "",
+  showBrandingBlock: true,
+  signatureName: "",
+  signatureDate: "",
+};
 
 export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
   key: "signoff_footer",
   displayName: "Signoff footer",
   description: "Prepared-by line and on-document signature placeholders.",
+  category: "closing",
+  icon: IdentificationIcon,
+  defaultData: DEFAULT,
+  defaultTitle: "Signoff footer",
+  defaultDescription: "Prepared-by line and on-document signature placeholders.",
+  recommendedFor: ["PROPOSAL"],
   aiExpandable: false,
   Editor: ({ data, onChange }) => (
     <SimpleForm>

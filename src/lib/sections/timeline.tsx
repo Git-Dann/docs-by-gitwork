@@ -3,6 +3,7 @@
  *  proposal as a whole, plus its costing section's durationSummary string.
  */
 
+import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 import { TimelineEditor } from "@/components/proposals/timeline-editor";
 import { defineSection } from "@/lib/sections/types";
 import type { CostingSectionData, TimelineSectionData } from "@/types/proposal";
@@ -18,6 +19,12 @@ export const timelineSection = defineSection<TimelineSectionData>({
   key: "timeline",
   displayName: "Timeline",
   description: "Project phases, durations, and target milestones.",
+  category: "commercials",
+  icon: CalendarDaysIcon,
+  defaultData: { viewMode: "LIST" },
+  defaultTitle: "Timeline",
+  defaultDescription: "Project phases and target milestones.",
+  recommendedFor: ["PROPOSAL", "SOW", "CO"],
   aiExpandable: false,
   Editor: ({ data, proposal, sectionIndex, onProposalChange }) => {
     const costingSection = proposal.sections.find((entry) => entry.key === "costing");
