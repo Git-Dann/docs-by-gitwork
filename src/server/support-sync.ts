@@ -12,11 +12,13 @@ interface DiscordChannelCursor {
 
 interface RedditScraperConfig {
   subreddit?: string;
+  clientId?: string;
+  clientSecret?: string;
   keywords?: string[];
 }
 
-const REDDIT_API = "https://www.reddit.com";
-const REDDIT_USER_AGENT = "Foundry by Gitwork/1.0";
+const REDDIT_OAUTH_API = "https://oauth.reddit.com";
+const REDDIT_USER_AGENT = "script:com.gitwork.foundry:v1.0 (by /u/gitwork_support)";
 
 interface DiscordScraperConfig {
   guildId: string;
@@ -206,12 +208,37 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
 // ─── Reddit sync ──────────────────────────────────────────────────────────────
 
+async function getRedditAccessToken(clientId: string, clientSecret: string): Promise<string> {
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": REDDIT_USER_AGENT,
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Reddit auth failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as { access_token?: string; error?: string };
+  if (!data.access_token) throw new Error(data.error ?? "No access_token in Reddit auth response");
+  return data.access_token;
+}
+
 async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   const config = ctx.connection.scraperConfig as RedditScraperConfig | null;
   const subreddit = config?.subreddit?.trim();
+  const clientId = config?.clientId?.trim();
+  const clientSecret = config?.clientSecret?.trim();
 
   if (!subreddit) {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
+  }
+  if (!clientId || !clientSecret) {
+    return { ingested: 0, filtered: 0, errors: ["Reddit Client ID and Client Secret are required — edit the connector to add them"] };
   }
 
   // Use lastSyncedAt as cursor; on first sync go back 7 days
@@ -225,9 +252,21 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   const errors: string[] = [];
   const keywords = (config?.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
 
+  let accessToken: string;
   try {
-    const res = await fetch(`${REDDIT_API}/r/${subreddit}/new.json?limit=25`, {
-      headers: { "User-Agent": REDDIT_USER_AGENT },
+    accessToken = await getRedditAccessToken(clientId, clientSecret);
+  } catch (err) {
+    return { ingested: 0, filtered: 0, errors: [err instanceof Error ? err.message : String(err)] };
+  }
+
+  const authHeaders = {
+    Authorization: `Bearer ${accessToken}`,
+    "User-Agent": REDDIT_USER_AGENT,
+  };
+
+  try {
+    const res = await fetch(`${REDDIT_OAUTH_API}/r/${subreddit}/new?limit=25`, {
+      headers: authHeaders,
     });
 
     if (!res.ok) {
@@ -291,8 +330,8 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
 
       // Pull top-level comments and store new ones
       try {
-        const commentsRes = await fetch(`${REDDIT_API}${post.permalink}.json?limit=10&depth=1`, {
-          headers: { "User-Agent": REDDIT_USER_AGENT },
+        const commentsRes = await fetch(`${REDDIT_OAUTH_API}${post.permalink}?limit=10&depth=1`, {
+          headers: authHeaders,
         });
         if (commentsRes.ok) {
           const commentsData = (await commentsRes.json()) as [

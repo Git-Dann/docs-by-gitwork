@@ -56,6 +56,8 @@ export interface Connection {
     botToken?: string;
     // Reddit
     subreddit?: string;
+    clientId?: string;
+    clientSecret?: string;
     keywords?: string[];
     // YouTube
     youtubeChannelId?: string;
