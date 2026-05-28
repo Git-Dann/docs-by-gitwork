@@ -15,6 +15,7 @@ interface DiscordScraperConfig {
   guildName?: string;
   botToken?: string;
   channels?: DiscordChannelCursor[];
+  keywords?: string[];
 }
 
 export interface SyncResult {
@@ -135,9 +136,17 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
       let lastMessageId = ch.lastMessageId ?? null;
 
+      const keywords = (config.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
+
       for (const msg of messages) {
         if (msg.author.bot) { filtered++; continue; }
         if (!msg.content.trim()) { filtered++; continue; }
+
+        // Keyword filter — if configured, only ingest messages containing at least one keyword
+        if (keywords.length > 0) {
+          const lower = msg.content.toLowerCase();
+          if (!keywords.some((kw) => lower.includes(kw))) { filtered++; continue; }
+        }
 
         // Skip already-ingested messages (guards against partial sync failures)
         const already = await prisma.supportMessage.findFirst({

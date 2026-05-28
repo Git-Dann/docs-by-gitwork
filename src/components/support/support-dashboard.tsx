@@ -334,6 +334,7 @@ function AddConnectorModal({
   const [discordToken, setDiscordToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
   const [discordGuildName, setDiscordGuildName] = useState("");
+  const [discordKeywords, setDiscordKeywords] = useState("");
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [fetchingChannels, setFetchingChannels] = useState(false);
@@ -392,7 +393,13 @@ function AddConnectorModal({
       const channels = availableChannels
         .filter((c) => selectedChannelIds.has(c.id))
         .map((c) => ({ id: c.id, name: c.name, lastMessageId: null }));
-      return { guildId: discordGuildId.trim(), guildName: discordGuildName, botToken: discordToken.trim(), channels };
+      return {
+        guildId: discordGuildId.trim(),
+        guildName: discordGuildName,
+        botToken: discordToken.trim(),
+        channels,
+        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+      };
     }
     if (source === "reddit") {
       return {
@@ -616,6 +623,18 @@ function AddConnectorModal({
                 </div>
               </div>
             )}
+
+            <label className="block space-y-1">
+              <span className="app-field-label">
+                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
+              </span>
+              <input
+                value={discordKeywords}
+                onChange={(e) => setDiscordKeywords(e.target.value)}
+                className="app-input w-full"
+                placeholder="e.g. bug, help, issue, broken"
+              />
+            </label>
           </div>
         )}
 
@@ -1526,6 +1545,9 @@ function EditConnectorModal({
   const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
   const [discordGuildId, setDiscordGuildId] = useState(conn.scraperConfig?.guildId ?? "");
   const [discordGuildName, setDiscordGuildName] = useState(conn.scraperConfig?.guildName ?? "");
+  const [discordKeywords, setDiscordKeywords] = useState(
+    (conn.scraperConfig?.keywords ?? []).join(", "),
+  );
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(
     new Set((conn.scraperConfig?.channels ?? []).map((c) => c.id)),
@@ -1599,6 +1621,7 @@ function EditConnectorModal({
         guildName: discordGuildName,
         botToken: discordToken.trim(),
         channels,
+        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
       };
     }
     if (conn.source === "reddit") {
@@ -1753,6 +1776,18 @@ function EditConnectorModal({
                 </div>
               </div>
             )}
+
+            <label className="block space-y-1">
+              <span className="app-field-label">
+                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
+              </span>
+              <input
+                value={discordKeywords}
+                onChange={(e) => setDiscordKeywords(e.target.value)}
+                className="app-input w-full"
+                placeholder="e.g. bug, help, issue, broken"
+              />
+            </label>
           </div>
         )}
 
