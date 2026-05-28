@@ -914,6 +914,15 @@ export async function updateSupportConnection(
   });
 }
 
+export async function deleteSupportConnection(
+  clientId: string,
+  connId: string,
+): Promise<void> {
+  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function syncSupportConnection(
   clientId: string,
   connId: string,

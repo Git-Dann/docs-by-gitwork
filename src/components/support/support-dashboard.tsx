@@ -41,6 +41,7 @@ import {
   useCreateSupportClient,
   useCreateSupportConnection,
   useCreateWorkflowRule,
+  useDeleteConnection,
   useDeleteWorkflowRule,
   useGenerateAiDraft,
   useSeedDefaultRules,
@@ -48,12 +49,12 @@ import {
   useSupportConversations,
   useSupportMessages,
   useUpdateConversation,
+  useUpdateConnection,
   useSendMessage,
   useSupportTickets,
   useUpdateTicket,
   useSupportConnections,
   useSupportWorkflowRules,
-
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";
@@ -1498,12 +1499,94 @@ function ReportsView({ client }: { client: SupportClient }) {
   );
 }
 
+// ─── edit connector modal ─────────────────────────────────────────────────────
+
+function EditConnectorModal({
+  clientId,
+  conn,
+  onClose,
+}: {
+  clientId: string;
+  conn: Connection;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(conn.label);
+  const [health, setHealth] = useState<Connection["health"]>(conn.health);
+  const [error, setError] = useState<string | null>(null);
+  const updateConn = useUpdateConnection(clientId);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    updateConn.mutate(
+      { connId: conn.id, data: { label: label.trim(), health } },
+      {
+        onSuccess: () => onClose(),
+        onError: (err) => setError(err instanceof Error ? err.message : "Failed to update connector"),
+      },
+    );
+  }
+
+  return (
+    <CareModal title="Edit connector" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Label</span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            required
+            className="app-input w-full"
+            placeholder="e.g. Acme Corp Discord"
+          />
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Status</span>
+          <select
+            value={health}
+            onChange={(e) => setHealth(e.target.value as Connection["health"])}
+            className="app-select w-full"
+          >
+            <option value="connected">Connected</option>
+            <option value="needs_setup">Needs setup</option>
+            <option value="error">Error</option>
+          </select>
+        </label>
+
+        {error && (
+          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={updateConn.isPending || !label.trim()}
+            loading={updateConn.isPending}
+          >
+            {updateConn.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </CareModal>
+  );
+}
+
 // ─── connectors view ─────────────────────────────────────────────────────────
 
 function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug: string }) {
   const { data, isLoading } = useSupportConnections(clientId);
   const connections = data?.connections ?? [];
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingConn, setEditingConn] = useState<Connection | null>(null);
+  const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { ingested?: number; filtered?: number; errors: string[] }>>({});
   const { data: logsData } = useSupportAuditLogs(clientId);
@@ -1706,6 +1789,27 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                     <ArrowPathIcon className="h-3 w-3" />
                     Re-sync history
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingConn(conn)}
+                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                  >
+                    <PencilSquareIcon className="h-3 w-3" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
+                        deleteConn.mutate(conn.id);
+                      }
+                    }}
+                    disabled={deleteConn.isPending}
+                    className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <TrashIcon className="h-3 w-3" />
+                    Delete
+                  </button>
                 </div>
               </div>
             );
@@ -1762,6 +1866,9 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
 
       {showAddModal && (
         <AddConnectorModal clientId={clientId} clientSlug={clientSlug} onClose={() => setShowAddModal(false)} />
+      )}
+      {editingConn && (
+        <EditConnectorModal clientId={clientId} conn={editingConn} onClose={() => setEditingConn(null)} />
       )}
     </div>
   );
