@@ -184,13 +184,22 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
 
   const lines: string[] = [];
   for (const [category, categoryChecks] of byCategory.entries()) {
-    lines.push(`${category}:`);
-    for (const check of categoryChecks) {
-      const icon = check.status === "PASS" ? "✓" : check.status === "WARN" ? "⚠" : check.status === "FAIL" ? "✗" : "—";
-      // PASS checks: label only — detail isn't needed for gap analysis
-      // WARN/FAIL: include full detail — the AI needs this to generate specific recommendations
-      const detail = check.status === "PASS" ? "" : `: ${check.detail ?? check.status}`;
-      lines.push(`  ${icon} ${check.label}${detail}`);
+    const pass = categoryChecks.filter((c) => c.status === "PASS").length;
+    const skip = categoryChecks.filter((c) => c.status === "SKIPPED").length;
+    const issues = categoryChecks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+
+    // Categories with no issues: emit a single summary line to save tokens
+    if (issues.length === 0 && pass + skip === categoryChecks.length) {
+      lines.push(`${category}: ${pass} passing, ${skip} skipped — all clear`);
+      continue;
+    }
+
+    lines.push(`${category}: ${pass} passing, ${issues.length} issues, ${skip} skipped`);
+    for (const check of issues) {
+      const icon = check.status === "FAIL" ? "✗" : "⚠";
+      // Truncate detail to 200 chars to keep token count bounded
+      const detail = check.detail ? check.detail.slice(0, 200) : check.status;
+      lines.push(`  ${icon} ${check.label}: ${detail}`);
     }
   }
   return lines.join("\n");
@@ -495,7 +504,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
     const message = await withRetry(() =>
       client.messages.create({
         model: getModelForTask(aiConfig),
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: [
           { type: "text", text: resolvedSystemPrompt, cache_control: { type: "ephemeral" } },
           { type: "text", text: GITWORK_VENDOR_CONTEXT, cache_control: { type: "ephemeral" } },
@@ -523,7 +532,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   const completion = await withRetry(() =>
     openaiClient.chat.completions.create({
       model: aiConfig.model,
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [
         { role: "system", content: `${resolvedSystemPrompt}\n\n${GITWORK_VENDOR_CONTEXT}` },
         { role: "user", content: userMessage },
