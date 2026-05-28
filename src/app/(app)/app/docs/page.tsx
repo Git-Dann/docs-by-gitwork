@@ -5,8 +5,8 @@ import { ProposalList } from "@/components/proposals/proposal-list";
 export default function DocsPage() {
   return (
     <AppShell
-      title="WIP"
-      subtitle="Work in progress — draft, structure, and ship documents for clients."
+      title="Docs"
+      subtitle="Draft, structure, and ship proposals, SLAs, SOWs, and other client documents."
     >
       <Suspense fallback={<p className="text-sm text-[var(--text-3)]">Loading proposals...</p>}>
         <ProposalList />
