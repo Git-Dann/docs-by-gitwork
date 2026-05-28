@@ -1372,10 +1372,10 @@ function TicketsView({ clientId }: { clientId: string }) {
         {/* header */}
         <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
           <span>Title</span>
-          <span className="w-24 text-center">Status</span>
-          <span className="w-16 text-center">Priority</span>
+          <span className="w-20 text-center">Priority</span>
           <span className="w-24 text-right">Updated</span>
-          <span className="w-24 text-right">Action</span>
+          <span className="w-8" />
+          <span className="w-36 text-right">Status</span>
         </div>
         {rows.map((ticket) => {
           const isExpanded = expandedId === ticket.id;
@@ -1389,42 +1389,52 @@ function TicketsView({ clientId }: { clientId: string }) {
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--text-1)]">{ticket.title}</p>
-                  <p className="truncate text-[11px] text-[var(--text-4)]">
-                    {ticket.customerLabel}
-                    {ticket.issueType && <span className="ml-1.5">· {ticket.issueType}</span>}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--text-4)]">{ticket.customerLabel}</span>
+                    {ticket.issueType && (
+                      <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
+                        {ticket.issueType}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
+                      <SourceIcon source={ticket.source} className="h-3 w-3" />
+                      {SOURCE_LABEL[ticket.source]}
+                    </span>
+                  </div>
                 </div>
-                <span className={cn("inline-flex w-24 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_TONE[ticket.status])}>
-                  {STATUS_LABEL[ticket.status]}
-                </span>
-                <span className={cn("inline-flex w-16 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
+                <span className={cn("inline-flex w-20 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
                   {ticket.priority}
                 </span>
                 <span className="w-24 text-right text-[11px] text-[var(--text-4)]">{formatShort(ticket.updatedAt)}</span>
-                <div className="flex w-24 justify-end">
-                  {ticket.status !== "resolved" ? (
-                    <span
-                      role="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateTicket.mutate({ ticketId: ticket.id, data: { status: "resolved" } });
-                      }}
-                      className="rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                    >
-                      Resolve
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-[var(--text-4)]">Done</span>
-                  )}
+                {/* chevron */}
+                <span className="flex w-8 justify-center text-[var(--text-4)]">
+                  <svg className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-180")} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+                {/* status dropdown */}
+                <div className="flex w-36 justify-end" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    value={ticket.status}
+                    onChange={(e) => updateTicket.mutate({ ticketId: ticket.id, data: { status: e.target.value as TicketStatus } })}
+                    className={cn(
+                      "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
+                      STATUS_TONE[ticket.status],
+                    )}
+                  >
+                    {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                    ))}
+                  </select>
                 </div>
               </button>
 
               {/* expanded detail */}
               {isExpanded && (
                 <div className="border-t border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-                  <div className="flex flex-wrap gap-6 text-xs">
+                  <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
                     {ticket.nextAction && (
-                      <div>
+                      <div className="min-w-[12rem]">
                         <p className="font-semibold text-[var(--text-3)]">Next action</p>
                         <p className="mt-0.5 text-[var(--text-2)]">{ticket.nextAction}</p>
                       </div>
@@ -1435,13 +1445,6 @@ function TicketsView({ clientId }: { clientId: string }) {
                         <p className="mt-0.5 text-[var(--text-2)]">{ticket.assignedTo}</p>
                       </div>
                     )}
-                    <div>
-                      <p className="font-semibold text-[var(--text-3)]">Source</p>
-                      <p className="mt-0.5 flex items-center gap-1 text-[var(--text-2)]">
-                        <SourceIcon source={ticket.source} className="h-3 w-3" />
-                        {SOURCE_LABEL[ticket.source]}
-                      </p>
-                    </div>
                   </div>
                 </div>
               )}
