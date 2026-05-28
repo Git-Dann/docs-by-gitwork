@@ -135,6 +135,146 @@ h2, h3, h4, h5 {
     background: var(--surface-1);
   }
 
+  /* DESIGN.md signature widget cards — `01 // WIDGET NAME` bento panels */
+  .widget-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    background: var(--surface-0);
+    overflow: hidden;
+  }
+
+  .widget-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 36px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border-2);
+    background: var(--surface-0);
+  }
+
+  .widget-header__label {
+    font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  .widget-header__label--number {
+    color: var(--brand-700);
+  }
+
+  .widget-header__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-sans), "Segoe UI", sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .widget-body {
+    flex: 1;
+    padding: 24px 16px;
+  }
+
+  .widget-body--compact {
+    padding: 16px;
+  }
+
+  .widget-body--feature {
+    padding: 32px 24px;
+  }
+
+  .widget-stat {
+    font-family: var(--font-display), "Times New Roman", Georgia, serif;
+    font-size: 48px;
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--text-1);
+  }
+
+  .widget-stat--large {
+    font-size: 64px;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+
+  .widget-data-label {
+    font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-4);
+  }
+
+  .widget-timestamp {
+    font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--text-4);
+  }
+
+  .widget-progress {
+    height: 4px;
+    width: 100%;
+    border-radius: 9999px;
+    background: var(--border-2);
+    overflow: hidden;
+  }
+
+  .widget-progress__fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--brand-600);
+    transition: width 0.4s ease;
+  }
+
+  .widget-status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--text-4);
+  }
+
+  .widget-status-dot--success { background: var(--success-500); }
+  .widget-status-dot--warning { background: var(--warning-500); }
+  .widget-status-dot--danger { background: var(--danger-500); }
+  .widget-status-dot--info { background: var(--brand-600); }
+
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  @media (max-width: 1023px) {
+    .bento-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 639px) {
+    .bento-grid { grid-template-columns: 1fr; }
+    .widget-stat { font-size: 40px; }
+    .widget-stat--large { font-size: 48px; }
+  }
+
   .app-subtle-panel {
     border: 1px solid rgba(0,0,0,0.08);
     border-radius: 10px;

@@ -531,6 +531,40 @@ export async function createPlacement(
   });
 }
 
+export async function setCandidateCurrentClient(
+  candidateId: string,
+  clientId: string | null,
+): Promise<{ clientId: string | null }> {
+  return apiFetch(`/api/codeclear/candidates/${candidateId}/current-client`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId }),
+  });
+}
+
+export interface DemoCleanupPreviewResponse {
+  candidates: Array<{ id: string; name: string; githubHandle: string }>;
+  ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
+  total: number;
+}
+
+export interface DemoCleanupApplyResponse {
+  deletedCandidates: number;
+  deletedRatePeople: number;
+  candidates: Array<{ id: string; name: string; githubHandle: string }>;
+  ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
+}
+
+export async function previewDemoCleanup(): Promise<DemoCleanupPreviewResponse> {
+  return apiFetch<DemoCleanupPreviewResponse>("/api/codeclear/admin/cleanup-demo");
+}
+
+export async function applyDemoCleanup(): Promise<DemoCleanupApplyResponse> {
+  return apiFetch<DemoCleanupApplyResponse>("/api/codeclear/admin/cleanup-demo", {
+    method: "POST",
+  });
+}
+
 export async function getProofHealth(): Promise<ProofHealthResponse> {
   return apiFetch<ProofHealthResponse>("/api/proof/health");
 }

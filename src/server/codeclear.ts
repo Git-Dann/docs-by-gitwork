@@ -227,6 +227,15 @@ export const codeClearListInclude = {
     },
     take: 1,
   },
+  // The "current client" = the candidate's only open-ended (endDate null)
+  // placement. Fetched here so the Code roster can show a per-dev dropdown
+  // without an N+1 round trip.
+  placements: {
+    where: { endDate: null },
+    include: { client: { select: { id: true, name: true, slug: true } } },
+    orderBy: { startDate: "desc" },
+    take: 1,
+  },
 } satisfies Prisma.CandidateInclude;
 
 export const codeClearDetailInclude = {
@@ -274,6 +283,17 @@ export function serializeCandidateListItem(
     ? serializeScoreDraft(candidate.scoreDraft)
     : null;
 
+  const openPlacement = candidate.placements?.[0];
+  const currentClient = openPlacement?.client
+    ? {
+        id: openPlacement.client.id,
+        name: openPlacement.client.name,
+        slug: openPlacement.client.slug,
+      }
+    : openPlacement
+      ? { id: null, name: openPlacement.clientName, slug: null }
+      : null;
+
   return {
     id: candidate.id,
     workspaceId: candidate.workspaceId,
@@ -298,6 +318,7 @@ export function serializeCandidateListItem(
     scoreDraft,
     latestGitHubAnalysis,
     analysisState: deriveCandidateAnalysisState(latestGitHubAnalysis, scoreDraft, score),
+    currentClient,
   };
 }
 
@@ -383,200 +404,11 @@ export function serializeActivityRecord(
   };
 }
 
-const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [
-  {
-    name: "Sindre Sorhus",
-    githubHandle: "sindresorhus",
-    email: "sindre@example.com",
-    primaryStack: "TypeScript",
-    location: "Remote",
-    bio: "Senior engineer with strong open-source history across developer tooling and product delivery.",
-    status: "CODECLEAR_COMPLETE",
-    tier: "TIER_1",
-    score: {
-      technicalDepth: 92,
-      codeQuality: 94,
-      aiFluency: 84,
-      deliveryReadiness: 90,
-      identityConfidence: "HIGH",
-      taskScore: 88,
-      taskTimeSeconds: 5400,
-      taskAiReview: "Strong systems thinking and polished repo hygiene across multiple maintained projects.",
-      verifiedAtOffsetDays: -9,
-      validForDays: 365,
-    },
-    placements: [
-      {
-        clientName: "Northstar Health",
-        projectName: "Documentation platform modernization",
-        startDateOffsetDays: -120,
-      },
-    ],
-    notes: [
-      {
-        body: "Strong fit for product-facing platform work with clear ownership and reliable delivery signals.",
-        createdBy: "Gitwork",
-        createdAtOffsetDays: -8,
-      },
-    ],
-    activity: [
-      {
-        eventType: "SOURCED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -20,
-      },
-      {
-        eventType: "SCORE_FINALIZED",
-        metadata: { by: "seed", overallScore: 90 },
-        createdAtOffsetDays: -9,
-      },
-    ],
-  },
-  {
-    name: "Dan Abramov",
-    githubHandle: "gaearon",
-    email: "team@gitwork.co.uk",
-    primaryStack: "React",
-    location: "London",
-    bio: "Frontend-heavy candidate with strong architecture instincts and a draft verification in progress.",
-    status: "ASSESSMENT_IN_PROGRESS",
-    tier: "TIER_1",
-    scoreDraft: {
-      technicalDepth: 86,
-      codeQuality: 89,
-      aiFluency: 79,
-      deliveryReadiness: 82,
-      identityConfidence: "HIGH",
-      taskScore: 84,
-      taskTimeSeconds: 6200,
-      taskAiReview: "Very strong frontend reasoning. Final review still needed before promotion to verified.",
-    },
-    notes: [
-      {
-        body: "Draft looks strong, but needs final verification and placement discussion.",
-        createdBy: "Gitwork",
-        createdAtOffsetDays: -3,
-      },
-    ],
-    activity: [
-      {
-        eventType: "SOURCED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -12,
-      },
-      {
-        eventType: "GITHUB_ANALYSIS_COMPLETED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -4,
-      },
-    ],
-  },
-  {
-    name: "Addy Osmani",
-    githubHandle: "addyosmani",
-    email: "addy@example.com",
-    primaryStack: "Web Performance",
-    location: "Remote",
-    bio: "Strong performance and platform profile with senior-level communication skills.",
-    status: "INVITED",
-    tier: "TIER_2",
-    activity: [
-      {
-        eventType: "SOURCED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -6,
-      },
-      {
-        eventType: "STATUS_CHANGE",
-        metadata: { from: "SOURCED", to: "INVITED", by: "seed" },
-        createdAtOffsetDays: -2,
-      },
-    ],
-  },
-  {
-    name: "Evan You",
-    githubHandle: "yyx990803",
-    email: "evan@example.com",
-    primaryStack: "Vue",
-    location: "Remote",
-    bio: "Framework-level experience with a strong balance of code quality and delivery leadership.",
-    status: "PLACED",
-    tier: "TIER_1",
-    score: {
-      technicalDepth: 95,
-      codeQuality: 93,
-      aiFluency: 78,
-      deliveryReadiness: 88,
-      identityConfidence: "HIGH",
-      taskScore: 86,
-      taskTimeSeconds: 5900,
-      taskAiReview: "Excellent portfolio depth and consistency, well suited to senior client placements.",
-      verifiedAtOffsetDays: -45,
-      validForDays: 365,
-    },
-    placements: [
-      {
-        clientName: "Axis Labs",
-        projectName: "Developer verification portal",
-        startDateOffsetDays: -60,
-      },
-    ],
-    activity: [
-      {
-        eventType: "PLACED",
-        metadata: { by: "seed", clientName: "Axis Labs" },
-        createdAtOffsetDays: -60,
-      },
-    ],
-  },
-  {
-    name: "TJ Holowaychuk",
-    githubHandle: "tj",
-    email: "tj@example.com",
-    primaryStack: "Node.js",
-    location: "Remote",
-    bio: "Backend-oriented operator with fast delivery habits and mature open-source signals.",
-    status: "RECHECK_DUE",
-    tier: "TIER_2",
-    recheckDueAtOffsetDays: 12,
-    score: {
-      technicalDepth: 87,
-      codeQuality: 85,
-      aiFluency: 72,
-      deliveryReadiness: 83,
-      identityConfidence: "MEDIUM",
-      taskScore: 80,
-      taskTimeSeconds: 7100,
-      taskAiReview: "Good backend signal with enough recent activity to justify a re-check rather than full re-evaluation.",
-      verifiedAtOffsetDays: -330,
-      validForDays: 365,
-    },
-    activity: [
-      {
-        eventType: "RECHECK_FLAGGED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -1,
-      },
-    ],
-  },
-  {
-    name: "Linus Torvalds",
-    githubHandle: "torvalds",
-    email: "linus@example.com",
-    primaryStack: "Systems",
-    location: "Remote",
-    bio: "Deep technical profile added to the sourcing queue for comparative benchmarking.",
-    status: "SOURCED",
-    tier: "TIER_3",
-    activity: [
-      {
-        eventType: "SOURCED",
-        metadata: { by: "seed" },
-        createdAtOffsetDays: -1,
-      },
-    ],
-  },
-];
+// Demo candidates (Sindre, Dan Abramov, etc.) were removed: CodeClear is a
+// Gitwork-only roster product, so the seed now derives candidates solely from
+// the rate-card people in src/server/rate-card.ts via buildGitworkRosterCandidates().
+const defaultCodeClearCandidates: SeedCodeClearCandidate[] = [];
+
 
 function normalizeGitworkHandle(value: string) {
   return value

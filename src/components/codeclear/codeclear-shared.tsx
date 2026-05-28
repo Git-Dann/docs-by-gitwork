@@ -77,7 +77,7 @@ export function CodeClearTabs() {
   const pathname = usePathname();
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {tabItems.map((item) => {
         const active = pathname === item.href;
 
@@ -86,7 +86,7 @@ export function CodeClearTabs() {
             key={item.href}
             href={item.href}
             className={cn(
-              "inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition",
+              "inline-flex items-center rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition",
               active
                 ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
                 : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
@@ -97,6 +97,54 @@ export function CodeClearTabs() {
         );
       })}
     </div>
+  );
+}
+
+export function WidgetCard({
+  number,
+  name,
+  status,
+  statusTone = "info",
+  children,
+  className,
+  bodyClassName,
+}: {
+  number: string;
+  name: string;
+  status?: string;
+  statusTone?: "info" | "success" | "warning" | "danger" | "muted";
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}) {
+  const dotTone =
+    statusTone === "success"
+      ? "widget-status-dot--success"
+      : statusTone === "warning"
+        ? "widget-status-dot--warning"
+        : statusTone === "danger"
+          ? "widget-status-dot--danger"
+          : statusTone === "info"
+            ? "widget-status-dot--info"
+            : "";
+
+  return (
+    <section className={cn("widget-card", className)}>
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{number}</span>
+          <span className="mx-1.5 text-[var(--text-4)]">{"//"}</span>
+          {name}
+        </span>
+        {status ? (
+          <span className="widget-header__status">
+            <span className={cn("widget-status-dot", dotTone)} aria-hidden />
+            {status}
+          </span>
+        ) : null}
+      </div>
+      <div className={cn("widget-body", bodyClassName)}>{children}</div>
+    </section>
   );
 }
 

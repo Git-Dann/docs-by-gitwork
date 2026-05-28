@@ -355,6 +355,12 @@ export const placementCreateSchema = z.object({
   endDate: z.coerce.date().nullable().optional(),
 });
 
+// Used by the Code roster's per-dev "Current client" dropdown.
+// Pass clientId to assign, omit (or pass null) to unassign.
+export const currentClientUpdateSchema = z.object({
+  clientId: z.string().cuid().nullable().optional(),
+});
+
 export const proposalUpdateSchema = z.object({
   title: z.string().optional(),
   status: documentStatusSchema.optional(),

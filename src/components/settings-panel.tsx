@@ -19,7 +19,9 @@ import {
   createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson,
   getIntegrations, saveIntegrations, fetchProviderModels,
   listTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember, resetTeamMemberPassword,
+  previewDemoCleanup, applyDemoCleanup,
   type IntegrationsResponse, type ModelOption, type TeamMember,
+  type DemoCleanupPreviewResponse, type DemoCleanupApplyResponse,
 } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
@@ -2175,8 +2177,156 @@ function DeveloperTab({
   return (
     <div className="space-y-6">
       <ExternalApiKeySection />
+      <DemoDataCleanupSection />
       <ApiSection apiKeyConfigured={apiKeyConfigured} />
     </div>
+  );
+}
+
+function DemoDataCleanupSection() {
+  const [preview, setPreview] = useState<DemoCleanupPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState<DemoCleanupApplyResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handlePreview() {
+    setError(null);
+    setApplied(null);
+    setPreviewLoading(true);
+    try {
+      const result = await previewDemoCleanup();
+      setPreview(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load preview");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleApply() {
+    if (!preview || preview.total === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${preview.total} row${preview.total === 1 ? "" : "s"}? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setApplying(true);
+    try {
+      const result = await applyDemoCleanup();
+      setApplied(result);
+      setPreview(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cleanup failed");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  const totalToDelete = preview?.total ?? 0;
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Maintenance</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Demo data cleanup
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Removes the original demo candidates (Sindre Sorhus, Dan Abramov, Addy Osmani, Evan You,
+        TJ Holowaychuk, Linus Torvalds) and the legacy rate-card seed entries that aren&apos;t in
+        the current Gitwork roster. It only touches those specific known records — anything
+        you&apos;ve added yourself stays put. Safe to re-run; nothing happens the second time.
+      </p>
+
+      {error ? (
+        <div className="mt-4 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      {applied ? (
+        <div className="mt-4 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <p className="font-semibold">Cleanup complete</p>
+          <p className="mt-1">
+            Deleted {applied.deletedCandidates} candidate
+            {applied.deletedCandidates === 1 ? "" : "s"} and {applied.deletedRatePeople} rate-card{" "}
+            {applied.deletedRatePeople === 1 ? "person" : "people"}.
+          </p>
+        </div>
+      ) : null}
+
+      {preview ? (
+        <div className="mt-5 space-y-4">
+          {preview.total === 0 ? (
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm text-[var(--text-3)]">
+              Nothing to clean up — the demo records are already gone.
+            </div>
+          ) : (
+            <>
+              {preview.candidates.length > 0 ? (
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-2)]">
+                    Candidates ({preview.candidates.length})
+                  </p>
+                  <ul className="mt-2 divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
+                    {preview.candidates.map((candidate) => (
+                      <li key={candidate.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="font-medium text-[var(--text-1)]">{candidate.name}</span>
+                        <span className="font-mono text-xs text-[var(--text-4)]">
+                          @{candidate.githubHandle}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {preview.ratePeople.length > 0 ? (
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-2)]">
+                    Rate-card people ({preview.ratePeople.length})
+                  </p>
+                  <ul className="mt-2 divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
+                    {preview.ratePeople.map((person) => (
+                      <li key={person.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="font-medium text-[var(--text-1)]">{person.name}</span>
+                        <span className="font-mono text-xs text-[var(--text-4)]">
+                          {person.seedIdentifier ?? "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={handlePreview}
+          disabled={previewLoading}
+        >
+          {previewLoading ? "Loading…" : preview ? "Refresh preview" : "Preview cleanup"}
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={handleApply}
+          disabled={!preview || totalToDelete === 0 || applying}
+        >
+          {applying ? "Deleting…" : `Apply cleanup${totalToDelete > 0 ? ` (${totalToDelete})` : ""}`}
+        </Button>
+      </div>
+    </section>
   );
 }
 

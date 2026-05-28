@@ -6,7 +6,6 @@ import {
   BeakerIcon,
   CheckCircleIcon,
   ClockIcon,
-  DocumentTextIcon,
   ExclamationTriangleIcon,
   PencilSquareIcon,
   PlayCircleIcon,
@@ -14,19 +13,26 @@ import {
   SparklesIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
+import {
+  useCodeClearCandidates,
+  useCodeClearStats,
+  useSetCandidateCurrentClient,
+} from "@/hooks/use-codeclear";
+import { useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
-import { statusLabel } from "@/types/codeclear";
+import { rosterIndexFor } from "@/lib/gitwork-roster";
+import { statusLabel, type CodeClearCandidateListItem } from "@/types/codeclear";
+import type { ClientListItem } from "@/types/client";
 import {
   CodeClearAnalysisBadge,
   CodeClearScoreBadge,
   CodeClearStatusBadge,
   CodeClearTabs,
-  EmptyState,
-  MetricCard,
   StackPill,
+  WidgetCard,
 } from "@/components/codeclear/codeclear-shared";
 
 // Human-readable labels for activity event types
@@ -95,35 +101,43 @@ function getEventMeta(eventType: string) {
 
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
-  const spotlightQuery = useCodeClearCandidates({
-    page: 1,
-    pageSize: 6,
-    sortBy: "overallScore",
-    sortDir: "desc",
-  });
   const allCandidatesQuery = useCodeClearCandidates({
     page: 1,
     pageSize: 100,
     sortBy: "createdAt",
     sortDir: "desc",
   });
+  const clientsQuery = useClientList();
 
   const stats = statsQuery.data;
-  const spotlight = spotlightQuery.data?.items ?? [];
-  const allCandidates = allCandidatesQuery.data?.items ?? [];
+  const allCandidates = useMemo(
+    () => allCandidatesQuery.data?.items ?? [],
+    [allCandidatesQuery.data],
+  );
+  const clients = clientsQuery.data?.clients ?? [];
+
+  // Sort roster: canonical Slack order first (Shahab → Ali Asghar), then any
+  // new devs added later — by createdAt so they slot in at the bottom in the
+  // order they were added. This keeps the familiar list stable while still
+  // welcoming additions.
+  const orderedRoster = useMemo(() => {
+    return [...allCandidates].sort((a, b) => {
+      const ai = rosterIndexFor(a.name);
+      const bi = rosterIndexFor(b.name);
+      if (ai !== bi) return ai - bi;
+      // Both in roster or both outside — fall back to createdAt asc
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+  }, [allCandidates]);
 
   const stageTotal = (stats?.byStatus ?? []).reduce((sum, e) => sum + e.count, 0);
 
-  // Derived: signal coverage
   const scanned = allCandidates.filter(
     (c) => c.analysisState === "COMPLETE" || c.analysisState === "DRAFT_UPDATED",
   ).length;
   const coveragePct =
-    allCandidates.length > 0 ? Math.round((scanned / allCandidates.length) * 100) : null;
-
-  // Derived: how many are actively scanning right now
+    allCandidates.length > 0 ? Math.round((scanned / allCandidates.length) * 100) : 0;
   const scanning = allCandidates.filter((c) => c.analysisState === "RUNNING").length;
-
   const neverScanned = allCandidates.filter((c) => c.analysisState === "NEVER_RUN").length;
 
   return (
@@ -144,7 +158,7 @@ export function CodeClearOverview() {
         </div>
       </div>
 
-      {/* Alerts */}
+      {/* Alerts (kept above the bento — operational signal) */}
       {(neverScanned > 0 || (stats?.recheckDue ?? 0) > 0) ? (
         <div className="flex flex-col gap-2 sm:flex-row">
           {neverScanned > 0 ? (
@@ -176,70 +190,98 @@ export function CodeClearOverview() {
         </div>
       ) : null}
 
-      {/* Top metrics */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Total candidates"
+      {/* Bento — numbered widget grid */}
+      <div className="bento-grid">
+        <StatWidget
+          number="01"
+          name="ROSTER"
           value={String(stats?.total ?? 0)}
+          unit="CANDIDATES"
           caption="Across all pipeline stages"
+          className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-        <MetricCard
-          label="Avg score (this month)"
-          value={stats?.avgThis != null ? `${stats.avgThis}/100` : "—"}
+        <StatWidget
+          number="02"
+          name="AVG SCORE"
+          value={stats?.avgThis != null ? String(stats.avgThis) : "—"}
+          unit="/ 100 THIS MONTH"
           caption={
-            stats?.avgLast != null
-              ? `Last month: ${stats.avgLast}/100`
-              : "No prior month data yet"
+            stats?.avgLast != null ? `Last month ${stats.avgLast}/100` : "No prior month data yet"
           }
+          className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-        <MetricCard
-          label="Pass rate (65+)"
-          value={stats?.passRateThis != null ? `${stats.passRateThis}%` : "—"}
-          caption="Verified candidates scoring 65 or above this month"
+        <StatWidget
+          number="03"
+          name="PASS RATE"
+          value={stats?.passRateThis != null ? String(stats.passRateThis) : "—"}
+          unit="% AT 65+"
+          caption="Verified candidates this month"
+          className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-        <MetricCard
-          label="Signal coverage"
-          value={coveragePct !== null ? `${coveragePct}%` : "—"}
+        <StatWidget
+          number="04"
+          name="SIGNAL COVERAGE"
+          value={String(coveragePct)}
+          unit="% OF ROSTER"
           caption={
             scanning > 0
-              ? `${scanning} live source run${scanning > 1 ? "s" : ""} in progress`
-              : `${scanned} of ${allCandidates.length} profiles scored from live signal`
+              ? `${scanning} live scan${scanning > 1 ? "s" : ""} in progress`
+              : `${scanned} of ${allCandidates.length} scored from live signal`
           }
+          progress={coveragePct}
+          status={scanning > 0 ? "LIVE" : undefined}
+          statusTone={scanning > 0 ? "info" : "muted"}
+          className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-      </div>
 
-      <section className="app-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <p className="text-lg font-semibold text-[var(--text-1)]">Integration direction</p>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              CodeClear should read as a licensable validation layer, not only an internal GitHub scanner. The strongest version combines test results, identity checks, repo signal, interview notes, references, and delivery context into one clear score.
-            </p>
-          </div>
-          <Link href="/app/codeclear/pipeline">
-            <Button type="button" variant="secondary" size="sm">
-              Open signal pipeline
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      {/* Stage distribution + Activity */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <section className="app-card p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-lg font-semibold text-[var(--text-1)]">Stage distribution</p>
-              <p className="mt-1 text-sm text-[var(--text-4)]">
-                Where candidates sit in the pipeline right now.
+        {/* Direction copy */}
+        <WidgetCard
+          number="05"
+          name="OPERATING DIRECTION"
+          className="col-span-12 xl:col-span-8"
+          bodyClassName="widget-body--feature"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="max-w-2xl space-y-3">
+              <p className="font-display text-[28px] font-normal leading-[1.15] tracking-[-0.02em] text-[var(--text-1)]">
+                A licensable verification layer — not just a GitHub scanner.
+              </p>
+              <p className="text-sm leading-6 text-[var(--text-3)]">
+                CodeClear combines test results, identity checks, repo signal, interview notes, references, and delivery context into one defensible score. The strongest version reads as instrument-grade evidence, not a recruiter feed.
               </p>
             </div>
-            <Link href="/app/codeclear/pipeline" className="text-sm font-semibold text-[var(--brand-700)]">
-              Open pipeline →
+            <Link href="/app/codeclear/pipeline">
+              <Button type="button" variant="secondary" size="sm">
+                Open signal pipeline
+              </Button>
             </Link>
           </div>
+        </WidgetCard>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <WidgetCard
+          number="06"
+          name="QUEUE STATUS"
+          className="col-span-12 xl:col-span-4"
+          status={scanning > 0 ? "ACTIVE" : "IDLE"}
+          statusTone={scanning > 0 ? "info" : "muted"}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <QueueStat label="LIVE SCANS" value={String(scanning)} tone="info" />
+            <QueueStat label="NEVER SCANNED" value={String(neverScanned)} tone={neverScanned > 0 ? "warning" : "muted"} />
+            <QueueStat label="RE-CHECK DUE" value={String(stats?.recheckDue ?? 0)} tone={(stats?.recheckDue ?? 0) > 0 ? "danger" : "muted"} />
+            <QueueStat label="COMPLETE" value={String(scanned)} tone="success" />
+          </div>
+        </WidgetCard>
+
+        {/* Stage distribution */}
+        <WidgetCard
+          number="07"
+          name="STAGE DISTRIBUTION"
+          className="col-span-12 xl:col-span-8"
+          status={`${stageTotal} TOTAL`}
+          statusTone="muted"
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(stats?.byStatus ?? []).map((entry) => {
               const pct = stageTotal > 0 ? (entry.count / stageTotal) * 100 : 0;
               return (
@@ -248,36 +290,32 @@ export function CodeClearOverview() {
                   className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
                 >
                   <CodeClearStatusBadge status={entry.status} />
-                  <p className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-1)]">
+                  <p className="mt-4 font-display text-[36px] font-normal leading-[1.1] tracking-[-0.03em] text-[var(--text-1)]">
                     {entry.count}
                   </p>
-                  <p className="mt-0.5 text-sm text-[var(--text-4)]">{statusLabel(entry.status)}</p>
-                  {/* Progress bar showing proportion of total */}
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--brand-500),var(--brand-700))] transition-all duration-500"
-                      style={{ width: `${pct}%` }}
-                    />
+                  <p className="widget-data-label mt-1">{statusLabel(entry.status)}</p>
+                  <div className="widget-progress mt-3">
+                    <div className="widget-progress__fill" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="mt-1.5 text-xs text-[var(--text-4)]">
-                    {pct.toFixed(0)}% of pipeline
-                  </p>
+                  <p className="widget-timestamp mt-1.5">{pct.toFixed(0)}% OF PIPELINE</p>
                 </div>
               );
             })}
+            {(stats?.byStatus ?? []).length === 0 ? (
+              <div className="col-span-full py-6 text-center text-sm text-[var(--text-4)]">
+                No candidates yet.
+              </div>
+            ) : null}
           </div>
-        </section>
+        </WidgetCard>
 
-        {/* Recent activity */}
-        <section className="app-card p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-lg font-semibold text-[var(--text-1)]">Recent activity</p>
-              <p className="mt-1 text-sm text-[var(--text-4)]">Latest events across the pipeline.</p>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-2">
+        {/* Activity */}
+        <WidgetCard
+          number="08"
+          name="RECENT ACTIVITY"
+          className="col-span-12 xl:col-span-4"
+        >
+          <div className="space-y-2">
             {(stats?.recentActivity ?? []).length ? (
               stats?.recentActivity.map((entry) => {
                 const meta = getEventMeta(entry.eventType);
@@ -301,9 +339,7 @@ export function CodeClearOverview() {
                         {entry.candidate?.name ?? "Candidate"}
                       </p>
                       <p className="mt-0.5 text-sm text-[var(--text-3)]">{meta.label}</p>
-                      <p className="mt-1.5 text-xs text-[var(--text-4)]">
-                        {formatDate(entry.createdAt)}
-                      </p>
+                      <p className="widget-timestamp mt-1.5">{formatDate(entry.createdAt)}</p>
                     </div>
                   </div>
                 );
@@ -312,91 +348,205 @@ export function CodeClearOverview() {
               <p className="py-4 text-center text-sm text-[var(--text-4)]">No activity yet.</p>
             )}
           </div>
-        </section>
-      </div>
+        </WidgetCard>
 
-      {/* Candidate spotlight */}
-      <section className="app-card p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-lg font-semibold text-[var(--text-1)]">Candidate spotlight</p>
-            <p className="mt-1 text-sm text-[var(--text-4)]">
-              Top profiles by score — verified and draft combined.
-            </p>
-          </div>
-          <Link href="/app/codeclear/candidates" className="text-sm font-semibold text-[var(--brand-700)]">
-            View all →
-          </Link>
-        </div>
-
-        {spotlight.length ? (
-          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+        {/* Roster — every dev in the workspace, current-client dropdown per row */}
+        <WidgetCard
+          number="09"
+          name="ROSTER"
+          className="col-span-12"
+          status={`${orderedRoster.length} ${orderedRoster.length === 1 ? "DEV" : "DEVS"}`}
+          statusTone="muted"
+          bodyClassName="p-0"
+        >
+          {orderedRoster.length ? (
             <table className="app-table">
               <thead>
                 <tr>
-                  <th className="text-left">Candidate</th>
+                  <th className="text-left">Dev</th>
                   <th className="text-left">Stack</th>
+                  <th className="text-left">Current client</th>
                   <th className="text-left">Status</th>
-                  <th className="text-left">GitHub scan</th>
+                  <th className="text-left">Scan</th>
                   <th className="text-left">Score</th>
-                  <th className="text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {spotlight.map((candidate) => (
-                  <tr key={candidate.id}>
-                    <td>
-                      <Link
-                        href={`/app/codeclear/candidates?candidate=${candidate.id}`}
-                        className="block"
-                      >
-                        <p className="font-semibold text-[var(--text-1)]">{candidate.name}</p>
-                        <p className="mt-1 text-sm text-[var(--text-4)]">
-                          @{candidate.githubHandle}
-                        </p>
-                      </Link>
-                    </td>
-                    <td>
-                      <StackPill label={candidate.primaryStack} tone="brand" />
-                    </td>
-                    <td>
-                      <CodeClearStatusBadge status={candidate.status} />
-                    </td>
-                    <td>
-                      <CodeClearAnalysisBadge state={candidate.analysisState} />
-                    </td>
-                    <td>
-                      <CodeClearScoreBadge
-                        value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
-                      />
-                    </td>
-                    <td className="text-right">
-                      {candidate.status === "CODECLEAR_COMPLETE" ? (
-                        <Link
-                          href="/app/proposals?new=1"
-                          className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] shadow-[var(--shadow-xs)] transition hover:border-[var(--brand-500)] hover:bg-[var(--surface-brand-soft)]"
-                        >
-                          <DocumentTextIcon className="h-3.5 w-3.5" />
-                          Create Doc
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-[var(--text-4)]">—</span>
-                      )}
-                    </td>
-                  </tr>
+                {orderedRoster.map((candidate) => (
+                  <RosterRow
+                    key={candidate.id}
+                    candidate={candidate}
+                    clients={clients}
+                    clientsLoading={clientsQuery.isLoading}
+                  />
                 ))}
               </tbody>
             </table>
-          </div>
-        ) : (
-          <div className="mt-5">
-            <EmptyState
-              title="No CodeClear candidates yet"
-              body="Seed or create candidates to start reviewing the pipeline."
+          ) : (
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm font-semibold text-[var(--text-1)]">No devs yet</p>
+              <p className="mt-2 text-sm text-[var(--text-4)]">
+                Use <span className="font-medium text-[var(--text-2)]">Add candidate</span> at the
+                top of the page to start building your roster.
+              </p>
+            </div>
+          )}
+        </WidgetCard>
+      </div>
+    </div>
+  );
+}
+
+function RosterRow({
+  candidate,
+  clients,
+  clientsLoading,
+}: {
+  candidate: CodeClearCandidateListItem;
+  clients: ClientListItem[];
+  clientsLoading: boolean;
+}) {
+  const setCurrentClient = useSetCandidateCurrentClient(candidate.id);
+  const currentClientId = candidate.currentClient?.id ?? "";
+
+  return (
+    <tr>
+      <td>
+        <Link
+          href={`/app/codeclear/candidates?candidate=${candidate.id}`}
+          className="block"
+        >
+          <p className="font-semibold text-[var(--text-1)]">{candidate.name}</p>
+          <p className="mt-1 font-mono text-xs text-[var(--text-4)]">@{candidate.githubHandle}</p>
+        </Link>
+      </td>
+      <td>
+        <StackPill label={candidate.primaryStack} tone="brand" />
+      </td>
+      <td>
+        <div className="flex items-center gap-2">
+          <select
+            value={currentClientId}
+            disabled={clientsLoading || setCurrentClient.isPending}
+            onChange={(event) => {
+              const next = event.target.value || null;
+              if ((next ?? "") !== currentClientId) {
+                setCurrentClient.mutate(next);
+              }
+            }}
+            className="app-select min-w-[160px] max-w-[220px]"
+            aria-label={`Assign ${candidate.name} to a client`}
+          >
+            <option value="">Unassigned</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+            {/* Show non-Portal placement name if the open placement has no clientId */}
+            {candidate.currentClient && !candidate.currentClient.id ? (
+              <option value="" disabled>
+                (legacy: {candidate.currentClient.name})
+              </option>
+            ) : null}
+          </select>
+          {setCurrentClient.isPending ? (
+            <ArrowPathIcon className="h-3.5 w-3.5 animate-spin text-[var(--text-4)]" aria-hidden />
+          ) : null}
+        </div>
+      </td>
+      <td>
+        <CodeClearStatusBadge status={candidate.status} />
+      </td>
+      <td>
+        <CodeClearAnalysisBadge state={candidate.analysisState} />
+      </td>
+      <td>
+        <CodeClearScoreBadge
+          value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
+        />
+      </td>
+    </tr>
+  );
+}
+
+function StatWidget({
+  number,
+  name,
+  value,
+  unit,
+  caption,
+  progress,
+  status,
+  statusTone,
+  className,
+}: {
+  number: string;
+  name: string;
+  value: string;
+  unit: string;
+  caption?: string;
+  progress?: number;
+  status?: string;
+  statusTone?: "info" | "success" | "warning" | "danger" | "muted";
+  className?: string;
+}) {
+  return (
+    <WidgetCard
+      number={number}
+      name={name}
+      status={status}
+      statusTone={statusTone}
+      className={className}
+    >
+      <div className="space-y-2">
+        <div className="flex items-baseline gap-2">
+          <span className="widget-stat">{value}</span>
+          <span className="widget-data-label">{unit}</span>
+        </div>
+        {typeof progress === "number" ? (
+          <div className="widget-progress">
+            <div
+              className="widget-progress__fill"
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
           </div>
-        )}
-      </section>
+        ) : null}
+        {caption ? <p className="text-sm text-[var(--text-4)]">{caption}</p> : null}
+      </div>
+    </WidgetCard>
+  );
+}
+
+function QueueStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "info" | "success" | "warning" | "danger" | "muted";
+}) {
+  const dot =
+    tone === "success"
+      ? "widget-status-dot--success"
+      : tone === "warning"
+        ? "widget-status-dot--warning"
+        : tone === "danger"
+          ? "widget-status-dot--danger"
+          : tone === "info"
+            ? "widget-status-dot--info"
+            : "";
+
+  return (
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className={cn("widget-status-dot", dot)} aria-hidden />
+        <span className="widget-data-label">{label}</span>
+      </div>
+      <p className="mt-2 font-display text-[32px] font-normal leading-[1.1] tracking-[-0.03em] text-[var(--text-1)]">
+        {value}
+      </p>
     </div>
   );
 }

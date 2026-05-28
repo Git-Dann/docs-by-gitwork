@@ -8,7 +8,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { serializeCandidateListItem } from "@/server/codeclear";
+import { codeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
 import {
   candidateBulkUpdateSchema,
   candidateCreateSchema,
@@ -195,16 +195,7 @@ export async function GET(request: NextRequest) {
     const [items, total, stackRecords] = await Promise.all([
       prisma.candidate.findMany({
         where,
-        include: {
-          score: true,
-          scoreDraft: true,
-          githubAnalysisRuns: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
-          },
-        },
+        include: codeClearListInclude,
         orderBy: buildCandidateOrderBy(sortBy, sortDir),
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -267,16 +258,7 @@ export async function POST(request: NextRequest) {
         tier: body.tier,
         status: "SOURCED",
       },
-      include: {
-        score: true,
-        scoreDraft: true,
-        githubAnalysisRuns: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-      },
+      include: codeClearListInclude,
     });
 
     await prisma.activityLog.create({
@@ -369,16 +351,7 @@ export async function PATCH(request: NextRequest) {
           in: body.ids,
         },
       },
-      include: {
-        score: true,
-        scoreDraft: true,
-        githubAnalysisRuns: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-      },
+      include: codeClearListInclude,
       orderBy: {
         name: "asc",
       },

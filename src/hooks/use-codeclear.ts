@@ -14,6 +14,7 @@ import {
   listCodeClearCandidates,
   listCodeClearGitHubRuns,
   runCodeClearGitHubAnalysis,
+  setCandidateCurrentClient,
   updateCodeClearCandidate,
   type CodeClearRunsResponse,
 } from "@/lib/api";
@@ -185,6 +186,21 @@ export function useCreatePlacement(candidateId: string | null) {
       createPlacement(candidateId as string, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+    },
+  });
+}
+
+// Used by the Code roster's per-dev "Current client" dropdown.
+// Pass clientId=null to clear the assignment.
+export function useSetCandidateCurrentClient(candidateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (clientId: string | null) => setCandidateCurrentClient(candidateId, clientId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "stats"] });
     },
   });
 }

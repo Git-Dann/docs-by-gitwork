@@ -214,11 +214,19 @@ export interface CodeClearActivityRecord {
   };
 }
 
+export interface CodeClearCandidateCurrentClient {
+  id: string | null;
+  name: string;
+  slug: string | null;
+}
+
 export interface CodeClearCandidateListItem extends CodeClearCandidateRecord {
   score: CodeClearScoreRecord | null;
   scoreDraft: CodeClearScoreDraftRecord | null;
   latestGitHubAnalysis: GitHubAnalysisRunRecord | null;
   analysisState: CandidateAnalysisState;
+  // Current Portal client (open-ended placement). Null when unassigned.
+  currentClient: CodeClearCandidateCurrentClient | null;
 }
 
 export interface CodeClearCandidateDetail extends CodeClearCandidateRecord {
