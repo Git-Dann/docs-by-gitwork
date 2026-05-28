@@ -102,19 +102,35 @@ const productionBlockerSchema = z.object({
   urgency: z.enum(["CRITICAL", "HIGH"]),
 });
 
+// Default values used when the AI omits or malforms a nested field.
+// Each .catch(fallback) means: if that field fails Zod validation for any reason
+// (missing, null, wrong type, enum mismatch), use the fallback silently rather than
+// rejecting the entire response. This keeps the scan completing even when the model
+// produces a slightly non-conforming response.
+const DEFAULT_DETECTED_STACK = {
+  frontend: null, backend: null, database: null, hosting: null,
+  auth: null, payments: null, email: null, storage: null,
+  caching: null, search: null, backgroundJobs: null,
+  monitoring: null, analytics: null, cicd: null,
+};
+
 const pulseAnalysisOutputSchema = z.object({
-  projectClassification: pulseProjectClassificationSchema,
-  executiveSummary: z.string(),
-  healthNarrative: z.string(),
-  strengths: z.array(pulseStrengthSchema),
-  criticalGaps: z.array(pulseCriticalGapSchema),
-  buildOpportunities: z.array(pulseBuildOpportunitySchema),
-  scalingRoadmap: z.array(pulseScalingPhaseSchema),
-  techDebt: z.array(pulseTechDebtSchema),
-  proposalHook: z.string(),
-  productionBlockers: z.array(productionBlockerSchema),
-  productionReadinessChecklist: z.array(productionReadinessItemSchema),
-  techStackAnalysis: pulseTechStackAnalysisSchema,
+  projectClassification: pulseProjectClassificationSchema.catch({
+    type: "Unknown", subtype: null, confidence: "LOW" as const, signals: [], verticalInsights: [],
+  }),
+  executiveSummary: z.string().catch(""),
+  healthNarrative: z.string().catch(""),
+  strengths: z.array(pulseStrengthSchema).catch([]),
+  criticalGaps: z.array(pulseCriticalGapSchema).catch([]),
+  buildOpportunities: z.array(pulseBuildOpportunitySchema).catch([]),
+  scalingRoadmap: z.array(pulseScalingPhaseSchema).catch([]),
+  techDebt: z.array(pulseTechDebtSchema).catch([]),
+  proposalHook: z.string().catch(""),
+  productionBlockers: z.array(productionBlockerSchema).catch([]),
+  productionReadinessChecklist: z.array(productionReadinessItemSchema).catch([]),
+  techStackAnalysis: pulseTechStackAnalysisSchema.catch({
+    assessment: "", detectedStack: DEFAULT_DETECTED_STACK, recommendations: [], missingForProduction: [],
+  }),
 });
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
@@ -555,7 +571,9 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
     }
     const result = pulseAnalysisOutputSchema.safeParse(toolBlock.input);
     if (!result.success) {
-      throw new Error(`AI response did not match expected schema: ${result.error.issues[0]?.message}`);
+      const issue = result.error.issues[0];
+      const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
+      throw new Error(`AI response did not match expected schema${path}: ${issue?.message}`);
     }
     return result.data;
   }
@@ -589,7 +607,9 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
 
   const result = pulseAnalysisOutputSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`AI response did not match expected schema: ${result.error.issues[0]?.message}`);
+    const issue = result.error.issues[0];
+    const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
+    throw new Error(`AI response did not match expected schema${path}: ${issue?.message}`);
   }
   return result.data;
 }
