@@ -10,6 +10,7 @@ import {
   deletePulseScan,
   cancelPulseScan,
   retryPulseScan,
+  reanalysePulseScan,
   generateProposalFromScan,
   getPulseStats,
   sharePulseScan,
@@ -198,6 +199,18 @@ export function useRunDiscoveryKit() {
     mutationFn: triggerDiscoveryKit,
     onSuccess: (_data, scanId) => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+    },
+  });
+}
+
+export function useReanalysePulseScan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ scanId, context }: { scanId: string; context?: string }) =>
+      reanalysePulseScan(scanId, context),
+    onSuccess: (_data, { scanId }) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });
 }

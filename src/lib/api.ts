@@ -616,6 +616,20 @@ export async function retryPulseScan(scanId: string): Promise<{ scan: import("@/
   });
 }
 
+export async function reanalysePulseScan(
+  scanId: string,
+  context?: string,
+): Promise<{ scan: import("@/types/pulse").PulseScanRecord }> {
+  return apiFetch<{ scan: import("@/types/pulse").PulseScanRecord }>(
+    `/api/pulse/scans/${scanId}/reanalyse`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context }),
+    },
+  );
+}
+
 export async function generateProposalFromScan(
   scanId: string,
 ): Promise<{ proposalId: string }> {

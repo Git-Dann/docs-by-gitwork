@@ -369,6 +369,138 @@ export async function retryPulseScan(scanId: string): Promise<{
   return { scan: serializePulseScan(scan), aiConfig };
 }
 
+/**
+ * Re-run just the AI analysis phase for a completed scan without re-running
+ * the checks. Used by the "Regenerate AI Analysis" button in the UI.
+ * Accepts an optional additionalContext string the user can provide to help
+ * the AI produce better results (e.g. "This is a B2B SaaS for dental practices").
+ */
+export async function reanalysePulseScan(
+  scanId: string,
+  additionalContext?: string,
+): Promise<PulseScanRecord> {
+  const existing = await prisma.pulseScan.findUnique({
+    where: { id: scanId },
+    include: pulseInclude,
+  });
+  if (!existing) throw new Error("Scan not found.");
+  if (existing.status !== "COMPLETED") throw new Error("Only completed scans can be re-analysed.");
+
+  const { workspace } = await ensureBaseRecords();
+  const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  const aiConfig = {
+    provider: p,
+    apiKey: (() => {
+      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+    })(),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o")
+         : p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash")
+         : p === "LOCAL"  ? (workspace.localLlmModel ?? "llama3.1")
+         : (workspace.anthropicModel ?? "claude-sonnet-4-6"),
+    baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
+           : p === "LOCAL"  ? (workspace.localLlmUrl ?? "http://localhost:11434/v1")
+           : null,
+  };
+
+  const healthScore = existing.healthScore ?? 0;
+  const techStack = asJson<string[]>(existing.techStack, []);
+  const checks: PulseScanCheckInput[] = existing.checks.map((c) => ({
+    category: c.category,
+    checkKey: c.checkKey,
+    label: c.label,
+    status: c.status as PulseScanCheckInput["status"],
+    detail: c.detail ?? undefined,
+    evidence: c.evidence ?? undefined,
+  }));
+
+  // Inject additional context (if provided) by appending to inputDescription
+  const inputDescription = [
+    existing.inputDescription,
+    additionalContext ? `\n\nAdditional context provided by user: ${additionalContext}` : null,
+  ].filter(Boolean).join("") || null;
+
+  let llmAnalysis: PulseAnalysisOutput | null = null;
+  let aiError: string | null = null;
+
+  try {
+    llmAnalysis = await withTimeout(
+      analyseWithClaude(
+        {
+          projectName: existing.projectName,
+          inputType: existing.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
+          inputUrl: existing.inputUrl,
+          inputGithubRepo: existing.inputGithubRepo,
+          inputDescription,
+          platform: existing.platform,
+          healthScore,
+          techStack,
+          checks,
+        },
+        aiConfig,
+      ),
+      200_000,
+      "AI re-analysis",
+    );
+  } catch (err) {
+    const httpStatus = (err as { status?: number })?.status;
+    const code = (err as { code?: string })?.code;
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("timed out")) {
+      aiError = "AI analysis timed out — try again or switch to a faster model in Settings → Integrations.";
+    } else if (code === "NO_API_KEY") {
+      aiError = err instanceof Error ? err.message : "No API key configured.";
+    } else if (httpStatus === 401 || httpStatus === 403) {
+      aiError = "AI authentication failed — check your API key in Settings → Integrations.";
+    } else {
+      aiError = err instanceof Error ? err.message : "AI re-analysis failed.";
+    }
+  }
+
+  // Regenerate discovery kit if analysis succeeded and this isn't a FREE_TEXT scan
+  let discoveryKit: DiscoveryKit | null = null;
+  if (llmAnalysis && existing.inputType !== "FREE_TEXT") {
+    try {
+      discoveryKit = await withTimeout(
+        generateDiscoveryKit(
+          {
+            projectName: existing.projectName,
+            projectType: llmAnalysis.projectClassification.type,
+            healthScore,
+            proposalHook: llmAnalysis.proposalHook,
+            executiveSummary: llmAnalysis.executiveSummary,
+            criticalGaps: llmAnalysis.criticalGaps,
+            buildOpportunities: llmAnalysis.buildOpportunities,
+            checks,
+          },
+          aiConfig,
+        ),
+        60_000,
+        "discovery kit",
+      );
+    } catch {
+      // Discovery kit failure is non-fatal — AI analysis still shows
+    }
+  }
+
+  const updated = await prisma.pulseScan.update({
+    where: { id: scanId },
+    data: {
+      llmAnalysis: llmAnalysis ? (llmAnalysis as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+      discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+      agentData: {
+        ...((existing.agentData as object) ?? {}),
+        aiError: aiError ?? undefined,
+      } as unknown as Prisma.InputJsonValue,
+    },
+    include: pulseInclude,
+  });
+
+  return serializePulseScan(updated);
+}
+
 /** Race a promise against a hard timeout. Rejects with a clear error message if the timeout fires first. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([

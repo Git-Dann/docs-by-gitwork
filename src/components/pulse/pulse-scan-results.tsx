@@ -21,7 +21,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan } from "@/hooks/use-pulse";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
@@ -879,6 +879,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
   const { mutateAsync: runFix, isPending: fixing } = useRunFixAgent();
   const { mutateAsync: addMonitor, isPending: creatingMonitor } = useCreateMonitor();
+  const { mutateAsync: reanalyse, isPending: reanalysing } = useReanalysePulseScan();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -888,6 +889,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [fixError, setFixError] = useState<string | null>(null);
   const [monitorWebhookUrl, setMonitorWebhookUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [reanalyseContext, setReanalyseContext] = useState("");
+  const [reanalyseError, setReanalyseError] = useState<string | null>(null);
+  const [showReanalyseInput, setShowReanalyseInput] = useState(false);
 
   // Keep local share state in sync when the scan is re-fetched externally
   useEffect(() => {
@@ -906,6 +910,29 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
   const llm = scan.llmAnalysis;
   const checksByCategory = groupChecksByCategory(scan.checks);
+
+  // Detect incomplete AI analysis — key fields empty despite no hard error
+  const isAnalysisIncomplete =
+    !scan.aiError &&
+    llm !== null &&
+    llm !== undefined &&
+    llm.criticalGaps.length === 0 &&
+    llm.buildOpportunities.length === 0 &&
+    (!llm.proposalHook || llm.proposalHook.trim() === "") &&
+    (!llm.executiveSummary || llm.executiveSummary.trim() === "");
+
+  const showReanalyseBanner = Boolean(scan.aiError) || isAnalysisIncomplete;
+
+  async function handleReanalyse() {
+    setReanalyseError(null);
+    try {
+      await reanalyse({ scanId: scan.id, context: reanalyseContext.trim() || undefined });
+      setReanalyseContext("");
+      setShowReanalyseInput(false);
+    } catch (err) {
+      setReanalyseError(err instanceof Error ? err.message : "Regeneration failed. Please try again.");
+    }
+  }
 
   const reportUrl = shareToken ? `${typeof window !== "undefined" ? window.location.origin : ""}/report/${shareToken}` : null;
 
@@ -1149,10 +1176,66 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       </div>
 
-      {/* AI error banner — shown when LLM failed but scan still completed */}
-      {scan.aiError && (
-        <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">AI analysis unavailable:</span> {scan.aiError} Technical checks and scores above are accurate.
+      {/* AI analysis banner — shown when AI failed or returned incomplete results */}
+      {showReanalyseBanner && (
+        <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              {scan.aiError ? (
+                <>
+                  <p className="font-semibold">AI analysis unavailable</p>
+                  <p className="mt-0.5 text-amber-700">{scan.aiError}</p>
+                  <p className="mt-0.5 text-amber-700">Technical checks and scores above are accurate.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">AI analysis returned incomplete results</p>
+                  <p className="mt-0.5 text-amber-700">Key narrative sections are empty. Regenerating may produce a better result.</p>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => setShowReanalyseInput((v) => !v)}
+              className="shrink-0 rounded-[8px] border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-50 disabled:opacity-50"
+              disabled={reanalysing || scan.status === "RUNNING"}
+            >
+              {reanalysing ? "Regenerating…" : "Regenerate AI Analysis"}
+            </button>
+          </div>
+
+          {showReanalyseInput && (
+            <div className="mt-3 space-y-2 border-t border-amber-200 pt-3">
+              <label className="block text-xs font-medium text-amber-800">
+                Optional context — helps the AI produce a better result
+              </label>
+              <textarea
+                value={reanalyseContext}
+                onChange={(e) => setReanalyseContext(e.target.value)}
+                placeholder="e.g. This is a B2B SaaS product for construction teams. The main concern is GDPR compliance and scalability."
+                rows={3}
+                className="w-full rounded-[8px] border border-amber-300 bg-white px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              {reanalyseError && (
+                <p className="text-xs text-red-600">{reanalyseError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleReanalyse}
+                  disabled={reanalysing}
+                  size="sm"
+                  className="bg-amber-700 text-white hover:bg-amber-800"
+                >
+                  {reanalysing ? "Regenerating…" : "Run Regeneration"}
+                </Button>
+                <button
+                  onClick={() => { setShowReanalyseInput(false); setReanalyseError(null); }}
+                  className="text-xs text-amber-700 hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
