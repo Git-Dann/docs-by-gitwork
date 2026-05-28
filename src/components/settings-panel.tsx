@@ -2023,6 +2023,7 @@ function SlackSection({
   const [newChannelName, setNewChannelName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!config) return;
@@ -2054,22 +2055,32 @@ function SlackSection({
   }
 
   async function handleSave() {
-    const hasToken = tokenInput.trim().length > 0;
-    const dirty = hasToken || true; // always allow saving channel list changes
-    if (!dirty) return;
     setSaving(true);
+    setSaveError(null);
     try {
+      // Auto-flush any channel typed in the inputs but not yet added via +
+      let finalChannels = channels;
+      const pendingId = newChannelId.trim();
+      if (pendingId && !channels.some((c) => c.id === pendingId)) {
+        const pendingName = newChannelName.trim() || pendingId;
+        finalChannels = [...channels, { id: pendingId, name: pendingName }];
+        setChannels(finalChannels);
+        setNewChannelId("");
+        setNewChannelName("");
+      }
+
       const payload: Parameters<typeof saveIntegrations>[0] = {};
-      if (hasToken) payload.slackBotToken = tokenInput.trim();
-      payload.slackChannels = channels;
+      if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
+      payload.slackChannels = finalChannels;
+
       await saveIntegrations(payload);
       const updated = await getIntegrations();
       onSaved(updated);
       setTokenInput("");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      // ignore
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed — please try again.");
     } finally {
       setSaving(false);
     }
@@ -2167,6 +2178,9 @@ function SlackSection({
           </p>
         </div>
 
+        {saveError && (
+          <p className="text-xs text-red-500">{saveError}</p>
+        )}
         <button
           onClick={() => void handleSave()}
           disabled={saving}
