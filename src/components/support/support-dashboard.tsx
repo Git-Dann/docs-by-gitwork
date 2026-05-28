@@ -1300,12 +1300,12 @@ function ConversationCard({
       <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{convo.preview}</p>
       {convo.tags.length > 0 && (
         <div className="mt-2.5 flex flex-wrap gap-1">
-          {convo.tags.map((tag) => (
+          {[...new Set(convo.tags)].map((tag) => (
             <span
               key={tag}
               className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]"
             >
-              {tag}
+              {tag.replace(/_/g, " ")}
             </span>
           ))}
         </div>
@@ -1588,7 +1588,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
-  const [syncResults, setSyncResults] = useState<Record<string, { ingested?: number; filtered?: number; errors: string[] }>>({});
+  const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
 
@@ -1743,7 +1743,9 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : `Synced — ${sr.ingested ?? 0} ingested, ${sr.filtered ?? 0} filtered by agent`}
+                          : sr.fetched === 0
+                            ? "Synced — no new emails since last sync"
+                            : `Synced — ${sr.fetched} fetched, ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered by AI`}
                       </p>
                     )}
                   </div>
