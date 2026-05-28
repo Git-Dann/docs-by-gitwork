@@ -1342,12 +1342,14 @@ function ConversationCard({
 function TicketsView({ clientId }: { clientId: string }) {
   const { data, isLoading } = useSupportTickets(clientId);
   const tickets = data?.tickets ?? [];
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const updateTicket = useUpdateTicket(clientId);
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-28 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+      <div className="app-card overflow-hidden p-0">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className={cn("h-12 animate-pulse bg-[var(--surface-1)]", i > 0 && "border-t border-[var(--border-2)]")} />
         ))}
       </div>
     );
@@ -1361,68 +1363,113 @@ function TicketsView({ clientId }: { clientId: string }) {
     );
   }
 
-  return (
-    <div className="space-y-3">
-      {tickets.map((ticket) => (
-        <TicketCard key={ticket.id} ticket={ticket} clientId={clientId} />
-      ))}
-    </div>
-  );
-}
+  const open = tickets.filter((t) => t.status !== "resolved");
+  const resolved = tickets.filter((t) => t.status === "resolved");
 
-function TicketCard({ ticket, clientId }: { ticket: Ticket; clientId: string }) {
-  const updateTicket = useUpdateTicket(clientId);
-
-  return (
-    <div className="app-card p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                STATUS_TONE[ticket.status],
-              )}
-            >
-              {STATUS_LABEL[ticket.status]}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                PRIORITY_TONE[ticket.priority],
-              )}
-            >
-              {ticket.priority}
-            </span>
-            <span className="text-[11px] text-[var(--text-4)]">{ticket.issueType}</span>
-          </div>
-          <h3 className="mt-2 text-[15px] font-semibold text-[var(--text-1)]">{ticket.title}</h3>
-          <p className="mt-0.5 text-sm text-[var(--text-3)]">{ticket.customerLabel}</p>
+  function TicketTable({ rows }: { rows: Ticket[] }) {
+    return (
+      <div className="app-card overflow-hidden p-0">
+        {/* header */}
+        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+          <span>Title</span>
+          <span className="w-24 text-center">Status</span>
+          <span className="w-16 text-center">Priority</span>
+          <span className="w-24 text-right">Updated</span>
+          <span className="w-24 text-right">Action</span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-[var(--text-4)]">
-          <SourceIcon source={ticket.source} className="h-3.5 w-3.5" />
-          <span>{SOURCE_LABEL[ticket.source]}</span>
-          <span>·</span>
-          <span>{formatShort(ticket.updatedAt)}</span>
-        </div>
-      </div>
+        {rows.map((ticket) => {
+          const isExpanded = expandedId === ticket.id;
+          return (
+            <div key={ticket.id} className="border-b border-[var(--border-2)] last:border-b-0">
+              {/* main row */}
+              <button
+                type="button"
+                onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
+                className="grid w-full grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 px-4 py-3 text-left transition hover:bg-[var(--surface-1)]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--text-1)]">{ticket.title}</p>
+                  <p className="truncate text-[11px] text-[var(--text-4)]">
+                    {ticket.customerLabel}
+                    {ticket.issueType && <span className="ml-1.5">· {ticket.issueType}</span>}
+                  </p>
+                </div>
+                <span className={cn("inline-flex w-24 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", STATUS_TONE[ticket.status])}>
+                  {STATUS_LABEL[ticket.status]}
+                </span>
+                <span className={cn("inline-flex w-16 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
+                  {ticket.priority}
+                </span>
+                <span className="w-24 text-right text-[11px] text-[var(--text-4)]">{formatShort(ticket.updatedAt)}</span>
+                <div className="flex w-24 justify-end">
+                  {ticket.status !== "resolved" ? (
+                    <span
+                      role="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateTicket.mutate({ ticketId: ticket.id, data: { status: "resolved" } });
+                      }}
+                      className="rounded-[6px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      Resolve
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-[var(--text-4)]">Done</span>
+                  )}
+                </div>
+              </button>
 
-      <div className="mt-3 border-t border-[var(--border-2)] pt-3">
-        <p className="text-xs text-[var(--text-3)]">
-          <span className="font-medium text-[var(--text-2)]">Next action:</span> {ticket.nextAction}
-        </p>
-        <p className="mt-1 text-xs text-[var(--text-4)]">Assigned to {ticket.assignedTo}</p>
-        {ticket.status !== "resolved" && (
-          <button
-            type="button"
-            onClick={() => updateTicket.mutate({ ticketId: ticket.id, data: { status: "resolved" } })}
-            disabled={updateTicket.isPending}
-            className="mt-2 rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
-          >
-            Mark resolved
-          </button>
-        )}
+              {/* expanded detail */}
+              {isExpanded && (
+                <div className="border-t border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+                  <div className="flex flex-wrap gap-6 text-xs">
+                    {ticket.nextAction && (
+                      <div>
+                        <p className="font-semibold text-[var(--text-3)]">Next action</p>
+                        <p className="mt-0.5 text-[var(--text-2)]">{ticket.nextAction}</p>
+                      </div>
+                    )}
+                    {ticket.assignedTo && (
+                      <div>
+                        <p className="font-semibold text-[var(--text-3)]">Assigned to</p>
+                        <p className="mt-0.5 text-[var(--text-2)]">{ticket.assignedTo}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-semibold text-[var(--text-3)]">Source</p>
+                      <p className="mt-0.5 flex items-center gap-1 text-[var(--text-2)]">
+                        <SourceIcon source={ticket.source} className="h-3 w-3" />
+                        {SOURCE_LABEL[ticket.source]}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {open.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
+            Open · {open.length}
+          </p>
+          <TicketTable rows={open} />
+        </div>
+      )}
+      {resolved.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
+            Resolved · {resolved.length}
+          </p>
+          <TicketTable rows={resolved} />
+        </div>
+      )}
     </div>
   );
 }
