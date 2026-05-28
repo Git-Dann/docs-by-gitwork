@@ -457,6 +457,34 @@ export async function updateClientRecord(
   );
 }
 
+export async function deleteClientRecord(slug: string): Promise<boolean> {
+  const { workspace } = await loadClientCollections();
+
+  const existing = await workspaceClients.findUnique({
+    where: {
+      workspaceId_slug: {
+        workspaceId: workspace.id,
+        slug,
+      },
+    },
+  });
+
+  if (!existing) {
+    return false;
+  }
+
+  await workspaceClients.delete({
+    where: {
+      workspaceId_slug: {
+        workspaceId: workspace.id,
+        slug,
+      },
+    },
+  });
+
+  return true;
+}
+
 export async function getDerivedClientDetail(slug: string): Promise<ClientDetailRecord | null> {
   const { workspace, manualClients } = await loadClientCollections();
 

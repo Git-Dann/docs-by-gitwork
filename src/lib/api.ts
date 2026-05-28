@@ -275,6 +275,12 @@ export async function createClient(
   });
 }
 
+export async function deleteClient(slug: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}`, {
+    method: "DELETE",
+  });
+}
+
 export async function updateClient(
   slug: string,
   input: {

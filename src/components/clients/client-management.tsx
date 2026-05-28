@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
-import { useClientList, useCreateClient } from "@/hooks/use-proposals";
+import { useClientList, useCreateClient, useDeleteClient } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
 
 export function ClientManagement() {
@@ -15,10 +15,22 @@ export function ClientManagement() {
   const [showCreate, setShowCreate] = useState(false);
   const [clientName, setClientName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<{ slug: string; name: string } | null>(null);
   const { data, isPending, error } = useClientList({ search });
   const createClientMutation = useCreateClient();
+  const deleteClientMutation = useDeleteClient();
 
   const clients = data?.clients ?? [];
+
+  async function handleDeleteClient() {
+    if (!clientToDelete) return;
+    try {
+      await deleteClientMutation.mutateAsync(clientToDelete.slug);
+      setClientToDelete(null);
+    } catch {
+      // error is surfaced via mutation state
+    }
+  }
 
   async function handleCreateClient() {
     const trimmed = clientName.trim();
@@ -83,7 +95,6 @@ export function ClientManagement() {
               <thead>
                 <tr>
                   <th className="text-left">Client</th>
-                  <th className="text-left">Source</th>
                   <th className="text-left">Proposals</th>
                   <th className="text-left">Added</th>
                   <th className="text-left">Actions</th>
@@ -92,13 +103,13 @@ export function ClientManagement() {
               <tbody>
                 {isPending ? (
                   <tr>
-                    <td className="text-sm text-[var(--text-4)]" colSpan={5}>
+                    <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                       Loading clients...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td className="text-sm text-rose-700" colSpan={5}>
+                    <td className="text-sm text-rose-700" colSpan={4}>
                       {(error as Error).message}
                     </td>
                   </tr>
@@ -122,11 +133,6 @@ export function ClientManagement() {
                           <span className="font-medium text-[var(--text-1)]">{client.name}</span>
                         </div>
                       </td>
-                      <td>
-                        <span className="inline-flex rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
-                          {client.source === "SUGGESTED" ? "Suggested" : "Manual"}
-                        </span>
-                      </td>
                       <td>{client.proposalCount}</td>
                       <td className="text-[var(--text-3)]">{formatDate(client.createdAt)}</td>
                       <td>
@@ -143,13 +149,23 @@ export function ClientManagement() {
                           >
                             New WIP doc
                           </Link>
+                          {client.source === "MANUAL" ? (
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="xs"
+                              onClick={() => setClientToDelete({ slug: client.slug, name: client.name })}
+                            >
+                              Delete
+                            </Button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="text-sm text-[var(--text-4)]" colSpan={5}>
+                    <td className="text-sm text-[var(--text-4)]" colSpan={4}>
                       No clients yet. Create one here, or add a client name to any proposal draft and it will appear automatically.
                     </td>
                   </tr>
@@ -159,6 +175,52 @@ export function ClientManagement() {
           </div>
         </section>
       </div>
+
+      {clientToDelete ? (
+        <div className="fixed inset-0 z-30">
+          <button
+            type="button"
+            aria-label="Close delete client modal"
+            className="app-dialog-backdrop absolute inset-0"
+            onClick={() => setClientToDelete(null)}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="app-dialog-panel w-full max-w-md p-6">
+              <p className="app-eyebrow">Confirm delete</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                Delete {clientToDelete.name}?
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
+                This removes the client record. Any proposals linked to this client by name will remain unchanged.
+              </p>
+              {deleteClientMutation.error ? (
+                <p className="mt-3 text-sm text-rose-700">
+                  {(deleteClientMutation.error as Error).message}
+                </p>
+              ) : null}
+              <div className="mt-6 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setClientToDelete(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="md"
+                  loading={deleteClientMutation.isPending}
+                  onClick={() => void handleDeleteClient()}
+                >
+                  Delete client
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showCreate ? (
         <div className="fixed inset-0 z-30">

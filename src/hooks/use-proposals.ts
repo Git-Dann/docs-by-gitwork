@@ -6,6 +6,7 @@ import {
   createClient,
   createClientPlatform,
   createProposal,
+  deleteClient,
   deleteClientPlatform,
   deleteProposal,
   duplicateProposal,
@@ -113,6 +114,18 @@ export function useUpdateClient(slug: string) {
   });
 }
 
+export function useDeleteClient() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (slug: string) => deleteClient(slug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    },
+  });
+}
+
 type PlatformInput = {
   name: string;
   platformType?: string;
@@ -164,6 +177,7 @@ export function useClientPlatformMutations(slug: string, platform: ClientPlatfor
 
   return { createMutation, updateMutation, deleteMutation };
 }
+
 
 export function useUpdateProposal(id: string) {
   const queryClient = useQueryClient();
