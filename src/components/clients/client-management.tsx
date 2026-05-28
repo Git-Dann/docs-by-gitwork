@@ -1,15 +1,12 @@
 "use client";
 
 import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/24/outline";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { buttonStyles } from "@/components/ui/button-styles";
 import { useClientList, useCreateClient, useDeleteClient } from "@/hooks/use-proposals";
-import { cn } from "@/lib/format";
-import { formatDate } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // DeleteButton — floating popover, matches Pulse scan list pattern
@@ -236,13 +233,6 @@ export function ClientManagement() {
                       <td className="text-[var(--text-3)]">{formatDate(client.createdAt)}</td>
                       <td>
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Link
-                            href={`/app/portal/${client.slug}`}
-                            className={buttonStyles({ variant: "secondary", size: "xs" })}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Open
-                          </Link>
                           <DeleteButton clientSlug={client.slug} />
                         </div>
                       </td>
