@@ -12,13 +12,50 @@ interface DiscordChannelCursor {
 
 interface RedditScraperConfig {
   subreddit?: string;
-  clientId?: string;
-  clientSecret?: string;
   keywords?: string[];
 }
 
-const REDDIT_OAUTH_API = "https://oauth.reddit.com";
-const REDDIT_USER_AGENT = "script:com.gitwork.foundry:v1.0 (by /u/gitwork_support)";
+// ─── Reddit RSS helpers ───────────────────────────────────────────────────────
+
+interface RedditRssPost {
+  id: string;
+  title: string;
+  author: string;
+  body: string;
+  permalink: string;
+  created_utc: number;
+}
+
+function xmlTag(xml: string, tag: string): string {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  return m?.[1]?.trim() ?? "";
+}
+
+function decodeXmlEntities(s: string): string {
+  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseRedditAtom(xml: string): RedditRssPost[] {
+  const posts: RedditRssPost[] = [];
+  for (const [, entry] of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const permalink = decodeXmlEntities(xmlTag(entry, "id"));
+    const postIdMatch = permalink.match(/\/comments\/([a-z0-9]+)\//i);
+    if (!postIdMatch) continue;
+    const title = decodeXmlEntities(xmlTag(entry, "title"));
+    if (!title) continue;
+    const author = decodeXmlEntities(xmlTag(entry, "name")).replace(/^\/u\//, "");
+    const updatedStr = xmlTag(entry, "updated");
+    const created_utc = updatedStr ? Math.floor(new Date(updatedStr).getTime() / 1000) : Math.floor(Date.now() / 1000);
+    const contentHtml = decodeXmlEntities(xmlTag(entry, "content"));
+    const body = stripHtml(contentHtml);
+    posts.push({ id: postIdMatch[1], title, author: author || "unknown", body, permalink, created_utc });
+  }
+  return posts;
+}
 
 interface DiscordScraperConfig {
   guildId: string;
@@ -208,37 +245,12 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
 // ─── Reddit sync ──────────────────────────────────────────────────────────────
 
-async function getRedditAccessToken(clientId: string, clientSecret: string): Promise<string> {
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": REDDIT_USER_AGENT,
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Reddit auth failed (${res.status}): ${text}`);
-  }
-  const data = (await res.json()) as { access_token?: string; error?: string };
-  if (!data.access_token) throw new Error(data.error ?? "No access_token in Reddit auth response");
-  return data.access_token;
-}
-
 async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   const config = ctx.connection.scraperConfig as RedditScraperConfig | null;
   const subreddit = config?.subreddit?.trim();
-  const clientId = config?.clientId?.trim();
-  const clientSecret = config?.clientSecret?.trim();
 
   if (!subreddit) {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
-  }
-  if (!clientId || !clientSecret) {
-    return { ingested: 0, filtered: 0, errors: ["Reddit Client ID and Client Secret are required — edit the connector to add them"] };
   }
 
   // Use lastSyncedAt as cursor; on first sync go back 7 days
@@ -252,41 +264,29 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   const errors: string[] = [];
   const keywords = (config?.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
 
-  let accessToken: string;
   try {
-    accessToken = await getRedditAccessToken(clientId, clientSecret);
-  } catch (err) {
-    return { ingested: 0, filtered: 0, errors: [err instanceof Error ? err.message : String(err)] };
-  }
-
-  const authHeaders = {
-    Authorization: `Bearer ${accessToken}`,
-    "User-Agent": REDDIT_USER_AGENT,
-  };
-
-  try {
-    const res = await fetch(`${REDDIT_OAUTH_API}/r/${subreddit}/new?limit=25`, {
-      headers: authHeaders,
+    // Use the RSS/Atom feed — no credentials required
+    const res = await fetch(`https://www.reddit.com/r/${subreddit}/new.rss?limit=25`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; FeedReader/1.0)",
+        Accept: "application/atom+xml, application/rss+xml, text/xml, */*",
+      },
     });
 
     if (!res.ok) {
-      return { ingested: 0, filtered: 0, errors: [`Reddit API error: ${res.status} ${res.statusText}`] };
+      return { ingested: 0, filtered: 0, errors: [`Reddit RSS error: ${res.status} ${res.statusText}`] };
     }
 
-    const data = (await res.json()) as {
-      data: { children: Array<{ data: { id: string; title: string; selftext: string; author: string; permalink: string; created_utc: number } }> };
-    };
-
-    const posts = data.data.children.map((p) => p.data).filter((p) => p.created_utc > afterUtc);
+    const xml = await res.text();
+    const posts = parseRedditAtom(xml).filter((p) => p.created_utc > afterUtc);
 
     for (const post of posts) {
       // Keyword filter — if configured, skip posts that don't match
       if (keywords.length > 0) {
-        const text = `${post.title} ${post.selftext}`.toLowerCase();
+        const text = `${post.title} ${post.body}`.toLowerCase();
         if (!keywords.some((kw) => text.includes(kw))) { filtered++; continue; }
       }
 
-      // Skip completely empty posts
       if (!post.title.trim()) { filtered++; continue; }
 
       const externalId = `reddit:${post.id}`;
@@ -304,21 +304,20 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
             externalId,
             customerLabel: `u/${post.author}`,
             subject: post.title,
-            preview: (post.selftext || post.title).slice(0, 150),
+            preview: (post.body || post.title).slice(0, 150),
             receivedAt: new Date(post.created_utc * 1000),
             unread: true,
             tags: ["reddit", subreddit],
           },
         });
 
-        // Save the post body as the first message
-        if (post.selftext.trim()) {
+        if (post.body.trim()) {
           await prisma.supportMessage.create({
             data: {
               conversationId: conv.id,
               direction: "inbound",
               authorLabel: `u/${post.author}`,
-              body: post.selftext,
+              body: post.body,
               externalId: `${externalId}:post`,
               createdAt: new Date(post.created_utc * 1000),
             },
@@ -327,43 +326,6 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
 
         ingested++;
       }
-
-      // Pull top-level comments and store new ones
-      try {
-        const commentsRes = await fetch(`${REDDIT_OAUTH_API}${post.permalink}?limit=10&depth=1`, {
-          headers: authHeaders,
-        });
-        if (commentsRes.ok) {
-          const commentsData = (await commentsRes.json()) as [
-            unknown,
-            { data: { children: Array<{ data: { id: string; body: string; author: string; created_utc: number } }> } },
-          ];
-          const comments = commentsData[1]?.data?.children ?? [];
-
-          for (const comment of comments) {
-            const c = comment.data;
-            if (!c.body || c.body === "[deleted]" || c.body === "[removed]") continue;
-            if (c.created_utc <= afterUtc) continue;
-
-            const already = await prisma.supportMessage.findFirst({
-              where: { conversationId: conv.id, externalId: `reddit:comment:${c.id}` },
-              select: { id: true },
-            });
-            if (already) continue;
-
-            await prisma.supportMessage.create({
-              data: {
-                conversationId: conv.id,
-                direction: "inbound",
-                authorLabel: `u/${c.author}`,
-                body: c.body,
-                externalId: `reddit:comment:${c.id}`,
-                createdAt: new Date(c.created_utc * 1000),
-              },
-            });
-          }
-        }
-      } catch { /* ignore comment fetch errors — post is already saved */ }
     }
   } catch (err) {
     errors.push(`r/${subreddit}: ${err instanceof Error ? err.message : String(err)}`);

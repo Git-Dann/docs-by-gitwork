@@ -343,8 +343,6 @@ function AddConnectorModal({
 
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
-  const [redditClientId, setRedditClientId] = useState("");
-  const [redditClientSecret, setRedditClientSecret] = useState("");
   const [redditKeywords, setRedditKeywords] = useState("");
 
   // YouTube fields
@@ -406,8 +404,6 @@ function AddConnectorModal({
     if (source === "reddit") {
       return {
         subreddit: redditSubreddit.trim(),
-        clientId: redditClientId.trim() || undefined,
-        clientSecret: redditClientSecret.trim() || undefined,
         keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
       };
     }
@@ -646,11 +642,7 @@ function AddConnectorModal({
         {source === "reddit" && (
           <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
             <p className="text-[11px] text-[var(--text-4)]">
-              Needs a Reddit <strong>script app</strong>. Create one at{" "}
-              <a href="https://www.reddit.com/prefs/apps" target="_blank" rel="noopener" className="underline">
-                reddit.com/prefs/apps
-              </a>{" "}
-              (type: script) to get a Client ID and Secret.
+              Polls the subreddit RSS feed for new posts. No credentials required.
             </p>
             <label className="block space-y-1">
               <span className="app-field-label">Subreddit (without r/)</span>
@@ -661,29 +653,6 @@ function AddConnectorModal({
                 placeholder="e.g. acmeapp"
               />
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="app-field-label">Client ID</span>
-                <input
-                  value={redditClientId}
-                  onChange={(e) => setRedditClientId(e.target.value)}
-                  className="app-input w-full font-mono text-xs"
-                  placeholder="14-char ID"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="app-field-label">Client Secret</span>
-                <input
-                  type="password"
-                  value={redditClientSecret}
-                  onChange={(e) => setRedditClientSecret(e.target.value)}
-                  className="app-input w-full font-mono text-xs"
-                  placeholder="secret"
-                  autoComplete="off"
-                />
-              </label>
-            </div>
             <label className="block space-y-1">
               <span className="app-field-label">Keywords (optional, comma-separated)</span>
               <input
@@ -1639,8 +1608,6 @@ function EditConnectorModal({
 
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
-  const [redditClientId, setRedditClientId] = useState(conn.scraperConfig?.clientId ?? "");
-  const [redditClientSecret, setRedditClientSecret] = useState(conn.scraperConfig?.clientSecret ?? "");
   const [redditKeywords, setRedditKeywords] = useState(
     (conn.scraperConfig?.keywords ?? []).join(", "),
   );
@@ -1711,8 +1678,6 @@ function EditConnectorModal({
       return {
         ...conn.scraperConfig,
         subreddit: redditSubreddit.trim(),
-        clientId: redditClientId.trim() || undefined,
-        clientSecret: redditClientSecret.trim() || undefined,
         keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
       };
     }
@@ -1883,16 +1848,6 @@ function EditConnectorModal({
               <span className="app-field-label">Subreddit (without r/)</span>
               <input value={redditSubreddit} onChange={(e) => setRedditSubreddit(e.target.value)} className="app-input w-full" placeholder="e.g. acmeapp" />
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block space-y-1">
-                <span className="app-field-label">Client ID</span>
-                <input value={redditClientId} onChange={(e) => setRedditClientId(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="14-char ID" autoComplete="off" />
-              </label>
-              <label className="block space-y-1">
-                <span className="app-field-label">Client Secret</span>
-                <input type="password" value={redditClientSecret} onChange={(e) => setRedditClientSecret(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="secret" autoComplete="off" />
-              </label>
-            </div>
             <label className="block space-y-1">
               <span className="app-field-label">Keywords (comma-separated)</span>
               <input value={redditKeywords} onChange={(e) => setRedditKeywords(e.target.value)} className="app-input w-full" placeholder="e.g. bug, help" />
