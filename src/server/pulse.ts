@@ -518,7 +518,7 @@ export async function runAnalysis(
 
     // Wrap the LLM call so a bad key / wrong model / no key / timeout never
     // wipes out the Phase 1 checks. On failure analysis is null (no mock shown).
-    // Hard limit: 120 s — if the AI hasn't responded by then we move on.
+    // Hard limit: 200s — covers Opus on a slow API day (typically 90-160s for full response).
     async function safeAnalyse(): Promise<{ analysis: PulseAnalysisOutput | null; aiError: string | null }> {
       try {
         const analysis = await withTimeout(
@@ -536,7 +536,7 @@ export async function runAnalysis(
             },
             aiConfig,
           ),
-          120_000,
+          200_000,
           "AI analysis",
         );
         return { analysis, aiError: null };
@@ -546,7 +546,7 @@ export async function runAnalysis(
         const message = err instanceof Error ? err.message : "";
         let aiError: string;
         if (message.includes("timed out")) {
-          aiError = "AI analysis timed out after 120s — technical checks and scores above are accurate. Try re-running the scan if AI narrative is needed.";
+          aiError = "AI analysis timed out — the API took too long to respond. Technical checks and scores are accurate. Try re-running or switching to a faster model (claude-sonnet) in Settings → Integrations.";
         } else if (code === "NO_API_KEY") {
           aiError = err instanceof Error ? err.message : "No API key configured.";
         } else if (httpStatus === 401 || httpStatus === 403) {

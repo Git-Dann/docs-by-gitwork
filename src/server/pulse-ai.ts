@@ -175,6 +175,18 @@ Gitwork preferred services (recommend by name):
 `;
 
 function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
+  // Separate failures from warnings — always include all FAILs, cap WARNs
+  const fails = checks.filter((c) => c.status === "FAIL");
+  const warns = checks.filter((c) => c.status === "WARN");
+
+  // Cap total issues at 60: all FAILs + top WARNs (sorted by category, then label for determinism)
+  // This bounds the prompt to ~3,500 tokens of issue data regardless of check count
+  const MAX_ISSUES = 60;
+  const truncatedWarns = warns.slice(0, Math.max(0, MAX_ISSUES - fails.length));
+  const truncated = warns.length > truncatedWarns.length;
+  const issueSet = new Set([...fails, ...truncatedWarns].map((c) => c.checkKey));
+
+  // Group by category for readability
   const byCategory = new Map<string, PulseScanCheckInput[]>();
   for (const check of checks) {
     const list = byCategory.get(check.category) ?? [];
@@ -186,22 +198,33 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   for (const [category, categoryChecks] of byCategory.entries()) {
     const pass = categoryChecks.filter((c) => c.status === "PASS").length;
     const skip = categoryChecks.filter((c) => c.status === "SKIPPED").length;
-    const issues = categoryChecks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+    const allIssues = categoryChecks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+    const visibleIssues = allIssues.filter((c) => issueSet.has(c.checkKey));
 
-    // Categories with no issues: emit a single summary line to save tokens
-    if (issues.length === 0 && pass + skip === categoryChecks.length) {
-      lines.push(`${category}: ${pass} passing, ${skip} skipped — all clear`);
+    if (visibleIssues.length === 0) {
+      // Categories with no issues shown: single summary line
+      if (allIssues.length > 0) {
+        lines.push(`${category}: ${pass} passing, ${allIssues.length} warnings (lower priority, omitted), ${skip} skipped`);
+      } else {
+        lines.push(`${category}: ${pass} passing, ${skip} skipped — all clear`);
+      }
       continue;
     }
 
-    lines.push(`${category}: ${pass} passing, ${issues.length} issues, ${skip} skipped`);
-    for (const check of issues) {
+    lines.push(`${category}: ${pass} passing, ${allIssues.length} issues, ${skip} skipped`);
+    for (const check of visibleIssues) {
       const icon = check.status === "FAIL" ? "✗" : "⚠";
-      // Truncate detail to 200 chars to keep token count bounded
-      const detail = check.detail ? check.detail.slice(0, 200) : check.status;
+      // 120 chars is plenty for the AI to understand the issue
+      const detail = check.detail ? check.detail.slice(0, 120) : check.status;
       lines.push(`  ${icon} ${check.label}: ${detail}`);
     }
   }
+
+  if (truncated) {
+    const omitted = warns.length - truncatedWarns.length;
+    lines.push(`\n(${omitted} lower-priority warnings omitted from AI prompt — visible in full scan results)`);
+  }
+
   return lines.join("\n");
 }
 
@@ -505,13 +528,12 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
 
   if (aiConfig.provider === "ANTHROPIC") {
-    // timeout: 90s — SDK default is 600s; we want fast failure, not a silent hang.
+    // timeout: 180s — generous ceiling for slow API days / large models (e.g. Opus).
+    //   Typical Sonnet: 30-60s. Opus with large response: 90-160s. 180s covers both.
     // maxRetries: 0 — withRetry() handles retries; SDK retries stack on top and compound waits.
     // stream: true (via .stream()) — streaming means the first token arrives in ~1s, so a
-    // broken connection is detected immediately rather than after a 90s silence. Without
-    // streaming, the SDK waits in total silence while Claude generates 3k-8k tokens, and
-    // a TCP half-open connection is indistinguishable from a slow-but-alive one.
-    const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 90_000, maxRetries: 0 });
+    //   broken connection is detected immediately rather than after a silent timeout.
+    const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 180_000, maxRetries: 0 });
     const message = await withRetry(() =>
       client.messages.stream({
         model: getModelForTask(aiConfig),
