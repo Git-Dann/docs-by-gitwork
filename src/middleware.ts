@@ -1,12 +1,14 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/auth.config";
+import { verifyMobileToken } from "@/server/auth/mobile-jwt";
 
 const { auth } = NextAuth(authConfig);
 
 // API paths that do not require API_KEY authentication.
 // `/api/sign` is the public signer endpoint family — token in the URL is its own auth.
 // `/api/docs` is the public document view-tracking beacon — token in the URL is its own auth.
+// `/api/auth/mobile-callback` is the iOS auth bootstrap — id_token is its own auth.
 const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign", "/api/docs"];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
@@ -42,7 +44,7 @@ function hasModuleAccess(pathname: string, permissions: string[]): boolean {
   return true;
 }
 
-export default auth((req) => {
+export default auth(async (req) => {
   const { pathname } = req.nextUrl;
 
   // CORS preflight for all API routes
@@ -88,7 +90,9 @@ export default auth((req) => {
     return response;
   }
 
-  // API routes: validate API_KEY via bearer token or session cookie
+  // API routes: validate via either (a) workspace API_KEY, (b) NextAuth web
+  // session cookie, or (c) per-user Foundry mobile JWT issued by
+  // /api/auth/mobile-callback.
   if (pathname.startsWith("/api/")) {
     const isPublic = PUBLIC_API_PATHS.some((p) => pathname.startsWith(p));
 
@@ -102,7 +106,19 @@ export default auth((req) => {
         const cookieToken = req.cookies.get(API_AUTH_COOKIE)?.value ?? null;
         const token = bearerToken ?? cookieToken;
 
-        if (token !== apiKey) {
+        // Accept either the shared workspace API_KEY (web session / legacy iOS)
+        // or a per-user mobile JWT (post Wave-2 iOS).
+        let authorized = token === apiKey;
+        if (!authorized && bearerToken) {
+          try {
+            await verifyMobileToken(bearerToken);
+            authorized = true;
+          } catch {
+            authorized = false;
+          }
+        }
+
+        if (!authorized) {
           return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,
             headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
