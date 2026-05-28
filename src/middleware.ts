@@ -4,8 +4,9 @@ import { authConfig } from "@/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-// API paths that do not require API_KEY authentication
-const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report"];
+// API paths that do not require API_KEY authentication.
+// `/api/sign` is the public signer endpoint family — token in the URL is its own auth.
+const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign"];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
 

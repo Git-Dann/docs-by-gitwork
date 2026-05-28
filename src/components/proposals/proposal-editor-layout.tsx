@@ -33,6 +33,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
+import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
@@ -687,6 +688,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       {activeTab === "overview" ? (
         <div className="space-y-5">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
+          <SignaturePanel documentId={proposalId} />
           <ProposalProofPanel proposalId={proposalId} />
         </div>
       ) : (

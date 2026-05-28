@@ -135,6 +135,7 @@ model User {
   invitesSent      WorkspaceInvite[] @relation("InvitesSent")
   invitesAccepted  WorkspaceInvite[] @relation("InvitesAccepted")
   proofDocuments ProofDocument[]
+  signatureRequestsCreated SignatureRequest[] @relation("SignatureRequestCreator")
 }
 
 model Workspace {
@@ -176,6 +177,7 @@ model Workspace {
   studies         Study[]
   agentConfigs    AgentConfig[]
   checkConfigs    PulseCheckConfig[]
+  signatureRequests SignatureRequest[]
 }
 
 model WorkspaceMember {
@@ -258,6 +260,7 @@ model Document {
   ctas           CTA[]
   exports        Export[]
   proofDocuments ProofDocument[]
+  signatureRequests SignatureRequest[]
 
   @@index([workspaceId, status])
   @@index([updatedAt])
@@ -279,6 +282,125 @@ model DocumentCounter {
 
   @@unique([workspaceId, documentType, year])
   @@index([workspaceId, documentType])
+}
+
+// ── E-signature (Sprint 4) ──────────────────────────────────────────────────────────────────
+
+enum SignatureRequestStatus {
+  DRAFT       // Request created but not yet sent — workspace can still edit
+  SENT        // Awaiting signatures
+  COMPLETED   // All signers signed
+  DECLINED    // At least one signer declined
+  REVOKED     // Workspace revoked the request before completion
+  EXPIRED     // Request passed its expiresAt without completing
+}
+
+enum SignatureSignerStatus {
+  PENDING    // Invited, not yet viewed
+  VIEWED     // Opened the signing page at least once
+  SIGNED
+  DECLINED
+}
+
+enum SignatureCaptureMethod {
+  DRAWN   // Canvas / stylus / mouse — stored as PNG data URL
+  TYPED   // Stylised typed name — stored as the typed string + chosen font
+}
+
+enum SignatureEventKind {
+  REQUEST_CREATED
+  REQUEST_SENT
+  REQUEST_REVOKED
+  REQUEST_EXPIRED
+  REQUEST_COMPLETED
+  SIGNER_INVITED
+  SIGNER_VIEWED
+  SIGNER_SIGNED
+  SIGNER_DECLINED
+}
+
+/// A single "send for signature" event tied to a document. Carries the signers, status, and an
+/// immutable snapshot of the document at send-time (so subsequent edits to the doc don't change
+/// what someone is signing).
+model SignatureRequest {
+  id                String                 @id @default(cuid())
+  documentId        String
+  workspaceId       String
+  createdById       String
+  status            SignatureRequestStatus @default(DRAFT)
+  message           String?                @db.Text
+  expiresAt         DateTime?
+  sentAt            DateTime?
+  completedAt       DateTime?
+  /// JSON snapshot of the document at the moment the request was SENT. Used by the public
+  /// /sign/[token] page so subsequent edits don't change what's being signed. Null while the
+  /// request is still DRAFT.
+  documentSnapshot  Json?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  document          Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy         User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  signers           SignatureSigner[]
+  events            SignatureEvent[]
+
+  @@index([documentId, status])
+  @@index([workspaceId, status])
+}
+
+/// One signatory on a SignatureRequest. The `accessToken` is what gates /sign/[token] — minted
+/// when the request flips from DRAFT to SENT. Once signed, the row carries the captured
+/// signature, signer-stated name, IP, and UA for audit.
+model SignatureSigner {
+  id                String                 @id @default(cuid())
+  requestId         String
+  /// Order key for sequential signing flows. Null for parallel signing (v1 default).
+  signingOrder      Int?
+  name              String
+  email             String
+  role              String
+  organization      String?
+  /// Mirror of the signature block the parties/signatures section produced. Used to render the
+  /// right block in the signed PDF.
+  signatureBlockId  String?
+  accessToken       String                 @unique
+  status            SignatureSignerStatus  @default(PENDING)
+  signedAt          DateTime?
+  declinedAt        DateTime?
+  declineReason     String?
+  signatureMethod   SignatureCaptureMethod?
+  /// Signature payload. For DRAWN: PNG data URL (base64). For TYPED: the typed string.
+  signaturePayload  String?                @db.Text
+  /// The name the signer typed in the consent box — kept separate from `name` (which is the
+  /// invite recipient's name) so we have an auditable record of what they declared.
+  signedName        String?
+  /// Optional font key for TYPED signatures (e.g. "caveat", "great-vibes").
+  signedFontKey     String?
+  signedIp          String?
+  signedUserAgent   String?                @db.Text
+  invitedAt         DateTime?
+  firstViewedAt     DateTime?
+  request           SignatureRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  events            SignatureEvent[]
+
+  @@index([requestId, signingOrder])
+}
+
+/// Append-only audit log for the entire signature lifecycle. Every view / send / sign / revoke
+/// creates a row. Used by the Certificate of Completion appendix and any compliance export.
+model SignatureEvent {
+  id          String              @id @default(cuid())
+  requestId   String
+  signerId    String?
+  kind        SignatureEventKind
+  ip          String?
+  userAgent   String?              @db.Text
+  metadata    Json?
+  createdAt   DateTime             @default(now())
+  request     SignatureRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  signer      SignatureSigner?     @relation(fields: [signerId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
 }
 
 model ProofDocument {

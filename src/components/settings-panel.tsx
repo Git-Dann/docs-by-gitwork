@@ -33,7 +33,15 @@ import { MODULE_PERMISSIONS } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
 
-type TabId = "general" | "branding" | "content" | "people" | "integrations" | "agents" | "developer";
+type TabId =
+  | "general"
+  | "branding"
+  | "templates"
+  | "content"
+  | "people"
+  | "integrations"
+  | "agents"
+  | "developer";
 
 interface RateCardDraft {
   name: string;
@@ -46,6 +54,7 @@ interface RateCardDraft {
 const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "general", label: "General" },
   { id: "branding", label: "Branding" },
+  { id: "templates", label: "Templates" },
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
@@ -91,6 +100,7 @@ export function SettingsPanel({
 
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "branding" && <BrandingTab />}
+      {activeTab === "templates" && <TemplatesTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}
@@ -2726,4 +2736,229 @@ function initialsForPerson(name: string) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
+}
+
+// ── Templates tab (Sprint 4) ──────────────────────────────────────────────────────────
+
+interface TemplateRecord {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
+  isDefault: boolean;
+  sections: unknown;
+  workspaceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  documentCount: number;
+}
+
+const DOC_TYPE_LABEL: Record<TemplateRecord["documentType"], string> = {
+  PROPOSAL: "Proposal",
+  SLA: "Service Level Agreement",
+  SOW: "Statement of Work",
+  MSA: "Master Service Agreement",
+  NDA: "Non-Disclosure Agreement",
+  CO: "Change Order",
+  OTHER: "Document",
+};
+
+function TemplatesTab() {
+  const [templates, setTemplates] = useState<TemplateRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  async function reload() {
+    setError(null);
+    try {
+      const res = await apiFetch<{ templates: TemplateRecord[] }>("/api/templates");
+      setTemplates(res.templates);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  async function handleSetDefault(template: TemplateRecord) {
+    if (template.isDefault) return;
+    setBusyId(template.id);
+    try {
+      await apiFetch(`/api/templates/${template.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDuplicate(template: TemplateRecord) {
+    setBusyId(template.id);
+    try {
+      await apiFetch(`/api/templates/${template.id}/duplicate`, { method: "POST" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (templates === null) {
+    return (
+      <p className="text-sm text-[var(--text-3)]">Loading templates…</p>
+    );
+  }
+
+  // Group templates by documentType for the list — easier to scan when 6+ types are in play.
+  const grouped = templates.reduce<Record<string, TemplateRecord[]>>((acc, t) => {
+    (acc[t.documentType] ??= []).push(t);
+    return acc;
+  }, {});
+
+  const orderedTypes: TemplateRecord["documentType"][] = [
+    "PROPOSAL",
+    "SLA",
+    "SOW",
+    "MSA",
+    "NDA",
+    "CO",
+    "OTHER",
+  ];
+
+  return (
+    <div className="space-y-6">
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">01 {"// "}DOCUMENT TEMPLATES</span>
+          <span className="widget-header-right">{templates.length} TOTAL</span>
+        </div>
+        <div className="space-y-5 p-6">
+          <p className="text-sm leading-6 text-[var(--text-3)]">
+            Every new Document is spun up from a template. The seed templates here are bundled with
+            Foundry — duplicate one to make a workspace-owned variant you can tweak per client.
+            Setting a template as <strong>Default</strong> for its type means every new document of
+            that type uses it as the starting point.
+          </p>
+
+          {error ? (
+            <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p>
+          ) : null}
+
+          {orderedTypes.map((type) => {
+            const rows = grouped[type] ?? [];
+            if (!rows.length) return null;
+            return (
+              <div key={type} className="space-y-2">
+                <div className="flex items-baseline justify-between gap-2 pt-1">
+                  <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                    {DOC_TYPE_LABEL[type]} · {type}
+                  </h3>
+                  <span className="text-xs text-[var(--text-4)]">{rows.length} template{rows.length === 1 ? "" : "s"}</span>
+                </div>
+
+                <ul className="space-y-2">
+                  {rows.map((template) => {
+                    const isOpen = expanded === template.id;
+                    const sections = Array.isArray(template.sections)
+                      ? (template.sections as Array<{ title?: string; key?: string }>)
+                      : [];
+
+                    return (
+                      <li
+                        key={template.id}
+                        className="rounded-[10px] border border-[var(--border-2)] bg-white"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium text-[var(--text-1)]">
+                                {template.name}
+                              </p>
+                              {template.isDefault ? (
+                                <span className="rounded-[4px] bg-[var(--brand-200)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+                                  DEFAULT
+                                </span>
+                              ) : null}
+                              {template.workspaceId === null ? (
+                                <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                                  FOUNDRY
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 text-xs text-[var(--text-4)]">
+                              {sections.length} sections · {template.documentCount} document
+                              {template.documentCount === 1 ? "" : "s"} created · slug{" "}
+                              <code className="font-mono">{template.slug}</code>
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {!template.isDefault ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleSetDefault(template)}
+                                loading={busyId === template.id}
+                              >
+                                Set default
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleDuplicate(template)}
+                              loading={busyId === template.id}
+                            >
+                              Duplicate
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="tertiary"
+                              size="sm"
+                              onClick={() => setExpanded(isOpen ? null : template.id)}
+                            >
+                              {isOpen ? "Hide sections" : "View sections"}
+                            </Button>
+                          </div>
+                        </div>
+                        {isOpen ? (
+                          <div className="border-t border-[var(--border-3)] bg-[var(--surface-1)] px-4 py-3">
+                            <ol className="space-y-1">
+                              {sections.map((section, index) => (
+                                <li key={index} className="flex items-baseline justify-between gap-3 text-xs">
+                                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                                    {String(index + 1).padStart(2, "0")}
+                                  </span>
+                                  <span className="flex-1 text-[var(--text-2)]">{section.title ?? section.key}</span>
+                                  <code className="font-mono text-[10px] text-[var(--text-4)]">{section.key ?? "—"}</code>
+                                </li>
+                              ))}
+                            </ol>
+                            <p className="mt-3 text-[11px] text-[var(--text-4)]">
+                              Live section editing isn&rsquo;t wired up yet &mdash; duplicate the template to make changes that don&rsquo;t affect existing documents.
+                            </p>
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
 }

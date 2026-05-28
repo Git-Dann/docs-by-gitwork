@@ -75,6 +75,13 @@ export interface DocumentCoverProps {
    * Default: `print`.
    */
   variant?: "print" | "screen";
+  /**
+   * Optional watermark text rendered as a large rotated overlay (e.g. "DRAFT",
+   * "OUT FOR SIGNATURE", "DECLINED"). Tone controls the colour. Tone defaults to neutral grey.
+   * Provide an empty string / undefined to suppress.
+   */
+  watermark?: string;
+  watermarkTone?: "neutral" | "warning" | "danger";
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; bg: string; text: string }> = {
@@ -95,9 +102,15 @@ export function DocumentCover({
   dated,
   logoUrl = "/foundry-logo.png",
   variant = "print",
+  watermark,
+  watermarkTone = "neutral",
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "blue"] : null;
+  const watermarkColor =
+    watermarkTone === "danger" ? "rgba(220, 38, 38, 0.10)"
+    : watermarkTone === "warning" ? "rgba(217, 119, 6, 0.12)"
+    : "rgba(15, 23, 42, 0.08)";
 
   return (
     <section
@@ -112,8 +125,39 @@ export function DocumentCover({
         borderBottom: isPrint ? "none" : "1px solid rgba(0,0,0,0.08)",
         breakAfter: isPrint ? "page" : undefined,
         pageBreakAfter: isPrint ? "always" : undefined,
+        overflow: "hidden",
       }}
     >
+      {watermark ? (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%) rotate(-28deg)",
+            transformOrigin: "center",
+            pointerEvents: "none",
+            zIndex: 0,
+            fontFamily: "var(--font-mono), monospace",
+            fontWeight: 800,
+            fontSize: isPrint ? "8vw" : 96,
+            letterSpacing: "0.25em",
+            whiteSpace: "nowrap",
+            color: watermarkColor,
+            userSelect: "none",
+          }}
+        >
+          {watermark}
+        </div>
+      ) : null}
+
+      {/*
+        Wrap the visible content in a relatively-positioned div so it sits above the watermark.
+        Using a fragment + z-index would be cleaner, but the section already has position: relative
+        on the parent for the watermark anchor — easier to just lift the content with z-index.
+      */}
+      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1 }}>
       {/* ── Title row ──────────────────────────────────────────────────────── */}
       <div
         style={{
@@ -327,6 +371,7 @@ export function DocumentCover({
         >
           {dated}
         </span>
+      </div>
       </div>
     </section>
   );

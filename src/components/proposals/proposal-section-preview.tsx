@@ -701,6 +701,18 @@ function CoverPagePreview({
   // proposal summary if introduction hasn't been filled in yet.
   const summary = intro?.statement?.trim() || proposal.summary?.trim() || data.subtitle?.trim() || "";
 
+  // ── Watermark: derived from the document's lifecycle state. ─────────────────────────
+  // The Sprint 4 e-sig flow drives this: documents that haven't yet been sent for signature
+  // carry "DRAFT", those out for signature carry "OUT FOR SIGNATURE", declined requests get
+  // "DECLINED". COMPLETED removes the watermark entirely (the doc is now binding).
+  const watermark = pickWatermark(proposal.status);
+  const watermarkTone: "neutral" | "warning" | "danger" =
+    watermark === "DECLINED"
+      ? "danger"
+      : watermark === "OUT FOR SIGNATURE"
+        ? "warning"
+        : "neutral";
+
   return (
     <div id={sectionId} className="proposal-cover">
       <DocumentCover
@@ -730,9 +742,42 @@ function CoverPagePreview({
         dated={proposal.updatedAt.slice(0, 10)}
         logoUrl={brandLogoUrl}
         variant="print"
+        watermark={watermark}
+        watermarkTone={watermarkTone}
       />
     </div>
   );
+}
+
+/**
+ * Pick the watermark text for a document based on its current status. Returns undefined when no
+ * watermark should be shown (i.e. the document is signed / sent / archived).
+ *
+ * Mapping is intentionally conservative: any document that has not been APPROVED is "DRAFT". A
+ * document that's been SENT counts as binding (or in active signature workflow) and gets
+ * "OUT FOR SIGNATURE". COMPLETED (post-signature) is the only state without a watermark.
+ *
+ * The SignatureRequest state (DECLINED / REVOKED) is layered on top by Sprint 4's
+ * SignaturePanel-driven document status updates — we infer DECLINED here from the Document's
+ * own status field rather than fetching the latest SR, to keep the cover render synchronous.
+ */
+function pickWatermark(status: string): string | undefined {
+  switch (status) {
+    case "DRAFT":
+    case "PRODUCT_SIGN_OFF":
+    case "TECH_SIGN_OFF":
+    case "IN_REVIEW":
+      return "DRAFT";
+    case "APPROVED":
+      // Approved but not yet sent — still a draft from the counterparty's perspective.
+      return "DRAFT";
+    case "SENT":
+      return "OUT FOR SIGNATURE";
+    case "ARCHIVED":
+      return "ARCHIVED";
+    default:
+      return undefined;
+  }
 }
 
 function statusLabelForCover(status: string): string {
