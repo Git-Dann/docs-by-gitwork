@@ -528,14 +528,15 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
 
   if (aiConfig.provider === "ANTHROPIC") {
-    // timeout: 180s — generous ceiling for slow API days / large models (e.g. Opus).
-    //   Typical Sonnet: 30-60s. Opus with large response: 90-160s. 180s covers both.
-    // maxRetries: 0 — withRetry() handles retries; SDK retries stack on top and compound waits.
-    // stream: true (via .stream()) — streaming means the first token arrives in ~1s, so a
-    //   broken connection is detected immediately rather than after a silent timeout.
+    // Use .create() (not .stream()) for tool_use calls.
+    // Streaming accumulates the tool input JSON from delta events — if the stream
+    // ends before the JSON is fully formed, `toolBlock.input` comes back undefined.
+    // .create() returns a complete, atomic response so the tool input is always intact.
+    // The 180s timeout handles stalled connections; cloud-to-cloud keep-alive means
+    // TCP half-open issues surface well within that window.
     const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 180_000, maxRetries: 0 });
     const message = await withRetry(() =>
-      client.messages.stream({
+      client.messages.create({
         model: getModelForTask(aiConfig),
         max_tokens: 8192,
         system: [
@@ -545,10 +546,13 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
         messages: [{ role: "user", content: userMessage }],
         tools: [PULSE_ANALYSIS_TOOL],
         tool_choice: { type: "tool", name: "submit_pulse_analysis" },
-      }).finalMessage()
+      })
     );
     const toolBlock = message.content.find((b) => b.type === "tool_use");
     if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Unexpected response format from AI.");
+    if (toolBlock.input === undefined || toolBlock.input === null) {
+      throw new Error("AI returned an empty tool response — the model may have stopped generating early. Try re-running.");
+    }
     const result = pulseAnalysisOutputSchema.safeParse(toolBlock.input);
     if (!result.success) {
       throw new Error(`AI response did not match expected schema: ${result.error.issues[0]?.message}`);
