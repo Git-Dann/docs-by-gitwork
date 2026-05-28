@@ -114,18 +114,21 @@ const DEFAULT_DETECTED_STACK = {
   monitoring: null, analytics: null, cicd: null,
 };
 
-const pulseAnalysisOutputSchema = z.object({
+const pulseSummaryOutputSchema = z.object({
   projectClassification: pulseProjectClassificationSchema.catch({
     type: "Unknown", subtype: null, confidence: "LOW" as const, signals: [], verticalInsights: [],
   }),
   executiveSummary: z.string().catch(""),
   healthNarrative: z.string().catch(""),
   strengths: z.array(pulseStrengthSchema).catch([]),
+  proposalHook: z.string().catch(""),
+});
+
+const pulseDetailOutputSchema = z.object({
   criticalGaps: z.array(pulseCriticalGapSchema).catch([]),
   buildOpportunities: z.array(pulseBuildOpportunitySchema).catch([]),
   scalingRoadmap: z.array(pulseScalingPhaseSchema).catch([]),
   techDebt: z.array(pulseTechDebtSchema).catch([]),
-  proposalHook: z.string().catch(""),
   productionBlockers: z.array(productionBlockerSchema).catch([]),
   productionReadinessChecklist: z.array(productionReadinessItemSchema).catch([]),
   techStackAnalysis: pulseTechStackAnalysisSchema.catch({
@@ -369,9 +372,12 @@ function extractJson(raw: string): string {
   return raw;
 }
 
-const PULSE_ANALYSIS_TOOL = {
-  name: "submit_pulse_analysis",
-  description: "Submit the completed Pulse scan analysis.",
+// Two focused tools — run in parallel to cut total generation time by ~40%.
+// Call A (fast, ~15-30s): classification + narrative + strengths + hook
+// Call B (heavy, ~45-90s): gaps + opportunities + roadmap + debt + blockers + checklist + stack
+const PULSE_SUMMARY_TOOL = {
+  name: "submit_pulse_summary",
+  description: "Submit the project classification and narrative summary fields.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -379,21 +385,27 @@ const PULSE_ANALYSIS_TOOL = {
       executiveSummary: { type: "string" as const },
       healthNarrative: { type: "string" as const },
       strengths: { type: "array" as const },
+      proposalHook: { type: "string" as const },
+    },
+    required: ["projectClassification", "executiveSummary", "healthNarrative", "strengths", "proposalHook"],
+  },
+};
+
+const PULSE_DETAIL_TOOL = {
+  name: "submit_pulse_detail",
+  description: "Submit the detailed gap analysis, opportunities, roadmap, debt, blockers, readiness checklist, and tech stack analysis.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
       criticalGaps: { type: "array" as const },
       buildOpportunities: { type: "array" as const },
       scalingRoadmap: { type: "array" as const },
       techDebt: { type: "array" as const },
-      proposalHook: { type: "string" as const },
       productionBlockers: { type: "array" as const },
       productionReadinessChecklist: { type: "array" as const },
       techStackAnalysis: { type: "object" as const },
     },
-    required: [
-      "projectClassification", "executiveSummary", "healthNarrative",
-      "strengths", "criticalGaps", "buildOpportunities", "scalingRoadmap",
-      "techDebt", "proposalHook", "productionBlockers",
-      "productionReadinessChecklist", "techStackAnalysis",
-    ],
+    required: ["criticalGaps", "buildOpportunities", "scalingRoadmap", "techDebt", "productionBlockers", "productionReadinessChecklist", "techStackAnalysis"],
   },
 };
 
@@ -429,7 +441,8 @@ export async function analyseWithClaude(
     ? `Platform (declared by client): ${input.platform}`
     : "Platform: not specified (assume web app)";
 
-  const userMessage = `Project: ${input.projectName}
+  // Shared context block — included in both parallel calls
+  const contextBlock = `Project: ${input.projectName}
 Input type: ${input.inputType}
 ${inputRef}
 ${platformLabel}
@@ -437,22 +450,35 @@ Overall health score: ${input.healthScore}/100
 Tech stack detected: ${input.techStack.length > 0 ? input.techStack.join(", ") : "Unknown"}
 
 === SCAN RESULTS ===
-${formatChecksForPrompt(input.checks)}
+${formatChecksForPrompt(input.checks)}`;
 
-=== ANALYSIS REQUEST ===
-Return a JSON object with this exact shape:
+  // Summary call — fast 5 fields (classification, narrative, strengths, hook)
+  const summaryUserMessage = `${contextBlock}
+
+=== TASK: PROJECT SUMMARY ===
+Classify the project and return ONLY these 5 fields:
 
 {
   "projectClassification": {
     "type": "string — one of the supported project types listed in the system prompt (e.g. 'E-commerce', 'SaaS', 'Marketplace', 'Automotive / Aftermarket')",
     "subtype": "string or null — a more specific description e.g. 'B2B SaaS', 'Caravan / RV aftermarket parts', 'Freelance marketplace', 'D2C fashion brand'",
-    "confidence": "HIGH | MEDIUM | LOW — how confident you are in this classification based on scan signals",
-    "signals": ["array of strings — specific things in the scan that point to this classification, e.g. 'Stripe detected', 'Product listing pages found', 'App Store link present', '/caravan path found in sitemap'"],
-    "verticalInsights": ["array of 4–6 strings — specific, actionable recommendations that apply to THIS type of business, not generic SaaS advice. E.g. for e-commerce: 'Abandoned cart email flow', 'Product schema markup for Google Shopping', 'Returns/refund policy page'. For caravan aftermarket: 'VIN/reg lookup tool', 'Fitment guide per vehicle', 'Trade account portal'"]
+    "confidence": "HIGH | MEDIUM | LOW",
+    "signals": ["array of strings — specific things in the scan that point to this classification"],
+    "verticalInsights": ["array of 4–6 strings — specific, actionable recommendations that apply to THIS type of business, not generic SaaS advice"]
   },
   "executiveSummary": "2–3 sentence summary of the project's current state and biggest risks. Write as if briefing the consulting team before a discovery call.",
   "healthNarrative": "A paragraph explaining the health score in plain language — what's working, what's at risk, and the overall maturity level.",
   "strengths": [{ "title": "string", "detail": "string" }],
+  "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client."
+}`;
+
+  // Detail call — heavy 7 fields (gaps, opportunities, roadmap, debt, blockers, checklist, stack)
+  const detailUserMessage = `${contextBlock}
+
+=== TASK: DETAILED ANALYSIS ===
+Return ONLY these 7 fields:
+
+{
   "criticalGaps": [
     {
       "category": "string (e.g. Security, Auth, Payments, Observability, SEO, Performance)",
@@ -485,52 +511,51 @@ Return a JSON object with this exact shape:
       "severity": "HIGH | MEDIUM | LOW"
     }
   ],
-  "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client.",
   "productionBlockers": [
     {
       "category": "string — e.g. Email, Monitoring, Legal, Auth, Security",
       "blocker": "string — what is missing or broken, stated plainly. E.g. 'No transactional email provider configured'",
-      "why": "string — the concrete operational or legal consequence if not fixed before launch. E.g. 'Password reset emails, welcome emails, and receipt notifications will silently fail — users cannot recover locked accounts'",
-      "recommendedService": "string or omit — the specific named service Gitwork recommends for this gap, from the Gitwork vendor list. E.g. 'Resend', 'Sentry', 'Mailgun'. Omit if not applicable.",
+      "why": "string — the concrete operational or legal consequence if not fixed before launch",
+      "recommendedService": "string or omit — the specific named service Gitwork recommends for this gap",
       "urgency": "CRITICAL | HIGH"
     }
   ],
   "productionReadinessChecklist": [
     {
       "category": "string — one of: Legal, Auth, Payments, Onboarding, Support, Trust, Observability, Performance, SEO, Accessibility",
-      "item": "string — specific thing that must be in place (e.g. 'Privacy Policy page', 'Password reset flow', 'Cookie consent banner')",
+      "item": "string — specific thing that must be in place",
       "status": "DONE | MISSING | PARTIAL",
       "notes": "string — 1 sentence on current state or what's needed. Be specific about the vibe-coded context."
     }
   ],
   "techStackAnalysis": {
-    "assessment": "string — 2–3 sentence paragraph assessing the full infrastructure from a production-readiness standpoint. Comment on the hosting choice, database tier, and any obvious scaling risks.",
+    "assessment": "string — 2–3 sentence paragraph assessing the full infrastructure from a production-readiness standpoint",
     "detectedStack": {
-      "frontend": "string or null — detected frontend framework/library, e.g. 'Next.js 14', 'React + Vite', 'Vue 3', 'SvelteKit', null if not detectable",
-      "backend": "string or null — detected backend runtime/framework, e.g. 'Next.js API routes', 'Express.js', 'FastAPI', 'Rails', 'Laravel', null if unknown",
-      "database": "string or null — detected database, e.g. 'PostgreSQL (Supabase)', 'PlanetScale (MySQL)', 'MongoDB Atlas', 'Neon Postgres', null if unknown",
-      "hosting": "string or null — detected hosting/infra, e.g. 'Vercel', 'Railway', 'AWS (CloudFront + ECS)', 'Netlify', null if unknown",
-      "auth": "string or null — detected auth solution, e.g. 'Clerk', 'NextAuth.js', 'Supabase Auth', 'Auth0', null if not detected",
-      "payments": "string or null — detected payments, e.g. 'Stripe', 'Paddle', 'LemonSqueezy', null if not detected",
-      "email": "string or null — detected transactional email, e.g. 'Resend', 'SendGrid', 'Postmark', null if not detected",
-      "storage": "string or null — detected file storage, e.g. 'Cloudinary', 'Uploadthing', 'AWS S3', 'Supabase Storage', null if not detected",
-      "caching": "string or null — detected caching layer, e.g. 'Upstash Redis', 'Vercel KV', 'Redis', null if not detected",
-      "search": "string or null — detected search, e.g. 'Algolia', 'Typesense', 'Meilisearch', 'Postgres full-text', null if not detected",
-      "backgroundJobs": "string or null — detected async job processing, e.g. 'Inngest', 'Trigger.dev', 'BullMQ', 'Vercel Cron', null if not detected",
-      "monitoring": "string or null — detected error/APM monitoring, e.g. 'Sentry', 'Datadog', 'Highlight.io', null if not detected",
-      "analytics": "string or null — detected analytics, e.g. 'PostHog', 'Plausible', 'Google Analytics 4', null if not detected",
-      "cicd": "string or null — detected CI/CD pipeline, e.g. 'GitHub Actions', 'CircleCI', 'Vercel automatic deploys', null if not detected"
+      "frontend": "string or null",
+      "backend": "string or null",
+      "database": "string or null",
+      "hosting": "string or null",
+      "auth": "string or null",
+      "payments": "string or null",
+      "email": "string or null",
+      "storage": "string or null",
+      "caching": "string or null",
+      "search": "string or null",
+      "backgroundJobs": "string or null",
+      "monitoring": "string or null",
+      "analytics": "string or null",
+      "cicd": "string or null"
     },
     "recommendations": [
       {
-        "area": "string — infrastructure area, e.g. Database, Caching, Email, Background Jobs, Monitoring, Storage, Search, CDN, Rate Limiting, Secrets Management, Testing, Connection Pooling",
-        "current": "string or null — what's currently in use or null if nothing",
-        "recommended": "string — specific named tool/service to adopt",
+        "area": "string — infrastructure area, e.g. Database, Caching, Email, Background Jobs, Monitoring",
+        "current": "string or null",
+        "recommended": "string — specific named tool/service",
         "reason": "string — why this matters for production: concrete business or operational impact",
         "priority": "HIGH | MEDIUM | LOW"
       }
     ],
-    "missingForProduction": ["string — production-critical infrastructure components not detected, e.g. 'Database connection pooling', 'Rate limiting / DDoS protection', 'Secrets manager (not .env files)', 'Background job queue', 'Transactional email provider', 'File storage CDN', 'Database backups / PITR'"]
+    "missingForProduction": ["string — production-critical infrastructure components not detected"]
   }
 }
 
@@ -548,70 +573,132 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
     // Streaming accumulates the tool input JSON from delta events — if the stream
     // ends before the JSON is fully formed, `toolBlock.input` comes back undefined.
     // .create() returns a complete, atomic response so the tool input is always intact.
-    // The 180s timeout handles stalled connections; cloud-to-cloud keep-alive means
-    // TCP half-open issues surface well within that window.
+    // Both calls run in parallel via Promise.all — total time is max(A, B) instead of A+B.
     const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 180_000, maxRetries: 0 });
-    const message = await withRetry(() =>
-      client.messages.create({
-        model: getModelForTask(aiConfig),
-        max_tokens: 8192,
-        system: [
-          { type: "text", text: resolvedSystemPrompt, cache_control: { type: "ephemeral" } },
-          { type: "text", text: GITWORK_VENDOR_CONTEXT, cache_control: { type: "ephemeral" } },
-        ],
-        messages: [{ role: "user", content: userMessage }],
-        tools: [PULSE_ANALYSIS_TOOL],
-        tool_choice: { type: "tool", name: "submit_pulse_analysis" },
-      })
-    );
-    const toolBlock = message.content.find((b) => b.type === "tool_use");
-    if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Unexpected response format from AI.");
-    if (toolBlock.input === undefined || toolBlock.input === null) {
-      throw new Error("AI returned an empty tool response — the model may have stopped generating early. Try re-running.");
+
+    const [summaryMessage, detailMessage] = await Promise.all([
+      withRetry(() =>
+        client.messages.create({
+          model: getModelForTask(aiConfig),
+          max_tokens: 2048,
+          system: [
+            { type: "text", text: resolvedSystemPrompt, cache_control: { type: "ephemeral" } },
+          ],
+          messages: [{ role: "user", content: summaryUserMessage }],
+          tools: [PULSE_SUMMARY_TOOL],
+          tool_choice: { type: "tool", name: "submit_pulse_summary" },
+        })
+      ),
+      withRetry(() =>
+        client.messages.create({
+          model: getModelForTask(aiConfig),
+          max_tokens: 6144,
+          system: [
+            { type: "text", text: resolvedSystemPrompt, cache_control: { type: "ephemeral" } },
+            { type: "text", text: GITWORK_VENDOR_CONTEXT, cache_control: { type: "ephemeral" } },
+          ],
+          messages: [{ role: "user", content: detailUserMessage }],
+          tools: [PULSE_DETAIL_TOOL],
+          tool_choice: { type: "tool", name: "submit_pulse_detail" },
+        })
+      ),
+    ]);
+
+    const summaryToolBlock = summaryMessage.content.find((b) => b.type === "tool_use");
+    if (!summaryToolBlock || summaryToolBlock.type !== "tool_use") {
+      throw new Error("AI summary call returned an unexpected response format.");
     }
-    const result = pulseAnalysisOutputSchema.safeParse(toolBlock.input);
-    if (!result.success) {
-      const issue = result.error.issues[0];
+    if (summaryToolBlock.input === undefined || summaryToolBlock.input === null) {
+      throw new Error("AI summary call returned an empty response — try re-running.");
+    }
+
+    const detailToolBlock = detailMessage.content.find((b) => b.type === "tool_use");
+    if (!detailToolBlock || detailToolBlock.type !== "tool_use") {
+      throw new Error("AI detail call returned an unexpected response format.");
+    }
+    if (detailToolBlock.input === undefined || detailToolBlock.input === null) {
+      throw new Error("AI detail call returned an empty response — try re-running.");
+    }
+
+    const summaryResult = pulseSummaryOutputSchema.safeParse(summaryToolBlock.input);
+    if (!summaryResult.success) {
+      const issue = summaryResult.error.issues[0];
       const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
-      throw new Error(`AI response did not match expected schema${path}: ${issue?.message}`);
+      throw new Error(`AI summary response did not match expected schema${path}: ${issue?.message}`);
     }
-    return result.data;
+
+    const detailResult = pulseDetailOutputSchema.safeParse(detailToolBlock.input);
+    if (!detailResult.success) {
+      const issue = detailResult.error.issues[0];
+      const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
+      throw new Error(`AI detail response did not match expected schema${path}: ${issue?.message}`);
+    }
+
+    return { ...summaryResult.data, ...detailResult.data };
   }
 
   // OpenAI SDK handles OpenAI, Gemini (via compatible endpoint), and local/Ollama
+  // Both calls run in parallel via Promise.all — total time is max(A, B) instead of A+B.
   const { default: OpenAI } = await import("openai");
   const openaiClient = new OpenAI({
     apiKey: aiConfig.apiKey ?? "local",
     ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
   });
-  const completion = await withRetry(() =>
-    openaiClient.chat.completions.create({
-      model: aiConfig.model,
-      max_tokens: 8192,
-      messages: [
-        { role: "system", content: `${resolvedSystemPrompt}\n\n${GITWORK_VENDOR_CONTEXT}` },
-        { role: "user", content: userMessage },
-      ],
-    })
-  );
-  const rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
 
-  // Gemini and some local models wrap JSON in markdown code fences.
-  const extracted = extractJson(rawContent);
-  let parsed: unknown;
+  const [summaryCompletion, detailCompletion] = await Promise.all([
+    withRetry(() =>
+      openaiClient.chat.completions.create({
+        model: aiConfig.model,
+        max_tokens: 2048,
+        messages: [
+          { role: "system", content: resolvedSystemPrompt },
+          { role: "user", content: summaryUserMessage },
+        ],
+      })
+    ),
+    withRetry(() =>
+      openaiClient.chat.completions.create({
+        model: aiConfig.model,
+        max_tokens: 6144,
+        messages: [
+          { role: "system", content: `${resolvedSystemPrompt}\n\n${GITWORK_VENDOR_CONTEXT}` },
+          { role: "user", content: detailUserMessage },
+        ],
+      })
+    ),
+  ]);
+
+  const rawSummary = summaryCompletion.choices[0]?.message?.content?.trim() ?? "";
+  const rawDetail = detailCompletion.choices[0]?.message?.content?.trim() ?? "";
+
+  let parsedSummary: unknown;
+  let parsedDetail: unknown;
   try {
-    parsed = JSON.parse(extracted);
+    parsedSummary = JSON.parse(extractJson(rawSummary));
   } catch {
-    throw new Error(`AI returned invalid JSON. Raw response started with: ${rawContent.slice(0, 120)}`);
+    throw new Error(`AI summary returned invalid JSON. Raw response started with: ${rawSummary.slice(0, 120)}`);
+  }
+  try {
+    parsedDetail = JSON.parse(extractJson(rawDetail));
+  } catch {
+    throw new Error(`AI detail returned invalid JSON. Raw response started with: ${rawDetail.slice(0, 120)}`);
   }
 
-  const result = pulseAnalysisOutputSchema.safeParse(parsed);
-  if (!result.success) {
-    const issue = result.error.issues[0];
+  const summaryResult = pulseSummaryOutputSchema.safeParse(parsedSummary);
+  if (!summaryResult.success) {
+    const issue = summaryResult.error.issues[0];
     const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
-    throw new Error(`AI response did not match expected schema${path}: ${issue?.message}`);
+    throw new Error(`AI summary response did not match expected schema${path}: ${issue?.message}`);
   }
-  return result.data;
+
+  const detailResult = pulseDetailOutputSchema.safeParse(parsedDetail);
+  if (!detailResult.success) {
+    const issue = detailResult.error.issues[0];
+    const path = issue?.path?.length ? ` at .${issue.path.join(".")}` : "";
+    throw new Error(`AI detail response did not match expected schema${path}: ${issue?.message}`);
+  }
+
+  return { ...summaryResult.data, ...detailResult.data };
 }
 
 // ── Discovery Kit generation ───────────────────────────────────────────────────
