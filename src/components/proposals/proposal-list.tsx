@@ -139,7 +139,7 @@ export function ProposalList() {
   const approvedCount = proposals.filter((entry) => entry.status === "APPROVED").length;
 
   return (
-    <>
+    <div className="space-y-8">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="DOCUMENTS" value={String(totalCount).padStart(2, "0")} hint="IN VIEW" widgetNumber="01" />
         <StatTile label="IN FLIGHT" value={String(activeCount).padStart(2, "0")} hint="DRAFT · REVIEW" widgetNumber="02" />
@@ -147,7 +147,7 @@ export function ProposalList() {
         <StatTile label="PROOF DRAFTS" value={String(proofDocuments.length).padStart(2, "0")} hint="SAVED" widgetNumber="04" />
       </section>
 
-      <section className="widget-card mt-4 overflow-hidden">
+      <section className="widget-card overflow-hidden">
         <div className="widget-header">
           <span className="widget-header-label">05 // PROPOSALS</span>
           <span className="widget-header-right">{totalCount} TOTAL · {activeCount} ACTIVE</span>
@@ -476,7 +476,7 @@ export function ProposalList() {
         </div>
       </section>
 
-      <section className="widget-card mt-4 overflow-hidden">
+      <section className="widget-card overflow-hidden">
         <div className="widget-header">
           <span className="widget-header-label">06 // PROOF DRAFTS</span>
           <span className="widget-header-right">{proofDocuments.length} SAVED</span>
@@ -646,7 +646,7 @@ export function ProposalList() {
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
