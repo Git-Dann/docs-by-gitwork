@@ -338,6 +338,7 @@ function AddConnectorModal({
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [fetchingChannels, setFetchingChannels] = useState(false);
   const [channelFetchError, setChannelFetchError] = useState<string | null>(null);
+  const [tokenChecked, setTokenChecked] = useState(false);
 
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
@@ -367,6 +368,7 @@ function AddConnectorModal({
       if (!res.ok) throw new Error(data.error ?? "Failed to fetch channels");
       setAvailableChannels(data.channels ?? []);
       setDiscordGuildName(data.guildName ?? "");
+      setTokenChecked(true);
     } catch (err) {
       setChannelFetchError(err instanceof Error ? err.message : "Failed to fetch channels");
     } finally {
@@ -541,7 +543,7 @@ function AddConnectorModal({
               <input
                 type="password"
                 value={discordToken}
-                onChange={(e) => { setDiscordToken(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); }}
+                onChange={(e) => { setDiscordToken(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
                 className="app-input w-full font-mono text-xs"
                 placeholder="Discord bot token (Developer Portal → Bot → Token)"
                 autoComplete="off"
@@ -553,7 +555,7 @@ function AddConnectorModal({
                 <span className="app-field-label">Server (guild) ID</span>
                 <input
                   value={discordGuildId}
-                  onChange={(e) => { setDiscordGuildId(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); }}
+                  onChange={(e) => { setDiscordGuildId(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
                   className="app-input w-full"
                   placeholder="Right-click server → Copy Server ID"
                 />
@@ -567,10 +569,12 @@ function AddConnectorModal({
                 >
                   {fetchingChannels ? (
                     <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                  ) : tokenChecked ? (
+                    <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
                   ) : (
                     <ArrowPathIcon className="h-3.5 w-3.5" />
                   )}
-                  {fetchingChannels ? "Fetching…" : "Fetch channels"}
+                  {fetchingChannels ? "Checking…" : tokenChecked ? "Re-fetch" : "Check token"}
                 </button>
               </div>
             </div>
