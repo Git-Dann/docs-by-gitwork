@@ -14,6 +14,13 @@ export const authConfig = {
       if (isAppPage) return isLoggedIn;
       return true;
     },
+    redirect({ url, baseUrl }) {
+      // Honor internal callbackUrls (relative paths or same origin)
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      if (url.startsWith(baseUrl)) return url;
+      // Everything else — land on the dashboard
+      return `${baseUrl}/app`;
+    },
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;

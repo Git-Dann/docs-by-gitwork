@@ -48,6 +48,11 @@ export default auth((req) => {
     return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
   }
 
+  // Already logged in + visiting /login → send straight to the dashboard
+  if (pathname === "/login" && req.auth) {
+    return NextResponse.redirect(new URL("/app", req.url));
+  }
+
   // App pages: require NextAuth session
   if (pathname.startsWith("/app")) {
     if (!req.auth) {
