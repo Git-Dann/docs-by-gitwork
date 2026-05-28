@@ -38,16 +38,21 @@ const GRID: GridEntry[] = [
 export function AppOverview() {
   return (
     <div className="space-y-4">
-      <div>
+      {/* Title hidden on mobile — AppShell already shows it in the mobile top bar */}
+      <div className="hidden lg:block">
         <h1 className="text-lg font-semibold text-[var(--text-1)]">Foundry HQ</h1>
         <p className="text-xs text-[var(--text-4)]">Your workspace at a glance</p>
       </div>
 
+      {/*
+        Mobile: flex-col — widgets stack vertically, minHeight gives each sensible space.
+        lg+: grid kicks in with the 3-col layout and fixed row heights.
+      */}
       <div
-        className="grid gap-3"
+        className="flex flex-col gap-3 lg:grid lg:gap-3"
         style={{
           gridTemplateColumns: "repeat(3, 1fr)",
-          gridAutoRows: ROW_HEIGHT,
+          gridAutoRows: `${ROW_HEIGHT}px`,
           gridAutoFlow: "dense",
         }}
       >
@@ -55,7 +60,11 @@ export function AppOverview() {
           <div
             key={i}
             className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-xs)]"
-            style={{ gridColumn: `span ${cols}`, gridRow: `span ${rows}` }}
+            style={{
+              gridColumn: `span ${cols}`,
+              gridRow: `span ${rows}`,
+              minHeight: rows === 1 ? ROW_HEIGHT : ROW_HEIGHT * rows + (rows - 1) * 12,
+            }}
           >
             <Widget size={size} />
           </div>

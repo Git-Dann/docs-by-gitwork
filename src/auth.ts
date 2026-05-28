@@ -15,6 +15,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // (separate from GOOGLE_CLIENT_ID/SECRET used by the Care Gmail connector)
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+      // Request Gmail + Calendar read access so dashboard widgets work
+      authorization: {
+        params: {
+          scope:
+            "openid email profile " +
+            "https://www.googleapis.com/auth/gmail.readonly " +
+            "https://www.googleapis.com/auth/calendar.readonly",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
     }),
   ],
   callbacks: {
@@ -83,6 +94,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = dbUser.id;
         token.role = membership?.role ?? "STAFF";
         token.permissions = (membership?.permissions as string[]) ?? [];
+
+        // Persist Google OAuth refresh token so dashboard Gmail/Calendar widgets work.
+        // Google only returns refresh_token on the first consent — store it now.
+        if (account.refresh_token) {
+          await prisma.workspace.updateMany({
+            where: { slug: DEFAULT_WORKSPACE_SLUG },
+            data: { googleOAuthRefreshToken: account.refresh_token },
+          });
+        }
       }
 
       // Return token directly — authConfig.callbacks.jwt is for credentials provider
