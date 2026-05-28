@@ -36,6 +36,28 @@ async function ensurePortalSchema() {
     `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "clientId" TEXT`,
     // New FK on SupportClient → Client
     `ALTER TABLE "SupportClient" ADD COLUMN IF NOT EXISTS "workspaceClientId" TEXT`,
+    // Workspace: Slack channels + branding (multi-channel Slack + Sprint 1)
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "slackChannels" JSONB`,
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "branding" JSONB`,
+    // Document: share token, sharing flag, document number (Sprint 1)
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "shareToken" TEXT`,
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "isShared" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "documentNumber" TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Document_shareToken_key" ON "Document"("shareToken")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "Document_documentNumber_key" ON "Document"("documentNumber")`,
+    `CREATE INDEX IF NOT EXISTS "Document_shareToken_idx" ON "Document"("shareToken")`,
+    // DocumentCounter table (Sprint 1 — atomic numbering)
+    `CREATE TABLE IF NOT EXISTS "DocumentCounter" (
+      "id" TEXT NOT NULL,
+      "workspaceId" TEXT NOT NULL,
+      "docType" TEXT NOT NULL,
+      "year" INTEGER NOT NULL,
+      "lastNumber" INTEGER NOT NULL DEFAULT 0,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "DocumentCounter_pkey" PRIMARY KEY ("id"),
+      CONSTRAINT "DocumentCounter_workspaceId_docType_year_key" UNIQUE ("workspaceId", "docType", "year")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "DocumentCounter_workspaceId_idx" ON "DocumentCounter"("workspaceId")`,
     // ClientPlatform table
     `CREATE TABLE IF NOT EXISTS "ClientPlatform" (
       "id" TEXT NOT NULL,
