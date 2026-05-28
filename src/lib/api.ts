@@ -88,6 +88,8 @@ export async function createProposal(input: {
   clientId?: string;
   productName?: string;
   templateId?: string;
+  /** Defaults to PROPOSAL server-side if omitted. */
+  documentType?: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
 }): Promise<{ proposal: ProposalDocument }> {
   return apiFetch<{ proposal: ProposalDocument }>("/api/proposals", {
     method: "POST",

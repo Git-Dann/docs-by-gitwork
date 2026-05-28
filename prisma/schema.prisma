@@ -9,9 +9,13 @@ datasource db {
 }
 
 enum DocumentType {
-  PROPOSAL
-  SLA
-  OTHER
+  PROPOSAL  // Project pitch / scope / costing
+  SLA       // Service Level Agreement
+  SOW       // Statement of Work (typically under a parent MSA)
+  MSA       // Master Service Agreement
+  NDA       // Non-Disclosure Agreement
+  CO        // Change Order (against a SOW)
+  OTHER     // Catch-all for one-offs without a dedicated template yet
 }
 
 enum DocumentStatus {

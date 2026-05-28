@@ -1,7 +1,8 @@
-import { DocumentStatus, Prisma } from "@prisma/client";
+import { DocumentStatus, DocumentType, Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
@@ -98,25 +99,58 @@ export async function POST(request: NextRequest) {
     const body = proposalCreateSchema.parse(await request.json());
     const { workspace, user, template } = await ensureBaseRecords();
 
-    const selectedTemplate = body.templateId
+    // Resolve the document type for this new record. Defaults to PROPOSAL so existing callers
+    // (the legacy "New document" flow that only knew about proposals) keep working unchanged.
+    const documentType: DocumentType = (body.documentType as DocumentType) ?? "PROPOSAL";
+
+    // Pick the template: if the caller passed an explicit templateId, honour it; otherwise look
+    // up the default template for this doc type (seeded by bootstrap), falling back to the
+    // proposal template if the per-type seed is missing.
+    let selectedTemplate = body.templateId
       ? await prisma.documentTemplate.findFirst({
-          where: {
-            id: body.templateId,
-            workspaceId: workspace.id,
-          },
+          where: { id: body.templateId, workspaceId: workspace.id },
         })
-      : template;
+      : await prisma.documentTemplate.findFirst({
+          where: { slug: TEMPLATE_SLUG_BY_TYPE[documentType] },
+        });
+
+    if (!selectedTemplate) {
+      // Fall back to the (always-present) proposal template if we couldn't find a doc-type
+      // specific one. Keeps the API call non-throwing even before bootstrap runs.
+      selectedTemplate = template;
+    }
+
+    // Build the section + child-row payloads from the blueprint for this doc type. For PROPOSAL,
+    // this matches the legacy behaviour (uses `getDefaultSectionPayload()`); for SLA/SOW it
+    // creates the structured sections defined in src/lib/templates/{sla,sow}.ts.
+    const blueprints = getTemplateBlueprintsForType(documentType);
+    const sectionsCreate =
+      documentType === "PROPOSAL"
+        ? getDefaultSectionPayload()
+        : blueprints.map((blueprint, index) => ({
+            key: blueprint.key,
+            title: blueprint.title,
+            description: blueprint.description,
+            sortOrder: index,
+            isVisible: blueprint.visible ?? true,
+            data: blueprint.data as unknown as Prisma.InputJsonValue,
+          }));
+
+    // Only proposals start with stocked timeline phases / cost line items / CTAs / links / assets.
+    // For SLA/SOW the cover + section blueprints carry everything; we leave the child collections
+    // empty so the editor doesn't show inherited proposal junk.
+    const isProposal = documentType === "PROPOSAL";
 
     // Allocate a workspace-scoped, year-scoped, type-prefixed document number
-    // (e.g. PROP-2026-014) before creating the row so we can store it inline.
-    const documentNumber = await allocateDocumentNumber(workspace.id, "PROPOSAL");
+    // (e.g. PROP-2026-014, SLA-2026-003, SOW-2026-007) before creating the row.
+    const documentNumber = await allocateDocumentNumber(workspace.id, documentType);
 
     const document = await prisma.document.create({
       data: {
         workspaceId: workspace.id,
         ownerId: user.id,
         templateId: selectedTemplate?.id,
-        documentType: "PROPOSAL",
+        documentType,
         documentNumber,
         status: "DRAFT",
         title: body.title,
@@ -130,24 +164,12 @@ export async function POST(request: NextRequest) {
           client: body.clientName ?? DEFAULT_PROPOSAL_METADATA.client,
           owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
         },
-        sections: {
-          create: getDefaultSectionPayload(),
-        },
-        costLineItems: {
-          create: getDefaultCostsPayload(),
-        },
-        timelinePhases: {
-          create: getDefaultTimelinePayload(),
-        },
-        links: {
-          create: getDefaultLinkPayload(),
-        },
-        ctas: {
-          create: getDefaultCtaPayload(),
-        },
-        assets: {
-          create: getDefaultAssetPayload(),
-        },
+        sections: { create: sectionsCreate },
+        costLineItems: isProposal ? { create: getDefaultCostsPayload() } : undefined,
+        timelinePhases: isProposal ? { create: getDefaultTimelinePayload() } : undefined,
+        links: isProposal ? { create: getDefaultLinkPayload() } : undefined,
+        ctas: isProposal ? { create: getDefaultCtaPayload() } : undefined,
+        assets: isProposal ? { create: getDefaultAssetPayload() } : undefined,
       },
       include: proposalInclude,
     });

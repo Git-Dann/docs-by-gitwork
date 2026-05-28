@@ -25,6 +25,10 @@ interface PageProps {
 const DOC_TYPE_LABEL: Record<string, string> = {
   PROPOSAL: "Proposal",
   SLA: "Service Level Agreement",
+  SOW: "Statement of Work",
+  MSA: "Master Service Agreement",
+  NDA: "Non-Disclosure Agreement",
+  CO: "Change Order",
   OTHER: "Document",
 };
 

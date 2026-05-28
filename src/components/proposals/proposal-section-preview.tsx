@@ -588,6 +588,47 @@ function SectionBody({
       );
     }
 
+    // ── SLA / contract previews (Sprint 3) ──────────────────────────────────────────────
+    case "parties": {
+      const data = section.data as import("@/types/proposal").PartiesSectionData;
+      return <PartiesPreview data={data} />;
+    }
+
+    case "service_tiers": {
+      const data = section.data as import("@/types/proposal").ServiceTiersSectionData;
+      return <ServiceTiersPreview data={data} />;
+    }
+
+    case "response_times": {
+      const data = section.data as import("@/types/proposal").ResponseTimesSectionData;
+      return <ResponseTimesPreview data={data} />;
+    }
+
+    case "escalation": {
+      const data = section.data as import("@/types/proposal").EscalationSectionData;
+      return <EscalationPreview data={data} />;
+    }
+
+    case "exclusions": {
+      const data = section.data as import("@/types/proposal").ExclusionsSectionData;
+      return <ExclusionsPreview data={data} />;
+    }
+
+    case "penalties": {
+      const data = section.data as import("@/types/proposal").PenaltiesSectionData;
+      return <PenaltiesPreview data={data} />;
+    }
+
+    case "term": {
+      const data = section.data as import("@/types/proposal").TermSectionData;
+      return <TermPreview data={data} />;
+    }
+
+    case "signatures": {
+      const data = section.data as import("@/types/proposal").SignaturesSectionData;
+      return <SignaturesPreview data={data} />;
+    }
+
     default:
       return <p className="text-sm text-[var(--text-2)]">Unsupported section type.</p>;
   }
@@ -761,4 +802,266 @@ function formatLinkTypeLabel(value: string) {
         .toLowerCase()
         .replace(/^\w/, (letter) => letter.toUpperCase());
   }
+}
+
+// ─── SLA / contract preview blocks (Sprint 3) ────────────────────────────────────────────
+
+function SectionIntro({ intro }: { intro?: string }) {
+  if (!intro?.trim()) return null;
+  return <p className="text-sm leading-7 text-[var(--text-2)]">{intro}</p>;
+}
+
+function PrintTable({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="proposal-block-avoid overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
+      <table className="w-full border-collapse text-sm">
+        {children}
+      </table>
+    </div>
+  );
+}
+
+function Th({ children, align = "left", width }: { children: React.ReactNode; align?: "left" | "center" | "right"; width?: string }) {
+  return (
+    <th
+      style={{ textAlign: align, width }}
+      className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({ children, align = "left", strong, top }: { children: React.ReactNode; align?: "left" | "center" | "right"; strong?: boolean; top?: boolean }) {
+  return (
+    <td
+      style={{ textAlign: align, verticalAlign: top ? "top" : "middle" }}
+      className={`border-t border-[var(--border-3)] px-4 py-3 text-[13px] leading-6 ${strong ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]"}`}
+    >
+      {children}
+    </td>
+  );
+}
+
+function PartiesPreview({ data }: { data: import("@/types/proposal").PartiesSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        {(data.parties ?? []).map((p) => (
+          <div key={p.id} className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">{p.role || "Party"}</p>
+            <p className="mt-2 text-base font-semibold text-[var(--text-1)]">{p.name || p.organization || "—"}</p>
+            {p.organization && p.organization !== p.name ? (
+              <p className="mt-0.5 text-sm text-[var(--text-3)]">{p.organization}</p>
+            ) : null}
+            {p.email ? (
+              <p className="mt-2 text-sm text-[var(--text-3)]">{p.email}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ServiceTiersPreview({ data }: { data: import("@/types/proposal").ServiceTiersSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <PrintTable>
+        <thead>
+          <tr>
+            <Th width="22%">Tier</Th>
+            <Th>Services included</Th>
+            <Th width="14%" align="center">Uptime</Th>
+            <Th width="22%">Support hours</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.tiers ?? []).map((t) => (
+            <tr key={t.id}>
+              <Td strong top>{t.name}</Td>
+              <Td top>{t.services}</Td>
+              <Td align="center" strong top>{t.uptimeTarget}</Td>
+              <Td top>{t.supportHours}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </PrintTable>
+    </div>
+  );
+}
+
+function ResponseTimesPreview({ data }: { data: import("@/types/proposal").ResponseTimesSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <PrintTable>
+        <thead>
+          <tr>
+            <Th width="22%">Priority</Th>
+            <Th>Definition</Th>
+            <Th width="20%">First response</Th>
+            <Th width="20%">Resolution</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.priorities ?? []).map((p) => (
+            <tr key={p.id}>
+              <Td strong top>{p.priority}</Td>
+              <Td top>{p.definition}</Td>
+              <Td strong top>{p.firstResponse}</Td>
+              <Td strong top>{p.resolution}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </PrintTable>
+    </div>
+  );
+}
+
+function EscalationPreview({ data }: { data: import("@/types/proposal").EscalationSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <ol className="space-y-3">
+        {(data.levels ?? []).map((l) => (
+          <li key={l.id} className="proposal-block-avoid flex gap-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--brand-200)] font-[family-name:var(--font-display)] text-lg text-[var(--brand-700)]">
+              {l.level}
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="font-medium text-[var(--text-1)]">{l.contact || "—"}</p>
+              <p className="text-sm text-[var(--text-3)]">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em]">Trigger:</span>{" "}
+                {l.timeframe}
+              </p>
+              <p className="text-sm text-[var(--text-2)]">{l.criteria}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function ExclusionsPreview({ data }: { data: import("@/types/proposal").ExclusionsSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <ul className="space-y-3">
+        {(data.items ?? []).map((it) => (
+          <li key={it.id} className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4">
+            <p className="font-medium text-[var(--text-1)]">{it.exclusion || "—"}</p>
+            {it.rationale ? (
+              <p className="mt-1 text-sm leading-6 text-[var(--text-3)]">{it.rationale}</p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PenaltiesPreview({ data }: { data: import("@/types/proposal").PenaltiesSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <PrintTable>
+        <thead>
+          <tr>
+            <Th>Trigger</Th>
+            <Th width="28%">Service credit</Th>
+            <Th width="28%">Cap</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.tiers ?? []).map((t) => (
+            <tr key={t.id}>
+              <Td top>{t.trigger}</Td>
+              <Td strong top>{t.credit}</Td>
+              <Td top>{t.cap || "—"}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </PrintTable>
+    </div>
+  );
+}
+
+function TermPreview({ data }: { data: import("@/types/proposal").TermSectionData }) {
+  const rows: Array<[string, string]> = [
+    ["Effective date", data.effectiveDate || "—"],
+    ["Initial term", `${data.initialTermMonths ?? 12} months`],
+    ["Auto-renew", data.autoRenew ? "Yes" : "No"],
+    ["Renewal term", data.renewalTerm || "—"],
+    ["Notice period", `${data.noticePeriodDays ?? 60} days`],
+    ["Governing law", data.governingLaw || "—"],
+  ];
+  return (
+    <div className="space-y-4">
+      <PrintTable>
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <Td top>
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  {k}
+                </span>
+              </Td>
+              <Td strong top>{v}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </PrintTable>
+      {data.terminationForCause ? (
+        <div className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            Termination for cause
+          </p>
+          <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{data.terminationForCause}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SignaturesPreview({ data }: { data: import("@/types/proposal").SignaturesSectionData }) {
+  return (
+    <div className="space-y-4">
+      <SectionIntro intro={data.intro} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        {(data.blocks ?? []).map((b) => (
+          <div key={b.id} className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-5">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+              For and on behalf of
+            </p>
+            <p className="mt-2 text-base font-semibold text-[var(--text-1)]">{b.partyName || "—"}</p>
+
+            {/* Signature line */}
+            <div className="mt-6 border-b border-[var(--text-1)]" style={{ height: 32 }} />
+            <p className="mt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+              Signature
+            </p>
+
+            <div className="mt-4 space-y-1">
+              <p className="text-sm text-[var(--text-2)]">
+                <span className="text-[var(--text-4)]">Name: </span>
+                <span className="font-medium text-[var(--text-1)]">{b.signatoryName || "—"}</span>
+              </p>
+              <p className="text-sm text-[var(--text-2)]">
+                <span className="text-[var(--text-4)]">Role: </span>
+                <span className="font-medium text-[var(--text-1)]">{b.signatoryRole || "—"}</span>
+              </p>
+              <p className="text-sm text-[var(--text-2)]">
+                <span className="text-[var(--text-4)]">Date: </span>
+                <span className="font-medium text-[var(--text-1)]">{b.signatureDate || "—"}</span>
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

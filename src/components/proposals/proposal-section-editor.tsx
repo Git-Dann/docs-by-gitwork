@@ -4,6 +4,16 @@ import { CTAEditor } from "@/components/proposals/cta-editor";
 import { CostBreakdownTable } from "@/components/proposals/cost-breakdown-table";
 import { CoverEditor } from "@/components/proposals/cover-editor";
 import { AssetPicker } from "@/components/proposals/asset-picker";
+import {
+  EscalationEditor,
+  ExclusionsEditor,
+  PartiesEditor,
+  PenaltiesEditor,
+  ResponseTimesEditor,
+  ServiceTiersEditor,
+  SignaturesEditor,
+  TermEditor,
+} from "@/components/proposals/legal-editors";
 import { LinkManager } from "@/components/proposals/link-manager";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { ObjectivesEditor } from "@/components/proposals/objectives-editor";
@@ -399,6 +409,47 @@ export function ProposalSectionEditor({
           </div>
         </SimpleForm>
       );
+    }
+
+    // ── SLA / contract sections (Sprint 3) ──────────────────────────────────────────────
+    case "parties": {
+      const data = section.data as import("@/types/proposal").PartiesSectionData;
+      return <PartiesEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "service_tiers": {
+      const data = section.data as import("@/types/proposal").ServiceTiersSectionData;
+      return <ServiceTiersEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "response_times": {
+      const data = section.data as import("@/types/proposal").ResponseTimesSectionData;
+      return <ResponseTimesEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "escalation": {
+      const data = section.data as import("@/types/proposal").EscalationSectionData;
+      return <EscalationEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "exclusions": {
+      const data = section.data as import("@/types/proposal").ExclusionsSectionData;
+      return <ExclusionsEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "penalties": {
+      const data = section.data as import("@/types/proposal").PenaltiesSectionData;
+      return <PenaltiesEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "term": {
+      const data = section.data as import("@/types/proposal").TermSectionData;
+      return <TermEditor data={data} onChange={(next) => updateSectionData(next)} />;
+    }
+
+    case "signatures": {
+      const data = section.data as import("@/types/proposal").SignaturesSectionData;
+      return <SignaturesEditor data={data} onChange={(next) => updateSectionData(next)} />;
     }
 
     default:

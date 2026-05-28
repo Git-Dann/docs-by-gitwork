@@ -48,6 +48,23 @@ const sortOptions = [
 
 const rowsPerPageOptions = [10, 20, 50] as const;
 
+// Per-type labels used in the create modal — keeps the type picker and form copy in sync.
+const LABEL_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+  PROPOSAL: "Proposal",
+  SLA: "Service Level Agreement",
+  SOW: "Statement of Work",
+};
+const DEFAULT_TITLE_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+  PROPOSAL: "Untitled Proposal",
+  SLA: "Untitled SLA",
+  SOW: "Untitled SOW",
+};
+const PLACEHOLDER_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+  PROPOSAL: "Q2 Renewal Proposal",
+  SLA: "Acme — Production Hosting SLA",
+  SOW: "Acme — Phase 2 Discovery SOW",
+};
+
 export function ProposalList() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -64,6 +81,7 @@ export function ProposalList() {
     title: "",
     clientName: "",
     clientId: undefined as string | undefined,
+    documentType: "PROPOSAL" as "PROPOSAL" | "SLA" | "SOW",
   });
 
   useEffect(() => {
@@ -121,13 +139,14 @@ export function ProposalList() {
 
   async function handleCreate() {
     const created = await createMutation.mutateAsync({
-      title: form.title || "Untitled Proposal",
+      title: form.title || DEFAULT_TITLE_BY_TYPE[form.documentType],
       clientName: form.clientName || undefined,
       clientId: form.clientId,
+      documentType: form.documentType,
     });
 
     setShowCreate(false);
-    setForm({ title: "", clientName: "", clientId: undefined });
+    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" });
 
     router.push(`/app/proposals/${created.proposal.id}`);
   }
@@ -558,7 +577,7 @@ export function ProposalList() {
             type="button"
             aria-label="Close create document modal"
             className="app-dialog-backdrop absolute inset-0"
-            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined }); }}
+            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" }); }}
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -572,15 +591,57 @@ export function ProposalList() {
               </p>
 
               <div className="mt-5 space-y-4">
+                <div>
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                    Document type
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { value: "PROPOSAL", label: "Proposal", hint: "Pitch, scope, costing" },
+                        { value: "SLA", label: "SLA", hint: "Service level agreement" },
+                        { value: "SOW", label: "SOW", hint: "Statement of work" },
+                      ] as const
+                    ).map((option) => {
+                      const active = form.documentType === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setForm((previous) => ({ ...previous, documentType: option.value }))
+                          }
+                          className={cn(
+                            "flex flex-col items-start gap-1 rounded-[10px] border px-3 py-3 text-left transition",
+                            active
+                              ? "border-[var(--brand-600)] bg-[var(--brand-200)]/30"
+                              : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
+                          )}
+                        >
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                            {option.value}
+                          </span>
+                          <span className="text-sm font-medium text-[var(--text-1)]">
+                            {option.label}
+                          </span>
+                          <span className="text-[11px] leading-snug text-[var(--text-3)]">
+                            {option.hint}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                    Proposal title
+                    {LABEL_BY_TYPE[form.documentType]} title
                   </span>
                   <input
                     value={form.title}
                     onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))}
                     className="app-input"
-                    placeholder="Q2 Renewal Proposal"
+                    placeholder={PLACEHOLDER_BY_TYPE[form.documentType]}
                   />
                 </label>
 
@@ -636,7 +697,7 @@ export function ProposalList() {
               </div>
 
               <div className="mt-6 flex justify-end gap-2">
-                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined }); }} variant="secondary" size="md">
+                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" }); }} variant="secondary" size="md">
                   Cancel
                 </Button>
                 <Button

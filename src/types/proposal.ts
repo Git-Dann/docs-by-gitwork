@@ -7,9 +7,10 @@ export type DocumentStatus =
   | "SENT"
   | "ARCHIVED";
 
-export type DocumentType = "PROPOSAL" | "SLA" | "OTHER";
+export type DocumentType = "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
 
 export type SectionKey =
+  // ── Shared / proposal-original ─────────────────────────────────────────────
   | "cover"
   | "introduction"
   | "product_overview"
@@ -21,7 +22,16 @@ export type SectionKey =
   | "supporting_links_assets"
   | "assumptions"
   | "out_of_scope"
-  | "signoff_footer";
+  | "signoff_footer"
+  // ── SLA / contract sections (Sprint 3) ────────────────────────────────────
+  | "parties"          // signatories / counterparties block
+  | "service_tiers"    // table of service tiers, uptime targets, support hours
+  | "response_times"   // table of priorities, first-response + resolution SLAs
+  | "escalation"       // ordered escalation ladder
+  | "exclusions"       // bulleted exclusions with rationale
+  | "penalties"        // service credit / penalty schedule
+  | "term"             // effective date, duration, renewal, notice period
+  | "signatures";      // signature blocks for each party
 
 export type CostKind = "ONE_OFF" | "RECURRING";
 
@@ -167,6 +177,111 @@ export interface SignoffFooterSectionData {
   signatureDate: string;
 }
 
+// ── SLA / contract section data shapes (Sprint 3) ─────────────────────────────────────────
+
+export interface PartyItem {
+  id: string;
+  name: string;
+  role: string;          // e.g. "Service Provider", "Customer", "Authorised Signatory"
+  organization: string;
+  email: string;
+  /** Whether this party signs the document. Used by the signatures block. */
+  signatureRequired: boolean;
+}
+
+export interface PartiesSectionData {
+  /** Free-text preamble shown above the parties list (e.g. "This Agreement is made between:"). */
+  intro: string;
+  parties: PartyItem[];
+}
+
+export interface ServiceTierItem {
+  id: string;
+  name: string;            // e.g. "Standard", "Premium"
+  services: string;        // What's included at this tier
+  uptimeTarget: string;    // e.g. "99.9%"
+  supportHours: string;    // e.g. "Mon-Fri 09:00-18:00 UK"
+}
+
+export interface ServiceTiersSectionData {
+  intro: string;
+  tiers: ServiceTierItem[];
+}
+
+export interface ResponsePriorityItem {
+  id: string;
+  priority: string;        // e.g. "P1 - Critical"
+  definition: string;      // What qualifies as this priority
+  firstResponse: string;   // e.g. "Within 1 business hour"
+  resolution: string;      // e.g. "Within 4 business hours"
+}
+
+export interface ResponseTimesSectionData {
+  intro: string;
+  priorities: ResponsePriorityItem[];
+}
+
+export interface EscalationLevelItem {
+  id: string;
+  level: number;           // 1, 2, 3...
+  contact: string;         // Role + name (e.g. "Account Manager — Dan Lindsay")
+  timeframe: string;       // When to escalate (e.g. "After 2 hours without response")
+  criteria: string;        // Trigger criteria
+}
+
+export interface EscalationSectionData {
+  intro: string;
+  levels: EscalationLevelItem[];
+}
+
+export interface ExclusionItem {
+  id: string;
+  exclusion: string;
+  rationale: string;       // Why this is excluded
+}
+
+export interface ExclusionsSectionData {
+  intro: string;
+  items: ExclusionItem[];
+}
+
+export interface PenaltyTierItem {
+  id: string;
+  trigger: string;         // What event triggers a credit (e.g. "Uptime falls below 99.0%")
+  credit: string;          // The credit amount (e.g. "10% of monthly fee")
+  cap: string;             // Optional cap (e.g. "Capped at 50% of monthly fee")
+}
+
+export interface PenaltiesSectionData {
+  intro: string;
+  tiers: PenaltyTierItem[];
+}
+
+export interface TermSectionData {
+  effectiveDate: string;       // ISO date
+  initialTermMonths: number;   // e.g. 12
+  autoRenew: boolean;
+  renewalTerm: string;         // Free-text, e.g. "Successive 12-month periods"
+  noticePeriodDays: number;    // e.g. 60
+  governingLaw: string;        // e.g. "England and Wales"
+  terminationForCause: string; // Free-text describing termination rights
+}
+
+export interface SignatureBlockItem {
+  id: string;
+  partyName: string;
+  signatoryName: string;
+  signatoryRole: string;
+  signatoryEmail: string;
+  /** Filled at signing time (Sprint 4 e-sig); kept blank in v3. */
+  signatureDate: string;
+}
+
+export interface SignaturesSectionData {
+  intro: string;
+  blocks: SignatureBlockItem[];
+}
+
 export type ProposalSectionData =
   | CoverSectionData
   | IntroductionSectionData
@@ -178,7 +293,15 @@ export type ProposalSectionData =
   | CtaSectionData
   | SupportingLinksSectionData
   | ListSectionData
-  | SignoffFooterSectionData;
+  | SignoffFooterSectionData
+  | PartiesSectionData
+  | ServiceTiersSectionData
+  | ResponseTimesSectionData
+  | EscalationSectionData
+  | ExclusionsSectionData
+  | PenaltiesSectionData
+  | TermSectionData
+  | SignaturesSectionData;
 
 export interface ProposalSection {
   id?: string;

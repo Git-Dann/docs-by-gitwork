@@ -13,12 +13,34 @@ import { prisma } from "@/lib/prisma";
 const TYPE_PREFIX: Record<DocumentType, string> = {
   PROPOSAL: "PROP",
   SLA: "SLA",
+  SOW: "SOW",
+  MSA: "MSA",
+  NDA: "NDA",
+  CO: "CO",
   OTHER: "DOC",
 };
 
-// Future doc types (SOW, MSA, NDA, CO) will be added once the DocumentType enum is widened in a
-// later sprint. Keeping the dictionary on a separate const so the schema migration + this map move
-// together as a single change set.
+/** Human-readable label for each document type. Used in covers, picker UI, and emails. */
+export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
+  PROPOSAL: "Proposal",
+  SLA: "Service Level Agreement",
+  SOW: "Statement of Work",
+  MSA: "Master Service Agreement",
+  NDA: "Non-Disclosure Agreement",
+  CO: "Change Order",
+  OTHER: "Document",
+};
+
+/** Short label for the cover eyebrow (`FOUNDRY // {LABEL}`). Uppercase, 3-4 chars feels best. */
+export const DOCUMENT_TYPE_SHORT: Record<DocumentType, string> = {
+  PROPOSAL: "PROPOSAL",
+  SLA: "SLA",
+  SOW: "SOW",
+  MSA: "MSA",
+  NDA: "NDA",
+  CO: "CHANGE ORDER",
+  OTHER: "DOCUMENT",
+};
 
 /**
  * Allocate the next document number for a workspace × type × year, atomically.

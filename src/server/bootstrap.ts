@@ -1,6 +1,11 @@
 import { DocumentType, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_PROPOSAL_METADATA, getDefaultProposalSections } from "@/lib/default-template";
+import {
+  TEMPLATE_NAME_BY_TYPE,
+  TEMPLATE_SLUG_BY_TYPE,
+  getTemplateBlueprintsForType,
+} from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_TEMPLATE_SLUG,
@@ -179,6 +184,39 @@ export async function ensureBaseRecords() {
       isDefault: true,
     },
   });
+
+  // Seed SLA and SOW default templates (Sprint 3). Each is keyed by slug so the upsert is
+  // idempotent on subsequent boots, and `update` refreshes the sections if we evolve the
+  // blueprints in the codebase.
+  for (const type of [DocumentType.SLA, DocumentType.SOW] as const) {
+    const blueprints = getTemplateBlueprintsForType(type);
+    const slug = TEMPLATE_SLUG_BY_TYPE[type];
+    const name = TEMPLATE_NAME_BY_TYPE[type];
+    const sections = blueprints.map((blueprint, index) => ({
+      key: blueprint.key,
+      title: blueprint.title,
+      description: blueprint.description,
+      sortOrder: index,
+      isVisible: blueprint.visible ?? true,
+      data: blueprint.data,
+    }));
+    await prisma.documentTemplate.upsert({
+      where: { slug },
+      update: {
+        sections: sections as unknown as Prisma.InputJsonValue,
+        isDefault: true,
+      },
+      create: {
+        workspaceId: workspace.id,
+        slug,
+        name,
+        description: `Default ${name.replace(" — default", "")} template for Foundry by Gitwork.`,
+        documentType: type,
+        sections: sections as unknown as Prisma.InputJsonValue,
+        isDefault: true,
+      },
+    });
+  }
 
   await prisma.rateCardPerson.createMany({
     data: getDefaultRateCardPeoplePayload(workspace.id),

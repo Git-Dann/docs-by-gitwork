@@ -22,6 +22,10 @@ const prisma = new PrismaClient();
 const TYPE_PREFIX: Record<DocumentType, string> = {
   PROPOSAL: "PROP",
   SLA: "SLA",
+  SOW: "SOW",
+  MSA: "MSA",
+  NDA: "NDA",
+  CO: "CO",
   OTHER: "DOC",
 };
 
