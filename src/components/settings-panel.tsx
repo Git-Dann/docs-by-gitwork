@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  ArrowDownIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowUpIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
@@ -32,6 +34,8 @@ import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card"
 import { MODULE_PERMISSIONS } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
+import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
+import type { SectionKey } from "@/types/proposal";
 
 type TabId =
   | "general"
@@ -2764,11 +2768,19 @@ const DOC_TYPE_LABEL: Record<TemplateRecord["documentType"], string> = {
   OTHER: "Document",
 };
 
+/** One template section row used by the inline editor. Mirrors the API shape. */
+interface TemplateSectionDraft {
+  key: string;
+  title?: string;
+  data?: unknown;
+}
+
 function TemplatesTab() {
   const [templates, setTemplates] = useState<TemplateRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function reload() {
     setError(null);
@@ -2805,6 +2817,44 @@ function TemplatesTab() {
     setBusyId(template.id);
     try {
       await apiFetch(`/api/templates/${template.id}/duplicate`, { method: "POST" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleSaveEdit(
+    template: TemplateRecord,
+    patch: { name: string; description: string; sections: TemplateSectionDraft[] },
+  ) {
+    setBusyId(template.id);
+    try {
+      await apiFetch(`/api/templates/${template.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: patch.name,
+          description: patch.description,
+          sections: patch.sections,
+        }),
+      });
+      setEditingId(null);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(template: TemplateRecord) {
+    if (!confirm(`Delete the "${template.name}" template? This cannot be undone.`)) return;
+    setBusyId(template.id);
+    try {
+      await apiFetch(`/api/templates/${template.id}`, { method: "DELETE" });
+      setEditingId(null);
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -2893,7 +2943,11 @@ function TemplatesTab() {
                                 <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                                   FOUNDRY
                                 </span>
-                              ) : null}
+                              ) : (
+                                <span className="rounded-[4px] border border-[var(--brand-600)]/40 bg-[var(--brand-200)]/40 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+                                  WORKSPACE
+                                </span>
+                              )}
                             </div>
                             <p className="mt-0.5 text-xs text-[var(--text-4)]">
                               {sections.length} sections · {template.documentCount} document
@@ -2922,17 +2976,40 @@ function TemplatesTab() {
                             >
                               Duplicate
                             </Button>
-                            <Button
-                              type="button"
-                              variant="tertiary"
-                              size="sm"
-                              onClick={() => setExpanded(isOpen ? null : template.id)}
-                            >
-                              {isOpen ? "Hide sections" : "View sections"}
-                            </Button>
+                            {template.workspaceId !== null ? (
+                              <Button
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                                onClick={() =>
+                                  setEditingId(editingId === template.id ? null : template.id)
+                                }
+                                leadingIcon={<PencilIcon className="h-3.5 w-3.5" />}
+                              >
+                                {editingId === template.id ? "Close" : "Edit"}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="tertiary"
+                                size="sm"
+                                onClick={() => setExpanded(isOpen ? null : template.id)}
+                              >
+                                {isOpen ? "Hide sections" : "View sections"}
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        {isOpen ? (
+                        {editingId === template.id && template.workspaceId !== null ? (
+                          <TemplateEditor
+                            template={template}
+                            sections={sections as TemplateSectionDraft[]}
+                            busy={busyId === template.id}
+                            onCancel={() => setEditingId(null)}
+                            onSave={(patch) => void handleSaveEdit(template, patch)}
+                            onDelete={() => void handleDelete(template)}
+                          />
+                        ) : isOpen ? (
                           <div className="border-t border-[var(--border-3)] bg-[var(--surface-1)] px-4 py-3">
                             <ol className="space-y-1">
                               {sections.map((section, index) => (
@@ -2946,7 +3023,7 @@ function TemplatesTab() {
                               ))}
                             </ol>
                             <p className="mt-3 text-[11px] text-[var(--text-4)]">
-                              Live section editing isn&rsquo;t wired up yet &mdash; duplicate the template to make changes that don&rsquo;t affect existing documents.
+                              This is a Foundry stock template &mdash; duplicate it to make a workspace-owned copy you can edit.
                             </p>
                           </div>
                         ) : null}
@@ -2959,6 +3036,268 @@ function TemplatesTab() {
           })}
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Inline editor for a workspace-owned template. Surfaces:
+ *   - Rename + description
+ *   - Section list with reorder (up/down) and remove
+ *   - "Add section" picker that browses SECTION_REGISTRY grouped by category
+ *   - Delete template (workspace-owned only)
+ *
+ * Saves the entire `sections` array via PATCH /api/templates/[id]. We don't validate block
+ * `data` shape here — the API accepts arbitrary Json passthrough and the section's defaultData
+ * is always shape-correct because it comes from the registry.
+ */
+function TemplateEditor({
+  template,
+  sections,
+  busy,
+  onCancel,
+  onSave,
+  onDelete,
+}: {
+  template: TemplateRecord;
+  sections: TemplateSectionDraft[];
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (patch: { name: string; description: string; sections: TemplateSectionDraft[] }) => void;
+  onDelete: () => void;
+}) {
+  const [name, setName] = useState(template.name);
+  const [description, setDescription] = useState(template.description ?? "");
+  const [draft, setDraft] = useState<TemplateSectionDraft[]>(() =>
+    sections.map((s) => ({ key: s.key, title: s.title, data: s.data })),
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  function moveUp(index: number) {
+    if (index === 0) return;
+    setDraft((prev) => {
+      const next = [...prev];
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      return next;
+    });
+  }
+  function moveDown(index: number) {
+    setDraft((prev) => {
+      if (index === prev.length - 1) return prev;
+      const next = [...prev];
+      [next[index + 1], next[index]] = [next[index], next[index + 1]];
+      return next;
+    });
+  }
+  function removeAt(index: number) {
+    setDraft((prev) => prev.filter((_, i) => i !== index));
+  }
+  function updateTitleAt(index: number, title: string) {
+    setDraft((prev) => prev.map((s, i) => (i === index ? { ...s, title } : s)));
+  }
+  function addSection(key: SectionKey) {
+    const reg = SECTION_REGISTRY[key];
+    if (!reg) return;
+    setDraft((prev) => [
+      ...prev,
+      { key, title: reg.defaultTitle, data: reg.defaultData },
+    ]);
+    setPickerOpen(false);
+  }
+
+  const canSave = name.trim().length > 0 && draft.length > 0;
+
+  return (
+    <div className="border-t border-[var(--border-3)] bg-[var(--surface-1)] px-4 py-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Template name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="app-input"
+            maxLength={120}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Description</span>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="app-input"
+            maxLength={500}
+            placeholder="When to use this template…"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+          Sections ({draft.length})
+        </p>
+        <ul className="mt-2 space-y-1">
+          {draft.map((section, i) => {
+            const reg = SECTION_REGISTRY[section.key as SectionKey];
+            const Icon = reg?.icon;
+            return (
+              <li
+                key={`${section.key}-${i}`}
+                className="flex items-center gap-2 rounded-[6px] border border-[var(--border-3)] bg-white px-3 py-2"
+              >
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] w-6 shrink-0">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                {Icon ? <Icon className="h-4 w-4 text-[var(--text-3)] shrink-0" /> : null}
+                <input
+                  value={section.title ?? ""}
+                  onChange={(e) => updateTitleAt(i, e.target.value)}
+                  placeholder={reg?.defaultTitle ?? section.key}
+                  className="flex-1 border-0 bg-transparent p-0 text-sm font-medium text-[var(--text-1)] focus:outline-none focus:ring-0"
+                  maxLength={200}
+                />
+                <code className="font-mono text-[10px] text-[var(--text-4)] hidden sm:inline">
+                  {section.key}
+                </code>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => moveUp(i)}
+                    disabled={i === 0}
+                    aria-label="Move up"
+                    className="rounded p-1 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-30"
+                  >
+                    <ArrowUpIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveDown(i)}
+                    disabled={i === draft.length - 1}
+                    aria-label="Move down"
+                    className="rounded p-1 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-30"
+                  >
+                    <ArrowDownIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeAt(i)}
+                    aria-label="Remove section"
+                    className="rounded p-1 text-rose-600 transition hover:bg-rose-50"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {pickerOpen ? (
+          <SectionPicker onPick={addSection} onClose={() => setPickerOpen(false)} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[var(--brand-700)] hover:underline"
+          >
+            <PlusIcon className="h-4 w-4" /> Add a section
+          </button>
+        )}
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="utility"
+          size="sm"
+          onClick={onDelete}
+          loading={busy}
+          leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
+          className="text-rose-600 hover:text-rose-700"
+        >
+          Delete template
+        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => onSave({ name: name.trim(), description: description.trim(), sections: draft })}
+            disabled={!canSave}
+            loading={busy}
+          >
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact "add a block" picker. Lists every section in SECTION_REGISTRY grouped by category.
+ * Lives inline in the template editor — when the user picks a block, it gets appended to the
+ * template's section list with the registry's defaultData / defaultTitle.
+ */
+function SectionPicker({
+  onPick,
+  onClose,
+}: {
+  onPick: (key: SectionKey) => void;
+  onClose: () => void;
+}) {
+  const grouped = sectionsByCategory(allSectionKeys());
+
+  return (
+    <div className="mt-3 rounded-[8px] border border-[var(--border-2)] bg-white p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+          Pick a block
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close picker"
+          className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+        >
+          <XMarkIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
+        {grouped.map((group) => (
+          <div key={group.category}>
+            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+              {group.category}
+            </p>
+            <div className="mt-1 grid grid-cols-2 gap-1">
+              {group.keys.map((key) => {
+                const reg = SECTION_REGISTRY[key];
+                const Icon = reg.icon;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onPick(key)}
+                    className="flex items-start gap-2 rounded-[6px] border border-transparent px-2 py-1.5 text-left transition hover:border-[var(--border-2)] hover:bg-[var(--surface-1)]"
+                  >
+                    <Icon className="mt-0.5 h-3.5 w-3.5 text-[var(--text-3)] shrink-0" />
+                    <span className="flex flex-col gap-0">
+                      <span className="text-sm font-medium text-[var(--text-1)]">
+                        {reg.displayName}
+                      </span>
+                      <span className="text-[11px] leading-snug text-[var(--text-3)] line-clamp-1">
+                        {reg.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

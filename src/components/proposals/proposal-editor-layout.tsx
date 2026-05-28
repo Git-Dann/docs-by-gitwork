@@ -40,6 +40,7 @@ import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
 import { CollabPanel } from "@/components/proposals/collab-panel";
+import { RightRailTabs } from "@/components/proposals/right-rail-tabs";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
@@ -796,10 +797,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       {activeTab === "overview" ? (
         <div className="space-y-5">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
-          <SignaturePanel documentId={proposalId} />
-          <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} />
-          <ActivityFeed documentId={proposalId} />
-          <ProposalProofPanel proposalId={proposalId} />
+          <RightRailTabs
+            defaultTabId="collab"
+            tabs={[
+              { id: "collab",     label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
+              { id: "signature",  label: "Signatures",    panel: <SignaturePanel documentId={proposalId} /> },
+              { id: "activity",   label: "Activity",      panel: <ActivityFeed documentId={proposalId} /> },
+              { id: "proof",      label: "Proof drafts",  panel: <ProposalProofPanel proposalId={proposalId} /> },
+            ]}
+          />
         </div>
       ) : (
         <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">

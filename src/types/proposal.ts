@@ -37,7 +37,16 @@ export type SectionKey =
   | "prose"            // freeform markdown-ish prose
   | "callout"          // highlighted note (info / warning / success / danger)
   | "image"            // standalone image with caption + alignment
-  | "divider";         // visual rule, spacer, or page break
+  | "divider"          // visual rule, spacer, or page break
+  // ── Sprint 8 expansion (P4.15) ─────────────────────────────────────────────
+  | "data_table"       // generic editable rows/columns table
+  | "pricing_tiers"    // 3-column tier comparison (Bronze / Silver / Gold)
+  | "kpi_strip"        // 4-column big-figure stat row
+  | "faq"              // Q + A pairs
+  | "comparison_table" // us vs them with checkmarks
+  | "video_embed"      // YouTube / Loom / Vimeo with caption
+  | "code_snippet"     // monospace code block with language label
+  | "checklist";       // polarity-aware list (include / exclude) — P4.16 consolidation
 
 export type CostKind = "ONE_OFF" | "RECURRING";
 
@@ -326,6 +335,104 @@ export interface DividerSectionData {
   spacing?: number;
 }
 
+// ── Sprint 8 — new block data shapes (P4.15 / P4.16) ──────────────────────────────────────
+
+export interface DataTableSectionData {
+  /** Column headers. Length controls column count. */
+  columns: string[];
+  /** Each row is an array of cell strings; aligned to `columns` by index. */
+  rows: string[][];
+  /** Optional caption rendered above the table. */
+  caption?: string;
+}
+
+export interface PricingTierItem {
+  name: string;
+  price: string;
+  /** Single-line frequency / cadence — e.g. "/ month", "one-off". */
+  cadence?: string;
+  /** Optional one-line tagline below the name. */
+  tagline?: string;
+  /** Feature bullets. Plain strings; checkmarks are added in preview. */
+  features: string[];
+  /** Optional CTA button label + url. Only renders when label is set. */
+  ctaLabel?: string;
+  ctaUrl?: string;
+  /** Highlights this tier ("most popular"). At most one should be highlighted. */
+  highlighted?: boolean;
+}
+
+export interface PricingTiersSectionData {
+  intro?: string;
+  tiers: PricingTierItem[];
+}
+
+export interface KpiStripItem {
+  /** The big figure — usually a number with unit. */
+  value: string;
+  /** Caption below the figure. */
+  label: string;
+  /** Optional context line above the value (e.g. "Q2 result"). */
+  context?: string;
+}
+
+export interface KpiStripSectionData {
+  items: KpiStripItem[];
+}
+
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+export interface FaqSectionData {
+  intro?: string;
+  items: FaqItem[];
+}
+
+export interface ComparisonRow {
+  /** Row label (capability / feature). */
+  label: string;
+  /** Optional sub-line under the label. */
+  detail?: string;
+  /** "us" cell: true → checkmark, false → cross, string → freeform text. */
+  us: boolean | string;
+  /** "them" cell — same as `us`. */
+  them: boolean | string;
+}
+
+export interface ComparisonTableSectionData {
+  /** Heading for our side (default "Gitwork"). */
+  usLabel: string;
+  /** Heading for the other side (default "Status quo"). */
+  themLabel: string;
+  rows: ComparisonRow[];
+}
+
+export interface VideoEmbedSectionData {
+  /** Full URL — Loom share link, YouTube watch URL, Vimeo, etc. */
+  url: string;
+  /** Optional caption shown beneath the player. */
+  caption?: string;
+  /** Aspect ratio (default 16:9). */
+  aspectRatio?: "16:9" | "4:3" | "1:1";
+}
+
+export interface CodeSnippetSectionData {
+  /** Display label (e.g. "TypeScript", "Bash"). Purely cosmetic. */
+  language?: string;
+  /** Optional filename shown in the snippet header. */
+  filename?: string;
+  code: string;
+}
+
+export interface ChecklistSectionData {
+  /** INCLUDE → green checks ("what's in scope"). EXCLUDE → red crosses ("what's out"). */
+  polarity: "INCLUDE" | "EXCLUDE";
+  intro?: string;
+  items: string[];
+}
+
 export type ProposalSectionData =
   | CoverSectionData
   | IntroductionSectionData
@@ -350,7 +457,15 @@ export type ProposalSectionData =
   | ProseSectionData
   | CalloutSectionData
   | ImageSectionData
-  | DividerSectionData;
+  | DividerSectionData
+  | DataTableSectionData
+  | PricingTiersSectionData
+  | KpiStripSectionData
+  | FaqSectionData
+  | ComparisonTableSectionData
+  | VideoEmbedSectionData
+  | CodeSnippetSectionData
+  | ChecklistSectionData;
 
 export interface ProposalSection {
   id?: string;

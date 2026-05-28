@@ -6,11 +6,15 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DocumentDuplicateIcon,
+  DocumentPlusIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
+  SparklesIcon,
+  Squares2X2Icon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -145,6 +149,20 @@ export function ProposalList() {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grouped">("table");
 
+  // Onboarding hero — shown only when the workspace has zero docs ever AND the user hasn't
+  // dismissed it. Lives in localStorage so it doesn't repeat across sessions.
+  const [onboardingDismissed, setOnboardingDismissed] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setOnboardingDismissed(window.localStorage.getItem("gitwork.docs.onboarding-seen") === "1");
+  }, []);
+  function dismissOnboarding() {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("gitwork.docs.onboarding-seen", "1");
+    }
+    setOnboardingDismissed(true);
+  }
+
   async function runBulkAction(action: "archive" | "unarchive" | "revoke-share" | "delete") {
     if (selectedIds.length === 0 || bulkBusy) return;
     if (action === "delete" && !confirm(`Permanently delete ${selectedIds.length} documents? This cannot be undone.`)) {
@@ -203,8 +221,80 @@ export function ProposalList() {
   ).length;
   const approvedCount = proposals.filter((entry) => entry.status === "APPROVED").length;
 
+  const isWorkspaceEmpty = !isPending && totalCount === 0 && search === "" && status === "ALL";
+  const showOnboarding = isWorkspaceEmpty && !onboardingDismissed;
+
   return (
     <div className="space-y-8">
+      {showOnboarding ? (
+        <section className="widget-card overflow-hidden">
+          <div className="widget-header">
+            <span className="widget-header-label">WELCOME TO DOCS</span>
+            <button
+              type="button"
+              onClick={dismissOnboarding}
+              aria-label="Dismiss onboarding"
+              className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="p-6 sm:p-8">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--brand-700)]">
+              FIRST TIME HERE?
+            </p>
+            <h2 className="mt-2 font-[family-name:var(--font-display)] text-[32px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
+              Spin up your first proposal in under a minute.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
+              Docs handles proposals, SLAs, SOWs, MSAs, NDAs, and change orders &mdash; all from one
+              builder. Start from a template, draft the body with AI, then ship a signed PDF or a
+              token-gated share link.
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <OnboardingStep
+                num="01"
+                icon={<Squares2X2Icon className="h-4 w-4" />}
+                title="Pick a template"
+                body="Every doc type ships with a starter — proposals, SLAs, SOWs, and more. Duplicate any to make a workspace-owned variant in Settings → Templates."
+              />
+              <OnboardingStep
+                num="02"
+                icon={<SparklesIcon className="h-4 w-4" />}
+                title="Talk to the AI"
+                body="Ask for a full draft or rewrite individual sections. Every change shows as a diff &mdash; accept what you want, reject the rest."
+              />
+              <OnboardingStep
+                num="03"
+                icon={<DocumentPlusIcon className="h-4 w-4" />}
+                title="Share and sign"
+                body="Token-gated share links, e-signature with audit trail, branded PDF export. No DocuSign required."
+              />
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => setShowCreate(true)}
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                Create your first document
+              </Button>
+              <button
+                type="button"
+                onClick={dismissOnboarding}
+                className="text-sm font-medium text-[var(--text-4)] hover:text-[var(--text-2)]"
+              >
+                I&rsquo;ll explore on my own
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="DOCUMENTS" value={String(totalCount).padStart(2, "0")} hint="IN VIEW" widgetNumber="01" />
         <StatTile label="IN FLIGHT" value={String(activeCount).padStart(2, "0")} hint="DRAFT · REVIEW" widgetNumber="02" />
@@ -498,8 +588,32 @@ export function ProposalList() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="text-sm text-[var(--text-4)]">
-                    No documents found.
+                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-[var(--text-4)]">
+                    {isWorkspaceEmpty ? (
+                      <div className="mx-auto max-w-md space-y-3">
+                        <DocumentPlusIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
+                        <p className="text-[var(--text-2)]">
+                          No documents yet &mdash; click <strong>New document</strong> above to spin
+                          one up from a template.
+                        </p>
+                      </div>
+                    ) : (
+                      <span>
+                        No documents match this filter.
+                        {search || status !== "ALL" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearch("");
+                              setStatus("ALL");
+                            }}
+                            className="ml-2 font-medium text-[var(--brand-700)] hover:underline"
+                          >
+                            Clear filter
+                          </button>
+                        ) : null}
+                      </span>
+                    )}
                   </td>
                 </tr>
               )}
@@ -907,6 +1021,29 @@ function GroupedList({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function OnboardingStep({
+  num,
+  icon,
+  title,
+  body,
+}: {
+  num: string;
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-4">
+      <div className="flex items-center gap-2 text-[var(--brand-700)]">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]">{num}</span>
+        {icon}
+      </div>
+      <p className="mt-2 text-sm font-medium text-[var(--text-1)]">{title}</p>
+      <p className="mt-1 text-[12px] leading-6 text-[var(--text-3)]">{body}</p>
     </div>
   );
 }
