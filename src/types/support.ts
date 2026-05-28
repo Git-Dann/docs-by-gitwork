@@ -50,7 +50,9 @@ export interface Connection {
     intakeAddress?: string;
     // Discord
     guildId?: string;
+    guildName?: string;
     channelIds?: string[];
+    channels?: Array<{ id: string; name: string; lastMessageId?: string | null }>;
     botToken?: string;
     // Reddit
     subreddit?: string;

@@ -332,7 +332,11 @@ function AddConnectorModal({
   // Discord fields
   const [discordToken, setDiscordToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
-  const [discordChannelIds, setDiscordChannelIds] = useState("");
+  const [discordGuildName, setDiscordGuildName] = useState("");
+  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
+  const [fetchingChannels, setFetchingChannels] = useState(false);
+  const [channelFetchError, setChannelFetchError] = useState<string | null>(null);
 
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
@@ -344,16 +348,48 @@ function AddConnectorModal({
 
   const createConnection = useCreateSupportConnection(clientId);
 
+  async function handleFetchChannels() {
+    const guildId = discordGuildId.trim();
+    const botToken = discordToken.trim();
+    if (!guildId || !botToken) return;
+    setFetchingChannels(true);
+    setChannelFetchError(null);
+    setAvailableChannels([]);
+    setSelectedChannelIds(new Set());
+    try {
+      const res = await fetch("/api/support/discord/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guildId, botToken }),
+      });
+      const data = await res.json() as { channels?: { id: string; name: string }[]; guildName?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to fetch channels");
+      setAvailableChannels(data.channels ?? []);
+      setDiscordGuildName(data.guildName ?? "");
+    } catch (err) {
+      setChannelFetchError(err instanceof Error ? err.message : "Failed to fetch channels");
+    } finally {
+      setFetchingChannels(false);
+    }
+  }
+
+  function toggleChannel(id: string) {
+    setSelectedChannelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   function buildScraperConfig(): Connection["scraperConfig"] {
     if (source === "gmail") {
       return { query: gmailQuery.trim(), intakeAddress: defaultIntake };
     }
     if (source === "discord") {
-      return {
-        guildId: discordGuildId.trim(),
-        channelIds: discordChannelIds.split(",").map((s) => s.trim()).filter(Boolean),
-        botToken: discordToken.trim(),
-      };
+      const channels = availableChannels
+        .filter((c) => selectedChannelIds.has(c.id))
+        .map((c) => ({ id: c.id, name: c.name, lastMessageId: null }));
+      return { guildId: discordGuildId.trim(), guildName: discordGuildName, botToken: discordToken.trim(), channels };
     }
     if (source === "reddit") {
       return {
@@ -370,9 +406,15 @@ function AddConnectorModal({
     return undefined;
   }
 
-  // Gmail and Reddit don't need OAuth — mark as connected immediately
   function initialHealth(): "connected" | "needs_setup" {
+    if (source === "discord") return selectedChannelIds.size > 0 ? "connected" : "needs_setup";
     return source === "gmail" || source === "reddit" ? "connected" : "needs_setup";
+  }
+
+  function isSubmitDisabled() {
+    if (createConnection.isPending) return true;
+    if (source === "discord") return !discordToken.trim() || !discordGuildId.trim() || selectedChannelIds.size === 0;
+    return false;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -381,7 +423,7 @@ function AddConnectorModal({
     createConnection.mutate(
       {
         source,
-        label: label.trim() || SOURCE_LABEL[source],
+        label: label.trim() || (source === "discord" && discordGuildName ? discordGuildName : SOURCE_LABEL[source]),
         authMode: sourceAuthMode(source),
         health: initialHealth(),
         scraperConfig: buildScraperConfig(),
@@ -490,37 +532,85 @@ function AddConnectorModal({
         {source === "discord" && (
           <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
             <p className="text-[11px] text-[var(--text-4)]">
-              Create a bot at discord.com/developers, invite it to the client&apos;s server, then paste the token below.
+              Invite <span className="font-medium text-[var(--text-2)]">gitwork_support_bot</span> to the client&apos;s server with Read Messages and Send Messages permissions, then enter the bot token and Server ID below.
             </p>
+
             <label className="block space-y-1">
               <span className="app-field-label">Bot token</span>
               <input
                 type="password"
                 value={discordToken}
-                onChange={(e) => setDiscordToken(e.target.value)}
+                onChange={(e) => { setDiscordToken(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); }}
                 className="app-input w-full font-mono text-xs"
-                placeholder="Bot token from Discord Developer Portal"
-                required
+                placeholder="Discord bot token (Developer Portal → Bot → Token)"
+                autoComplete="off"
               />
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Server (guild) ID</span>
-              <input
-                value={discordGuildId}
-                onChange={(e) => setDiscordGuildId(e.target.value)}
-                className="app-input w-full"
-                placeholder="Right-click server → Copy Server ID"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Channel IDs (comma-separated)</span>
-              <input
-                value={discordChannelIds}
-                onChange={(e) => setDiscordChannelIds(e.target.value)}
-                className="app-input w-full"
-                placeholder="123456789, 987654321"
-              />
-            </label>
+
+            <div className="flex gap-2">
+              <label className="block flex-1 space-y-1">
+                <span className="app-field-label">Server (guild) ID</span>
+                <input
+                  value={discordGuildId}
+                  onChange={(e) => { setDiscordGuildId(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); }}
+                  className="app-input w-full"
+                  placeholder="Right-click server → Copy Server ID"
+                />
+              </label>
+              <div className="flex flex-col justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleFetchChannels()}
+                  disabled={!discordGuildId.trim() || !discordToken.trim() || fetchingChannels}
+                  className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                >
+                  {fetchingChannels ? (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                  ) : (
+                    <ArrowPathIcon className="h-3.5 w-3.5" />
+                  )}
+                  {fetchingChannels ? "Fetching…" : "Fetch channels"}
+                </button>
+              </div>
+            </div>
+
+            {channelFetchError && (
+              <p className="rounded-[8px] bg-[var(--danger-50)] px-2.5 py-2 text-[11px] text-[var(--danger-500)]">
+                {channelFetchError}
+              </p>
+            )}
+
+            {availableChannels.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="app-field-label">
+                    Channels to monitor
+                    {discordGuildName && <span className="ml-1.5 font-normal text-[var(--text-4)]">in {discordGuildName}</span>}
+                  </span>
+                  {selectedChannelIds.size > 0 && (
+                    <span className="text-[11px] font-semibold text-[var(--brand-700)]">
+                      {selectedChannelIds.size} selected
+                    </span>
+                  )}
+                </div>
+                <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
+                  {availableChannels.map((ch) => (
+                    <label
+                      key={ch.id}
+                      className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedChannelIds.has(ch.id)}
+                        onChange={() => toggleChannel(ch.id)}
+                        className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
+                      />
+                      <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -592,7 +682,7 @@ function AddConnectorModal({
             type="submit"
             variant="primary"
             size="sm"
-            disabled={createConnection.isPending}
+            disabled={isSubmitDisabled()}
             loading={createConnection.isPending}
           >
             {createConnection.isPending ? "Saving…" : "Add connector"}
@@ -1553,6 +1643,11 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                     {conn.scraperConfig?.intakeAddress && (
                       <p className="mt-1 select-all font-mono text-[11px] text-[var(--brand-700)]">
                         {conn.scraperConfig.intakeAddress}
+                      </p>
+                    )}
+                    {conn.scraperConfig?.channels && conn.scraperConfig.channels.length > 0 && (
+                      <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                        {conn.scraperConfig.channels.map((c) => `#${c.name}`).join(", ")}
                       </p>
                     )}
                     {conn.scraperConfig?.subreddit && (
