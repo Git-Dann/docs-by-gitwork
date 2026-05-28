@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { allocateDocumentNumber } from "@/server/documents";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 
 interface RouteContext {
@@ -24,12 +25,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       return apiError("Proposal not found", 404);
     }
 
+    // Duplicate gets its own fresh number — sharing the original's number would break the
+    // unique constraint and confuse anyone tracing the audit trail.
+    const documentNumber = await allocateDocumentNumber(
+      existing.workspaceId,
+      existing.documentType,
+    );
+
     const duplicate = await prisma.document.create({
       data: {
         workspaceId: existing.workspaceId,
         ownerId: existing.ownerId,
         templateId: existing.templateId,
         documentType: existing.documentType,
+        documentNumber,
         status: "DRAFT",
         title: `${existing.title} (Copy)`,
         productName: existing.productName,

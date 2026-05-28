@@ -154,11 +154,13 @@ model Workspace {
   slackBotToken             String?
   slackSummaryChannelId     String?   // legacy single-channel — kept for migration
   slackChannels             Json?     // Array<{ id: string; name: string }>
+  branding                  Json?             // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   members         WorkspaceMember[]
   invites         WorkspaceInvite[]
   documents       Document[]
+  documentCounters DocumentCounter[]
   templates       DocumentTemplate[]
   clients         WorkspaceClient[]
   rateCardPeople  RateCardPerson[]
@@ -233,6 +235,11 @@ model Document {
   expiresAt      DateTime?
   metadata       Json?
   exportSettings Json?
+  // ── Sharing (Sprint 1) ──────────────────────────────────────────────
+  shareToken     String?         @unique     // Random URL-safe token for /docs/[token]
+  isShared       Boolean         @default(false)
+  // ── Numbering (Sprint 1) ────────────────────────────────────────────
+  documentNumber String?         @unique     // e.g. PROP-2026-014, SLA-2026-003
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   archivedAt     DateTime?
@@ -250,6 +257,24 @@ model Document {
 
   @@index([workspaceId, status])
   @@index([updatedAt])
+  @@index([shareToken])
+}
+
+// Per-workspace + per-doc-type + per-year counter for atomic document numbering.
+// e.g. workspaceId=W1, documentType=PROPOSAL, year=2026, nextValue=15
+//      → next created proposal in 2026 gets PROP-2026-015
+model DocumentCounter {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  documentType DocumentType
+  year         Int
+  nextValue    Int          @default(1)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, documentType, year])
+  @@index([workspaceId, documentType])
 }
 
 model ProofDocument {

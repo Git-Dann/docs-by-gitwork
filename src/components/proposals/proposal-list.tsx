@@ -314,12 +314,19 @@ export function ProposalList() {
                         />
                       </td>
                       <td>
-                        <Link
-                          href={`/app/proposals/${proposal.id}`}
-                          className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
-                        >
-                          {proposal.title}
-                        </Link>
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <Link
+                            href={`/app/proposals/${proposal.id}`}
+                            className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
+                          >
+                            {proposal.title}
+                          </Link>
+                          {proposal.documentNumber ? (
+                            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
+                              {proposal.documentNumber}
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="mt-0.5 text-sm text-[var(--text-3)]">
                           {proposal.clientName || "No client assigned"}
                         </p>

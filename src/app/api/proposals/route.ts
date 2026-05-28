@@ -4,6 +4,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { allocateDocumentNumber } from "@/server/documents";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -106,12 +107,17 @@ export async function POST(request: NextRequest) {
         })
       : template;
 
+    // Allocate a workspace-scoped, year-scoped, type-prefixed document number
+    // (e.g. PROP-2026-014) before creating the row so we can store it inline.
+    const documentNumber = await allocateDocumentNumber(workspace.id, "PROPOSAL");
+
     const document = await prisma.document.create({
       data: {
         workspaceId: workspace.id,
         ownerId: user.id,
         templateId: selectedTemplate?.id,
         documentType: "PROPOSAL",
+        documentNumber,
         status: "DRAFT",
         title: body.title,
         productName: body.productName,

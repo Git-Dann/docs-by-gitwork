@@ -126,6 +126,9 @@ export function serializeProposal(document: ProposalDocumentRecord): ProposalDoc
     clientName: document.clientName,
     summary: document.summary,
     version: document.version,
+    documentNumber: document.documentNumber ?? null,
+    shareToken: document.shareToken ?? null,
+    isShared: document.isShared,
     expiresAt: document.expiresAt?.toISOString() ?? null,
     metadata: normalizeMetadata(document.metadata),
     exportSettings: asJson<Record<string, unknown>>(document.exportSettings, {}),
@@ -196,6 +199,8 @@ export function serializeProposalListItem(
     updatedAt: proposal.updatedAt.toISOString(),
     templateName: proposal.template?.name ?? null,
     ownerName: proposal.owner.name,
+    documentNumber: proposal.documentNumber ?? null,
+    documentType: proposal.documentType,
   };
 }
 

@@ -268,6 +268,12 @@ export interface ProposalDocument {
   clientName?: string | null;
   summary?: string | null;
   version: string;
+  /** Workspace-scoped, type-prefixed, year-scoped identifier (e.g. PROP-2026-014). */
+  documentNumber?: string | null;
+  /** Random URL-safe token used to expose the doc at /docs/[token]. Null if never shared. */
+  shareToken?: string | null;
+  /** Sharing is "on" — public link returns the document. False = link 404s. */
+  isShared: boolean;
   expiresAt?: string | null;
   metadata: ProposalMetadata;
   exportSettings: Record<string, unknown>;
@@ -301,4 +307,6 @@ export interface ProposalListItem {
   updatedAt: string;
   templateName?: string | null;
   ownerName?: string | null;
+  documentNumber?: string | null;
+  documentType: DocumentType;
 }

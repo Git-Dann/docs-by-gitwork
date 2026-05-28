@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useLocalSettings } from "@/lib/local-settings";
+import { useUpdateWorkspaceBranding, useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
@@ -149,58 +150,108 @@ function GeneralTab() {
 }
 
 function BrandingTab() {
+  // Workspace branding is now the source of truth (Sprint 1 of the Docs rebuild). Local settings
+  // are kept temporarily so users with values trapped on this device can one-click migrate them
+  // to the workspace.
   const { settings, updateSettings } = useLocalSettings();
+  const brandingQuery = useWorkspaceBranding();
+  const updateBranding = useUpdateWorkspaceBranding();
+
+  const workspaceBranding = brandingQuery.data ?? {};
+  const local = settings.templateBranding;
+
+  // True when the local-storage values exist but the workspace doesn't have them yet. We surface
+  // a "copy to workspace" affordance in that case.
+  const localOnly =
+    (local.coverBrandLogoUrl && !workspaceBranding.brandLogoUrl) ||
+    (local.coverTopAccentUrl && !workspaceBranding.coverTopAccentUrl) ||
+    (local.coverBottomAccentUrl && !workspaceBranding.coverBottomAccentUrl);
+
+  function patch(field: keyof typeof workspaceBranding, value: string) {
+    // Optimistically keep localStorage in sync so any code still reading from it doesn't lag.
+    if (field === "brandLogoUrl") {
+      updateSettings((current) => ({
+        ...current,
+        templateBranding: { ...current.templateBranding, coverBrandLogoUrl: value },
+      }));
+    } else if (field === "coverTopAccentUrl" || field === "coverBottomAccentUrl") {
+      updateSettings((current) => ({
+        ...current,
+        templateBranding: { ...current.templateBranding, [field]: value } as typeof current.templateBranding,
+      }));
+    }
+    updateBranding.mutate({ [field]: value });
+  }
+
+  function importFromLocal() {
+    updateBranding.mutate({
+      brandLogoUrl: local.coverBrandLogoUrl || workspaceBranding.brandLogoUrl,
+      coverTopAccentUrl: local.coverTopAccentUrl || workspaceBranding.coverTopAccentUrl,
+      coverBottomAccentUrl: local.coverBottomAccentUrl || workspaceBranding.coverBottomAccentUrl,
+    });
+  }
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Template assets</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Proposal branding
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Template-owned cover assets. Proposal-specific client logos belong in the proposal builder.
-        </p>
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">01 {"// "}DOCUMENT BRANDING</span>
+          <span className="widget-header-right">WORKSPACE-WIDE</span>
+        </div>
+        <div className="p-6">
+          <p className="text-sm leading-6 text-[var(--text-3)]">
+            Cover assets used across every document the team produces — proposals, SLAs, SOWs.
+            Stored on the workspace so every member sees the same look. Per-document overrides
+            still live in the proposal builder.
+          </p>
 
-        <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-2">
-            <FieldLabel>Gitwork cover logo</FieldLabel>
-            <ImagePicker
-              value={settings.templateBranding.coverBrandLogoUrl}
-              onChange={(coverBrandLogoUrl) =>
-                updateSettings((current) => ({
-                  ...current,
-                  templateBranding: { ...current.templateBranding, coverBrandLogoUrl },
-                }))
-              }
-              previewClassName="h-36 w-full"
-            />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel>Cover top accent</FieldLabel>
-            <ImagePicker
-              value={settings.templateBranding.coverTopAccentUrl}
-              onChange={(coverTopAccentUrl) =>
-                updateSettings((current) => ({
-                  ...current,
-                  templateBranding: { ...current.templateBranding, coverTopAccentUrl },
-                }))
-              }
-              previewClassName="h-36 w-full"
-            />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel>Cover bottom accent</FieldLabel>
-            <ImagePicker
-              value={settings.templateBranding.coverBottomAccentUrl}
-              onChange={(coverBottomAccentUrl) =>
-                updateSettings((current) => ({
-                  ...current,
-                  templateBranding: { ...current.templateBranding, coverBottomAccentUrl },
-                }))
-              }
-              previewClassName="h-36 w-full"
-            />
+          {localOnly && !brandingQuery.isPending ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--brand-300)] bg-[var(--brand-200)]/40 px-4 py-3 text-sm">
+              <div>
+                <p className="font-medium text-[var(--text-1)]">
+                  Branding from this browser isn&rsquo;t on the workspace yet.
+                </p>
+                <p className="mt-0.5 text-[var(--text-3)]">
+                  Push your local values up so every teammate sees them too.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={importFromLocal}
+                loading={updateBranding.isPending}
+              >
+                Copy to workspace
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2">
+              <FieldLabel>Gitwork cover logo</FieldLabel>
+              <ImagePicker
+                value={workspaceBranding.brandLogoUrl ?? ""}
+                onChange={(value) => patch("brandLogoUrl", value)}
+                previewClassName="h-36 w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <FieldLabel>Cover top accent</FieldLabel>
+              <ImagePicker
+                value={workspaceBranding.coverTopAccentUrl ?? ""}
+                onChange={(value) => patch("coverTopAccentUrl", value)}
+                previewClassName="h-36 w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <FieldLabel>Cover bottom accent</FieldLabel>
+              <ImagePicker
+                value={workspaceBranding.coverBottomAccentUrl ?? ""}
+                onChange={(value) => patch("coverBottomAccentUrl", value)}
+                previewClassName="h-36 w-full"
+              />
+            </div>
           </div>
         </div>
       </section>

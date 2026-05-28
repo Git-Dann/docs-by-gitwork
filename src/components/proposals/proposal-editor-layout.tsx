@@ -173,9 +173,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     return sectionEntries.find((entry) => entry.id === resolvedActiveId) ?? sectionEntries[0];
   }, [sectionEntries, activeSectionId, defaultActiveSectionId]);
 
-  const publicSharePath = `/preview/${proposalId}`;
+  // Public share is now token-gated under /docs/[token]. The token comes from the document
+  // record (minted on first POST to /api/documents/[id]/share, persisted from then on). If no
+  // token exists yet, the Share button will mint one before copying.
+  const publicShareToken = draft?.shareToken ?? null;
+  const publicSharePath = publicShareToken ? `/docs/${publicShareToken}` : null;
   const publicShareUrl =
-    typeof window !== "undefined" ? `${window.location.origin}${publicSharePath}` : publicSharePath;
+    publicSharePath && typeof window !== "undefined"
+      ? `${window.location.origin}${publicSharePath}`
+      : publicSharePath ?? "";
 
   const handleTabChange = useCallback(
     (tab: EditorTab) => {
@@ -371,11 +377,34 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
 
   async function handleShareLink() {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !draft) {
       return;
     }
 
-    await navigator.clipboard.writeText(publicShareUrl);
+    // If we don't yet have a share token, mint one. Otherwise the existing token is reused so
+    // a previously distributed link keeps working.
+    let token = draft.shareToken;
+    if (!token) {
+      try {
+        const res = await fetch(`/api/documents/${proposalId}/share`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Failed to enable sharing");
+        token = json.data?.shareToken ?? json.shareToken;
+        if (token) {
+          setLocalDraft((current) => (current ? { ...current, shareToken: token, isShared: true } : current));
+        }
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+    }
+
+    if (!token) return;
+    const url = `${window.location.origin}/docs/${token}`;
+    await navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -448,7 +477,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         <div className="widget-header">
           <span className="widget-header-label">01 // DOCUMENT</span>
           <span className="widget-header-right">
-            {draft.version ? `V${draft.version} · ` : ""}{statusLabel(draft.status).toUpperCase()}
+            {draft.documentNumber ? `${draft.documentNumber} · ` : ""}
+            {draft.version ? `V${draft.version} · ` : ""}
+            {statusLabel(draft.status).toUpperCase()}
           </span>
         </div>
         <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-5 sm:px-6">
@@ -580,19 +611,28 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
                 <div className="app-subtle-panel mt-4 p-4">
                   <p className="app-eyebrow">Public Link</p>
-                  <input
-                    readOnly
-                    value={publicShareUrl}
-                    className="app-input mt-3"
-                  />
-                  <Link
-                    href={publicSharePath}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-flex text-sm font-medium text-[var(--brand-700)] hover:underline"
-                  >
-                    Open shared preview
-                  </Link>
+                  {publicSharePath ? (
+                    <>
+                      <input
+                        readOnly
+                        value={publicShareUrl}
+                        className="app-input mt-3"
+                      />
+                      <Link
+                        href={publicSharePath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex text-sm font-medium text-[var(--brand-700)] hover:underline"
+                      >
+                        Open shared preview
+                      </Link>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
+                      No public link yet — click <span className="font-medium text-[var(--text-1)]">Share</span> below to
+                      mint a tokenised URL. The link can be revoked at any time.
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
