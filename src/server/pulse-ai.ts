@@ -295,7 +295,7 @@ export function getMockAnalysis(input: { projectName: string; healthScore: numbe
   };
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -303,9 +303,14 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2): Promise<T> {
     } catch (err) {
       lastError = err;
       const status = (err as { status?: number })?.status;
-      if (status !== 429 || attempt >= maxAttempts - 1) throw err;
-      // Wait 5s before one retry — enough for per-second rate limits
-      await new Promise((r) => setTimeout(r, 5000));
+      // Retry on rate limits (429), Anthropic overload (529), and transient
+      // gateway errors (502, 503) — these are recoverable. Everything else
+      // (timeout, 4xx, schema error) is thrown immediately.
+      const retryable = status === 429 || status === 529 || status === 502 || status === 503;
+      if (!retryable || attempt >= maxAttempts - 1) throw err;
+      // Exponential back-off: 3s, 6s — keeps total retry window short
+      const delay = status === 429 ? 5000 : (attempt + 1) * 3000;
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
   throw lastError;
@@ -500,11 +505,15 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
 
   if (aiConfig.provider === "ANTHROPIC") {
-    // timeout: 90s — prevents the default 600s SDK timeout from hanging scans.
-    // maxRetries: 0 — withRetry() above handles 429 retries; SDK retries would compound wait time.
+    // timeout: 90s — SDK default is 600s; we want fast failure, not a silent hang.
+    // maxRetries: 0 — withRetry() handles retries; SDK retries stack on top and compound waits.
+    // stream: true (via .stream()) — streaming means the first token arrives in ~1s, so a
+    // broken connection is detected immediately rather than after a 90s silence. Without
+    // streaming, the SDK waits in total silence while Claude generates 3k-8k tokens, and
+    // a TCP half-open connection is indistinguishable from a slow-but-alive one.
     const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 90_000, maxRetries: 0 });
     const message = await withRetry(() =>
-      client.messages.create({
+      client.messages.stream({
         model: getModelForTask(aiConfig),
         max_tokens: 8192,
         system: [
@@ -514,7 +523,7 @@ For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.t
         messages: [{ role: "user", content: userMessage }],
         tools: [PULSE_ANALYSIS_TOOL],
         tool_choice: { type: "tool", name: "submit_pulse_analysis" },
-      })
+      }).finalMessage()
     );
     const toolBlock = message.content.find((b) => b.type === "tool_use");
     if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Unexpected response format from AI.");
@@ -662,12 +671,12 @@ Generate a discovery call briefing. Return JSON with this shape:
 
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 45_000, maxRetries: 0 });
-      const message = await client.messages.create({
+      const message = await client.messages.stream({
         model: getModelForTask(aiConfig),
         max_tokens: 2048,
         system: [{ type: "text", text: DISCOVERY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
-      });
+      }).finalMessage();
       const dBlock = message.content[0];
       if (!dBlock || dBlock.type !== "text") throw new Error("Unexpected response format from AI.");
       rawContent = dBlock.text ?? "";
@@ -745,11 +754,11 @@ Return JSON with exactly this shape:
 
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 30_000, maxRetries: 0 });
-      const message = await client.messages.create({
+      const message = await client.messages.stream({
         model: getModelForTask(aiConfig),
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
-      });
+      }).finalMessage();
       const cBlock = message.content[0];
       if (!cBlock || cBlock.type !== "text") throw new Error("Unexpected response format from AI.");
       rawContent = cBlock.text ?? "";
