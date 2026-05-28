@@ -369,6 +369,16 @@ export async function retryPulseScan(scanId: string): Promise<{
   return { scan: serializePulseScan(scan), aiConfig };
 }
 
+/** Race a promise against a hard timeout. Rejects with a clear error message if the timeout fires first. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms),
+    ),
+  ]);
+}
+
 export async function runAnalysis(
   scanId: string,
   input: {
@@ -384,6 +394,29 @@ export async function runAnalysis(
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
   try {
+    // Guard: if a previous runAnalysis for this scan is somehow still running,
+    // bail out early rather than corrupting results with double-writes.
+    const staleScan = await prisma.pulseScan.findUnique({
+      where: { id: scanId },
+      select: { status: true, startedAt: true },
+    });
+    if (staleScan && staleScan.status !== "RUNNING") return;
+    // If it's been RUNNING for more than 5 minutes before we even start the
+    // heavy work, something went very wrong — mark it failed immediately.
+    const staleLimitMs = 5 * 60 * 1000;
+    if (staleScan && Date.now() - staleScan.startedAt.getTime() > staleLimitMs) {
+      await prisma.pulseScan.update({
+        where: { id: scanId },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          errorCode: "TIMEOUT",
+          errorMessage: "Scan exceeded the 5-minute time limit and was automatically cancelled.",
+        },
+      });
+      return;
+    }
+
     // For URL scans the target is known upfront — start browser agent and
     // competitor checks immediately so they run in parallel with infra checks
     // instead of waiting for the agent pipeline to complete (~15-30s saved).
@@ -400,7 +433,7 @@ export async function runAnalysis(
               try {
                 let resolvedUrl = url.trim();
                 if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
-                const result = await runUrlChecks(resolvedUrl);
+                const result = await withTimeout(runUrlChecks(resolvedUrl), 90_000, `competitor scan for ${resolvedUrl}`);
                 const score = calculateHealthScore(result.checks);
                 const pass = result.checks.filter((c) => c.status === "PASS").length;
                 const warn = result.checks.filter((c) => c.status === "WARN").length;
@@ -469,7 +502,7 @@ export async function runAnalysis(
           try {
             let resolvedUrl = url.trim();
             if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
-            const result = await runUrlChecks(resolvedUrl);
+            const result = await withTimeout(runUrlChecks(resolvedUrl), 90_000, `competitor scan for ${resolvedUrl}`);
             const score = calculateHealthScore(result.checks);
             const pass = result.checks.filter((c) => c.status === "PASS").length;
             const warn = result.checks.filter((c) => c.status === "WARN").length;
@@ -482,12 +515,13 @@ export async function runAnalysis(
       );
     });
 
-    // Wrap the LLM call so a bad key / wrong model / no key never wipes out
-    // the Phase 1 checks. On failure analysis is null (no mock data shown).
+    // Wrap the LLM call so a bad key / wrong model / no key / timeout never
+    // wipes out the Phase 1 checks. On failure analysis is null (no mock shown).
+    // Hard limit: 120 s — if the AI hasn't responded by then we move on.
     async function safeAnalyse(): Promise<{ analysis: PulseAnalysisOutput | null; aiError: string | null }> {
       try {
-        return {
-          analysis: await analyseWithClaude(
+        const analysis = await withTimeout(
+          analyseWithClaude(
             {
               projectName: input.projectName,
               inputType: input.inputType,
@@ -501,13 +535,18 @@ export async function runAnalysis(
             },
             aiConfig,
           ),
-          aiError: null,
-        };
+          120_000,
+          "AI analysis",
+        );
+        return { analysis, aiError: null };
       } catch (err) {
         const httpStatus = (err as { status?: number })?.status;
         const code = (err as { code?: string })?.code;
+        const message = err instanceof Error ? err.message : "";
         let aiError: string;
-        if (code === "NO_API_KEY") {
+        if (message.includes("timed out")) {
+          aiError = "AI analysis timed out after 120s — technical checks and scores above are accurate. Try re-running the scan if AI narrative is needed.";
+        } else if (code === "NO_API_KEY") {
           aiError = err instanceof Error ? err.message : "No API key configured.";
         } else if (httpStatus === 401 || httpStatus === 403) {
           aiError = "AI authentication failed — check your API key in Settings → Integrations.";
@@ -524,8 +563,8 @@ export async function runAnalysis(
 
     const [{ analysis: llmAnalysis, aiError }, competitorScans, browserResult] = await Promise.all([
       safeAnalyse(),
-      competitorScanPromise,
-      browserAgentPromise,
+      withTimeout(competitorScanPromise, 120_000, "competitor scans").catch(() => [] as CompetitorScanSummary[]),
+      withTimeout(browserAgentPromise, 60_000, "browser agent").catch(() => ({ checks: [] as PulseScanCheckInput[], insights: null })),
     ]);
 
     // Discovery kit and competitor comparison require a successful LLM analysis.
@@ -533,25 +572,33 @@ export async function runAnalysis(
 
     const [discoveryKit, competitorComparison] = await Promise.all([
       runDiscovery
-        ? generateDiscoveryKit(
-            {
-              projectName: input.projectName,
-              projectType: llmAnalysis!.projectClassification.type,
-              healthScore,
-              proposalHook: llmAnalysis!.proposalHook,
-              executiveSummary: llmAnalysis!.executiveSummary,
-              criticalGaps: llmAnalysis!.criticalGaps,
-              buildOpportunities: llmAnalysis!.buildOpportunities,
-              checks: allChecks,
-            },
-            aiConfig,
-          )
+        ? withTimeout(
+            generateDiscoveryKit(
+              {
+                projectName: input.projectName,
+                projectType: llmAnalysis!.projectClassification.type,
+                healthScore,
+                proposalHook: llmAnalysis!.proposalHook,
+                executiveSummary: llmAnalysis!.executiveSummary,
+                criticalGaps: llmAnalysis!.criticalGaps,
+                buildOpportunities: llmAnalysis!.buildOpportunities,
+                checks: allChecks,
+              },
+              aiConfig,
+            ),
+            60_000,
+            "discovery kit",
+          ).catch(() => null)
         : Promise.resolve(null),
       competitorScans.length > 0 && llmAnalysis !== null
-        ? generateCompetitorComparison(
-            { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
-            aiConfig,
-          )
+        ? withTimeout(
+            generateCompetitorComparison(
+              { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
+              aiConfig,
+            ),
+            45_000,
+            "competitor comparison",
+          ).catch(() => null)
         : Promise.resolve(null),
     ]);
 
