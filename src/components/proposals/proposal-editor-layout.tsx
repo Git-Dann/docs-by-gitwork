@@ -36,6 +36,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
+import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
 import { CollabPanel } from "@/components/proposals/collab-panel";
@@ -152,6 +153,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [copied, setCopied] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
 
   async function handleSaveAsTemplate() {
@@ -593,11 +595,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setAiChatOpen(true)}
+              className={buttonStyles({ variant: "primary", size: "md" })}
+            >
+              <SparklesIcon className="h-4 w-4" />
+              Ask AI
+            </button>
+            <button
+              type="button"
               onClick={() => setAiDraftOpen(true)}
               className={buttonStyles({ variant: "secondary", size: "md" })}
             >
               <SparklesIcon className="h-4 w-4" />
-              Draft with AI
+              Quick draft
             </button>
             <Link
               href={`/app/proposals/${proposalId}/preview`}
@@ -820,6 +830,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         onApply={(proposal) => {
           // AI mutates the document server-side; update local draft so the editor reflects
           // the new section data without a refetch dance.
+          setLocalDraft(proposal);
+          baselineRef.current = JSON.stringify(proposal);
+        }}
+      />
+
+      <AiChatPanel
+        open={aiChatOpen}
+        onClose={() => setAiChatOpen(false)}
+        documentId={proposalId}
+        onAfterApply={(proposal) => {
           setLocalDraft(proposal);
           baselineRef.current = JSON.stringify(proposal);
         }}

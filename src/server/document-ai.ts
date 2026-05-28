@@ -163,6 +163,7 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
       const analysis = scan.llmAnalysis as
         | {
             executiveSummary?: string;
+            proposalHook?: string;
             criticalGaps?: Array<{ gap: string; urgency: string; impact: string }>;
             buildOpportunities?: Array<{ title: string; description: string }>;
             scalingRoadmap?: Array<{ title: string; goals: string[] }>;
@@ -172,18 +173,21 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
         `## Linked Pulse audit: ${scan.projectName}`,
         scan.inputUrl ? `URL: ${scan.inputUrl}` : "",
         analysis?.executiveSummary ? `Executive summary:\n${analysis.executiveSummary}` : "",
+        analysis?.proposalHook
+          ? `**Proposal hook (use as the introduction's lead sentence):**\n${analysis.proposalHook}`
+          : "",
         analysis?.criticalGaps?.length
-          ? "Critical gaps:\n" +
+          ? "Critical gaps (map 1:1 into the `objectives` section):\n" +
             analysis.criticalGaps
               .map((g) => `- [${g.urgency}] ${g.gap} — ${g.impact}`)
               .join("\n")
           : "",
         analysis?.buildOpportunities?.length
-          ? "Build opportunities (use for scope + deliverables):\n" +
+          ? "Build opportunities (map into the `touchpoints` section):\n" +
             analysis.buildOpportunities.map((o) => `- ${o.title}: ${o.description}`).join("\n")
           : "",
         analysis?.scalingRoadmap?.length
-          ? "Scaling roadmap (use for timeline phases):\n" +
+          ? "Scaling roadmap (map into timeline phases):\n" +
             analysis.scalingRoadmap
               .map((p) => `- ${p.title}: ${p.goals.join(", ")}`)
               .join("\n")
@@ -224,6 +228,18 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
     "5. DO NOT invent prices, names, or dates that weren't in the brief. Leave placeholders",
     "   like \"[REVIEW]\" for anything you'd need explicit confirmation on.",
     "6. Skip any section where you have no useful information — just omit it from the output.",
+    "",
+    "Pulse-aware drafting (when a linked Pulse audit is attached, see User message):",
+    "- Map the audit's `criticalGaps` directly into the `objectives` section's `items`. Each",
+    "  critical gap becomes one objective (title = a short rephrasing of the gap, description =",
+    "  the impact statement). These ARE the problems we're proposing to solve.",
+    "- Map `buildOpportunities` into the `touchpoints` section's `items`. Each opportunity",
+    "  becomes one touchpoint (title = the opportunity title, summary = the description,",
+    "  features = the top capabilities you'd build to land it).",
+    "- Map `scalingRoadmap` phases 1:N into the document's timeline phases when the doc has a",
+    "  timeline section. Phase name = the roadmap title; deliverables = the goals list.",
+    "- The proposalHook (if any) is the single sentence that should anchor the `introduction`",
+    "  statement — lead with it.",
     "",
     "Section types available in this document:",
     sectionList,

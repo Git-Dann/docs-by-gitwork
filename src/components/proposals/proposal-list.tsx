@@ -28,6 +28,8 @@ import {
   useProposalList,
 } from "@/hooks/use-proposals";
 import { StatusBadge } from "@/components/status-badge";
+import { TemplateGallery } from "@/components/proposals/template-gallery";
+import type { DocumentType } from "@/types/proposal";
 
 const statusOptions = [
   "ALL",
@@ -49,20 +51,32 @@ const sortOptions = [
 const rowsPerPageOptions = [10, 20, 50] as const;
 
 // Per-type labels used in the create modal — keeps the type picker and form copy in sync.
-const LABEL_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+const LABEL_BY_TYPE: Record<DocumentType, string> = {
   PROPOSAL: "Proposal",
   SLA: "Service Level Agreement",
   SOW: "Statement of Work",
+  MSA: "Master Service Agreement",
+  NDA: "Non-Disclosure Agreement",
+  CO: "Change Order",
+  OTHER: "Document",
 };
-const DEFAULT_TITLE_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
   PROPOSAL: "Untitled Proposal",
   SLA: "Untitled SLA",
   SOW: "Untitled SOW",
+  MSA: "Untitled MSA",
+  NDA: "Untitled NDA",
+  CO: "Untitled Change Order",
+  OTHER: "Untitled Document",
 };
-const PLACEHOLDER_BY_TYPE: Record<"PROPOSAL" | "SLA" | "SOW", string> = {
+const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
   PROPOSAL: "Q2 Renewal Proposal",
   SLA: "Acme — Production Hosting SLA",
   SOW: "Acme — Phase 2 Discovery SOW",
+  MSA: "Acme — Master Service Agreement",
+  NDA: "Acme — Mutual NDA",
+  CO: "Acme — Change Order #1",
+  OTHER: "Acme — Briefing Note",
 };
 
 export function ProposalList() {
@@ -81,7 +95,8 @@ export function ProposalList() {
     title: "",
     clientName: "",
     clientId: undefined as string | undefined,
-    documentType: "PROPOSAL" as "PROPOSAL" | "SLA" | "SOW",
+    documentType: "PROPOSAL" as DocumentType,
+    templateId: null as string | null,
   });
 
   useEffect(() => {
@@ -173,10 +188,11 @@ export function ProposalList() {
       clientName: form.clientName || undefined,
       clientId: form.clientId,
       documentType: form.documentType,
+      templateId: form.templateId ?? undefined,
     });
 
     setShowCreate(false);
-    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" });
+    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
 
     router.push(`/app/proposals/${created.proposal.id}`);
   }
@@ -649,11 +665,11 @@ export function ProposalList() {
             type="button"
             aria-label="Close create document modal"
             className="app-dialog-backdrop absolute inset-0"
-            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" }); }}
+            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null }); }}
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="app-dialog-panel w-full max-w-lg p-6">
+            <div className="app-dialog-panel flex max-h-[90vh] w-full max-w-3xl flex-col p-6">
               <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
               <h2 className="mt-3 font-[family-name:var(--font-display)] text-[32px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
                 Create document
@@ -662,47 +678,17 @@ export function ProposalList() {
                 Start with a title and optional client.
               </p>
 
-              <div className="mt-5 space-y-4">
+              <div className="mt-5 flex-1 space-y-4 overflow-y-auto pr-1">
                 <div>
                   <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                    Document type
+                    Pick a template
                   </span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        { value: "PROPOSAL", label: "Proposal", hint: "Pitch, scope, costing" },
-                        { value: "SLA", label: "SLA", hint: "Service level agreement" },
-                        { value: "SOW", label: "SOW", hint: "Statement of work" },
-                      ] as const
-                    ).map((option) => {
-                      const active = form.documentType === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() =>
-                            setForm((previous) => ({ ...previous, documentType: option.value }))
-                          }
-                          className={cn(
-                            "flex flex-col items-start gap-1 rounded-[10px] border px-3 py-3 text-left transition",
-                            active
-                              ? "border-[var(--brand-600)] bg-[var(--brand-200)]/30"
-                              : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
-                          )}
-                        >
-                          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                            {option.value}
-                          </span>
-                          <span className="text-sm font-medium text-[var(--text-1)]">
-                            {option.label}
-                          </span>
-                          <span className="text-[11px] leading-snug text-[var(--text-3)]">
-                            {option.hint}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <TemplateGallery
+                    selectedTemplateId={form.templateId}
+                    onPick={({ id, documentType }) =>
+                      setForm((previous) => ({ ...previous, templateId: id, documentType }))
+                    }
+                  />
                 </div>
 
                 <label className="block">
@@ -769,7 +755,7 @@ export function ProposalList() {
               </div>
 
               <div className="mt-6 flex justify-end gap-2">
-                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL" }); }} variant="secondary" size="md">
+                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null }); }} variant="secondary" size="md">
                   Cancel
                 </Button>
                 <Button
