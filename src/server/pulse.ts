@@ -401,9 +401,10 @@ export async function runAnalysis(
       select: { status: true, startedAt: true },
     });
     if (staleScan && staleScan.status !== "RUNNING") return;
-    // If it's been RUNNING for more than 5 minutes before we even start the
+    // If it's been RUNNING for more than 4 minutes before we even start the
     // heavy work, something went very wrong — mark it failed immediately.
-    const staleLimitMs = 5 * 60 * 1000;
+    // (maxDuration = 300s, so at 4 min we've used 80% of the budget already.)
+    const staleLimitMs = 4 * 60 * 1000;
     if (staleScan && Date.now() - staleScan.startedAt.getTime() > staleLimitMs) {
       await prisma.pulseScan.update({
         where: { id: scanId },

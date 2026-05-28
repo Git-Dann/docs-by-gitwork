@@ -5,7 +5,7 @@ import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   try {

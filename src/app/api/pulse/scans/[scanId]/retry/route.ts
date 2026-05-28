@@ -4,7 +4,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, retryPulseScan, runAnalysis } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 export async function POST(
   _request: NextRequest,
