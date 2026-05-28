@@ -1125,7 +1125,7 @@ function OverviewWidget({
   return (
     <section className="widget-card overflow-hidden">
       <div className="widget-header">
-        <span className="widget-header-label">{number} // {name}</span>
+        <span className="widget-header-label">{number} {"// "}{name}</span>
         {rightSlot ? <span className="widget-header-right">{rightSlot}</span> : null}
       </div>
       <div className="widget-body">

@@ -667,7 +667,7 @@ function StatTile({
   return (
     <div className="widget-card">
       <div className="widget-header">
-        <span className="widget-header-label">{widgetNumber} // {label}</span>
+        <span className="widget-header-label">{widgetNumber} {"// "}{label}</span>
       </div>
       <div className="widget-body">
         <p className={cn("widget-stat-sm", valueColor)}>{value}</p>

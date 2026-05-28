@@ -173,7 +173,7 @@ export function ProposalBuilderPanel({
   return (
     <article className="proposal-form-theme widget-card overflow-hidden">
       <div className="widget-header">
-        <span className="widget-header-label">{moduleNumber} // {moduleLabel}</span>
+        <span className="widget-header-label">{moduleNumber} {"// "}{moduleLabel}</span>
         <span className="widget-header-right">BUILDER</span>
       </div>
       <div className="space-y-5 p-5 sm:p-6">
