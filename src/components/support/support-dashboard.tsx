@@ -1515,11 +1515,116 @@ function EditConnectorModal({
   const [error, setError] = useState<string | null>(null);
   const updateConn = useUpdateConnection(clientId);
 
+  // Gmail
+  const [gmailQuery, setGmailQuery] = useState(conn.scraperConfig?.query ?? "");
+
+  // Discord
+  const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
+  const [discordGuildId, setDiscordGuildId] = useState(conn.scraperConfig?.guildId ?? "");
+  const [discordGuildName, setDiscordGuildName] = useState(conn.scraperConfig?.guildName ?? "");
+  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(
+    new Set((conn.scraperConfig?.channels ?? []).map((c) => c.id)),
+  );
+  const [fetchingChannels, setFetchingChannels] = useState(false);
+  const [channelFetchError, setChannelFetchError] = useState<string | null>(null);
+  const [tokenChecked, setTokenChecked] = useState(false);
+
+  // Reddit
+  const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
+  const [redditKeywords, setRedditKeywords] = useState(
+    (conn.scraperConfig?.keywords ?? []).join(", "),
+  );
+
+  // YouTube
+  const [ytChannelId, setYtChannelId] = useState(conn.scraperConfig?.youtubeChannelId ?? "");
+  const [ytVideoIds, setYtVideoIds] = useState(
+    (conn.scraperConfig?.videoIds ?? []).join(", "),
+  );
+
+  async function handleFetchChannels() {
+    const guildId = discordGuildId.trim();
+    const botToken = discordToken.trim();
+    if (!guildId || !botToken) return;
+    setFetchingChannels(true);
+    setChannelFetchError(null);
+    setAvailableChannels([]);
+    try {
+      const res = await fetch("/api/support/discord/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guildId, botToken }),
+      });
+      const data = await res.json() as { channels?: { id: string; name: string }[]; guildName?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to fetch channels");
+      setAvailableChannels(data.channels ?? []);
+      setDiscordGuildName(data.guildName ?? discordGuildName);
+      setTokenChecked(true);
+    } catch (err) {
+      setChannelFetchError(err instanceof Error ? err.message : "Failed to fetch channels");
+    } finally {
+      setFetchingChannels(false);
+    }
+  }
+
+  function toggleChannel(id: string) {
+    setSelectedChannelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function buildScraperConfig(): Connection["scraperConfig"] {
+    if (conn.source === "gmail") {
+      return { ...conn.scraperConfig, query: gmailQuery.trim() };
+    }
+    if (conn.source === "discord") {
+      // Preserve existing channel cursors for channels that were already tracked
+      const existingChannels = conn.scraperConfig?.channels ?? [];
+      const channelPool = availableChannels.length > 0 ? availableChannels : existingChannels;
+      const channels = channelPool
+        .filter((c) => selectedChannelIds.has(c.id))
+        .map((c) => {
+          const existing = existingChannels.find((e) => e.id === c.id);
+          return { id: c.id, name: c.name, lastMessageId: existing?.lastMessageId ?? null };
+        });
+      return {
+        ...conn.scraperConfig,
+        guildId: discordGuildId.trim(),
+        guildName: discordGuildName,
+        botToken: discordToken.trim(),
+        channels,
+      };
+    }
+    if (conn.source === "reddit") {
+      return {
+        ...conn.scraperConfig,
+        subreddit: redditSubreddit.trim(),
+        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+    }
+    if (conn.source === "youtube") {
+      return {
+        ...conn.scraperConfig,
+        youtubeChannelId: ytChannelId.trim() || undefined,
+        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+    }
+    return conn.scraperConfig;
+  }
+
+  function isSubmitDisabled() {
+    if (updateConn.isPending || !label.trim()) return true;
+    if (conn.source === "discord") return !discordToken.trim() || !discordGuildId.trim() || selectedChannelIds.size === 0;
+    return false;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     updateConn.mutate(
-      { connId: conn.id, data: { label: label.trim(), health } },
+      { connId: conn.id, data: { label: label.trim(), health, scraperConfig: buildScraperConfig() } },
       {
         onSuccess: () => onClose(),
         onError: (err) => setError(err instanceof Error ? err.message : "Failed to update connector"),
@@ -1527,8 +1632,11 @@ function EditConnectorModal({
     );
   }
 
+  // Existing channels to show before a fetch is done
+  const existingChannels = conn.scraperConfig?.channels ?? [];
+
   return (
-    <CareModal title="Edit connector" onClose={onClose}>
+    <CareModal title="Edit connector" onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block space-y-1.5">
           <span className="app-field-label">Label</span>
@@ -1540,6 +1648,137 @@ function EditConnectorModal({
             placeholder="e.g. Acme Corp Discord"
           />
         </label>
+
+        {/* Gmail config */}
+        {conn.source === "gmail" && (
+          <label className="block space-y-1.5">
+            <span className="app-field-label">Gmail query</span>
+            <input
+              value={gmailQuery}
+              onChange={(e) => setGmailQuery(e.target.value)}
+              className="app-input w-full font-mono text-xs"
+              placeholder="deliveredto:support@..."
+            />
+          </label>
+        )}
+
+        {/* Discord config */}
+        {conn.source === "discord" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <label className="block space-y-1">
+              <span className="app-field-label">Bot token</span>
+              <input
+                type="password"
+                value={discordToken}
+                onChange={(e) => { setDiscordToken(e.target.value); setTokenChecked(false); setAvailableChannels([]); }}
+                className="app-input w-full font-mono text-xs"
+                placeholder="Paste updated bot token…"
+                autoComplete="off"
+              />
+            </label>
+
+            <div className="flex gap-2">
+              <label className="block flex-1 space-y-1">
+                <span className="app-field-label">Server (guild) ID</span>
+                <input
+                  value={discordGuildId}
+                  onChange={(e) => { setDiscordGuildId(e.target.value); setTokenChecked(false); setAvailableChannels([]); }}
+                  className="app-input w-full"
+                  placeholder="Server ID"
+                />
+              </label>
+              <div className="flex flex-col justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleFetchChannels()}
+                  disabled={!discordGuildId.trim() || !discordToken.trim() || fetchingChannels}
+                  className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                >
+                  {fetchingChannels ? (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                  ) : tokenChecked ? (
+                    <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                    <ArrowPathIcon className="h-3.5 w-3.5" />
+                  )}
+                  {fetchingChannels ? "Checking…" : tokenChecked ? "Re-fetch" : "Check token"}
+                </button>
+              </div>
+            </div>
+
+            {channelFetchError && (
+              <p className="rounded-[8px] bg-[var(--danger-50)] px-2.5 py-2 text-[11px] text-[var(--danger-500)]">
+                {channelFetchError}
+              </p>
+            )}
+
+            {/* Show fetched channels, or fall back to existing saved channels */}
+            {(availableChannels.length > 0 || existingChannels.length > 0) && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="app-field-label">
+                    Channels to monitor
+                    {discordGuildName && <span className="ml-1.5 font-normal text-[var(--text-4)]">in {discordGuildName}</span>}
+                  </span>
+                  {selectedChannelIds.size > 0 && (
+                    <span className="text-[11px] font-semibold text-[var(--brand-700)]">
+                      {selectedChannelIds.size} selected
+                    </span>
+                  )}
+                </div>
+                {!tokenChecked && availableChannels.length === 0 && (
+                  <p className="text-[11px] text-[var(--text-4)]">
+                    Check the token to load the full channel list. Currently saved channels shown below.
+                  </p>
+                )}
+                <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
+                  {(availableChannels.length > 0 ? availableChannels : existingChannels).map((ch) => (
+                    <label
+                      key={ch.id}
+                      className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedChannelIds.has(ch.id)}
+                        onChange={() => toggleChannel(ch.id)}
+                        className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
+                      />
+                      <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Reddit config */}
+        {conn.source === "reddit" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <label className="block space-y-1">
+              <span className="app-field-label">Subreddit (without r/)</span>
+              <input value={redditSubreddit} onChange={(e) => setRedditSubreddit(e.target.value)} className="app-input w-full" placeholder="e.g. acmeapp" />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Keywords (comma-separated)</span>
+              <input value={redditKeywords} onChange={(e) => setRedditKeywords(e.target.value)} className="app-input w-full" placeholder="e.g. bug, help" />
+            </label>
+          </div>
+        )}
+
+        {/* YouTube config */}
+        {conn.source === "youtube" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <label className="block space-y-1">
+              <span className="app-field-label">YouTube channel ID</span>
+              <input value={ytChannelId} onChange={(e) => setYtChannelId(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="UCxxxxxxxxxxxxxxxxxxxx" />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">Video IDs (comma-separated)</span>
+              <input value={ytVideoIds} onChange={(e) => setYtVideoIds(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="dQw4w9WgXcQ, abc123" />
+            </label>
+          </div>
+        )}
 
         <label className="block space-y-1.5">
           <span className="app-field-label">Status</span>
@@ -1568,7 +1807,7 @@ function EditConnectorModal({
             type="submit"
             variant="primary"
             size="sm"
-            disabled={updateConn.isPending || !label.trim()}
+            disabled={isSubmitDisabled()}
             loading={updateConn.isPending}
           >
             {updateConn.isPending ? "Saving…" : "Save changes"}
