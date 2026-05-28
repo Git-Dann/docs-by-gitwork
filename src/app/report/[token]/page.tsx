@@ -4,11 +4,11 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   XCircleIcon,
-  SignalIcon,
   ArrowRightIcon,
 } from "@heroicons/react/24/outline";
 import { prisma } from "@/lib/prisma";
 import { serializePulseScan, pulseInclude } from "@/server/pulse";
+import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
 
@@ -47,30 +47,8 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
 
 // ─── Components ─────────────────────────────────────────────────────────────
 
-function ScoreRing({ score }: { score: number | null }) {
-  const value = score ?? 0;
-  const color = value >= 75 ? "text-emerald-600" : value >= 50 ? "text-amber-500" : "text-red-500";
-  const ring = value >= 75 ? "border-emerald-400" : value >= 50 ? "border-amber-400" : "border-red-400";
-  const label = value >= 75 ? "Good" : value >= 50 ? "Needs work" : "At risk";
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className={cn("flex h-28 w-28 items-center justify-center rounded-full border-8", ring)}>
-        <div className="text-center">
-          <span className={cn("block text-3xl font-bold tabular-nums", color)}>{value}</span>
-          <span className="text-xs text-gray-400">/100</span>
-        </div>
-      </div>
-      <span className={cn(
-        "rounded-full px-3 py-0.5 text-xs font-semibold",
-        value >= 75 ? "bg-emerald-100 text-emerald-700"
-        : value >= 50 ? "bg-amber-100 text-amber-700"
-        : "bg-red-100 text-red-700",
-      )}>
-        {label}
-      </span>
-    </div>
-  );
-}
+// Score ring now lives in `@/components/document-cover` as `HealthScoreRing` so that the
+// Pulse internal report and the public share render the exact same visual.
 
 function UrgencyBadge({ urgency }: { urgency: string }) {
   const cls =
@@ -266,73 +244,63 @@ export default async function PublicReportPage({
   const llm = scan.llmAnalysis;
   const inputRef = scan.inputUrl ?? (scan.inputGithubRepo ? `github.com/${scan.inputGithubRepo}` : null);
 
+  // Build the 4-up stat strip — same colours/labels the internal report uses so the two
+  // surfaces feel like one product
+  const passCount = scan.checks.filter((c) => c.status === "PASS").length;
+  const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
+  const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
+  const skipCount = scan.checks.filter((c) => c.status === "SKIPPED").length;
+  const coverStats = [
+    { count: passCount, label: "Passing", color: "#16A34A", bg: "#F0FDF4" },
+    { count: warnCount, label: "Warnings", color: "#D97706", bg: "#FFFBEB" },
+    { count: failCount, label: "Failed", color: "#DC2626", bg: "#FEF2F2" },
+    ...(skipCount > 0
+      ? [{ count: skipCount, label: "Skipped", color: "#9CA3AF", bg: "#F9FAFB" }]
+      : []),
+  ];
+
+  const meta: Array<{ label: string; value: string }> = [];
+  if (llm?.projectClassification?.type) {
+    meta.push({
+      label: "Type",
+      value: `${llm.projectClassification.type}${llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}`,
+    });
+  }
+  if (scan.completedAt) {
+    meta.push({ label: "Scanned", value: formatDate(scan.completedAt) });
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-
-      {/* Header */}
-      <div className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-gray-900">
-              <SignalIcon className="h-5 w-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-medium uppercase tracking-widest text-gray-400">Gitwork Pulse · Technical Audit</p>
-              <h1 className="truncate text-lg font-semibold text-gray-900">{scan.projectName}</h1>
-            </div>
-          </div>
-        </div>
+      <div className="mx-auto max-w-3xl">
+        {/* ═══════════════════════ COVER ═══════════════════════ */}
+        <DocumentCover
+          eyebrow="PULSE // PROJECT HEALTH REPORT"
+          title={scan.projectName}
+          subtitle={inputRef ?? undefined}
+          meta={meta}
+          rightSlot={<HealthScoreRing score={scan.healthScore ?? 0} />}
+          stats={coverStats}
+          executiveSummary={llm?.executiveSummary ?? undefined}
+          callout={llm?.proposalHook ? { text: llm.proposalHook, tone: "blue" } : undefined}
+          dated={scan.completedAt ? `Scanned ${formatDate(scan.completedAt)}` : "Recent"}
+          variant="screen"
+        />
       </div>
 
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
 
-        {/* Score hero */}
-        <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white p-6">
-          <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
-            <ScoreRing score={scan.healthScore} />
-            <div className="min-w-0 flex-1 text-center sm:text-left">
-              <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-                {llm?.projectClassification?.type && (
-                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-                    {llm.projectClassification.type}
-                    {llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}
-                  </span>
-                )}
-                {inputRef && (
-                  <a
-                    href={scan.inputUrl ?? `https://github.com/${scan.inputGithubRepo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 hover:bg-gray-200 [overflow-wrap:break-word]"
-                  >
-                    {inputRef}
-                  </a>
-                )}
-              </div>
-              {llm?.executiveSummary && (
-                <p className="mt-3 text-sm leading-relaxed text-gray-600 [overflow-wrap:break-word]">{llm.executiveSummary}</p>
-              )}
-              {scan.techStack && scan.techStack.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {scan.techStack.map((t) => (
-                    <span key={t} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {scan.completedAt && (
-                <p className="mt-3 text-xs text-gray-400">Scanned {formatDate(scan.completedAt)}</p>
-              )}
+        {/* Tech stack (was previously inside the score hero) */}
+        {scan.techStack && scan.techStack.length > 0 && (
+          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tech stack</p>
+            <div className="flex flex-wrap gap-1.5">
+              {scan.techStack.map((t) => (
+                <span key={t} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500">
+                  {t}
+                </span>
+              ))}
             </div>
-          </div>
-        </div>
-
-        {/* Proposal hook */}
-        {llm?.proposalHook && (
-          <div className="rounded-[10px] border border-indigo-200 bg-indigo-50 px-6 py-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Key finding</p>
-            <p className="mt-1.5 text-base font-medium leading-snug text-indigo-900 [overflow-wrap:break-word]">{llm.proposalHook}</p>
           </div>
         )}
 

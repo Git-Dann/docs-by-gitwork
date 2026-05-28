@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPulseScan } from "@/server/pulse";
+import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { PrintButton } from "./print-button";
 import type { PulseScanCheckRecord } from "@/types/pulse";
 
@@ -71,46 +72,6 @@ function statusIcon(status: string) {
   if (status === "WARN") return "⚠";
   if (status === "FAIL") return "✗";
   return "–";
-}
-
-function scoreColor(score: number) {
-  if (score >= 75) return "#16a34a";
-  if (score >= 50) return "#d97706";
-  return "#dc2626";
-}
-
-function scoreLabel(score: number) {
-  if (score >= 90) return "Excellent";
-  if (score >= 75) return "Good";
-  if (score >= 50) return "Needs Work";
-  return "At Risk";
-}
-
-// ─── Score ring SVG (server-rendered, print-safe) ───────────────────────────
-
-function ScoreRing({ score }: { score: number }) {
-  const r = 52;
-  const circ = 2 * Math.PI * r;
-  const filled = (score / 100) * circ;
-  const color = scoreColor(score);
-  const label = scoreLabel(score);
-  return (
-    <svg width="132" height="132" viewBox="0 0 132 132" style={{ display: "block" }}>
-      <circle cx="66" cy="66" r={r} fill="none" stroke="#e5e7eb" strokeWidth="9" />
-      <circle
-        cx="66" cy="66" r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth="9"
-        strokeDasharray={`${filled} ${circ}`}
-        strokeLinecap="round"
-        transform="rotate(-90 66 66)"
-      />
-      <text x="66" y="61" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontWeight="800" fontSize="30" fill={color}>{score}</text>
-      <text x="66" y="77" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontWeight="400" fontSize="12" fill="#9ca3af">/100</text>
-      <text x="66" y="94" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" fontWeight="600" fontSize="11" fill={color}>{label}</text>
-    </svg>
-  );
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -247,71 +208,21 @@ export default async function PulseReportPage({
       <div className="report-wrap">
 
         {/* ═══════════════════════ COVER PAGE ═══════════════════════ */}
-        <div className="rp-cover">
-
-          {/* Top row: title (left) · score ring (right) */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 32, marginBottom: 32 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: "0 0 14px 0", fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9ca3af" }}>
-                Pulse · Project Health Report
-              </p>
-              <h1 style={{ margin: "0 0 10px 0", fontSize: 36, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1.1, color: "#111827" }}>
-                {scan.projectName}
-              </h1>
-              {(scan.inputUrl ?? scan.inputGithubRepo) && (
-                <p style={{ margin: 0, fontSize: 13, color: "#9ca3af" }}>
-                  {scan.inputUrl ?? scan.inputGithubRepo}
-                </p>
-              )}
-            </div>
-            <div style={{ flexShrink: 0 }}>
-              <ScoreRing score={score} />
-            </div>
-          </div>
-
-          {/* Stats bar */}
-          <div style={{ display: "flex", gap: 0, marginBottom: 32, borderRadius: 10, overflow: "hidden", border: "1px solid #e5e7eb" }}>
-            {stats.map((stat, i) => (
-              <div key={stat.label} style={{
-                flex: 1, textAlign: "center", padding: "16px 8px",
-                background: stat.bg,
-                borderRight: i < stats.length - 1 ? "1px solid #e5e7eb" : "none",
-              }}>
-                <div style={{ fontSize: 26, fontWeight: 800, color: stat.color, lineHeight: 1 }}>{stat.count}</div>
-                <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9ca3af", marginTop: 5 }}>{stat.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Executive summary */}
-          {analysis && (
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: "0 0 12px 0", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9ca3af" }}>
-                Executive Summary
-              </p>
-              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.8, color: "#374151" }}>
-                {analysis.executiveSummary}
-              </p>
-              {analysis.healthNarrative && (
-                <p style={{ margin: "14px 0 0", fontSize: 14, lineHeight: 1.8, color: "#374151" }}>
-                  {analysis.healthNarrative}
-                </p>
-              )}
-              {analysis.proposalHook && (
-                <div style={{ margin: "22px 0 0", borderLeft: "3px solid #4f46e5", paddingLeft: 18, fontSize: 14, fontStyle: "italic", color: "#4338ca", lineHeight: 1.7 }}>
-                  {analysis.proposalHook}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Cover footer: logo left · date right */}
-          <div style={{ marginTop: "auto", paddingTop: 24, borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/foundry-logo.png" alt="Foundry by Gitwork" style={{ height: 26, objectFit: "contain", display: "block" }} />
-            <span style={{ fontSize: 12, color: "#9ca3af" }}>Generated {generatedAt}</span>
-          </div>
-        </div>
+        <DocumentCover
+          eyebrow="PULSE // PROJECT HEALTH REPORT"
+          title={scan.projectName}
+          subtitle={scan.inputUrl ?? scan.inputGithubRepo ?? undefined}
+          rightSlot={<HealthScoreRing score={score} />}
+          stats={stats.map((s) => ({ count: s.count, label: s.label, color: s.color, bg: s.bg }))}
+          executiveSummary={
+            analysis?.executiveSummary
+              ? [analysis.executiveSummary, analysis.healthNarrative].filter(Boolean).join("\n\n")
+              : undefined
+          }
+          callout={analysis?.proposalHook ? { text: analysis.proposalHook, tone: "blue" } : undefined}
+          dated={`Generated ${generatedAt}`}
+          variant="print"
+        />
 
         {/* ═══════════════════════ CONTENT PAGES ═══════════════════════ */}
         <div className="rp-content">

@@ -71,33 +71,14 @@ export default async function PublicDocumentPage({ params }: PageProps) {
   if (!record) notFound();
 
   const proposal = serializeProposal(record);
-  const docNumber = proposal.documentNumber ?? "";
-  const typeLabel = DOC_TYPE_LABEL[proposal.documentType] ?? "Document";
 
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
-      {/* Slim public header — matches the /report/[token] aesthetic */}
-      <div className="border-b border-[var(--border-2)] bg-white">
-        <div className="mx-auto flex max-w-[920px] items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-7 w-auto" />
-            <div className="hidden h-6 w-px bg-[var(--border-2)] sm:block" />
-            <span className="hidden font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)] sm:inline">
-              {docNumber ? `${docNumber} · ` : ""}{typeLabel.toUpperCase()}
-            </span>
-          </div>
-          <a
-            href="https://gitwork.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-3)] hover:text-[var(--text-1)]"
-          >
-            GITWORK.IO ↗
-          </a>
-        </div>
-      </div>
-
+      {/*
+       * The cover (with Foundry logo, doc number, type label, dated) now comes from
+       * <DocumentCover/> inside the proposal sections — so we don't need a separate header
+       * strip. The cover IS the header. The "Talk to Gitwork" CTA below closes the page.
+       */}
       <div className="px-4 py-8 sm:px-6 sm:py-12">
         <ProposalPreview
           proposal={proposal}
