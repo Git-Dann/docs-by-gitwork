@@ -16,19 +16,15 @@ import {
 import { useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import {
-  useCodeClearCandidates,
-  useCodeClearStats,
-  useSetCandidateCurrentClient,
-} from "@/hooks/use-codeclear";
+import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
 import { useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
-import { statusLabel, type CodeClearCandidateListItem } from "@/types/codeclear";
-import type { ClientListItem } from "@/types/client";
+import { statusLabel } from "@/types/codeclear";
 import {
   CodeClearStatusBadge,
   CodeClearTabs,
+  RosterGroups,
   WidgetCard,
 } from "@/components/codeclear/codeclear-shared";
 
@@ -374,153 +370,6 @@ export function CodeClearOverview() {
         </WidgetCard>
       </div>
     </div>
-  );
-}
-
-/**
- * Groups the roster by current Portal client. Each group renders a small mono
- * eyebrow + a card grid of devs. Sort: assigned clients alphabetical first,
- * then Unassigned at the end. Within a group, devs stay in canonical roster
- * order (set upstream).
- */
-function RosterGroups({
-  candidates,
-  clients,
-  clientsLoading,
-}: {
-  candidates: CodeClearCandidateListItem[];
-  clients: ClientListItem[];
-  clientsLoading: boolean;
-}) {
-  const groups = useMemo(() => {
-    const buckets = new Map<string, { key: string; label: string; items: CodeClearCandidateListItem[] }>();
-    for (const candidate of candidates) {
-      const key = candidate.currentClient?.id ?? "__unassigned__";
-      const label = candidate.currentClient?.name ?? "Unassigned";
-      const existing = buckets.get(key);
-      if (existing) {
-        existing.items.push(candidate);
-      } else {
-        buckets.set(key, { key, label, items: [candidate] });
-      }
-    }
-    return [...buckets.values()].sort((a, b) => {
-      if (a.key === "__unassigned__") return 1;
-      if (b.key === "__unassigned__") return -1;
-      return a.label.localeCompare(b.label);
-    });
-  }, [candidates]);
-
-  return (
-    <div className="space-y-5">
-      {groups.map((group) => (
-        <div key={group.key}>
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <p className="widget-data-label">{group.label}</p>
-            <p className="widget-timestamp">
-              {group.items.length} {group.items.length === 1 ? "dev" : "devs"}
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {group.items.map((candidate) => (
-              <RosterCard
-                key={candidate.id}
-                candidate={candidate}
-                clients={clients}
-                clientsLoading={clientsLoading}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RosterCard({
-  candidate,
-  clients,
-  clientsLoading,
-}: {
-  candidate: CodeClearCandidateListItem;
-  clients: ClientListItem[];
-  clientsLoading: boolean;
-}) {
-  const setCurrentClient = useSetCandidateCurrentClient(candidate.id);
-  const currentClientId = candidate.currentClient?.id ?? "";
-  const score = candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore;
-
-  return (
-    <div className="group rounded-[10px] border border-[var(--border-2)] bg-white p-3 transition hover:border-[var(--border-1)]">
-      <div className="flex items-start justify-between gap-2">
-        <Link
-          href={`/app/codeclear/candidates?candidate=${candidate.id}`}
-          className="min-w-0 flex-1"
-        >
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
-          <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">{candidate.primaryStack}</p>
-        </Link>
-        <ScoreChip value={score} />
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5">
-        <select
-          value={currentClientId}
-          disabled={clientsLoading || setCurrentClient.isPending}
-          onChange={(event) => {
-            const next = event.target.value || null;
-            if ((next ?? "") !== currentClientId) {
-              setCurrentClient.mutate(next);
-            }
-          }}
-          onClick={(event) => event.stopPropagation()}
-          className="app-select h-8 flex-1 text-xs"
-          aria-label={`Assign ${candidate.name} to a client`}
-        >
-          <option value="">Unassigned</option>
-          {clients.map((client) => (
-            <option key={client.id} value={client.id}>
-              {client.name}
-            </option>
-          ))}
-          {candidate.currentClient && !candidate.currentClient.id ? (
-            <option value="" disabled>
-              (legacy: {candidate.currentClient.name})
-            </option>
-          ) : null}
-        </select>
-        {setCurrentClient.isPending ? (
-          <ArrowPathIcon className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-4)]" aria-hidden />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/** Compact score chip — quiet by default, green when 80+, amber 65–79, neutral below. */
-function ScoreChip({ value }: { value: number | null | undefined }) {
-  if (typeof value !== "number") {
-    return (
-      <span className="shrink-0 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[11px] font-medium text-[var(--text-4)]">
-        —
-      </span>
-    );
-  }
-  const tone =
-    value >= 80
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : value >= 65
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
-        tone,
-      )}
-    >
-      {value}
-    </span>
   );
 }
 

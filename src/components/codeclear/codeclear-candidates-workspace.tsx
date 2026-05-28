@@ -22,14 +22,12 @@ import {
   type IdentityConfidence,
   type PipelineStatus,
 } from "@/types/codeclear";
+import { useClientList } from "@/hooks/use-proposals";
+import { rosterIndexFor } from "@/lib/gitwork-roster";
 import {
-  CandidateMeta,
-  CodeClearAnalysisBadge,
-  CodeClearScoreBadge,
-  CodeClearStatusBadge,
   CodeClearTabs,
-  CodeClearTierBadge,
   EmptyState,
+  RosterGroups,
   SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
@@ -80,7 +78,22 @@ export function CodeClearCandidatesWorkspace() {
   });
   const createCandidate = useCreateCodeClearCandidate();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
+  const clientsQuery = useClientList();
+  const clients = clientsQuery.data?.clients ?? [];
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
+
+  // Same canonical sort as the overview: roster order first, then any new
+  // devs by createdAt. Keeps groups visually stable across filter changes.
+  const orderedCandidates = useMemo(() => {
+    return [...candidates].sort((a, b) => {
+      const ai = rosterIndexFor(a.name);
+      const bi = rosterIndexFor(b.name);
+      if (ai !== bi) return ai - bi;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+  }, [candidates]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => candidates.some((item) => item.id === id)));
@@ -247,89 +260,21 @@ export function CodeClearCandidatesWorkspace() {
         ) : null}
 
         {candidates.length ? (
-          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
-            <table className="app-table">
-              <thead>
-                <tr>
-                  <th className="w-12 text-left" />
-                  <th className="text-left">Candidate</th>
-                  <th className="text-left">Stack</th>
-                  <th className="text-left">Signals</th>
-                  <th className="text-left">Status</th>
-                  <th className="text-left">Analysis</th>
-                  <th className="text-left">Score</th>
-                  <th className="text-left">Timeline</th>
-                </tr>
-              </thead>
-              <tbody>
-                {candidates.map((candidate) => {
-                  const checked = selectedIds.includes(candidate.id);
-
-                  return (
-                    <tr
-                      key={candidate.id}
-                      className="cursor-pointer"
-                      onClick={() => updateQuery({ candidate: candidate.id })}
-                    >
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) =>
-                            setSelectedIds((current) =>
-                              event.target.checked
-                                ? [...current, candidate.id]
-                                : current.filter((item) => item !== candidate.id),
-                            )
-                          }
-                          className="h-4 w-4 rounded border-[var(--border-1)]"
-                        />
-                      </td>
-                      <td>
-                        <div>
-                          <p className="font-semibold text-[var(--text-1)]">{candidate.name}</p>
-                          <p className="mt-1 text-sm text-[var(--text-4)]">@{candidate.githubHandle}</p>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap gap-1.5">
-                          {candidate.techStacks.slice(0, 3).map((stack) => (
-                            <StackPill key={stack} label={stack} tone="stack" />
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap gap-1.5">
-                          {candidate.signalSources.slice(0, 2).map((source) => (
-                            <SignalSourcePill key={source} source={source} />
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap gap-2">
-                          <CodeClearStatusBadge status={candidate.status} />
-                          <CodeClearTierBadge tier={candidate.tier} />
-                        </div>
-                      </td>
-                      <td>
-                        <CodeClearAnalysisBadge state={candidate.analysisState} />
-                      </td>
-                      <td>
-                        <CodeClearScoreBadge
-                          value={candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore}
-                        />
-                      </td>
-                      <td>
-                        <CandidateMeta
-                          updatedAt={candidate.updatedAt}
-                          recheckDueAt={candidate.recheckDueAt}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="mt-5">
+            <RosterGroups
+              candidates={orderedCandidates}
+              clients={clients}
+              clientsLoading={clientsQuery.isLoading}
+              selectable
+              selectedIds={selectedIdSet}
+              onSelectChange={(id, checked) => {
+                setSelectedIds((current) =>
+                  checked
+                    ? current.includes(id) ? current : [...current, id]
+                    : current.filter((entry) => entry !== id),
+                );
+              }}
+            />
           </div>
         ) : (
           <div className="mt-5">
