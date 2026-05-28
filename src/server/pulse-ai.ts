@@ -429,6 +429,7 @@ export async function analyseWithClaude(
     healthScore: number;
     techStack: string[];
     checks: PulseScanCheckInput[];
+    authContent?: string | null;
   },
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ): Promise<PulseAnalysisOutput> {
@@ -480,10 +481,10 @@ export async function analyseWithClaude(
   const contextBlock = `Project name (brand only — do NOT use this to infer the product vertical): ${input.projectName}
 Input type: ${input.inputType}
 ${inputRef}
-${platformLabel}
+${platformLabel}${input.inputDescription ? `\nProduct description (provided by user): ${input.inputDescription}` : ""}
 Overall health score: ${input.healthScore}/100
 Tech stack detected: ${input.techStack.length > 0 ? input.techStack.join(", ") : "Unknown"}
-${pageIdentityBlock}
+${pageIdentityBlock}${input.authContent ? `\n=== AUTHENTICATED CONTENT (highest-confidence classification signal) ===\n${input.authContent}\n` : ""}
 === SCAN RESULTS ===
 ${formatChecksForPrompt(input.checks)}`;
 

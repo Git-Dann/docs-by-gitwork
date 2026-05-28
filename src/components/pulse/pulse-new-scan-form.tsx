@@ -63,6 +63,10 @@ export function PulseNewScanForm({
   const [selectedProvider, setSelectedProvider] = useState<AiProviderId>(activeProvider);
   const [competitorUrls, setCompetitorUrls] = useState<string[]>([""]);
   const [showCompetitors, setShowCompetitors] = useState(false);
+  const [projectDescription, setProjectDescription] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [testPassword, setTestPassword] = useState("");
+  const [showTestLogin, setShowTestLogin] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
@@ -101,6 +105,9 @@ export function PulseNewScanForm({
         clientId: clientId || undefined,
         aiProvider: selectedProvider,
         competitorUrls: cleanedCompetitors.length > 0 ? cleanedCompetitors : undefined,
+        projectDescription: projectDescription.trim() || undefined,
+        testEmail: showTestLogin && testEmail.trim() ? testEmail.trim() : undefined,
+        testPassword: showTestLogin && testPassword.trim() ? testPassword.trim() : undefined,
       });
       router.push(`/app/pulse/${result.scan.id}`);
     } catch (err) {
@@ -200,6 +207,29 @@ export function PulseNewScanForm({
         )}
       </div>
 
+      {inputType !== "FREE_TEXT" && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="app-field-label">What does this product do?</label>
+            <span className={`text-xs ${projectDescription.length > 450 ? "text-amber-600" : "text-[var(--text-4)]"}`}>
+              {projectDescription.length}/500
+            </span>
+          </div>
+          <textarea
+            className="app-input resize-none"
+            rows={2}
+            maxLength={500}
+            placeholder="e.g. B2B footfall analytics platform for retail. Helps store managers track visitor patterns and optimise floor layouts."
+            value={projectDescription}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setProjectDescription(e.target.value)}
+            disabled={isPending}
+          />
+          <p className="text-xs text-[var(--text-4)]">
+            Optional — helps the AI classify your product correctly, especially if the app is behind a login.
+          </p>
+        </div>
+      )}
+
       {inputType === "URL" && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -253,6 +283,58 @@ export function PulseNewScanForm({
               <p className="text-xs text-[var(--text-4)]">
                 We&apos;ll run a parallel scan on each competitor and AI will generate a side-by-side comparison.
               </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {inputType === "URL" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="app-field-label">Test account login</label>
+            <button
+              type="button"
+              onClick={() => setShowTestLogin((v) => !v)}
+              disabled={isPending}
+              className="text-xs text-[var(--brand-600)] hover:underline"
+            >
+              {showTestLogin ? "Hide" : "+ Add login"}
+            </button>
+          </div>
+          {showTestLogin && (
+            <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+              <p className="text-xs text-[var(--text-3)]">
+                Pulse will log into the app and scan the authenticated experience. Use a test or demo account — credentials are used once and never stored.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="app-field-label text-xs">Email</label>
+                  <input
+                    type="email"
+                    className="app-input"
+                    placeholder="test@example.com"
+                    value={testEmail}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setTestEmail(e.target.value)}
+                    disabled={isPending}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="app-field-label text-xs">Password</label>
+                  <input
+                    type="password"
+                    className="app-input"
+                    placeholder="••••••••"
+                    value={testPassword}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setTestPassword(e.target.value)}
+                    disabled={isPending}
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-[8px] bg-amber-50 border border-amber-200 px-3 py-2">
+                <span className="text-xs text-amber-700">Use a test account only. Never use your main account credentials. Credentials are discarded after the scan runs.</span>
+              </div>
             </div>
           )}
         </div>

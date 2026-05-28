@@ -20,12 +20,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = pulseScanCreateSchema.parse(await request.json());
+
+    // For URL/GITHUB_REPO scans, projectDescription supplements the main input as inputDescription.
+    // For FREE_TEXT scans, inputDescription IS the main input — use it directly.
+    const inputDescriptionForRecord =
+      body.inputType === "FREE_TEXT"
+        ? body.inputDescription
+        : body.projectDescription ?? body.inputDescription;
+
     const { scan, aiConfig } = await createPulseScanRecord({
       projectName: body.projectName,
       inputType: body.inputType,
       inputUrl: body.inputUrl,
       inputGithubRepo: body.inputGithubRepo,
-      inputDescription: body.inputDescription,
+      inputDescription: inputDescriptionForRecord,
       platform: body.platform,
       clientId: body.clientId,
       aiProvider: body.aiProvider,
@@ -37,11 +45,14 @@ export async function POST(request: NextRequest) {
         inputType: body.inputType,
         inputUrl: body.inputUrl,
         inputGithubRepo: body.inputGithubRepo,
-        inputDescription: body.inputDescription,
+        inputDescription: inputDescriptionForRecord,
         projectName: body.projectName,
         platform: body.platform,
         clientId: body.clientId,
         competitorUrls: body.competitorUrls,
+        // testEmail and testPassword flow into runAnalysis only — never stored in DB
+        testEmail: body.testEmail,
+        testPassword: body.testPassword,
       }, aiConfig)
     );
 

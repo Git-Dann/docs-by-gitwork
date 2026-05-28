@@ -14,6 +14,7 @@ import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
+import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import type {
   PulseScanRecord,
@@ -522,6 +523,8 @@ export async function runAnalysis(
     platform?: string;
     clientId?: string;
     competitorUrls?: string[];
+    testEmail?: string;
+    testPassword?: string;
   },
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
 ) {
@@ -648,6 +651,31 @@ export async function runAnalysis(
       );
     });
 
+    // Auth scan — if test credentials provided, log in and capture authenticated content.
+    // This runs in parallel with competitor/browser work via Promise.all below.
+    // Credentials are NEVER stored — only the extracted page content is passed to the AI.
+    let authContent: string | null = null;
+    if (input.testEmail && input.testPassword && input.inputType === "URL" && input.inputUrl) {
+      try {
+        const authResult = await withTimeout(
+          runAuthAgent(input.inputUrl, input.testEmail, input.testPassword),
+          28_000,
+          "Auth scan",
+        );
+        if (authResult) {
+          authContent = [
+            authResult.pageTitle ? `Authenticated page title: "${authResult.pageTitle}"` : null,
+            authResult.h1 ? `Main heading (h1): "${authResult.h1}"` : null,
+            authResult.navItems.length > 0 ? `Navigation: ${authResult.navItems.slice(0, 10).join(" · ")}` : null,
+            authResult.mainText ? `Page content: ${authResult.mainText}` : null,
+            `Authenticated URL: ${authResult.authenticatedUrl}`,
+          ].filter(Boolean).join("\n");
+        }
+      } catch {
+        // Auth scan is best-effort — never let it block the main scan
+      }
+    }
+
     // Wrap the LLM call so a bad key / wrong model / no key / timeout never
     // wipes out the Phase 1 checks. On failure analysis is null (no mock shown).
     // Hard limit: 200s — covers Opus on a slow API day (typically 90-160s for full response).
@@ -665,6 +693,7 @@ export async function runAnalysis(
               healthScore,
               techStack,
               checks: allChecks,
+              authContent,
             },
             aiConfig,
           ),
@@ -772,7 +801,7 @@ export async function runAnalysis(
         llmAnalysis: llmAnalysis ? (llmAnalysis as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
   } catch (error) {

@@ -420,6 +420,9 @@ export const pulseScanCreateSchema = z
     clientId: z.string().cuid().optional(),
     aiProvider: z.enum(["ANTHROPIC", "OPENAI", "GEMINI", "LOCAL"]).optional(),
     competitorUrls: z.array(z.string().trim().min(1)).max(3).optional(),
+    projectDescription: z.string().trim().max(500).optional(),
+    testEmail: z.string().email().optional(),
+    testPassword: z.string().max(200).optional(),
   })
   .refine(
     (d) => {
