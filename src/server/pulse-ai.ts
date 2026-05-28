@@ -140,6 +140,15 @@ const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advi
 
 Your clients are "vibe coders" — founders and makers who built their app using tools like Lovable, Bolt, v0, Cursor, Claude Code, Replit Agent, or similar AI coding assistants.
 
+⚠️ CRITICAL CLASSIFICATION RULE — READ BEFORE ANYTHING ELSE:
+Never infer the product vertical from the project name or domain name. Project names are brand names and are ALWAYS misleading — "Pollen" might be footfall analytics, "Stripe" is payments not music, "Mint" is finance not fragrance, "Robinhood" is fintech not folklore. The project name tells you NOTHING about what the product does.
+You MUST classify based exclusively on:
+1. The PAGE IDENTITY block (title, meta description, h1) — this is the most reliable signal
+2. Detected technologies (Stripe → payments, RevenueCat → mobile subscriptions, etc.)
+3. URL paths and navigation structure
+4. Scan check results and what categories they cover
+If the page appears to be login-gated with no public content, state that explicitly, set confidence to LOW, and base classification only on the technology signals and any identity text available.
+
 STEP 1 — CLASSIFY THE PROJECT VERTICAL FIRST.
 Before making any recommendations, determine exactly what type of product this is. Your classification drives everything: the gaps you flag, the opportunities you surface, and the roadmap you recommend. Think like a consultant who has seen hundreds of projects — the vertical shapes the entire engagement.
 
@@ -441,14 +450,40 @@ export async function analyseWithClaude(
     ? `Platform (declared by client): ${input.platform}`
     : "Platform: not specified (assume web app)";
 
+  // Extract page identity signals from check evidence — these are the most reliable
+  // classification signals and are NOT included in the check pass/fail list below.
+  // We pull from evidence (raw values) rather than detail (human-readable labels).
+  const pageTitle = input.checks.find((c) => c.checkKey === "meta_title")?.evidence ?? null;
+  const pageDesc = input.checks.find((c) => c.checkKey === "meta_description")?.evidence ?? null;
+  // og_tags.evidence stores the og:title value when present (extracted during URL scan)
+  const ogTitle = input.checks.find((c) => c.checkKey === "og_tags")?.evidence ?? null;
+
+  // Also scan all check details for any that contain the page title inline
+  // (some checks store Title: "..." in their detail string)
+  const titleFromDetail = !pageTitle
+    ? input.checks.find((c) => c.detail?.startsWith("Title:"))?.detail?.replace(/^Title:\s*["']?/, "").replace(/["']$/, "") ?? null
+    : null;
+
+  const effectiveTitle = pageTitle ?? titleFromDetail;
+
+  const pageIdentityLines: string[] = [];
+  if (effectiveTitle) pageIdentityLines.push(`Page <title>: "${effectiveTitle}"`);
+  // Prefer OG title if it differs from the page title (often more descriptive)
+  if (ogTitle && ogTitle !== effectiveTitle) pageIdentityLines.push(`OG title: "${ogTitle}"`);
+  if (pageDesc) pageIdentityLines.push(`Meta description: "${pageDesc.slice(0, 300)}"`);
+
+  const pageIdentityBlock = pageIdentityLines.length > 0
+    ? `\n=== PAGE IDENTITY — use this for classification, NOT the project name ===\n${pageIdentityLines.join("\n")}\n`
+    : "\n=== PAGE IDENTITY ===\nNo page title or meta description detected — page may be login-gated or return no public content. Base classification on technology signals only. Set confidence to LOW.\n";
+
   // Shared context block — included in both parallel calls
-  const contextBlock = `Project: ${input.projectName}
+  const contextBlock = `Project name (brand only — do NOT use this to infer the product vertical): ${input.projectName}
 Input type: ${input.inputType}
 ${inputRef}
 ${platformLabel}
 Overall health score: ${input.healthScore}/100
 Tech stack detected: ${input.techStack.length > 0 ? input.techStack.join(", ") : "Unknown"}
-
+${pageIdentityBlock}
 === SCAN RESULTS ===
 ${formatChecksForPrompt(input.checks)}`;
 

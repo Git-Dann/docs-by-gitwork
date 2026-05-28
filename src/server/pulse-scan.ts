@@ -564,12 +564,21 @@ export async function runUrlChecks(url: string, platform?: string): Promise<{ ch
     });
 
     const hasOg = pageResult.html.includes('property="og:') || pageResult.html.includes("property='og:");
+    // Extract OG title and description values for AI classification context
+    const ogTitle = pageResult.html.match(/property=["']og:title["'][^>]*content=["']([^"']{1,200})["']/i)?.[1]?.trim()
+      ?? pageResult.html.match(/content=["']([^"']{1,200})["'][^>]*property=["']og:title["']/i)?.[1]?.trim();
+    const ogDescription = pageResult.html.match(/property=["']og:description["'][^>]*content=["']([^"']{1,400})["']/i)?.[1]?.trim()
+      ?? pageResult.html.match(/content=["']([^"']{1,400})["'][^>]*property=["']og:description["']/i)?.[1]?.trim();
     checks.push({
       category: "SEO",
       checkKey: "og_tags",
       label: "Open Graph tags",
       status: hasOg ? "PASS" : "WARN",
-      detail: hasOg ? "Open Graph tags found." : "No Open Graph tags detected.",
+      detail: hasOg
+        ? `Open Graph tags found${ogTitle ? ` — og:title: "${ogTitle}"` : ""}.`
+        : "No Open Graph tags detected.",
+      // Store OG title in evidence so AI analysis can use it for accurate classification
+      evidence: ogTitle ?? undefined,
     });
 
     const hasCanonical = pageResult.html.includes('rel="canonical"') || pageResult.html.includes("rel='canonical'");
