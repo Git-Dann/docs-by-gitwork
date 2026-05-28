@@ -79,6 +79,27 @@ async function ensurePortalSchema() {
       CONSTRAINT "ClientPlatform_pkey" PRIMARY KEY ("id")
     )`,
     `CREATE INDEX IF NOT EXISTS "ClientPlatform_clientId_idx" ON "ClientPlatform"("clientId")`,
+    // Wave 3 — Push notifications
+    // PulseScan: track who triggered the scan so we can target push notifications
+    `ALTER TABLE "PulseScan" ADD COLUMN IF NOT EXISTS "triggeredByUserId" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "PulseScan_triggeredByUserId_idx" ON "PulseScan"("triggeredByUserId")`,
+    // DeviceToken table — one row per (user, APNs device)
+    `CREATE TABLE IF NOT EXISTS "DeviceToken" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "token" TEXT NOT NULL,
+      "platform" TEXT NOT NULL,
+      "environment" TEXT NOT NULL,
+      "appBuild" TEXT,
+      "appVersion" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "lastUsedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "failedAt" TIMESTAMP(3),
+      CONSTRAINT "DeviceToken_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "DeviceToken_token_key" ON "DeviceToken"("token")`,
+    `CREATE INDEX IF NOT EXISTS "DeviceToken_userId_environment_idx" ON "DeviceToken"("userId", "environment")`,
+    `CREATE INDEX IF NOT EXISTS "DeviceToken_token_idx" ON "DeviceToken"("token")`,
   ];
 
   for (const sql of statements) {
@@ -107,6 +128,19 @@ async function ensurePortalSchema() {
        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SupportClient_workspaceClientId_fkey') THEN
          ALTER TABLE "SupportClient" ADD CONSTRAINT "SupportClient_workspaceClientId_fkey"
            FOREIGN KEY ("workspaceClientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+       END IF;
+     END $migration$`,
+    // Wave 3 — Push notification FKs
+    `DO $migration$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'DeviceToken_userId_fkey') THEN
+         ALTER TABLE "DeviceToken" ADD CONSTRAINT "DeviceToken_userId_fkey"
+           FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+       END IF;
+     END $migration$`,
+    `DO $migration$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PulseScan_triggeredByUserId_fkey') THEN
+         ALTER TABLE "PulseScan" ADD CONSTRAINT "PulseScan_triggeredByUserId_fkey"
+           FOREIGN KEY ("triggeredByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
        END IF;
      END $migration$`,
   ];

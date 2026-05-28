@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/auth.config";
-import { verifyMobileToken } from "@/server/auth/mobile-jwt";
+import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-jwt";
 
 const { auth } = NextAuth(authConfig);
 
@@ -12,6 +12,15 @@ const { auth } = NextAuth(authConfig);
 const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign", "/api/docs"];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
+
+// Server-internal headers used by route handlers to read the authenticated
+// mobile user. Stripped from every incoming request below so they cannot be
+// spoofed by clients.
+const FOUNDRY_USER_HEADERS = [
+  "x-foundry-user-id",
+  "x-foundry-user-email",
+  "x-foundry-user-role",
+] as const;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -94,7 +103,15 @@ export default auth(async (req) => {
   // session cookie, or (c) per-user Foundry mobile JWT issued by
   // /api/auth/mobile-callback.
   if (pathname.startsWith("/api/")) {
+    // Strip any incoming x-foundry-user-* headers — defense in depth so clients
+    // can't spoof the authenticated user identity that route handlers read.
+    const forwardHeaders = new Headers(req.headers);
+    for (const name of FOUNDRY_USER_HEADERS) {
+      forwardHeaders.delete(name);
+    }
+
     const isPublic = PUBLIC_API_PATHS.some((p) => pathname.startsWith(p));
+    let mobileClaims: MobileTokenClaims | null = null;
 
     if (!isPublic) {
       const apiKey = configuredApiKey();
@@ -111,7 +128,7 @@ export default auth(async (req) => {
         let authorized = token === apiKey;
         if (!authorized && bearerToken) {
           try {
-            await verifyMobileToken(bearerToken);
+            mobileClaims = await verifyMobileToken(bearerToken);
             authorized = true;
           } catch {
             authorized = false;
@@ -127,7 +144,18 @@ export default auth(async (req) => {
       }
     }
 
-    const response = NextResponse.next();
+    // Mobile JWT callers: forward the authenticated user identity downstream
+    // via stripped+set request headers (Next.js middleware → route handler
+    // pattern). Route handlers read these via getRequestUser().
+    if (mobileClaims) {
+      forwardHeaders.set("x-foundry-user-id", mobileClaims.sub);
+      forwardHeaders.set("x-foundry-user-email", mobileClaims.email);
+      forwardHeaders.set("x-foundry-user-role", mobileClaims.role);
+    }
+
+    const response = NextResponse.next({
+      request: { headers: forwardHeaders },
+    });
     for (const [key, value] of Object.entries(CORS_HEADERS)) {
       response.headers.set(key, value);
     }
