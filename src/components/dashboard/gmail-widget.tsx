@@ -46,14 +46,14 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
         <div>
           <p className="text-xs font-semibold text-[var(--text-1)]">Gmail not connected</p>
           <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
-            Connect to see your inbox here
+            Sign out and back in to grant Gmail access
           </p>
         </div>
         <Link
-          href="/app/settings"
+          href="/api/auth/signout"
           className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
         >
-          Connect Gmail
+          Re-connect via Google
         </Link>
       </div>
     );
