@@ -5,11 +5,74 @@ import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-
 
 const { auth } = NextAuth(authConfig);
 
+// Hostnames that the middleware short-circuits past for custom-domain routing. Anything not in
+// this list and not localhost gets the DB lookup. Keep in sync with vercel.json domains.
+const DEFAULT_HOSTS = new Set([
+  "foundry-by-gitwork.vercel.app",
+  "docs-by-gitwork.vercel.app",
+]);
+
+function isDefaultHost(host: string): boolean {
+  const bare = host.split(":")[0].toLowerCase();
+  if (DEFAULT_HOSTS.has(bare)) return true;
+  if (bare === "localhost" || bare === "127.0.0.1") return true;
+  // Vercel preview deploys: *-{hash}-{team}.vercel.app
+  if (bare.endsWith(".vercel.app")) return true;
+  return false;
+}
+
+// Cache custom-hostname → workspace lookups for 60s. The middleware runs in the edge runtime
+// on Vercel, where the cache is per-instance and short-lived anyway — this is just to avoid
+// stampedes within a single instance.
+const hostnameCache = new Map<string, { match: boolean; expires: number }>();
+const HOSTNAME_CACHE_TTL_MS = 60_000;
+
+async function isCustomHostnameMatch(hostname: string): Promise<boolean> {
+  const now = Date.now();
+  const cached = hostnameCache.get(hostname);
+  if (cached && cached.expires > now) return cached.match;
+
+  let match = false;
+  try {
+    // The Prisma client doesn't ship to the edge runtime — call our app's API route instead.
+    // We hit our own /api/internal/resolve-host endpoint which runs on the Node runtime.
+    const res = await fetch(
+      `https://${process.env.VERCEL_URL ?? "foundry-by-gitwork.vercel.app"}/api/internal/resolve-host?hostname=${encodeURIComponent(hostname)}`,
+      { headers: { "x-internal-call": "middleware" } },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { match?: boolean };
+      match = Boolean(json.match);
+    }
+  } catch {
+    // Network blip: treat as not-match. Next request retries.
+    match = false;
+  }
+  hostnameCache.set(hostname, { match, expires: now + HOSTNAME_CACHE_TTL_MS });
+  return match;
+}
+
+/** Token-shaped path? `/aBcDeF...` of at least 16 url-safe chars. */
+function looksLikeShareToken(pathname: string): boolean {
+  if (!pathname.startsWith("/")) return false;
+  const first = pathname.split("/")[1] ?? "";
+  return /^[A-Za-z0-9_-]{16,}$/.test(first);
+}
+
 // API paths that do not require API_KEY authentication.
 // `/api/sign` is the public signer endpoint family — token in the URL is its own auth.
 // `/api/docs` is the public document view-tracking beacon — token in the URL is its own auth.
 // `/api/auth/mobile-callback` is the iOS auth bootstrap — id_token is its own auth.
-const PUBLIC_API_PATHS = ["/api/health", "/api/auth", "/api/report", "/api/sign", "/api/docs"];
+// `/api/internal/resolve-host` is called by this very middleware to map custom hostnames →
+//                              workspace; returns only a boolean, no sensitive data.
+const PUBLIC_API_PATHS = [
+  "/api/health",
+  "/api/auth",
+  "/api/report",
+  "/api/sign",
+  "/api/docs",
+  "/api/internal/resolve-host",
+];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
 
@@ -55,6 +118,20 @@ function hasModuleAccess(pathname: string, permissions: string[]): boolean {
 
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
+  const host = req.headers.get("host") ?? "";
+
+  // P5.19 — custom-hostname routing. If a request lands on a non-default Host and the path
+  // looks like a share token (`/{token}` at the root), rewrite to the internal `/docs/{token}`
+  // route. The default hostname is left untouched so the existing `/docs/[token]` works as
+  // before. We only do the DB lookup for non-default hosts to keep the hot path fast.
+  if (host && !isDefaultHost(host) && looksLikeShareToken(pathname)) {
+    const bare = host.split(":")[0].toLowerCase();
+    if (await isCustomHostnameMatch(bare)) {
+      const url = req.nextUrl.clone();
+      url.pathname = `/docs${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
 
   // CORS preflight for all API routes
   if (req.method === "OPTIONS" && pathname.startsWith("/api/")) {
@@ -166,5 +243,12 @@ export default auth(async (req) => {
 });
 
 export const config = {
-  matcher: ["/api/:path*", "/app/:path*", "/login"],
+  // Match everything except Next-internal paths + static assets. The custom-host rewrite needs
+  // to see top-level `/{token}` requests on the branded subdomain.
+  matcher: [
+    "/api/:path*",
+    "/app/:path*",
+    "/login",
+    "/((?!_next/|favicon|.*\\.png$|.*\\.jpg$|.*\\.svg$|.*\\.ico$|.*\\.woff2?$).*)",
+  ],
 };

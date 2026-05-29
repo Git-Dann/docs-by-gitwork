@@ -27,6 +27,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
   HomeIcon,
+  LinkIcon,
   MinusIcon,
   PlusIcon,
   TrashIcon,
@@ -40,7 +41,9 @@ import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
 import { CollabPanel } from "@/components/proposals/collab-panel";
+import { DocumentRelationsPanel } from "@/components/proposals/document-relations-panel";
 import { RightRailTabs } from "@/components/proposals/right-rail-tabs";
+import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
@@ -180,6 +183,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
+  /** P5.17 — outline drawer toggle on < xl screens. */
+  const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
@@ -526,6 +531,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
   }
 
+  // P5.18 — surface the parent doc in the editor header so the link is visible at a glance.
+  // useDocumentRelations is cached, so the Linked-tab panel re-uses this query (no extra fetch).
+  const relations = useDocumentRelations(proposalId);
+  const parentDoc = relations.data?.parent ?? null;
+
   const saveTone =
     saveState === "saved"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -576,6 +586,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusBadge status={draft.status} />
               {draft.version ? <span className="app-chip">Version {draft.version}</span> : null}
+              {parentDoc ? (
+                <Link
+                  href={`/app/proposals/${parentDoc.id}`}
+                  className="app-chip inline-flex items-center gap-1.5 text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/60"
+                  title={`Linked under: ${parentDoc.title}`}
+                >
+                  <LinkIcon className="h-3 w-3" />
+                  <span>Under {parentDoc.documentType}</span>
+                  <span className="max-w-[160px] truncate text-[var(--text-1)]">
+                    {parentDoc.title}
+                  </span>
+                </Link>
+              ) : null}
               <span className={cn("app-chip", saveTone)}>
                 {saveState === "saved"
                   ? `Saved ${lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "just now"}`
@@ -803,22 +826,82 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               { id: "collab",     label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
               { id: "signature",  label: "Signatures",    panel: <SignaturePanel documentId={proposalId} /> },
               { id: "activity",   label: "Activity",      panel: <ActivityFeed documentId={proposalId} /> },
+              { id: "linked",     label: "Linked",        panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
               { id: "proof",      label: "Proof drafts",  panel: <ProposalProofPanel proposalId={proposalId} /> },
             ]}
           />
         </div>
       ) : (
         <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <TableOfContentsCard
-            sections={sectionEntries}
-            activeId={activeEntry?.id ?? null}
-            editable
-            onSelect={(id) => setActiveSectionId(id)}
-            onInsertAt={(index) => setPaletteInsertAt(index)}
-            onDeleteSection={handleDeleteSection}
-            onReorder={updateSectionOrder}
-            onToggleVisibility={handleToggleVisibility}
-          />
+          {/* Desktop: outline pinned to the side */}
+          <div className="hidden xl:block">
+            <TableOfContentsCard
+              sections={sectionEntries}
+              activeId={activeEntry?.id ?? null}
+              editable
+              onSelect={(id) => setActiveSectionId(id)}
+              onInsertAt={(index) => setPaletteInsertAt(index)}
+              onDeleteSection={handleDeleteSection}
+              onReorder={updateSectionOrder}
+              onToggleVisibility={handleToggleVisibility}
+            />
+          </div>
+
+          {/* Mobile/tablet: outline opens as a slide-in drawer (P5.17) */}
+          <div className="xl:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileOutlineOpen(true)}
+              className="inline-flex h-11 w-full items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-white px-4 text-sm font-medium text-[var(--text-1)] shadow-[var(--shadow-xs)] transition active:bg-[var(--surface-1)]"
+            >
+              <span>
+                Outline · {sectionEntries.length} block{sectionEntries.length === 1 ? "" : "s"}
+              </span>
+              <ChevronRightIcon className="h-4 w-4 text-[var(--text-3)]" />
+            </button>
+          </div>
+
+          {mobileOutlineOpen ? (
+            <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-label="Document outline">
+              <button
+                type="button"
+                aria-label="Close outline"
+                onClick={() => setMobileOutlineOpen(false)}
+                className="absolute inset-0 bg-black/30"
+              />
+              <aside className="absolute inset-y-0 left-0 flex w-full max-w-[380px] flex-col bg-white shadow-[var(--shadow-lg)]">
+                <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
+                  <span className="widget-header-label">OUTLINE</span>
+                  <button
+                    type="button"
+                    onClick={() => setMobileOutlineOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                  >
+                    <ChevronRightIcon className="h-4 w-4 rotate-180" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <TableOfContentsCard
+                    sections={sectionEntries}
+                    activeId={activeEntry?.id ?? null}
+                    editable
+                    onSelect={(id) => {
+                      setActiveSectionId(id);
+                      setMobileOutlineOpen(false);
+                    }}
+                    onInsertAt={(index) => {
+                      setPaletteInsertAt(index);
+                      setMobileOutlineOpen(false);
+                    }}
+                    onDeleteSection={handleDeleteSection}
+                    onReorder={updateSectionOrder}
+                    onToggleVisibility={handleToggleVisibility}
+                  />
+                </div>
+              </aside>
+            </div>
+          ) : null}
 
           <ProposalBuilderPanel
             proposal={draft}
@@ -1025,7 +1108,7 @@ function SortableTableOfContentsItem({
 
       <div
         className={cn(
-          "group flex items-center gap-1.5 rounded-[10px] border px-1.5 py-1.5 transition",
+          "group flex items-center gap-1.5 rounded-[10px] border px-1.5 py-2.5 transition xl:py-1.5",
           isActive
             ? "border-[var(--border-2)] bg-[var(--surface-1)]"
             : "border-transparent hover:bg-[var(--surface-1)]",
@@ -1060,7 +1143,7 @@ function SortableTableOfContentsItem({
           <span className="block truncate whitespace-nowrap">{entry.section.title}</span>
         </button>
 
-        <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+        <div className="flex items-center gap-0.5 transition xl:opacity-0 xl:group-hover:opacity-100">
           {onToggleVisibility ? (
             <button
               type="button"

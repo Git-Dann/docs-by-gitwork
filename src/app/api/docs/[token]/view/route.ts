@@ -12,6 +12,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { notifyDocumentEvent } from "@/server/slack-notify";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const doc = await prisma.document.findFirst({
       where: { shareToken: token, isShared: true, archivedAt: null },
-      select: { id: true },
+      select: { id: true, workspaceId: true, title: true, documentType: true },
     });
     if (!doc) return apiError("Not shared", 404);
 
@@ -43,6 +44,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         referer: referer ?? null,
         origin: "DOCS",
       },
+    });
+
+    // Fan out to Slack webhooks subscribed to DOC_VIEWED. Fire-and-forget so the public
+    // visitor never waits on a third-party.
+    void notifyDocumentEvent({
+      workspaceId: doc.workspaceId,
+      documentId: doc.id,
+      documentTitle: doc.title,
+      documentType: doc.documentType,
+      kind: "DOC_VIEWED",
+      detail: ip ? `Opened from ${ip}` : undefined,
     });
 
     return apiOk({ ok: true });

@@ -11,6 +11,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { revokeSignatureRequest, sendSignatureRequest } from "@/server/signatures";
+import { notifyDocumentEvent } from "@/server/slack-notify";
 
 interface RouteContext {
   params: Promise<{ id: string; requestId: string }>;
@@ -32,6 +33,16 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     const snapshot = serializeProposal(document);
 
     const sent = await sendSignatureRequest(requestId, snapshot);
+
+    void notifyDocumentEvent({
+      workspaceId: document.workspaceId,
+      documentId: document.id,
+      documentTitle: document.title,
+      documentType: document.documentType,
+      kind: "DOC_SENT",
+      detail: `Sent to ${sent.signers.length} signer${sent.signers.length === 1 ? "" : "s"}`,
+    });
+
     return apiOk({
       request: sent,
       signers: sent.signers.map((s) => ({

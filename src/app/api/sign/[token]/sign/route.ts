@@ -17,6 +17,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { findSignerByToken, submitSignature } from "@/server/signatures";
+import { notifyDocumentEvent } from "@/server/slack-notify";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -72,6 +73,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
       { ip, userAgent },
     );
+
+    const doc = found.signer.request.document;
+    void notifyDocumentEvent({
+      workspaceId: doc.workspaceId,
+      documentId: doc.id,
+      documentTitle: doc.title,
+      documentType: doc.documentType,
+      kind: "DOC_SIGNED",
+      detail: `${found.signer.name} (${found.signer.role || "signer"}) signed`,
+    });
+    if (updated.status === "COMPLETED") {
+      void notifyDocumentEvent({
+        workspaceId: doc.workspaceId,
+        documentId: doc.id,
+        documentTitle: doc.title,
+        documentType: doc.documentType,
+        kind: "DOC_COMPLETED",
+        detail: `All ${updated.signers.length} signer${updated.signers.length === 1 ? "" : "s"} signed`,
+      });
+    }
 
     return apiOk({ request: updated });
   } catch (error) {

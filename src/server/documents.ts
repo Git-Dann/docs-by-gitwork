@@ -92,13 +92,22 @@ export function mintShareToken(): string {
 /**
  * Enable sharing for a document. If a token already exists it's preserved (so a previously
  * distributed link keeps working when re-shared after a revoke). If no token exists, mints one.
+ *
+ * The returned `url` is the relative `/docs/{token}` path. When the workspace has a verified
+ * custom hostname (P5.19), use `publicShareUrl()` from `@/server/custom-hostname` at the call
+ * site to translate this into a fully-qualified `https://{custom-host}/{token}` instead.
  */
 export async function enableDocumentShare(
   documentId: string,
 ): Promise<{ shareToken: string; url: string }> {
   const existing = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { shareToken: true },
+    select: {
+      shareToken: true,
+      workspace: {
+        select: { customHostname: true, customHostnameVerified: true },
+      },
+    },
   });
 
   const shareToken = existing?.shareToken ?? mintShareToken();
@@ -107,7 +116,14 @@ export async function enableDocumentShare(
     data: { shareToken, isShared: true },
   });
 
-  return { shareToken, url: `/docs/${shareToken}` };
+  // Prefer the workspace's branded subdomain when verified; otherwise fall back to the relative
+  // `/docs/{token}` path that the editor resolves against `window.location.origin`.
+  const customHost = existing?.workspace.customHostnameVerified
+    ? existing.workspace.customHostname
+    : null;
+  const url = customHost ? `https://${customHost}/${shareToken}` : `/docs/${shareToken}`;
+
+  return { shareToken, url };
 }
 
 /**

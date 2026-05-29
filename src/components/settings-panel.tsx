@@ -1342,6 +1342,12 @@ function IntegrationsTab() {
 
       {/* ── Slack ─────────────────────────────────────────────────── */}
       <SlackSection config={config} onSaved={setConfig} />
+
+      {/* ── Slack webhook notifications on doc events (P5.20) ──────── */}
+      <SlackDocNotificationsSection />
+
+      {/* ── Branded subdomain for public share URLs (P5.19) ────────── */}
+      <CustomHostnameSection />
     </div>
   );
 }
@@ -3313,5 +3319,494 @@ function SectionPicker({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Slack webhook subscriptions for doc events (P5.20).
+ *
+ * One workspace can have any number of webhook subscriptions, each pointed at a Slack incoming
+ * webhook URL with a per-event-kind filter. Useful for routing different event classes to
+ * different channels (e.g. #signing-pings for DOC_SIGNED, #comments for COMMENT_ADDED).
+ *
+ * Webhook URLs are validated client-side (must start with https://hooks.slack.com/) and
+ * masked in the list so they don't leak in screenshots.
+ */
+interface SlackWebhookSubscriptionRecord {
+  id: string;
+  label: string;
+  webhookUrlPreview: string;
+  eventKinds: string[];
+  enabled: boolean;
+  createdAt: string;
+}
+
+const NOTIFY_EVENTS = [
+  { id: "DOC_SHARED",    label: "Share link minted" },
+  { id: "DOC_VIEWED",    label: "Public visitor viewed" },
+  { id: "DOC_SENT",      label: "Sent for signature" },
+  { id: "DOC_SIGNED",    label: "Signer signed" },
+  { id: "DOC_COMPLETED", label: "Fully signed" },
+  { id: "DOC_DECLINED",  label: "Signing declined" },
+  { id: "COMMENT_ADDED", label: "New comment" },
+] as const;
+
+function SlackDocNotificationsSection() {
+  const [subs, setSubs] = useState<SlackWebhookSubscriptionRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [newEvents, setNewEvents] = useState<string[]>(["DOC_SIGNED", "DOC_COMPLETED"]);
+
+  async function reload() {
+    setError(null);
+    try {
+      const res = await apiFetch<{ subscriptions: SlackWebhookSubscriptionRecord[] }>(
+        "/api/settings/slack-webhooks",
+      );
+      setSubs(res.subscriptions);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  async function handleCreate() {
+    if (newLabel.trim().length === 0 || newUrl.trim().length === 0 || newEvents.length === 0) {
+      setError("Label, webhook URL, and at least one event are required.");
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      await apiFetch("/api/settings/slack-webhooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: newLabel.trim(),
+          webhookUrl: newUrl.trim(),
+          eventKinds: newEvents,
+        }),
+      });
+      setNewLabel("");
+      setNewUrl("");
+      setNewEvents(["DOC_SIGNED", "DOC_COMPLETED"]);
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleToggle(sub: SlackWebhookSubscriptionRecord) {
+    setBusyId(sub.id);
+    try {
+      await apiFetch(`/api/settings/slack-webhooks/${sub.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !sub.enabled }),
+      });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(sub: SlackWebhookSubscriptionRecord) {
+    if (!confirm(`Delete the "${sub.label}" webhook?`)) return;
+    setBusyId(sub.id);
+    try {
+      await apiFetch(`/api/settings/slack-webhooks/${sub.id}`, { method: "DELETE" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function toggleNewEvent(id: string) {
+    setNewEvents((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  return (
+    <section className="widget-card overflow-hidden">
+      <div className="widget-header">
+        <span className="widget-header-label">DOC NOTIFICATIONS · SLACK</span>
+        <span className="widget-header-right">{subs?.length ?? 0} CONFIGURED</span>
+      </div>
+
+      <div className="space-y-5 p-6">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Post a message to a Slack channel whenever a doc event happens &mdash; share link minted,
+          public viewer opens it, signers sign or decline, comments come in. Create an{" "}
+          <a
+            href="https://api.slack.com/messaging/webhooks"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--brand-700)] hover:underline"
+          >
+            incoming webhook
+          </a>{" "}
+          in Slack, paste the URL here, and pick which events should trigger it.
+        </p>
+
+        {error ? (
+          <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p>
+        ) : null}
+
+        {/* Existing subscriptions */}
+        {subs === null ? (
+          <p className="text-sm text-[var(--text-3)]">Loading…</p>
+        ) : subs.length === 0 ? (
+          <p className="text-sm text-[var(--text-3)]">
+            No webhooks yet. Add one below to start receiving Slack notifications.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {subs.map((sub) => (
+              <li
+                key={sub.id}
+                className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-[var(--text-1)]">{sub.label}</p>
+                      {!sub.enabled ? (
+                        <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                          DISABLED
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-0.5 font-mono text-[10px] text-[var(--text-4)]">
+                      {sub.webhookUrlPreview}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleToggle(sub)}
+                      loading={busyId === sub.id}
+                    >
+                      {sub.enabled ? "Disable" : "Enable"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="utility"
+                      size="sm"
+                      onClick={() => handleDelete(sub)}
+                      loading={busyId === sub.id}
+                      className="text-rose-600 hover:text-rose-700"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {NOTIFY_EVENTS.filter((e) => sub.eventKinds.includes(e.id)).map((e) => (
+                    <span
+                      key={e.id}
+                      className="rounded-[4px] bg-[var(--brand-200)]/40 px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--brand-700)]"
+                    >
+                      {e.label}
+                    </span>
+                  ))}
+                  {sub.eventKinds.length === 0 ? (
+                    <span className="text-[11px] italic text-[var(--text-4)]">
+                      No events selected — webhook will not fire.
+                    </span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Add new */}
+        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            Add a webhook
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Label</span>
+              <input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="#proposals notifications"
+                className="app-input"
+                maxLength={120}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Webhook URL</span>
+              <input
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                placeholder="https://hooks.slack.com/services/T…"
+                className="app-input font-mono text-xs"
+                maxLength={2000}
+                type="url"
+              />
+            </label>
+          </div>
+          <div className="mt-3">
+            <span className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Fire on these events
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {NOTIFY_EVENTS.map((e) => {
+                const active = newEvents.includes(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => toggleNewEvent(e.id)}
+                    className={cn(
+                      "rounded-[6px] border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] transition",
+                      active
+                        ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
+                        : "border-[var(--border-2)] bg-white text-[var(--text-4)] hover:text-[var(--text-2)]",
+                    )}
+                  >
+                    {e.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleCreate}
+              loading={creating}
+              disabled={
+                newLabel.trim().length === 0 ||
+                newUrl.trim().length === 0 ||
+                newEvents.length === 0
+              }
+              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            >
+              Add webhook
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Branded subdomain for public share URLs (P5.19).
+ *
+ * Flow:
+ *   1. Operator enters a hostname like `docs.acme.com`. We POST it, mint a verification token,
+ *      and surface the TXT record they need to add at `_foundry.docs.acme.com`.
+ *   2. Operator adds the TXT record at their DNS host. Returns here, clicks Verify.
+ *   3. We DNS-lookup the TXT record server-side. On match, mark verified; share URLs now use
+ *      the branded host.
+ *
+ * Vercel domain configuration (pointing the apex A/CNAME at our project) is a separate step
+ * outside this UI — we surface a reminder in the success state.
+ */
+interface CustomHostnameState {
+  hostname: string | null;
+  verified: boolean;
+  instructions: { recordName: string; recordType: "TXT"; recordValue: string } | null;
+}
+
+function CustomHostnameSection() {
+  const [state, setState] = useState<CustomHostnameState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<null | "save" | "verify" | "delete">(null);
+  const [draft, setDraft] = useState("");
+
+  async function reload() {
+    setError(null);
+    try {
+      const res = await apiFetch<CustomHostnameState>("/api/settings/custom-hostname");
+      setState(res);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  async function handleSave() {
+    if (draft.trim().length === 0) return;
+    setBusy("save");
+    setError(null);
+    try {
+      const res = await apiFetch<CustomHostnameState>("/api/settings/custom-hostname", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostname: draft.trim() }),
+      });
+      setState(res);
+      setDraft("");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleVerify() {
+    setBusy("verify");
+    setError(null);
+    try {
+      await apiFetch("/api/settings/custom-hostname/verify", { method: "POST" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Remove the custom hostname? Public share links will revert to the default Vercel URL.")) return;
+    setBusy("delete");
+    try {
+      await apiFetch("/api/settings/custom-hostname", { method: "DELETE" });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="widget-card overflow-hidden">
+      <div className="widget-header">
+        <span className="widget-header-label">BRANDED SHARE DOMAIN</span>
+        <span className="widget-header-right">
+          {state?.verified ? "VERIFIED" : state?.hostname ? "PENDING" : "DEFAULT"}
+        </span>
+      </div>
+
+      <div className="space-y-5 p-6">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Replace <code className="font-mono text-[12px] text-[var(--text-2)]">foundry-by-gitwork.vercel.app/docs/&hellip;</code>{" "}
+          on public share links with your own subdomain &mdash;{" "}
+          <code className="font-mono text-[12px] text-[var(--text-2)]">docs.yourcompany.com/&hellip;</code>. Once verified,
+          every share URL we generate uses the branded host instead.
+        </p>
+
+        {error ? <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p> : null}
+
+        {state === null ? (
+          <p className="text-sm text-[var(--text-3)]">Loading…</p>
+        ) : !state.hostname ? (
+          <div className="space-y-3 rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                Subdomain you want to use
+              </span>
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="docs.yourcompany.com"
+                className="app-input font-mono text-sm"
+                maxLength={253}
+              />
+            </label>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleSave}
+                loading={busy === "save"}
+                disabled={draft.trim().length === 0}
+              >
+                Save &amp; get DNS instructions
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3">
+              <div>
+                <p className="font-mono text-[14px] font-medium text-[var(--text-1)]">{state.hostname}</p>
+                <p className="mt-0.5 text-[11px] text-[var(--text-4)]">
+                  {state.verified
+                    ? "Verified — share links now use this domain."
+                    : "Awaiting DNS verification."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!state.verified ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={handleVerify}
+                    loading={busy === "verify"}
+                  >
+                    Verify DNS
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="utility"
+                  size="sm"
+                  onClick={handleDelete}
+                  loading={busy === "delete"}
+                  className="text-rose-600 hover:text-rose-700"
+                >
+                  <TrashIcon className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            {!state.verified && state.instructions ? (
+              <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  Step 1 · Add this TXT record
+                </p>
+                <div className="mt-3 grid gap-2 text-[12px] font-mono sm:grid-cols-[80px_1fr]">
+                  <span className="text-[var(--text-4)]">Name</span>
+                  <code className="break-all text-[var(--text-1)]">{state.instructions.recordName}</code>
+                  <span className="text-[var(--text-4)]">Type</span>
+                  <code className="text-[var(--text-1)]">{state.instructions.recordType}</code>
+                  <span className="text-[var(--text-4)]">Value</span>
+                  <code className="break-all text-[var(--text-1)]">{state.instructions.recordValue}</code>
+                </div>
+                <p className="mt-3 text-[12px] leading-6 text-[var(--text-3)]">
+                  After adding the record, click <strong>Verify DNS</strong>. Propagation usually
+                  takes 1&ndash;5 minutes but can be up to an hour.
+                </p>
+                <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  Step 2 · Point the subdomain at Vercel
+                </p>
+                <p className="mt-2 text-[12px] leading-6 text-[var(--text-3)]">
+                  Add <code className="font-mono text-[var(--text-2)]">{state.hostname}</code> as a
+                  domain on the Foundry project in Vercel, then add a CNAME record at your DNS host
+                  pointing to <code className="font-mono text-[var(--text-2)]">cname.vercel-dns.com</code>.
+                </p>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

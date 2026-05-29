@@ -12,6 +12,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { createPublicComment, listPublicCommentsForDocument } from "@/server/document-comments";
+import { notifyDocumentEvent } from "@/server/slack-notify";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -34,6 +35,14 @@ async function resolveSharedDocId(token: string): Promise<string | null> {
   return doc?.id ?? null;
 }
 
+async function resolveSharedDocForNotification(token: string) {
+  if (!token || token.length < 16) return null;
+  return prisma.document.findFirst({
+    where: { shareToken: token, isShared: true, archivedAt: null },
+    select: { id: true, workspaceId: true, title: true, documentType: true },
+  });
+}
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params;
@@ -50,17 +59,26 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params;
-    const documentId = await resolveSharedDocId(token);
-    if (!documentId) return apiError("Document not found", 404);
+    const doc = await resolveSharedDocForNotification(token);
+    if (!doc) return apiError("Document not found", 404);
 
     const body = createSchema.parse(await request.json());
     const comment = await createPublicComment({
-      documentId,
+      documentId: doc.id,
       sectionId: body.sectionId ?? null,
       parentId: body.parentId ?? null,
       authorName: body.authorName,
       authorEmail: body.authorEmail,
       body: body.body,
+    });
+
+    void notifyDocumentEvent({
+      workspaceId: doc.workspaceId,
+      documentId: doc.id,
+      documentTitle: doc.title,
+      documentType: doc.documentType,
+      kind: "COMMENT_ADDED",
+      detail: `${body.authorName}: ${body.body.slice(0, 140)}${body.body.length > 140 ? "…" : ""}`,
     });
 
     return apiOk({ comment }, { status: 201 });
