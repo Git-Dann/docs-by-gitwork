@@ -170,7 +170,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 <img
                   src={client.logoUrl}
                   alt={`${client.name} logo`}
-                  className="h-full w-full object-contain p-2"
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <span className="text-2xl font-semibold text-[var(--text-2)]">
@@ -654,7 +654,10 @@ function PlatformCard({
 
   return (
     <>
-      <article className="app-card flex flex-col p-4">
+      <article
+        className="app-card flex flex-col p-4 cursor-pointer hover:border-[var(--border-1)] transition-colors"
+        onClick={() => setEditing(true)}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold text-[var(--text-1)]">{platform.name}</p>
@@ -664,7 +667,7 @@ function PlatformCard({
               </span>
             )}
           </div>
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -685,7 +688,7 @@ function PlatformCard({
           </div>
         </div>
 
-        <div className="mt-3 flex-1 space-y-1.5">
+        <div className="mt-3 flex-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
           {platform.url && (
             <a
               href={platform.url}
