@@ -147,10 +147,10 @@ export default function ContextPage() {
         <ul style={{ paddingLeft: 20, fontSize: 14 }}>
           <li><strong>API pattern:</strong> All routes use <code>apiOk()</code> / <code>apiError()</code> / <code>fromError()</code> from <code>src/lib/api-response.ts</code></li>
           <li><strong>Server modules:</strong> One file per domain (<code>pulse.ts</code>, <code>study.ts</code>, etc.). Agents live in <code>pulse-agents/</code> or <code>study-agents/</code> subfolders.</li>
-          <li><strong>Auth:</strong> <code>API_KEY</code> env var gates all <code>/api/</code> routes except <code>/api/health</code>. Session cookie (<code>gitwork_api_session</code>) set by middleware for <code>/app/**</code> browser traffic.</li>
+          <li><strong>Auth:</strong> NextAuth.js v5 with Google OAuth (restricted to @gitwork.co.uk). ADMIN/STAFF roles on <code>WorkspaceMember</code>; module-level permissions in JSON.</li>
           <li><strong>CSS:</strong> Tailwind v4. Global anchor reset is in <code>@layer base</code> to avoid overriding utility text-color classes.</li>
           <li><strong>Images:</strong> Use <code>next/image</code> for static assets. Raw <code>&lt;img&gt;</code> is only acceptable for dynamic user avatars (suppressed with <code>eslint-disable</code>).</li>
-          <li><strong>Local state:</strong> Settings (account, workspace, branding) live in localStorage via <code>useLocalSettings()</code>. No server-side user accounts yet.</li>
+          <li><strong>Settings persistence:</strong> Workspace defaults (<code>preparedBy</code>, branding, snippets, confidentiality) live on the <code>Workspace</code> row. Per-user profile (<code>name</code>, <code>avatarUrl</code>) lives on the <code>User</code> row. Read via <code>useAccount()</code>, <code>useWorkspaceBranding()</code>, <code>useWorkspaceDefaults()</code>.</li>
           <li><strong>AI providers:</strong> Always resolve from workspace settings via <code>pulse-ai.ts getModelForTask()</code> — never hardcode a model name.</li>
         </ul>
       </section>

@@ -24,7 +24,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useState, useDeferredValue, useEffect, useMemo, useRef, useCallback } from "react";
-import { useLocalSettings } from "@/lib/local-settings";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type {
@@ -2569,7 +2569,9 @@ function SettingsView({ clientId }: { clientId: string }) {
   const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
   const deleteRule = useDeleteWorkflowRule(clientId);
   const seedRules = useSeedDefaultRules(clientId);
-  const { settings } = useLocalSettings();
+  const { data: session } = useSession();
+  const userName = session?.user?.name ?? "You";
+  const userEmail = session?.user?.email ?? "";
 
   const [showAddRule, setShowAddRule] = useState(false);
 
@@ -2656,14 +2658,14 @@ function SettingsView({ clientId }: { clientId: string }) {
           <div className="flex items-center justify-between px-5 py-3.5">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mist)] text-sm font-semibold text-[var(--brand-700)]">
-                {(settings.account.name ?? "D").charAt(0).toUpperCase()}
+                {userName.charAt(0).toUpperCase()}
               </div>
               <div>
                 <p className="text-sm font-medium text-[var(--text-1)]">
-                  {settings.account.name || "You"}
+                  {userName}
                   <span className="ml-1.5 text-[11px] text-[var(--text-4)]">(you)</span>
                 </p>
-                <p className="text-xs text-[var(--text-4)]">{settings.account.email}</p>
+                <p className="text-xs text-[var(--text-4)]">{userEmail}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5">

@@ -219,7 +219,7 @@ export function ClientManagement() {
                             <img
                               src={client.logoUrl}
                               alt={`${client.name} logo`}
-                              className="h-10 w-10 rounded-lg border border-[var(--border-1)] object-contain p-1"
+                              className="h-10 w-10 rounded-lg border border-[var(--border-1)] object-cover"
                             />
                           ) : (
                             <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border-1)] bg-[var(--surface-1)] text-sm font-semibold text-[var(--text-2)]">

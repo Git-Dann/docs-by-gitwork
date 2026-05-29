@@ -9,7 +9,7 @@
 import { BookOpenIcon } from "@heroicons/react/24/outline";
 import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
-import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
+import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
 import type { CoverSectionData } from "@/types/proposal";
 
@@ -75,8 +75,9 @@ export const coverSection = defineSection<CoverSectionData>({
     /* eslint-disable react-hooks/rules-of-hooks */
     // This is rendered conditionally only when section.key === "cover", so the hook order is
     // stable per render of the dispatcher.
-    const { settings } = useLocalSettings();
+    const brandingQuery = useWorkspaceBranding();
     /* eslint-enable react-hooks/rules-of-hooks */
+    const branding = brandingQuery.data;
 
     const signoff = proposal.sections.find((entry) => entry.key === "signoff_footer")?.data as
       | { preparedBy?: string; team?: string }
@@ -85,13 +86,14 @@ export const coverSection = defineSection<CoverSectionData>({
       | { statement?: string; summary?: string }
       | undefined;
 
-    const brandLogoUrl =
-      settings.templateBranding.coverBrandLogoUrl.trim() || "/foundry-logo.png";
-    const confidentialityText = resolveConfidentialityText(
-      data.confidentialityMode ?? "INTERNAL",
-      settings,
-      data.confidentiality,
-    );
+    const brandLogoUrl = (branding?.brandLogoUrl ?? "").trim() || "/foundry-logo.png";
+    const mode = data.confidentialityMode ?? "INTERNAL";
+    const confidentialityText =
+      (mode === "EXTERNAL"
+        ? branding?.defaultConfidentialityExternal
+        : branding?.defaultConfidentialityInternal) ||
+      data.confidentiality ||
+      "";
 
     const clientName =
       data.clientName || proposal.clientName || proposal.metadata.client || "Client";

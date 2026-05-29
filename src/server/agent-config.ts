@@ -104,3 +104,21 @@ export async function resolveAgentPrompt(
   if (!override?.enabled) return defaultPrompt; // disabled falls back silently
   return override?.systemPromptOverride ?? defaultPrompt;
 }
+
+/**
+ * Returns the model to use for a given agent key — workspace override first, then default.
+ * Use alongside `resolveAgentPrompt()` when calling an AI provider so each agent can be
+ * pinned to a different model (e.g. Pulse synthesis on Sonnet, Study persona on Haiku).
+ */
+export async function resolveAgentModel(
+  agentKey: string,
+  defaultModel: string,
+): Promise<string> {
+  const workspaceId = await getWorkspaceId();
+  const override = await prisma.agentConfig.findUnique({
+    where: { workspaceId_agentKey: { workspaceId, agentKey } },
+    select: { modelOverride: true, enabled: true },
+  });
+  if (!override?.enabled) return defaultModel;
+  return override?.modelOverride ?? defaultModel;
+}

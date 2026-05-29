@@ -7,22 +7,30 @@ const UPDATE_EVENT = "gitwork:settings-updated";
 
 export type ConfidentialityMode = "INTERNAL" | "EXTERNAL";
 
+/**
+ * @deprecated Identity now lives on the `User` row. Read via `useAccount()` from
+ * `@/hooks/use-account`. Kept as a fallback shape for legacy consumers during the
+ * localStorage → DB migration; will be removed once all callsites have moved over.
+ */
 export interface AccountSettings {
   name: string;
   email: string;
   avatarUrl: string;
-  password: string;
 }
 
+/**
+ * @deprecated Workspace defaults now live on `Workspace.proposalDefaults` + `Workspace.branding`.
+ * Read via `useWorkspaceDefaults()` / `useWorkspaceBranding()`.
+ */
 export interface WorkspaceSettings {
   preparedBy: string;
   team: string;
   contactDetails: string;
   internalConfidentialityText: string;
   externalConfidentialityText: string;
-  invitedUsers: string[];
 }
 
+/** @deprecated Mirrored in `Workspace.branding`. */
 export interface TemplateBrandingSettings {
   coverBrandLogoUrl: string;
   coverTopAccentUrl: string;
@@ -45,10 +53,9 @@ export interface LocalSettingsState {
 
 export const defaultLocalSettings: LocalSettingsState = {
   account: {
-    name: "Gitwork",
-    email: "hello@gitwork.co.uk",
+    name: "",
+    email: "",
     avatarUrl: "",
-    password: "",
   },
   workspace: {
     preparedBy: "Gitwork Delivery Team",
@@ -56,7 +63,6 @@ export const defaultLocalSettings: LocalSettingsState = {
     contactDetails: "hello@gitwork.io",
     internalConfidentialityText: "Confidential: For internal stakeholder review only.",
     externalConfidentialityText: "Confidential: Shared for client review only. Not for onward distribution.",
-    invitedUsers: [],
   },
   templateBranding: {
     coverBrandLogoUrl: "",
@@ -88,18 +94,25 @@ export function readLocalSettings(): LocalSettingsState {
       return defaultLocalSettings;
     }
 
-    const parsed = JSON.parse(raw) as Partial<LocalSettingsState>;
+    const parsed = JSON.parse(raw) as Partial<LocalSettingsState> & {
+      account?: Partial<AccountSettings> & { password?: string };
+      workspace?: Partial<WorkspaceSettings> & { invitedUsers?: unknown };
+    };
+
+    // Strip legacy fields we no longer accept: account.password and workspace.invitedUsers.
+    // These were pre-auth artifacts; identity is now sourced from NextAuth + DB.
     return {
       account: {
-        ...defaultLocalSettings.account,
-        ...(parsed.account ?? {}),
+        name: typeof parsed.account?.name === "string" ? parsed.account.name : defaultLocalSettings.account.name,
+        email: typeof parsed.account?.email === "string" ? parsed.account.email : defaultLocalSettings.account.email,
+        avatarUrl: typeof parsed.account?.avatarUrl === "string" ? parsed.account.avatarUrl : defaultLocalSettings.account.avatarUrl,
       },
       workspace: {
-        ...defaultLocalSettings.workspace,
-        ...(parsed.workspace ?? {}),
-        invitedUsers: Array.isArray(parsed.workspace?.invitedUsers)
-          ? parsed.workspace.invitedUsers
-          : defaultLocalSettings.workspace.invitedUsers,
+        preparedBy: typeof parsed.workspace?.preparedBy === "string" ? parsed.workspace.preparedBy : defaultLocalSettings.workspace.preparedBy,
+        team: typeof parsed.workspace?.team === "string" ? parsed.workspace.team : defaultLocalSettings.workspace.team,
+        contactDetails: typeof parsed.workspace?.contactDetails === "string" ? parsed.workspace.contactDetails : defaultLocalSettings.workspace.contactDetails,
+        internalConfidentialityText: typeof parsed.workspace?.internalConfidentialityText === "string" ? parsed.workspace.internalConfidentialityText : defaultLocalSettings.workspace.internalConfidentialityText,
+        externalConfidentialityText: typeof parsed.workspace?.externalConfidentialityText === "string" ? parsed.workspace.externalConfidentialityText : defaultLocalSettings.workspace.externalConfidentialityText,
       },
       templateBranding: {
         ...defaultLocalSettings.templateBranding,
@@ -125,18 +138,6 @@ function persistLocalSettings(settings: LocalSettingsState) {
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   window.dispatchEvent(new Event(UPDATE_EVENT));
-}
-
-export function resolveConfidentialityText(
-  mode: ConfidentialityMode | undefined,
-  settings: LocalSettingsState,
-  fallback?: string,
-) {
-  if (mode === "EXTERNAL") {
-    return settings.workspace.externalConfidentialityText || fallback || "";
-  }
-
-  return settings.workspace.internalConfidentialityText || fallback || "";
 }
 
 export function useLocalSettings() {

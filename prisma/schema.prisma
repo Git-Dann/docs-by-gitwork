@@ -127,6 +127,7 @@ model User {
   id            String            @id @default(cuid())
   email         String            @unique
   name          String?
+  avatarUrl     String?
   passwordHash  String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -138,6 +139,8 @@ model User {
   signatureRequestsCreated SignatureRequest[] @relation("SignatureRequestCreator")
   deviceTokens     DeviceToken[]
   triggeredPulseScans PulseScan[]    @relation("PulseScanTriggeredBy")
+  notificationPreference NotificationPreference?
+  auditLogEntries  AuditLog[]
 }
 
 // APNs device registrations. One row per (user, device).
@@ -180,7 +183,18 @@ model Workspace {
   slackBotToken             String?
   slackSummaryChannelId     String?   // legacy single-channel — kept for migration
   slackChannels             Json?     // Array<{ id: string; name: string }>
+  channelRoutes             Json?     // { "pulse.alert": "C123", "care.escalation": "C456", ... }
+  emailProvider             String?   // "RESEND" | "SMTP" | null
+  emailApiKey               String?   // Resend API key when emailProvider = RESEND
+  emailFromAddress          String?
+  emailFromName             String?
+  emailReplyTo              String?
+  emailSmtpHost             String?
+  emailSmtpPort             Int?
+  emailSmtpUser             String?
+  emailSmtpPassword         String?
   branding                  Json?             // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
+  proposalDefaults          Json?             // preparedBy, team, contactDetails, objectiveSnippets
   // ── Public-share branding (P5.19) ───────────────────────────────────
   customHostname            String?   @unique  // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
   customHostnameVerified    Boolean   @default(false)
@@ -204,6 +218,7 @@ model Workspace {
   checkConfigs    PulseCheckConfig[]
   signatureRequests SignatureRequest[]
   slackWebhooks   SlackWebhookSubscription[]
+  auditLogs       AuditLog[]
 }
 
 model WorkspaceMember {
@@ -1446,4 +1461,44 @@ model PulseCheckConfig {
 
   @@unique([workspaceId, checkKey])
   @@index([workspaceId])
+}
+
+// Per-user notification preferences. One row per user.
+// `events` shape: { [eventKey: string]: ("email" | "push" | "slack" | "inApp")[] }
+// `digestCadence`: OFF | DAILY | WEEKLY
+model NotificationPreference {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled    Boolean   @default(true)
+  pushEnabled     Boolean   @default(true)
+  slackEnabled    Boolean   @default(false)
+  inAppEnabled    Boolean   @default(true)
+  events          Json      @default("{}")
+  digestCadence   String    @default("OFF")
+  quietHoursStart String?   // "22:00" — 24h HH:mm, workspace timezone
+  quietHoursEnd   String?   // "07:00"
+  timezone        String?   // IANA tz, e.g. "Europe/London"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Workspace-scoped audit trail. Recorded by `recordAuditEntry()` for critical actions
+// (settings changes, key rotations, role changes, integration connect/disconnect).
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action      String    // e.g. "settings.ai_provider.changed", "team.member.invited"
+  target      String?   // resource identifier (e.g. "workspace:aiProvider", "user:abc123")
+  before      Json?     // previous value (omit for create events)
+  after       Json?     // new value (omit for delete events)
+  metadata    Json?     // free-form context (ip, userAgent, source)
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([action])
+  @@index([actorId])
 }

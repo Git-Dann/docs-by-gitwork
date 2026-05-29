@@ -1,131 +1,128 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
-import { useLocalSettings } from "@/lib/local-settings";
 
 export function AccountSettingsPanel() {
-  const { settings, updateSettings } = useLocalSettings();
+  const accountQuery = useAccount();
+  const updateAccount = useUpdateAccount();
+
+  const profile = accountQuery.data;
+  const [name, setName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name);
+      setAvatarUrl(profile.avatarUrl);
+      setDirty(false);
+    }
+  }, [profile?.name, profile?.avatarUrl]);
+
+  function save() {
+    updateAccount.mutate({ name, avatarUrl }, { onSuccess: () => setDirty(false) });
+  }
+
+  if (accountQuery.isLoading) {
+    return (
+      <div className="proposal-form-theme">
+        <div className="app-card p-6">
+          <p className="text-sm text-[var(--text-3)]">Loading your account…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accountQuery.isError || !profile) {
+    return (
+      <div className="proposal-form-theme">
+        <div className="app-card p-6">
+          <p className="text-sm text-[var(--text-3)]">
+            Couldn&apos;t load your account. Try refreshing the page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="proposal-form-theme grid gap-4 xl:grid-cols-2">
       <section className="app-card p-6">
         <p className="app-eyebrow">Profile</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Account settings
+          Your account
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Manage the account details shown in the sidebar and account menu.
+          Manage the name and image shown in the sidebar and across the platform.
         </p>
 
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
             <ImagePicker
-              value={settings.account.avatarUrl}
-              onChange={(avatarUrl) =>
-                updateSettings((current) => ({
-                  ...current,
-                  account: { ...current.account, avatarUrl },
-                }))
-              }
+              value={avatarUrl}
+              onChange={(value) => {
+                setAvatarUrl(value);
+                setDirty(true);
+              }}
               previewClassName="h-40 w-full"
             />
           </div>
 
           <Input
             label="Name"
-            value={settings.account.name}
-            onChange={(name) =>
-              updateSettings((current) => ({
-                ...current,
-                account: { ...current.account, name },
-              }))
-            }
+            value={name}
+            onChange={(value) => {
+              setName(value);
+              setDirty(true);
+            }}
           />
-          <Input
-            label="Email"
-            value={settings.account.email}
-            onChange={(email) =>
-              updateSettings((current) => ({
-                ...current,
-                account: { ...current.account, email },
-              }))
-            }
+
+          <ReadOnlyField label="Email" value={profile.email} hint="Set by your Google sign-in." />
+          <ReadOnlyField
+            label="Role"
+            value={profile.role === "ADMIN" ? "Admin" : "Staff"}
+            hint="Workspace admins set roles in Team settings."
           />
-          <Input
-            label="Password"
-            value={settings.account.password}
-            type="password"
-            onChange={(password) =>
-              updateSettings((current) => ({
-                ...current,
-                account: { ...current.account, password },
-              }))
-            }
-          />
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          {dirty ? (
+            <span className="text-xs text-[var(--text-4)]">Unsaved changes</span>
+          ) : null}
+          <Button
+            type="button"
+            variant="primary"
+            onClick={save}
+            disabled={!dirty || updateAccount.isPending}
+          >
+            {updateAccount.isPending ? "Saving…" : "Save changes"}
+          </Button>
         </div>
       </section>
 
       <section className="app-card p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="app-eyebrow">Workspace</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Invited users
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Added from the account menu.
-            </p>
-          </div>
+        <p className="app-eyebrow">Security</p>
+        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Sign-in &amp; sessions
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+          You sign in with Google for @gitwork.co.uk. Passwords aren&apos;t used.
+        </p>
 
-          {settings.workspace.invitedUsers.length ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                updateSettings((current) => ({
-                  ...current,
-                  workspace: { ...current.workspace, invitedUsers: [] },
-                }))
-              }
-            >
-              Clear invites
-            </Button>
-          ) : null}
+        <div className="mt-4 space-y-3 text-sm text-[var(--text-3)]">
+          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
+            <p className="font-medium text-[var(--text-2)]">Connected with Google</p>
+            <p className="mt-0.5 text-xs text-[var(--text-4)]">{profile.email}</p>
+          </div>
+          <p className="text-xs text-[var(--text-4)]">
+            Need to sign out everywhere? Use the account menu &rarr; <em>Sign out</em> after a
+            password change in Google Workspace.
+          </p>
         </div>
-
-        {settings.workspace.invitedUsers.length ? (
-          <div className="mt-4 grid gap-2">
-            {settings.workspace.invitedUsers.map((email) => (
-              <div
-                key={email}
-                className="flex items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3"
-              >
-                <span className="text-sm text-[var(--text-2)]">{email}</span>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="xs"
-                  onClick={() =>
-                    updateSettings((current) => ({
-                      ...current,
-                      workspace: {
-                        ...current.workspace,
-                        invitedUsers: current.workspace.invitedUsers.filter((entry) => entry !== email),
-                      },
-                    }))
-                  }
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-[var(--text-3)]">No invited users yet.</p>
-        )}
       </section>
     </div>
   );
@@ -135,12 +132,10 @@ function Input({
   label,
   value,
   onChange,
-  type = "text",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: string;
 }) {
   return (
     <label className="block space-y-1.5">
@@ -148,9 +143,21 @@ function Input({
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        type={type}
+        type="text"
         className="w-full"
       />
     </label>
+  );
+}
+
+function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <div className="w-full rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-2)]">
+        {value || "—"}
+      </div>
+      {hint ? <p className="text-xs text-[var(--text-4)]">{hint}</p> : null}
+    </div>
   );
 }
