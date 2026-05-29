@@ -20,7 +20,7 @@ type GridEntry = {
   size: WidgetSize;
 };
 
-const ROW_HEIGHT = 180;
+const ROW_HEIGHT = 220;
 
 const GRID: GridEntry[] = [
   { component: PulseWidget,          cols: 2, rows: 1, size: "md" },
@@ -40,8 +40,8 @@ export function AppOverview() {
     <div className="space-y-4">
       {/* Title hidden on mobile — AppShell already shows it in the mobile top bar */}
       <div className="hidden lg:block">
-        <h1 className="text-lg font-semibold text-[var(--text-1)]">Foundry HQ</h1>
-        <p className="text-xs text-[var(--text-4)]">Your workspace at a glance</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">Foundry HQ</h1>
+        <p className="text-sm text-[var(--text-3)]">Your workspace at a glance</p>
       </div>
 
       {/*
@@ -59,7 +59,7 @@ export function AppOverview() {
         {GRID.map(({ component: Widget, cols, rows, size }, i) => (
           <div
             key={i}
-            className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white p-3 shadow-[var(--shadow-xs)]"
+            className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
             style={{
               gridColumn: `span ${cols}`,
               gridRow: `span ${rows}`,

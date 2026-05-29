@@ -34,12 +34,12 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
             <BoltIcon className="h-2.5 w-2.5" />
             Pulse
           </span>
           {stats.totalCriticalGaps > 0 && (
-            <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+            <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">
               {stats.totalCriticalGaps} critical
             </span>
           )}
@@ -48,7 +48,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
           <p className={`text-3xl font-bold tabular-nums ${scoreColor}`}>
             {stats.avgHealthScore != null ? stats.avgHealthScore : "—"}
           </p>
-          <p className="text-[11px] text-[var(--text-3)]">avg health</p>
+          <p className="text-xs text-[var(--text-3)]">avg health</p>
         </div>
         <div className="flex gap-1">
           {(["green", "amber", "red"] as const).map((tier) => (
@@ -71,11 +71,11 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
           <BoltIcon className="h-2.5 w-2.5" />
           Pulse
         </span>
-        <Link href="/app/pulse" className="text-[11px] text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/pulse" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
           View all
         </Link>
       </div>
@@ -86,13 +86,13 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
           <p className={`text-3xl font-bold tabular-nums leading-none ${scoreColor}`}>
             {stats.avgHealthScore != null ? stats.avgHealthScore : "—"}
           </p>
-          <p className="mt-0.5 text-[11px] text-[var(--text-3)]">avg score</p>
+          <p className="mt-0.5 text-xs text-[var(--text-3)]">avg score</p>
         </div>
 
         <div className="flex flex-1 flex-col gap-1.5">
           {(["green", "amber", "red"] as const).map((tier) => (
             <div key={tier} className="flex items-center gap-2">
-              <span className="w-8 text-right text-[10px] tabular-nums text-[var(--text-3)]">
+              <span className="w-8 text-right text-xs tabular-nums text-[var(--text-3)]">
                 {pct(stats.healthTiers[tier])}%
               </span>
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-2)]">
@@ -105,7 +105,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
                   }}
                 />
               </div>
-              <span className="w-4 text-[10px] tabular-nums text-[var(--text-3)]">
+              <span className="w-4 text-xs tabular-nums text-[var(--text-3)]">
                 {stats.healthTiers[tier]}
               </span>
             </div>
@@ -117,7 +117,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
             <p className="text-xl font-bold tabular-nums leading-none text-red-600">
               {stats.totalCriticalGaps}
             </p>
-            <p className="mt-0.5 text-[10px] text-red-400">critical</p>
+            <p className="mt-0.5 text-xs text-red-400">critical</p>
           </div>
         )}
       </div>
@@ -125,12 +125,12 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
       {/* Recent scans */}
       <div className="mt-3 flex-1 overflow-y-auto">
           {stats.recentScans.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-[11px] text-[var(--text-3)]">
+            <div className="flex h-full items-center justify-center text-xs text-[var(--text-3)]">
               No scans yet
             </div>
           ) : (
             <>
-              <p className="mb-1.5 text-[11px] font-medium text-[var(--text-3)]">Recent scans</p>
+              <p className="mb-1.5 text-xs font-medium text-[var(--text-3)]">Recent scans</p>
               <div className="space-y-0.5">
                 {stats.recentScans.slice(0, size === "lg" ? 7 : 4).map((scan) => (
                   <Link
@@ -138,7 +138,7 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
                     href={`/app/pulse/${scan.id}`}
                     className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
                   >
-                    <span className="truncate text-xs text-[var(--text-1)]">
+                    <span className="truncate text-sm text-[var(--text-1)]">
                       {scan.projectName ?? "Untitled"}
                     </span>
                     {scan.healthScore != null && (

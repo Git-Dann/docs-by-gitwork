@@ -42,21 +42,21 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
             <DocumentTextIcon className="h-2.5 w-2.5" />
             Docs
           </span>
           {inReview > 0 && (
-            <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+            <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
               {inReview} review
             </span>
           )}
         </div>
         <div className="flex flex-1 flex-col items-center justify-center">
           <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{proposals.length}</p>
-          <p className="text-[11px] text-[var(--text-3)]">proposals</p>
+          <p className="text-xs text-[var(--text-3)]">proposals</p>
         </div>
-        <p className="text-center text-[11px] text-[var(--text-3)]">{draft} draft</p>
+        <p className="text-center text-xs text-[var(--text-3)]">{draft} draft</p>
       </div>
     );
   }
@@ -67,11 +67,11 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
           <DocumentTextIcon className="h-2.5 w-2.5" />
           Docs
         </span>
-        <Link href="/app/proposals" className="text-[11px] text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/proposals" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
           View all
         </Link>
       </div>
@@ -80,15 +80,15 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
       <div className="mt-3 flex items-center gap-3">
         <div className="rounded-[6px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-[var(--text-1)]">{proposals.length}</p>
-          <p className="mt-0.5 text-[10px] text-[var(--text-3)]">total</p>
+          <p className="mt-0.5 text-xs text-[var(--text-3)]">total</p>
         </div>
         <div className="rounded-[6px] bg-blue-50 px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-blue-600">{inReview}</p>
-          <p className="mt-0.5 text-[10px] text-blue-400">in review</p>
+          <p className="mt-0.5 text-xs text-blue-400">in review</p>
         </div>
         <div className="rounded-[6px] bg-[var(--surface-1)] px-3 py-1.5 text-center">
           <p className="text-xl font-bold tabular-nums leading-none text-[var(--text-2)]">{draft}</p>
-          <p className="mt-0.5 text-[10px] text-[var(--text-3)]">draft</p>
+          <p className="mt-0.5 text-xs text-[var(--text-3)]">draft</p>
         </div>
       </div>
 
@@ -97,8 +97,8 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
           {proposals.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-1.5">
               <DocumentTextIcon className="h-6 w-6 text-[var(--text-4)]" />
-              <p className="text-[11px] text-[var(--text-3)]">No proposals yet</p>
-              <Link href="/app/proposals" className="text-[11px] font-medium text-[var(--accent)] hover:underline">
+              <p className="text-xs text-[var(--text-3)]">No proposals yet</p>
+              <Link href="/app/proposals" className="text-xs font-medium text-[var(--accent)] hover:underline">
                 Create one →
               </Link>
             </div>
@@ -111,13 +111,13 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
                   className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs text-[var(--text-1)]">{p.title}</p>
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]">{p.title}</p>
                     {p.clientName && (
-                      <p className="truncate text-[10px] text-[var(--text-3)]">{p.clientName}</p>
+                      <p className="truncate text-xs text-[var(--text-3)]">{p.clientName}</p>
                     )}
                   </div>
                   <span
-                    className={`ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLES[p.status] ?? STATUS_STYLES.DRAFT}`}
+                    className={`ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium ${STATUS_STYLES[p.status] ?? STATUS_STYLES.DRAFT}`}
                   >
                     {STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}
                   </span>
