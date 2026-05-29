@@ -186,8 +186,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     client.primaryContactEmail ||
     client.primaryContactPhone ||
     addressParts.length > 0 ||
-    client.website ||
-    client.notes;
+    client.website;
 
   return (
     <div className="space-y-6">
@@ -267,11 +266,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         <SummaryCard label="Pulse scans" value={String(pulseScans.length)} />
       </section>
 
-      {/* ── Details: contact + address + notes ── */}
+      {/* ── Contact ── */}
       {hasContactInfo && (
         <section className="app-card p-6">
           <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            Contact & Details
+            Contact
           </h3>
           <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone) && (
@@ -321,17 +320,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                 {client.country && (
                   <p className="text-sm text-[var(--text-2)]">{client.country}</p>
                 )}
-              </div>
-            )}
-
-            {client.notes && (
-              <div className="space-y-1 sm:col-span-2 lg:col-span-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                  Notes
-                </p>
-                <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-                  {client.notes}
-                </p>
               </div>
             )}
           </div>
@@ -441,6 +429,18 @@ export function ClientDetail({ slug }: { slug: string }) {
           )}
         </div>
       </section>
+
+      {/* ── Notes ── */}
+      {client.notes && (
+        <section className="app-card p-6">
+          <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            Notes
+          </h3>
+          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+            {client.notes}
+          </p>
+        </section>
+      )}
 
       {/* ── Foundry Activity ── */}
       <section className="space-y-4">
