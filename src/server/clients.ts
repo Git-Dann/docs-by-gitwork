@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 import type {
+  ClientDesignRecord,
   ClientDetailFields,
   ClientDetailRecord,
   ClientListItem,
@@ -33,6 +34,10 @@ const workspaceClients = (prisma as unknown as {
 const clientPlatforms = (prisma as unknown as {
   clientPlatform: Prisma.ClientPlatformDelegate;
 }).clientPlatform;
+
+const clientDesigns = (prisma as unknown as {
+  clientDesign: Prisma.ClientDesignDelegate;
+}).clientDesign;
 
 type ClientAggregateRecord = {
   id: string;
@@ -228,6 +233,26 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     updatedAt: client.updatedAt,
     proposalCount: client.proposalCount,
     source: client.source,
+  };
+}
+
+function serializeClientDesign(design: {
+  id: string;
+  clientId: string;
+  name: string;
+  url: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ClientDesignRecord {
+  return {
+    id: design.id,
+    clientId: design.clientId,
+    name: design.name,
+    url: design.url,
+    notes: design.notes,
+    createdAt: design.createdAt.toISOString(),
+    updatedAt: design.updatedAt.toISOString(),
   };
 }
 
@@ -544,7 +569,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, pulseScans, supportClient, placements] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -560,6 +585,12 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       : Promise.resolve([]),
     manualRecord
       ? clientPlatforms.findMany({
+          where: { clientId: manualRecord.id },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
+    manualRecord
+      ? clientDesigns.findMany({
           where: { clientId: manualRecord.id },
           orderBy: { createdAt: "asc" },
         })
@@ -623,6 +654,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       ...contactFields,
     },
     platforms: (platforms as Parameters<typeof serializeClientPlatform>[0][]).map(serializeClientPlatform),
+    designs: (designs as Parameters<typeof serializeClientDesign>[0][]).map(serializeClientDesign),
     proposals: matchingProposals.map((proposal) => serializeProposalListItem(proposal)),
     proofDocuments: proofDocuments.map((document) => serializeProofDocument(document)),
     pulseScans: pulseScans.map((scan) => ({
@@ -695,6 +727,40 @@ export async function updateClientPlatform(
 
 export async function deleteClientPlatform(platformId: string): Promise<void> {
   await clientPlatforms.delete({ where: { id: platformId } });
+}
+
+export async function createClientDesign(
+  clientId: string,
+  input: { name: string; url?: string; notes?: string },
+): Promise<ClientDesignRecord> {
+  const design = await clientDesigns.create({
+    data: {
+      clientId,
+      name: input.name.trim(),
+      url: input.url?.trim() || null,
+      notes: input.notes?.trim() || null,
+    },
+  });
+  return serializeClientDesign(design as Parameters<typeof serializeClientDesign>[0]);
+}
+
+export async function updateClientDesign(
+  designId: string,
+  input: { name?: string; url?: string; notes?: string },
+): Promise<ClientDesignRecord | null> {
+  const design = await clientDesigns.update({
+    where: { id: designId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+    },
+  });
+  return serializeClientDesign(design as Parameters<typeof serializeClientDesign>[0]);
+}
+
+export async function deleteClientDesign(designId: string): Promise<void> {
+  await clientDesigns.delete({ where: { id: designId } });
 }
 
 export async function getClientIdBySlug(

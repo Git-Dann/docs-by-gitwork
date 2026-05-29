@@ -211,6 +211,18 @@ export const clientPlatformUpdateSchema = clientPlatformCreateSchema
     message: "At least one platform field is required.",
   });
 
+export const clientDesignCreateSchema = z.object({
+  name: requiredTrimmedString,
+  url: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+});
+
+export const clientDesignUpdateSchema = clientDesignCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one design field is required.",
+  });
+
 export const proofCreateSchema = z.object({
   title: z.string().trim().min(1),
   markdown: z.string().optional(),

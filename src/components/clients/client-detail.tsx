@@ -15,17 +15,21 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
+import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
 import {
   useClientDetail,
+  useCreateClientDesign,
   useCreateClientPlatform,
+  useDeleteClientDesign,
   useDeleteClientPlatform,
   useUpdateClient,
+  useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
-import type { ClientPlatformRecord } from "@/types/client";
+import type { ClientDesignRecord, ClientDetailFields, ClientPlatformRecord } from "@/types/client";
 
 type EditFormState = {
   name: string;
@@ -55,8 +59,16 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [platformError, setPlatformError] = useState<string | null>(null);
   const [deletingPlatformId, setDeletingPlatformId] = useState<string | null>(null);
 
+  const [designModal, setDesignModal] = useState<{
+    open: boolean;
+    design: ClientDesignRecord | null;
+  }>({ open: false, design: null });
+  const [designError, setDesignError] = useState<string | null>(null);
+  const [deletingDesignId, setDeletingDesignId] = useState<string | null>(null);
+
   const updateClientMutation = useUpdateClient(slug);
   const createPlatformMutation = useCreateClientPlatform(slug);
+  const createDesignMutation = useCreateClientDesign(slug);
 
   if (isPending) {
     return <p className="text-sm text-[var(--text-3)]">Loading client...</p>;
@@ -70,7 +82,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, proposals, proofDocuments, platforms, pulseScans, supportClient, placements } = data;
+  const { client, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements } = data;
   const isSuggested = client.source === "SUGGESTED";
 
   function openEdit() {
@@ -139,6 +151,25 @@ export function ClientDetail({ slug }: { slug: string }) {
       setPlatformModal({ open: false, platform: null });
     } catch (err) {
       setPlatformError((err as Error).message);
+    }
+  }
+
+  async function handleSaveDesign(input: {
+    name: string;
+    url?: string;
+    notes?: string;
+  }) {
+    setDesignError(null);
+
+    try {
+      if (designModal.design) {
+        // handled by each card's own update mutation
+      } else {
+        await createDesignMutation.mutateAsync(input);
+      }
+      setDesignModal({ open: false, design: null });
+    } catch (err) {
+      setDesignError((err as Error).message);
     }
   }
 
@@ -232,11 +263,8 @@ export function ClientDetail({ slug }: { slug: string }) {
       <section className="grid gap-4 sm:grid-cols-4">
         <SummaryCard label="WIP Docs" value={String(proposals.length)} />
         <SummaryCard label="Platforms" value={String(platforms.length)} />
+        <SummaryCard label="Designs" value={String(designs.length)} />
         <SummaryCard label="Pulse scans" value={String(pulseScans.length)} />
-        <SummaryCard
-          label="Last updated"
-          value={formatDate(proposals[0]?.updatedAt ?? client.updatedAt)}
-        />
       </section>
 
       {/* ── Details: contact + address + notes ── */}
@@ -355,6 +383,58 @@ export function ClientDetail({ slug }: { slug: string }) {
                   slug={slug}
                   deletingId={deletingPlatformId}
                   setDeletingId={setDeletingPlatformId}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Designs ── */}
+      <section className="app-card">
+        <div className="flex items-center justify-between border-b border-[var(--border-3)] px-6 py-4">
+          <div>
+            <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              Designs
+            </h3>
+            <p className="mt-0.5 text-sm text-[var(--text-3)]">
+              Figma files and other design assets for this client
+            </p>
+          </div>
+          {!isSuggested && (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setDesignError(null);
+                setDesignModal({ open: true, design: null });
+              }}
+            >
+              <PlusIcon className="h-4 w-4" />
+              Add design
+            </Button>
+          )}
+        </div>
+
+        <div className="p-6">
+          {designs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--border-2)] py-10 text-center">
+              <p className="text-sm text-[var(--text-4)]">
+                {isSuggested
+                  ? "Save this client to start adding design files."
+                  : "No design files added yet. Click “Add design” to start."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {designs.map((design) => (
+                <DesignCard
+                  key={design.id}
+                  design={design}
+                  slug={slug}
+                  deletingId={deletingDesignId}
+                  setDeletingId={setDeletingDesignId}
                 />
               ))}
             </div>
@@ -605,6 +685,16 @@ export function ClientDetail({ slug }: { slug: string }) {
           error={platformError}
         />
       )}
+
+      {/* ── Design modal (create only — edit handled in card) ── */}
+      {designModal.open && !designModal.design && (
+        <ClientDesignFormModal
+          onSave={(input) => void handleSaveDesign(input)}
+          onClose={() => setDesignModal({ open: false, design: null })}
+          isSaving={createDesignMutation.isPending}
+          error={designError}
+        />
+      )}
     </div>
   );
 }
@@ -734,6 +824,109 @@ function PlatformCard({
       {editing && (
         <ClientPlatformFormModal
           platform={platform}
+          onSave={(input) => void handleSave(input)}
+          onClose={() => {
+            setEditing(false);
+            setError(null);
+          }}
+          isSaving={updateMutation.isPending}
+          error={error}
+        />
+      )}
+    </>
+  );
+}
+
+function DesignCard({
+  design,
+  slug,
+  deletingId,
+  setDeletingId,
+}: {
+  design: ClientDesignRecord;
+  slug: string;
+  deletingId: string | null;
+  setDeletingId: (id: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const updateMutation = useUpdateClientDesign(slug, design.id);
+  const deleteMutation = useDeleteClientDesign(slug);
+
+  async function handleSave(input: { name: string; url?: string; notes?: string }) {
+    setError(null);
+    try {
+      await updateMutation.mutateAsync(input);
+      setEditing(false);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleDelete() {
+    setDeletingId(design.id);
+    try {
+      await deleteMutation.mutateAsync(design.id);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <>
+      <article
+        className="app-card flex flex-col p-4 cursor-pointer hover:border-[var(--border-1)] transition-colors"
+        onClick={() => setEditing(true)}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-[var(--text-1)]">{design.name}</p>
+          </div>
+          <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+              title="Edit design"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={deletingId === design.id}
+              className="rounded p-1 text-[var(--text-4)] hover:bg-rose-50 hover:text-rose-600"
+              title="Delete design"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 flex-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+          {design.url && (
+            <a
+              href={design.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
+            >
+              <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{design.url.replace(/^https?:\/\//, "")}</span>
+            </a>
+          )}
+        </div>
+
+        {design.notes && (
+          <p className="mt-3 border-t border-[var(--border-3)] pt-3 text-xs leading-5 text-[var(--text-3)]">
+            {design.notes}
+          </p>
+        )}
+      </article>
+
+      {editing && (
+        <ClientDesignFormModal
+          design={design}
           onSave={(input) => void handleSave(input)}
           onClose={() => {
             setEditing(false);

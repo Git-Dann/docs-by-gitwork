@@ -8,7 +8,7 @@ import type {
   Ticket,
   WorkflowRule,
 } from "@/types/support";
-import type { ClientDetailRecord, ClientListItem, ClientPlatformRecord } from "@/types/client";
+import type { ClientDesignRecord, ClientDetailRecord, ClientListItem, ClientPlatformRecord } from "@/types/client";
 import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
@@ -357,6 +357,41 @@ export async function deleteClientPlatform(
   platformId: string,
 ): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/platforms/${platformId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createClientDesign(
+  slug: string,
+  input: { name: string; url?: string; notes?: string },
+): Promise<{ design: ClientDesignRecord }> {
+  return apiFetch<{ design: ClientDesignRecord }>(`/api/clients/${slug}/designs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateClientDesign(
+  slug: string,
+  designId: string,
+  input: { name?: string; url?: string; notes?: string },
+): Promise<{ design: ClientDesignRecord }> {
+  return apiFetch<{ design: ClientDesignRecord }>(
+    `/api/clients/${slug}/designs/${designId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteClientDesign(
+  slug: string,
+  designId: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/designs/${designId}`, {
     method: "DELETE",
   });
 }

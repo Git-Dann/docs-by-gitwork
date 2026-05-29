@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   archiveProposal,
   createClient,
+  createClientDesign,
   createClientPlatform,
   createProposal,
   deleteClient,
+  deleteClientDesign,
   deleteClientPlatform,
   deleteProposal,
   duplicateProposal,
@@ -19,10 +21,11 @@ import {
   saveEngagement,
   saveTimeline,
   updateClient,
+  updateClientDesign,
   updateClientPlatform,
   updateProposal,
 } from "@/lib/api";
-import type { ClientPlatformRecord } from "@/types/client";
+import type { ClientDesignRecord, ClientPlatformRecord } from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
 
 export function useProposalList(filters: {
@@ -175,6 +178,54 @@ export function useClientPlatformMutations(slug: string, platform: ClientPlatfor
   const createMutation = useCreateClientPlatform(slug);
   const updateMutation = useUpdateClientPlatform(slug, platform?.id ?? "");
   const deleteMutation = useDeleteClientPlatform(slug);
+
+  return { createMutation, updateMutation, deleteMutation };
+}
+
+type DesignInput = {
+  name: string;
+  url?: string;
+  notes?: string;
+};
+
+export function useCreateClientDesign(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: DesignInput) => createClientDesign(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useUpdateClientDesign(slug: string, designId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Partial<DesignInput>) =>
+      updateClientDesign(slug, designId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useDeleteClientDesign(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (designId: string) => deleteClientDesign(slug, designId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useClientDesignMutations(slug: string, design: ClientDesignRecord | null) {
+  const createMutation = useCreateClientDesign(slug);
+  const updateMutation = useUpdateClientDesign(slug, design?.id ?? "");
+  const deleteMutation = useDeleteClientDesign(slug);
 
   return { createMutation, updateMutation, deleteMutation };
 }
