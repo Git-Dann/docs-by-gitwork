@@ -83,7 +83,7 @@ export function ChecksPanel() {
   return (
     <div className="space-y-5">
       {/* Summary bar */}
-      <div className="flex items-center gap-6 rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-4 py-3">
+      <div className="flex items-center gap-6 rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="size-2 rounded-full bg-green-500" />
           <span className="text-sm font-semibold text-[var(--text-1)]">{totalEnabled}</span>
@@ -112,13 +112,13 @@ export function ChecksPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search checks…"
-            className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--bg-1)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
+            className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
           />
         </div>
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="rounded-xl border border-[var(--border-2)] bg-[var(--bg-1)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
+          className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
         >
           <option value="all">All categories</option>
           {CHECK_CATEGORIES.map((cat) => (
@@ -140,7 +140,7 @@ export function ChecksPanel() {
               <button
                 type="button"
                 onClick={() => toggleCategory(category)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-2)] transition-colors"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface-1)] transition-colors"
               >
                 {isExpanded ? (
                   <ChevronDownIcon className="size-4 shrink-0 text-[var(--text-3)]" />
@@ -256,7 +256,7 @@ function CheckRow({
       <button
         type="button"
         onClick={onEdit}
-        className="shrink-0 rounded-lg p-1.5 text-[var(--text-3)] hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
+        className="shrink-0 rounded-lg p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
         title="Edit check"
       >
         <PencilIcon className="size-3.5" />
@@ -301,7 +301,7 @@ function CheckDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/30" onClick={onClose}>
       <div
-        className="flex h-full w-full max-w-md flex-col bg-[var(--bg-1)] shadow-2xl"
+        className="flex h-full w-full max-w-md flex-col bg-[var(--surface-0)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -311,7 +311,7 @@ function CheckDrawer({
             <h3 className="text-base font-semibold text-[var(--text-1)]">{check.labelOverride ?? check.label}</h3>
             <p className="mt-0.5 font-mono text-xs text-[var(--text-3)]">{check.checkKey}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-[var(--bg-3)]">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 hover:bg-[var(--surface-2)]">
             <XMarkIcon className="size-5 text-[var(--text-3)]" />
           </button>
         </div>
@@ -332,7 +332,7 @@ function CheckDrawer({
               value={labelOverride}
               onChange={(e) => setLabelOverride(e.target.value)}
               placeholder={check.label}
-              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--brand-400)] focus:outline-none"
             />
           </div>
 
@@ -347,7 +347,7 @@ function CheckDrawer({
             <select
               value={severityOverride}
               onChange={(e) => setSeverityOverride(e.target.value)}
-              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
             >
               <option value="">Use built-in default</option>
               <option value="WARN">Always warn (⚠)</option>
@@ -356,7 +356,7 @@ function CheckDrawer({
           </div>
 
           {/* Enable / disable */}
-          <div className="flex items-center justify-between rounded-xl border border-[var(--border-2)] bg-[var(--bg-2)] px-4 py-3">
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-[var(--text-1)]">Enable check</p>
               <p className="text-xs text-[var(--text-3)]">Disabled checks are skipped entirely during scans.</p>
@@ -392,7 +392,7 @@ function CheckDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--bg-3)]"
+              className="rounded-xl border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)]"
             >
               Cancel
             </button>
