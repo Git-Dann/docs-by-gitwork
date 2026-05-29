@@ -137,7 +137,8 @@ function ClientCard({ client }: { client: ClientListItem }) {
             "CLIENT"
           )}
         </span>
-        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {/* Drive + ClickUp quick-links — right-aligned, no trash here */}
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {client.googleDriveFolderUrl && (
             <a
               href={client.googleDriveFolderUrl}
@@ -170,13 +171,12 @@ function ClientCard({ client }: { client: ClientListItem }) {
               />
             </a>
           )}
-          <DeleteButton clientSlug={client.slug} />
         </div>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-4 p-4">
-        {/* Avatar + name */}
+        {/* Avatar + name + trash (appears on hover) */}
         <div className="flex items-center gap-3">
           {client.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -195,6 +195,9 @@ function ClientCard({ client }: { client: ClientListItem }) {
           <p className="flex-1 truncate font-semibold leading-snug text-[var(--text-1)]">
             {client.name}
           </p>
+          <div onClick={(e) => e.stopPropagation()}>
+            <DeleteButton clientSlug={client.slug} />
+          </div>
         </div>
 
         {/* Stat + timestamp */}
