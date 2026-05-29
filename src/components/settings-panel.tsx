@@ -172,42 +172,36 @@ export function BrandingTab() {
     <div className="space-y-6">
       <section className="widget-card overflow-hidden">
         <div className="widget-header">
-          <span className="widget-header-label">01 {"// "}DOCUMENT BRANDING</span>
-          <span className="widget-header-right">WORKSPACE-WIDE</span>
+          <span className="widget-header-label">01 {"// "}WORKSPACE LOGO</span>
+          <span className="widget-header-right">FALLBACK</span>
         </div>
         <div className="p-6">
           <p className="text-sm leading-6 text-[var(--text-3)]">
-            Cover assets used across every document the team produces — proposals, SLAs, SOWs.
-            Stored on the workspace so every member sees the same look. Per-document overrides
-            still live in the proposal builder.
+            The workspace logo used wherever a document doesn&apos;t specify its own. Templates
+            in Docs now carry their own cover art and accents, so this is the fallback for ad-hoc
+            documents plus places outside Docs (email signatures, scan reports, the favicon when
+            we get there).
           </p>
 
-          <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:max-w-md">
             <div className="space-y-2">
-              <FieldLabel>Gitwork cover logo</FieldLabel>
+              <FieldLabel>Workspace logo</FieldLabel>
               <ImagePicker
                 value={workspaceBranding.brandLogoUrl ?? ""}
                 onChange={(value) => patch("brandLogoUrl", value)}
                 previewClassName="h-36 w-full"
               />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Cover top accent</FieldLabel>
-              <ImagePicker
-                value={workspaceBranding.coverTopAccentUrl ?? ""}
-                onChange={(value) => patch("coverTopAccentUrl", value)}
-                previewClassName="h-36 w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Cover bottom accent</FieldLabel>
-              <ImagePicker
-                value={workspaceBranding.coverBottomAccentUrl ?? ""}
-                onChange={(value) => patch("coverBottomAccentUrl", value)}
-                previewClassName="h-36 w-full"
-              />
+              <p className="text-xs text-[var(--text-4)]">
+                Used as the cover logo when a document has no template-defined override.
+              </p>
             </div>
           </div>
+
+          <p className="mt-6 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+            <strong>Cover accents moved to templates.</strong> Edit per-template branding in
+            Settings → Templates so different document types can carry their own visual style.
+            Confidentiality copy lives under Content.
+          </p>
         </div>
       </section>
     </div>
