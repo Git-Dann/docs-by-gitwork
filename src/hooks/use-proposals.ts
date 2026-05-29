@@ -59,13 +59,16 @@ export function useCreateProposal() {
   });
 }
 
+// Clients change rarely — keep the list cached for 5 minutes so navigating
+// between Code pages doesn't trigger a refetch every time. Mutations on
+// clients still invalidate this query.
 export function useClientList(filters?: {
   search?: string;
 }) {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
