@@ -34,10 +34,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
         projectName: body.projectName,
         startDate: body.startDate,
         endDate: body.endDate ?? null,
+        allocationPercent: body.allocationPercent ?? 100,
+        notes: body.notes ?? null,
       },
     });
 
-    return apiOk({ placement }, { status: 201 });
+    return apiOk(
+      {
+        placement: {
+          id: placement.id,
+          candidateId: placement.candidateId,
+          clientId: placement.clientId,
+          clientName: placement.clientName,
+          projectName: placement.projectName,
+          startDate: placement.startDate.toISOString(),
+          endDate: placement.endDate ? placement.endDate.toISOString() : null,
+          allocationPercent: placement.allocationPercent,
+          notes: placement.notes,
+          createdAt: placement.createdAt.toISOString(),
+          updatedAt: placement.updatedAt.toISOString(),
+        },
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return fromError(error);
   }

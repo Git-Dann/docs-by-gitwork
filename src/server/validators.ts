@@ -452,14 +452,27 @@ export const placementCreateSchema = z.object({
   projectName: requiredTrimmedString,
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
+  // Daily allocation. Defaults to 100 (= full day). 50 = half-day.
+  allocationPercent: z.coerce.number().int().min(1).max(100).optional(),
+  notes: optionalTrimmedString,
 });
 
-// Update an existing placement's end date — drives "schedule off" with a
-// future date and the Portal's ending-soon (within 7 days → orange) indicator.
-// endDate: null clears the end date (back to open-ended); a date sets it.
-export const placementUpdateSchema = z.object({
-  endDate: z.coerce.date().nullable(),
-});
+// Update an existing placement. Superset of fields — iOS "schedule off"
+// just sends { endDate }, the web edit form sends the full set. All fields
+// optional individually; the refine guarantees at least one is provided.
+export const placementUpdateSchema = z
+  .object({
+    clientId: z.string().cuid().nullable().optional(),
+    clientName: requiredTrimmedString.optional(),
+    projectName: requiredTrimmedString.optional(),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().nullable().optional(),
+    allocationPercent: z.coerce.number().int().min(1).max(100).optional(),
+    notes: optionalTrimmedString,
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one placement field is required.",
+  });
 
 // Used by the Code roster's per-dev "Current client" dropdown.
 // Pass clientId to assign, omit (or pass null) to unassign.

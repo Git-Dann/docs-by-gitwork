@@ -236,7 +236,11 @@ export interface CodeClearPlacementRecord {
   projectName: string;
   startDate: string;
   endDate: string | null;
+  /** Daily allocation 1–100. 100 = full day. */
+  allocationPercent: number;
+  notes: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface CodeClearNoteRecord {

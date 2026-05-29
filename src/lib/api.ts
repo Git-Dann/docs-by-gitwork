@@ -580,6 +580,20 @@ export function getCodeClearScorecardUrl(id: string) {
   return `/api/codeclear/candidates/${id}/scorecard`;
 }
 
+export interface PlacementResponse {
+  id: string;
+  candidateId: string;
+  clientId: string | null;
+  clientName: string;
+  projectName: string;
+  startDate: string;
+  endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export async function createPlacement(
   candidateId: string,
   input: {
@@ -588,13 +602,109 @@ export async function createPlacement(
     projectName: string;
     startDate: string | Date;
     endDate?: string | Date | null;
+    allocationPercent?: number;
+    notes?: string | null;
   },
-): Promise<{ placement: { id: string; clientId: string | null; clientName: string; projectName: string; startDate: string; endDate: string | null } }> {
+): Promise<{ placement: PlacementResponse }> {
   return apiFetch(`/api/codeclear/candidates/${candidateId}/placements`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function updatePlacement(
+  candidateId: string,
+  placementId: string,
+  input: {
+    clientId?: string | null;
+    clientName?: string;
+    projectName?: string;
+    startDate?: string | Date;
+    endDate?: string | Date | null;
+    allocationPercent?: number;
+    notes?: string | null;
+  },
+): Promise<{ placement: PlacementResponse }> {
+  return apiFetch(
+    `/api/codeclear/candidates/${candidateId}/placements/${placementId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deletePlacement(
+  candidateId: string,
+  placementId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(
+    `/api/codeclear/candidates/${candidateId}/placements/${placementId}`,
+    { method: "DELETE" },
+  );
+}
+
+export interface ScheduleBlockResponse {
+  id: string;
+  candidate: {
+    id: string;
+    name: string;
+    githubHandle: string;
+    primaryStack: string;
+    avatarUrl: string | null;
+    tier: CodeClearTier;
+    effectiveTier: CodeClearTier;
+  };
+  client: { id: string | null; name: string; slug: string | null };
+  projectName: string;
+  startDate: string;
+  endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+}
+
+export interface ScheduleRangeResponse {
+  from: string;
+  to: string;
+  count: number;
+  blocks: ScheduleBlockResponse[];
+}
+
+function withRangeQuery(input?: { from?: string | Date; to?: string | Date }): string {
+  if (!input?.from && !input?.to) return "";
+  const params = new URLSearchParams();
+  if (input.from) {
+    params.set(
+      "from",
+      input.from instanceof Date ? input.from.toISOString() : input.from,
+    );
+  }
+  if (input.to) {
+    params.set("to", input.to instanceof Date ? input.to.toISOString() : input.to);
+  }
+  return `?${params.toString()}`;
+}
+
+export async function getWorkspaceSchedule(input?: {
+  from?: string | Date;
+  to?: string | Date;
+}): Promise<ScheduleRangeResponse> {
+  return apiFetch<ScheduleRangeResponse>(
+    `/api/codeclear/schedule${withRangeQuery(input)}`,
+  );
+}
+
+export async function getClientSchedule(
+  slug: string,
+  input?: { from?: string | Date; to?: string | Date },
+): Promise<
+  ScheduleRangeResponse & {
+    client: { id: string; name: string; slug: string };
+  }
+> {
+  return apiFetch(`/api/clients/${slug}/schedule${withRangeQuery(input)}`);
 }
 
 export async function setCandidateCurrentClient(

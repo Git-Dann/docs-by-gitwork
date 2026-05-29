@@ -426,7 +426,10 @@ export function serializeCandidateDetails(
       projectName: placement.projectName,
       startDate: placement.startDate.toISOString(),
       endDate: toIsoString(placement.endDate),
+      allocationPercent: placement.allocationPercent,
+      notes: placement.notes ?? null,
       createdAt: placement.createdAt.toISOString(),
+      updatedAt: placement.updatedAt.toISOString(),
     })),
     notes: candidate.notes.map((note) => ({
       ...note,

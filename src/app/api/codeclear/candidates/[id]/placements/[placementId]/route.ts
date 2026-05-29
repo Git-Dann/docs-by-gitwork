@@ -13,18 +13,16 @@ type RouteContext = {
 /**
  * PATCH /api/codeclear/candidates/{id}/placements/{placementId}
  *
- * Sets or clears a placement's end date — used by the Portal mobile app to
- * "schedule a dev off" on a future date (and drive the within-7-days "ending
- * soon" indicator). Workspace-scoped via the parent candidate.
- *
- * Body: { endDate: string | null }  (null → open-ended again)
+ * Edit one placement. Superset of fields — iOS "schedule off" sends just
+ * { endDate }, the web schedule form can send the full set (project,
+ * dates, allocation %, notes, switch client). Workspace-scoped via the
+ * parent candidate.
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { id: candidateId, placementId } = await context.params;
 
-    // Confirm the placement belongs to a candidate in this workspace.
     const placement = await prisma.placement.findFirst({
       where: {
         id: placementId,
@@ -33,19 +31,53 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       },
       select: { id: true },
     });
-
-    if (!placement) {
-      return apiError("Placement not found.", 404);
-    }
+    if (!placement) return apiError("Placement not found.", 404);
 
     const body = placementUpdateSchema.parse(await request.json());
 
+    // If the client is being switched, validate it exists in this workspace
+    // and grab its name so clientName stays in sync (when not also sent).
+    let clientName: string | undefined;
+    if (body.clientId !== undefined && body.clientId !== null) {
+      const client = await prisma.workspaceClient.findFirst({
+        where: { id: body.clientId, workspaceId: workspace.id },
+        select: { name: true },
+      });
+      if (!client) return apiError("Client not found in this workspace.", 404);
+      clientName = client.name;
+    }
+
     const updated = await prisma.placement.update({
       where: { id: placement.id },
-      data: { endDate: body.endDate },
+      data: {
+        ...(body.clientId !== undefined ? { clientId: body.clientId } : {}),
+        ...(clientName !== undefined ? { clientName } : {}),
+        ...(body.clientName !== undefined ? { clientName: body.clientName } : {}),
+        ...(body.projectName !== undefined ? { projectName: body.projectName } : {}),
+        ...(body.startDate !== undefined ? { startDate: body.startDate } : {}),
+        ...(body.endDate !== undefined ? { endDate: body.endDate } : {}),
+        ...(body.allocationPercent !== undefined
+          ? { allocationPercent: body.allocationPercent }
+          : {}),
+        ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      },
     });
 
-    return apiOk({ placement: updated });
+    return apiOk({
+      placement: {
+        id: updated.id,
+        candidateId: updated.candidateId,
+        clientId: updated.clientId,
+        clientName: updated.clientName,
+        projectName: updated.projectName,
+        startDate: updated.startDate.toISOString(),
+        endDate: updated.endDate ? updated.endDate.toISOString() : null,
+        allocationPercent: updated.allocationPercent,
+        notes: updated.notes,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
   } catch (error) {
     return fromError(error);
   }
@@ -54,7 +86,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 /**
  * DELETE /api/codeclear/candidates/{id}/placements/{placementId}
  *
- * Removes a placement entirely (e.g. an erroneous schedule). Workspace-scoped.
+ * Removes a placement entirely (erroneous block, cancelled engagement).
+ * Workspace-scoped.
  */
 export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
@@ -69,13 +102,9 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       },
       select: { id: true },
     });
-
-    if (!placement) {
-      return apiError("Placement not found.", 404);
-    }
+    if (!placement) return apiError("Placement not found.", 404);
 
     await prisma.placement.delete({ where: { id: placement.id } });
-
     return apiOk({ deleted: true });
   } catch (error) {
     return fromError(error);

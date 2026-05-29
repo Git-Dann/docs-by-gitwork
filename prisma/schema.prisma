@@ -917,10 +917,22 @@ model Placement {
   projectName String
   startDate   DateTime
   endDate     DateTime?
+  /// Daily allocation as a percentage (1–100). 100 = full day on this
+  /// client; 50 = half-day, with the other half free to be allocated to
+  /// another Placement. Driven by the iOS scheduling view. Open-ended
+  /// placements created by the current-client picker default to 100.
+  allocationPercent Int       @default(100)
+  /// Free-text notes attached to this scheduled block (e.g. "Sprint 2
+  /// kickoff", "On-call rotation"). Shown in the iOS schedule detail view.
+  notes       String?
   createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt @default(now())
 
   @@index([candidateId, startDate])
   @@index([clientId])
+  // Range queries for the schedule endpoints filter on (workspace,) startDate,
+  // and endDate. Covered by the existing candidate / client indices.
+  @@index([clientId, startDate])
 }
 
 model Note {
