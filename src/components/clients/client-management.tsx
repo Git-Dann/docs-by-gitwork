@@ -244,7 +244,6 @@ export function ClientManagement() {
   const createClientMutation = useCreateClient();
 
   const clients = data?.clients ?? [];
-  const manualCount = clients.filter((c) => c.source === "MANUAL").length;
   const suggestedCount = clients.filter((c) => c.source === "SUGGESTED").length;
 
   async function handleCreateClient() {
@@ -275,10 +274,10 @@ export function ClientManagement() {
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="xs"
               onClick={() => setShowCreate(true)}
             >
-              <PlusIcon className="h-4 w-4" />
+              <PlusIcon className="h-3.5 w-3.5" />
               Add client
             </Button>
           </div>
@@ -307,16 +306,6 @@ export function ClientManagement() {
                       {clients.length}
                     </p>
                     <p className="widget-data-label mt-1">total</p>
-                  </div>
-                  <div className="h-8 w-px bg-[rgba(0,0,0,0.08)]" />
-                  <div className="text-center">
-                    <p
-                      className="text-2xl leading-none tracking-tight text-[var(--text-1)]"
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {manualCount}
-                    </p>
-                    <p className="widget-data-label mt-1">manual</p>
                   </div>
                   <div className="h-8 w-px bg-[rgba(0,0,0,0.08)]" />
                   <div className="text-center">

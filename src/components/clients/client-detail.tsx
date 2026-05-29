@@ -245,8 +245,8 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
-            <Button type="button" variant="secondary" size="sm" onClick={openEdit}>
-              <PencilIcon className="h-3.5 w-3.5" />
+            <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+              <PencilIcon className="h-3 w-3" />
               Edit
             </Button>
           </div>
@@ -414,7 +414,7 @@ export function ClientDetail({ slug }: { slug: string }) {
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="xs"
               onClick={() => {
                 setPlatformError(null);
                 setPlatformModal({ open: true, platform: null });
@@ -462,7 +462,7 @@ export function ClientDetail({ slug }: { slug: string }) {
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="xs"
               onClick={() => {
                 setDesignError(null);
                 setDesignModal({ open: true, design: null });
