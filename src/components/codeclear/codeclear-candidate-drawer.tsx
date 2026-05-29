@@ -34,7 +34,6 @@ import {
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
-  TECH_STACK_OPTIONS,
   type CandidateSignalSource,
   type CodeClearTier,
   type IdentityConfidence,
@@ -48,13 +47,17 @@ import {
   CodeClearTierPanel,
   CandidateMeta,
   SignalSourceIcons,
-  SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
 import {
   CalibreBreakdown,
   ValidationCheckList,
 } from "@/components/codeclear/calibre-breakdown";
+import {
+  CandidateProfileForm,
+  emptyCandidateProfile,
+  type CandidateProfileValue,
+} from "@/components/codeclear/candidate-profile-form";
 
 // Sources that support automated scraping
 const SCRAPABLE_SOURCES: CandidateSignalSource[] = ["GITHUB", "LINKEDIN", "PORTFOLIO"];
@@ -95,18 +98,10 @@ export function CodeClearCandidateDrawer({
   });
   const [placementError, setPlacementError] = useState<string | null>(null);
 
-  const [profileForm, setProfileForm] = useState({
-    name: "",
-    githubHandle: "",
-    email: "",
-    primaryStack: "",
-    techStacks: [] as string[],
-    signalSources: [] as CandidateSignalSource[],
-    location: "",
-    bio: "",
-    status: "SOURCED" as PipelineStatus,
-    tier: "TIER_1" as CodeClearTier,
-  });
+  const [profileForm, setProfileForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
+  // Workflow controls live outside the shared profile form.
+  const [drawerStatus, setDrawerStatus] = useState<PipelineStatus>("SOURCED");
+  const [drawerTierOverride, setDrawerTierOverride] = useState<string>("");
   const [scoreForm, setScoreForm] = useState({
     technicalDepth: "0",
     codeQuality: "0",
@@ -130,12 +125,20 @@ export function CodeClearCandidateDrawer({
       email: candidate.email ?? "",
       primaryStack: candidate.primaryStack,
       techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
-      signalSources: candidate.signalSources,
       location: candidate.location ?? "",
       bio: candidate.bio ?? "",
-      status: candidate.status,
-      tier: candidate.tier,
+      linkedinUrl: candidate.linkedinUrl ?? "",
+      cvUrl: candidate.cvUrl ?? "",
+      portfolioUrl: candidate.portfolioUrl ?? "",
+      yearsExperience: candidate.yearsExperience != null ? String(candidate.yearsExperience) : "",
+      hourlyRate: candidate.hourlyRate != null ? String(candidate.hourlyRate) : "",
+      currency: candidate.currency ?? "",
+      timezone: candidate.timezone ?? "",
+      availability: candidate.availability ?? "",
+      origin: candidate.origin,
     });
+    setDrawerStatus(candidate.status);
+    setDrawerTierOverride(candidate.tierManualOverride ?? "");
 
     const sourceScore = candidate.scoreDraft ?? candidate.score;
 
@@ -253,9 +256,12 @@ export function CodeClearCandidateDrawer({
                         </div>
                       )}
                       <div className="min-w-0">
-                        <p className="truncate text-lg font-semibold text-[var(--text-1)]">
-                          {candidate.name}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-lg font-semibold text-[var(--text-1)]">
+                            {candidate.name}
+                          </p>
+                          <AvailabilityBadge availability={candidate.availability} />
+                        </div>
                         <a
                           href={`https://github.com/${candidate.githubHandle}`}
                           target="_blank"
@@ -271,6 +277,11 @@ export function CodeClearCandidateDrawer({
                           ) : null}
                           {candidate.location ? <StackPill label={candidate.location} /> : null}
                         </div>
+                        <ExternalLinkStrip
+                          linkedinUrl={candidate.linkedinUrl}
+                          cvUrl={candidate.cvUrl}
+                          portfolioUrl={candidate.portfolioUrl}
+                        />
                       </div>
                     </div>
 
@@ -320,6 +331,13 @@ export function CodeClearCandidateDrawer({
                 {candidate.bio ? (
                   <p className="mt-4 text-sm leading-6 text-[var(--text-3)]">{candidate.bio}</p>
                 ) : null}
+
+                <CommercialsStrip
+                  yearsExperience={candidate.yearsExperience}
+                  hourlyRate={candidate.hourlyRate}
+                  currency={candidate.currency}
+                  timezone={candidate.timezone}
+                />
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <SignalCard
@@ -388,151 +406,40 @@ export function CodeClearCandidateDrawer({
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-1)]">Profile</p>
                     <p className="mt-1 text-sm text-[var(--text-4)]">
-                      Core candidate fields, stack coverage, and source inputs.
+                      Identity, tech stack, validation links, and commercials.
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <DrawerField
-                    label="Name"
-                    value={profileForm.name}
-                    onChange={(value) => setProfileForm((current) => ({ ...current, name: value }))}
-                  />
-                  <DrawerField
-                    label="GitHub"
-                    value={profileForm.githubHandle}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({ ...current, githubHandle: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="Email"
-                    value={profileForm.email}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({ ...current, email: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="Primary stack"
-                    value={profileForm.primaryStack}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({ ...current, primaryStack: value }))
-                    }
-                  />
-                  <DrawerField
-                    label="Location"
-                    value={profileForm.location}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({ ...current, location: value }))
-                    }
-                  />
+                <div className="mt-4">
+                  <CandidateProfileForm value={profileForm} onChange={setProfileForm} />
+                </div>
+
+                {/* Workflow controls (status + tier override) — admin operating
+                    knobs, not profile content. Kept separate from the shared form. */}
+                <div className="mt-5 grid gap-3 border-t border-[var(--border-2)] pt-4 sm:grid-cols-2">
                   <DrawerSelect
                     label="Status"
-                    value={profileForm.status}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        status: value as PipelineStatus,
-                      }))
-                    }
+                    value={drawerStatus}
+                    onChange={(value) => setDrawerStatus(value as PipelineStatus)}
                     options={PIPELINE_STATUSES.map((item) => ({
                       value: item.value,
                       label: item.label,
                     }))}
                   />
                   <DrawerSelect
-                    label="Tier"
-                    value={profileForm.tier}
-                    onChange={(value) =>
-                      setProfileForm((current) => ({
-                        ...current,
-                        tier: value as CodeClearTier,
-                      }))
-                    }
-                    options={CODECLEAR_TIERS.map((item) => ({
-                      value: item.value,
-                      label: item.label,
-                    }))}
+                    label={`Tier override (derived: ${candidate.tier})`}
+                    value={drawerTierOverride}
+                    onChange={(value) => setDrawerTierOverride(value)}
+                    options={[
+                      { value: "", label: "Auto (from score)" },
+                      ...CODECLEAR_TIERS.map((item) => ({
+                        value: item.value,
+                        label: item.label,
+                      })),
+                    ]}
                   />
                 </div>
-
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-[var(--text-2)]">Tech stacks</span>
-                    <span className="text-xs text-[var(--text-4)]">
-                      {profileForm.techStacks.length} selected
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {TECH_STACK_OPTIONS.map((stack) => {
-                      const active = profileForm.techStacks.includes(stack);
-                      return (
-                        <button
-                          key={stack}
-                          type="button"
-                          onClick={() =>
-                            setProfileForm((current) => ({
-                              ...current,
-                              techStacks: active
-                                ? current.techStacks.filter((entry) => entry !== stack)
-                                : [...current.techStacks, stack],
-                              primaryStack: active
-                                ? current.primaryStack === stack
-                                  ? current.techStacks.filter((entry) => entry !== stack)[0] ?? ""
-                                  : current.primaryStack
-                                : current.primaryStack || stack,
-                            }))
-                          }
-                          className="rounded-full"
-                        >
-                          <StackPill label={stack} tone="stack" selected={active} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-[var(--text-2)]">Signal sources</span>
-                    <span className="text-xs text-[var(--text-4)]">
-                      Use these to show what is informing the score
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {CANDIDATE_SIGNAL_SOURCES.map((source) => {
-                      const active = profileForm.signalSources.includes(source.value);
-                      return (
-                        <button
-                          key={source.value}
-                          type="button"
-                          onClick={() =>
-                            setProfileForm((current) => ({
-                              ...current,
-                              signalSources: active
-                                ? current.signalSources.filter((entry) => entry !== source.value)
-                                : [...current.signalSources, source.value],
-                            }))
-                          }
-                        >
-                          <SignalSourcePill source={source.value} active={active} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <label className="mt-3 block space-y-1.5">
-                  <span className="text-sm font-medium text-[var(--text-2)]">Bio</span>
-                  <textarea
-                    value={profileForm.bio}
-                    onChange={(event) =>
-                      setProfileForm((current) => ({ ...current, bio: event.target.value }))
-                    }
-                    className="app-textarea min-h-[88px]"
-                  />
-                </label>
 
                 <div className="mt-4 flex justify-end">
                   <Button
@@ -548,11 +455,24 @@ export function CodeClearCandidateDrawer({
                         techStacks: profileForm.techStacks.length
                           ? profileForm.techStacks
                           : [profileForm.primaryStack],
-                        signalSources: profileForm.signalSources,
                         location: profileForm.location || null,
                         bio: profileForm.bio || null,
-                        status: profileForm.status,
-                        tier: profileForm.tier,
+                        linkedinUrl: profileForm.linkedinUrl || null,
+                        cvUrl: profileForm.cvUrl || null,
+                        portfolioUrl: profileForm.portfolioUrl || null,
+                        yearsExperience:
+                          profileForm.yearsExperience !== ""
+                            ? Number(profileForm.yearsExperience)
+                            : null,
+                        hourlyRate:
+                          profileForm.hourlyRate !== "" ? Number(profileForm.hourlyRate) : null,
+                        currency: profileForm.currency || null,
+                        timezone: profileForm.timezone || null,
+                        availability: profileForm.availability || null,
+                        status: drawerStatus,
+                        tierManualOverride: (drawerTierOverride || null) as
+                          | CodeClearTier
+                          | null,
                       })
                     }
                     loading={updateCandidate.isPending}
@@ -872,7 +792,19 @@ export function CodeClearCandidateDrawer({
               <div className="grid gap-6 lg:grid-cols-2">
                 <section className="app-card p-5">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-[var(--text-1)]">Placements</p>
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--text-1)]">Engagements</p>
+                      {candidate.currentClient ? (
+                        <p className="mt-1 text-xs text-[var(--text-4)]">
+                          Currently with{" "}
+                          <span className="font-medium text-[var(--text-2)]">
+                            {candidate.currentClient.name}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-[var(--text-4)]">No active engagement.</p>
+                      )}
+                    </div>
                     <Button
                       type="button"
                       variant="utility"
@@ -1168,5 +1100,108 @@ function SignalCard({
       </p>
       <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">{value}</p>
     </div>
+  );
+}
+
+/** Tiny LinkedIn / CV / Portfolio link strip under the candidate's name. */
+function ExternalLinkStrip({
+  linkedinUrl,
+  cvUrl,
+  portfolioUrl,
+}: {
+  linkedinUrl: string | null;
+  cvUrl: string | null;
+  portfolioUrl: string | null;
+}) {
+  const links = [
+    linkedinUrl ? { href: linkedinUrl, label: "LinkedIn" } : null,
+    cvUrl ? { href: cvUrl, label: "CV" } : null,
+    portfolioUrl ? { href: portfolioUrl, label: "Portfolio" } : null,
+  ].filter((entry): entry is { href: string; label: string } => entry !== null);
+  if (links.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {links.map((link) => (
+        <a
+          key={link.label}
+          href={link.href}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+        >
+          {link.label}
+          <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** Compact mono row showing years exp / hourly rate / timezone. */
+function CommercialsStrip({
+  yearsExperience,
+  hourlyRate,
+  currency,
+  timezone,
+}: {
+  yearsExperience: number | null;
+  hourlyRate: number | null;
+  currency: string | null;
+  timezone: string | null;
+}) {
+  const entries: Array<{ label: string; value: string }> = [];
+  if (yearsExperience != null) {
+    entries.push({
+      label: "Experience",
+      value: `${yearsExperience} ${yearsExperience === 1 ? "year" : "years"}`,
+    });
+  }
+  if (hourlyRate != null) {
+    entries.push({
+      label: "Hourly rate",
+      value: `${currency ?? ""} ${hourlyRate}`.trim(),
+    });
+  }
+  if (timezone) {
+    entries.push({ label: "Timezone", value: timezone });
+  }
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5">
+      {entries.map((entry) => (
+        <div key={entry.label}>
+          <p className="widget-data-label">{entry.label}</p>
+          <p className="mt-0.5 text-sm font-medium text-[var(--text-1)]">{entry.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Availability pill that sits next to the name. */
+function AvailabilityBadge({
+  availability,
+}: {
+  availability: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
+}) {
+  if (!availability) return null;
+  const label =
+    availability === "AVAILABLE"
+      ? "Available"
+      : availability === "ENGAGED"
+        ? "Engaged"
+        : "Unavailable";
+  const tone =
+    availability === "AVAILABLE"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : availability === "ENGAGED"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
+  return (
+    <span
+      className={`inline-flex items-center rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] ${tone}`}
+    >
+      {label}
+    </span>
   );
 }

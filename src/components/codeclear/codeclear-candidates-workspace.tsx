@@ -13,11 +13,9 @@ import {
   useCreateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import {
-  CANDIDATE_SIGNAL_SOURCES,
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
-  TECH_STACK_OPTIONS,
   type CodeClearTier,
   type IdentityConfidence,
   type PipelineStatus,
@@ -28,9 +26,12 @@ import {
   CodeClearTabs,
   EmptyState,
   RosterGroups,
-  SignalSourcePill,
-  StackPill,
 } from "@/components/codeclear/codeclear-shared";
+import {
+  CandidateProfileForm,
+  emptyCandidateProfile,
+  type CandidateProfileValue,
+} from "@/components/codeclear/candidate-profile-form";
 import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
 
 export function CodeClearCandidatesWorkspace() {
@@ -53,17 +54,7 @@ export function CodeClearCandidatesWorkspace() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [moveToStatus, setMoveToStatus] = useState<PipelineStatus>("CODECLEAR_COMPLETE");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    githubHandle: "",
-    primaryStack: "",
-    techStacks: [] as string[],
-    signalSources: ["GITHUB"] as Array<(typeof CANDIDATE_SIGNAL_SOURCES)[number]["value"]>,
-    email: "",
-    location: "",
-    bio: "",
-    tier: "TIER_1",
-  });
+  const [createForm, setCreateForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
 
   const candidatesQuery = useCodeClearCandidates({
     q: deferredSearch,
@@ -287,138 +278,31 @@ export function CodeClearCandidatesWorkspace() {
       </section>
 
       {showCreateModal ? (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[65] flex items-center justify-center px-4 py-8">
           <button
             type="button"
             className="app-dialog-backdrop absolute inset-0"
             aria-label="Close add candidate modal"
             onClick={() => setShowCreateModal(false)}
           />
-          <div className="app-dialog-panel relative z-10 w-full max-w-2xl p-6">
-            <div className="flex items-start justify-between gap-3">
+          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-2xl flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
               <div>
                 <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                  Add candidate
+                  Add dev
                 </h3>
-                <p className="mt-2 text-sm text-[var(--text-4)]">
-                  Create a CodeClear profile in the shared Gitwork workspace.
+                <p className="mt-1 text-sm text-[var(--text-4)]">
+                  Create a CodeClear profile. Run validation later to score
+                  this dev from real signals.
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <ModalField
-                label="Name"
-                value={createForm.name}
-                onChange={(value) => setCreateForm((current) => ({ ...current, name: value }))}
-              />
-              <ModalField
-                label="GitHub"
-                value={createForm.githubHandle}
-                onChange={(value) =>
-                  setCreateForm((current) => ({ ...current, githubHandle: value }))
-                }
-              />
-              <ModalField
-                label="Primary stack"
-                value={createForm.primaryStack}
-                onChange={(value) =>
-                  setCreateForm((current) => ({ ...current, primaryStack: value }))
-                }
-              />
-              <ModalField
-                label="Email"
-                value={createForm.email}
-                onChange={(value) => setCreateForm((current) => ({ ...current, email: value }))}
-              />
-              <ModalField
-                label="Location"
-                value={createForm.location}
-                onChange={(value) =>
-                  setCreateForm((current) => ({ ...current, location: value }))
-                }
-              />
-              <label className="space-y-1.5">
-                <span className="text-sm font-medium text-[var(--text-2)]">Tier</span>
-                <select
-                  value={createForm.tier}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({ ...current, tier: event.target.value }))
-                  }
-                  className="app-input"
-                >
-                  {CODECLEAR_TIERS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <CandidateProfileForm value={createForm} onChange={setCreateForm} />
             </div>
 
-            <div className="mt-4">
-              <p className="text-sm font-medium text-[var(--text-2)]">Tech stacks</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {TECH_STACK_OPTIONS.map((stack) => {
-                  const active = createForm.techStacks.includes(stack);
-                  return (
-                    <button
-                      key={stack}
-                      type="button"
-                      onClick={() =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          techStacks: active
-                            ? current.techStacks.filter((entry) => entry !== stack)
-                            : [...current.techStacks, stack],
-                          primaryStack: current.primaryStack || stack,
-                        }))
-                      }
-                    >
-                      <StackPill label={stack} tone="stack" selected={active} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <p className="text-sm font-medium text-[var(--text-2)]">Signal sources</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {CANDIDATE_SIGNAL_SOURCES.map((source) => {
-                  const active = createForm.signalSources.includes(source.value);
-                  return (
-                    <button
-                      key={source.value}
-                      type="button"
-                      onClick={() =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          signalSources: active
-                            ? current.signalSources.filter((entry) => entry !== source.value)
-                            : [...current.signalSources, source.value],
-                        }))
-                      }
-                    >
-                      <SignalSourcePill source={source.value} active={active} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label className="mt-3 block space-y-1.5">
-              <span className="text-sm font-medium text-[var(--text-2)]">Bio</span>
-              <textarea
-                value={createForm.bio}
-                onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, bio: event.target.value }))
-                }
-                className="app-textarea min-h-[96px]"
-              />
-            </label>
-
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
               <Button type="button" variant="secondary" size="sm" onClick={() => setShowCreateModal(false)}>
                 Cancel
               </Button>
@@ -435,34 +319,39 @@ export function CodeClearCandidatesWorkspace() {
                       techStacks: createForm.techStacks.length
                         ? createForm.techStacks
                         : [createForm.primaryStack],
-                      signalSources: createForm.signalSources,
                       email: createForm.email || null,
                       location: createForm.location || null,
                       bio: createForm.bio || null,
-                      tier: createForm.tier as CodeClearTier,
+                      linkedinUrl: createForm.linkedinUrl || null,
+                      cvUrl: createForm.cvUrl || null,
+                      portfolioUrl: createForm.portfolioUrl || null,
+                      yearsExperience:
+                        createForm.yearsExperience !== ""
+                          ? Number(createForm.yearsExperience)
+                          : null,
+                      hourlyRate:
+                        createForm.hourlyRate !== "" ? Number(createForm.hourlyRate) : null,
+                      currency: createForm.currency || null,
+                      timezone: createForm.timezone || null,
+                      availability: createForm.availability || null,
                     },
                     {
                       onSuccess: (result) => {
                         setShowCreateModal(false);
-                        setCreateForm({
-                          name: "",
-                          githubHandle: "",
-                          primaryStack: "",
-                          techStacks: [],
-                          signalSources: ["GITHUB"],
-                          email: "",
-                          location: "",
-                          bio: "",
-                          tier: "TIER_1",
-                        });
+                        setCreateForm(emptyCandidateProfile);
                         updateQuery({ candidate: result.candidate.id });
                       },
                     },
                   )
                 }
                 loading={createCandidate.isPending}
+                disabled={
+                  !createForm.name.trim() ||
+                  !createForm.githubHandle.trim() ||
+                  !createForm.primaryStack.trim()
+                }
               >
-                Create candidate
+                Create dev
               </Button>
             </div>
           </div>
@@ -478,23 +367,3 @@ export function CodeClearCandidatesWorkspace() {
   );
 }
 
-function ModalField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="app-input"
-      />
-    </label>
-  );
-}

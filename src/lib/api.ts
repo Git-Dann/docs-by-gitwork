@@ -396,6 +396,17 @@ export async function createCodeClearCandidate(input: {
   bio?: string | null;
   tier?: CodeClearTier;
   rateCardPersonId?: string | null;
+  linkedinUrl?: string | null;
+  cvUrl?: string | null;
+  portfolioUrl?: string | null;
+  yearsExperience?: number | null;
+  hourlyRate?: number | null;
+  currency?: string | null;
+  timezone?: string | null;
+  availability?: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
+  origin?: "INTERNAL" | "EXTERNAL";
+  tierManualOverride?: CodeClearTier | null;
+  published?: boolean;
 }): Promise<{ candidate: CodeClearCandidateListItem }> {
   return apiFetch<{ candidate: CodeClearCandidateListItem }>("/api/codeclear/candidates", {
     method: "POST",
@@ -441,6 +452,17 @@ export async function updateCodeClearCandidate(
     bio: string | null;
     status: PipelineStatus;
     tier: CodeClearTier;
+    tierManualOverride: CodeClearTier | null;
+    origin: "INTERNAL" | "EXTERNAL";
+    published: boolean;
+    linkedinUrl: string | null;
+    cvUrl: string | null;
+    portfolioUrl: string | null;
+    yearsExperience: number | null;
+    hourlyRate: number | null;
+    currency: string | null;
+    timezone: string | null;
+    availability: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
     rateCardPersonId: string | null;
     recheckDueAt: string | Date | null;
     requestSignalSource: CandidateSignalSource;

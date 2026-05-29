@@ -284,6 +284,8 @@ export interface CodeClearCandidateDetail extends CodeClearCandidateRecord {
   activityLog: CodeClearActivityRecord[];
   checks: CodeClearCheckRecord[];
   analysisState: CandidateAnalysisState;
+  /** Current Portal client (derived from the open placement). Same shape as list item. */
+  currentClient: CodeClearCandidateCurrentClient | null;
 }
 
 export interface CandidateListParams {
