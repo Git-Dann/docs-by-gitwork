@@ -29,7 +29,7 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
-import type { ClientDesignRecord, ClientDetailFields, ClientPlatformRecord } from "@/types/client";
+import type { ClientDesignRecord, ClientPlatformRecord } from "@/types/client";
 
 type EditFormState = {
   name: string;
@@ -72,14 +72,24 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createDesignMutation = useCreateClientDesign(slug);
 
   if (isPending) {
-    return <p className="text-sm text-[var(--text-3)]">Loading client...</p>;
+    return (
+      <div className="widget-card">
+        <div className="widget-body py-16 text-center">
+          <p className="widget-data-label animate-pulse">Loading client…</p>
+        </div>
+      </div>
+    );
   }
 
   if (error || !data) {
     return (
-      <p className="text-sm text-rose-700">
-        {(error as Error)?.message ?? "Client unavailable"}
-      </p>
+      <div className="widget-card">
+        <div className="widget-body py-16 text-center">
+          <p className="text-sm text-rose-700">
+            {(error as Error)?.message ?? "Client unavailable"}
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -109,7 +119,6 @@ export function ClientDetail({ slug }: { slug: string }) {
   async function handleSaveClient() {
     if (!editForm) return;
     setEditError(null);
-
     try {
       await updateClientMutation.mutateAsync({
         name: editForm.name,
@@ -144,11 +153,8 @@ export function ClientDetail({ slug }: { slug: string }) {
     notes?: string;
   }) {
     setPlatformError(null);
-
     try {
-      if (platformModal.platform) {
-        // This will be handled by each card's own update mutation
-      } else {
+      if (!platformModal.platform) {
         await createPlatformMutation.mutateAsync(input);
       }
       setPlatformModal({ open: false, platform: null });
@@ -163,11 +169,8 @@ export function ClientDetail({ slug }: { slug: string }) {
     notes?: string;
   }) {
     setDesignError(null);
-
     try {
-      if (designModal.design) {
-        // handled by each card's own update mutation
-      } else {
+      if (!designModal.design) {
         await createDesignMutation.mutateAsync(input);
       }
       setDesignModal({ open: false, design: null });
@@ -192,12 +195,34 @@ export function ClientDetail({ slug }: { slug: string }) {
     client.website;
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ── */}
-      <section className="app-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--surface-1)]">
+    <div className="space-y-5">
+
+      {/* ── 01 // CLIENT RECORD ── */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">01</span>
+            {" // CLIENT RECORD"}
+          </span>
+          <div className="flex items-center gap-2">
+            {isSuggested && (
+              <span className="flex items-center gap-1 rounded-[4px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]"
+                style={{ fontFamily: "var(--font-mono)" }}>
+                <SparklesIcon className="h-3 w-3 text-[var(--brand-700)]" />
+                Suggested
+              </span>
+            )}
+            <Button type="button" variant="secondary" size="sm" onClick={openEdit}>
+              <PencilIcon className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="flex flex-wrap items-start gap-5">
+            {/* Avatar */}
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]">
               {client.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -212,145 +237,146 @@ export function ClientDetail({ slug }: { slug: string }) {
               )}
             </div>
 
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--text-1)]">
-                  {client.name}
-                </h2>
-                {isSuggested && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
-                    <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                    Suggested
-                  </span>
-                )}
-              </div>
+            {/* Identity */}
+            <div className="flex-1">
+              <h2
+                className="text-3xl leading-none tracking-[-0.03em] text-[var(--text-1)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {client.name}
+              </h2>
 
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                {client.website && (
-                  <a
-                    href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-[var(--brand-700)] hover:underline"
-                  >
-                    <GlobeAltIcon className="h-4 w-4" />
-                    {client.website.replace(/^https?:\/\//, "")}
-                  </a>
-                )}
-                {client.googleDriveFolderUrl && (
-                  <a
-                    href={client.googleDriveFolderUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
-                  >
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                    Google Drive
-                  </a>
-                )}
-                {client.clickupUrl && (
-                  <a
-                    href={client.clickupUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
-                  >
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                    ClickUp
-                  </a>
-                )}
-              </div>
+              {/* External links */}
+              {(client.website || client.googleDriveFolderUrl || client.clickupUrl) && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {client.website && (
+                    <a
+                      href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-[var(--brand-700)] hover:underline"
+                    >
+                      <GlobeAltIcon className="h-4 w-4" />
+                      {client.website.replace(/^https?:\/\//, "")}
+                    </a>
+                  )}
+                  {client.googleDriveFolderUrl && (
+                    <a
+                      href={client.googleDriveFolderUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+                    >
+                      <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                      Google Drive
+                    </a>
+                  )}
+                  {client.clickupUrl && (
+                    <a
+                      href={client.clickupUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+                    >
+                      <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                      ClickUp
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" size="md" onClick={openEdit}>
-              <PencilIcon className="h-4 w-4" />
-              Edit client
-            </Button>
           </div>
         </div>
       </section>
 
-      {/* ── Stats row ── */}
-      <section className="grid gap-4 sm:grid-cols-4">
-        <SummaryCard label="WIP Docs" value={String(proposals.length)} />
-        <SummaryCard label="Platforms" value={String(platforms.length)} />
-        <SummaryCard label="Designs" value={String(designs.length)} />
-        <SummaryCard label="Pulse scans" value={String(pulseScans.length)} />
-      </section>
+      {/* ── 02-05 // STATS ── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard number="02" label="DOCS" value={proposals.length} />
+        <StatCard number="03" label="PLATFORMS" value={platforms.length} />
+        <StatCard number="04" label="DESIGNS" value={designs.length} />
+        <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
+      </div>
 
-      {/* ── Contact ── */}
+      {/* ── 06 // CONTACT ── */}
       {hasContactInfo && (
-        <section className="app-card p-6">
-          <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            Contact
-          </h3>
-          <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone) && (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                  Primary contact
-                </p>
-                {client.primaryContactName && (
-                  <p className="text-sm font-medium text-[var(--text-1)]">
-                    {client.primaryContactName}
-                  </p>
-                )}
-                {client.primaryContactEmail && (
-                  <a
-                    href={`mailto:${client.primaryContactEmail}`}
-                    className="block text-sm text-[var(--brand-700)] hover:underline"
-                  >
-                    {client.primaryContactEmail}
-                  </a>
-                )}
-                {client.primaryContactPhone && (
-                  <a
-                    href={`tel:${client.primaryContactPhone}`}
-                    className="block text-sm text-[var(--text-2)]"
-                  >
-                    {client.primaryContactPhone}
-                  </a>
-                )}
-              </div>
-            )}
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">06</span>
+              {" // CONTACT"}
+            </span>
+          </div>
+          <div className="p-6">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone) && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Primary contact</p>
+                  {client.primaryContactName && (
+                    <p className="text-sm font-medium text-[var(--text-1)]">
+                      {client.primaryContactName}
+                    </p>
+                  )}
+                  {client.primaryContactEmail && (
+                    <a
+                      href={`mailto:${client.primaryContactEmail}`}
+                      className="block text-sm text-[var(--brand-700)] hover:underline"
+                    >
+                      {client.primaryContactEmail}
+                    </a>
+                  )}
+                  {client.primaryContactPhone && (
+                    <a
+                      href={`tel:${client.primaryContactPhone}`}
+                      className="block text-sm text-[var(--text-2)]"
+                    >
+                      {client.primaryContactPhone}
+                    </a>
+                  )}
+                </div>
+              )}
 
-            {addressParts.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                  Address
-                </p>
-                {[client.addressLine1, client.addressLine2].filter(Boolean).map((line, i) => (
-                  <p key={i} className="text-sm text-[var(--text-2)]">
-                    {line}
-                  </p>
-                ))}
-                {(client.city || client.postcode) && (
-                  <p className="text-sm text-[var(--text-2)]">
-                    {[client.city, client.postcode].filter(Boolean).join(", ")}
-                  </p>
-                )}
-                {client.country && (
-                  <p className="text-sm text-[var(--text-2)]">{client.country}</p>
-                )}
-              </div>
-            )}
+              {client.website && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Website</p>
+                  <a
+                    href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-[var(--brand-700)] hover:underline"
+                  >
+                    {client.website.replace(/^https?:\/\//, "")}
+                  </a>
+                </div>
+              )}
+
+              {addressParts.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Address</p>
+                  {[client.addressLine1, client.addressLine2].filter(Boolean).map((line, i) => (
+                    <p key={i} className="text-sm text-[var(--text-2)]">{line}</p>
+                  ))}
+                  {(client.city || client.postcode) && (
+                    <p className="text-sm text-[var(--text-2)]">
+                      {[client.city, client.postcode].filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                  {client.country && (
+                    <p className="text-sm text-[var(--text-2)]">{client.country}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       )}
 
-      {/* ── Platforms ── */}
-      <section className="app-card">
-        <div className="flex items-center justify-between border-b border-[var(--border-3)] px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Platforms
-            </h3>
-            <p className="mt-0.5 text-sm text-[var(--text-3)]">
-              External builds, dashboards, and tools delivered for this client
-            </p>
-          </div>
+      {/* ── 07 // PLATFORMS ── */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">07</span>
+            {" // PLATFORMS"}
+          </span>
           {!isSuggested && (
             <Button
               type="button"
@@ -361,19 +387,19 @@ export function ClientDetail({ slug }: { slug: string }) {
                 setPlatformModal({ open: true, platform: null });
               }}
             >
-              <PlusIcon className="h-4 w-4" />
+              <PlusIcon className="h-3.5 w-3.5" />
               Add platform
             </Button>
           )}
         </div>
 
-        <div className="p-6">
+        <div className="p-5">
           {platforms.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--border-2)] py-10 text-center">
+            <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
                 {isSuggested
                   ? "Save this client to start adding platforms."
-                  : "No platforms added yet. Click “Add platform” to start."}
+                  : "No platforms yet. Click \"Add platform\" to get started."}
               </p>
             </div>
           ) : (
@@ -392,17 +418,13 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── Designs ── */}
-      <section className="app-card">
-        <div className="flex items-center justify-between border-b border-[var(--border-3)] px-6 py-4">
-          <div>
-            <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Designs
-            </h3>
-            <p className="mt-0.5 text-sm text-[var(--text-3)]">
-              Figma files and other design assets for this client
-            </p>
-          </div>
+      {/* ── 08 // DESIGNS ── */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">08</span>
+            {" // DESIGNS"}
+          </span>
           {!isSuggested && (
             <Button
               type="button"
@@ -413,19 +435,19 @@ export function ClientDetail({ slug }: { slug: string }) {
                 setDesignModal({ open: true, design: null });
               }}
             >
-              <PlusIcon className="h-4 w-4" />
+              <PlusIcon className="h-3.5 w-3.5" />
               Add design
             </Button>
           )}
         </div>
 
-        <div className="p-6">
+        <div className="p-5">
           {designs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--border-2)] py-10 text-center">
+            <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
                 {isSuggested
                   ? "Save this client to start adding design files."
-                  : "No design files added yet. Click “Add design” to start."}
+                  : "No designs yet. Click \"Add design\" to get started."}
               </p>
             </div>
           ) : (
@@ -444,29 +466,36 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── Notes ── */}
+      {/* ── 09 // NOTES ── */}
       {client.notes && (
-        <section className="app-card p-6">
-          <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            Notes
-          </h3>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-            {client.notes}
-          </p>
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">09</span>
+              {" // NOTES"}
+            </span>
+          </div>
+          <div className="p-6">
+            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+              {client.notes}
+            </p>
+          </div>
         </section>
       )}
 
-      {/* ── Foundry Activity ── */}
-      <section className="space-y-4">
-        {/* WIP Documents */}
-        <div className="app-table-shell">
-          <div className="border-b border-[var(--border-3)] px-5 py-4">
-            <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              WIP Documents
-            </h3>
-            <p className="mt-0.5 text-sm text-[var(--text-3)]">
-              Proposals and documents linked to this client
-            </p>
+      {/* ── ACTIVITY ── */}
+      <div className="space-y-4">
+
+        {/* 10 // DOCUMENTS */}
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">10</span>
+              {" // DOCUMENTS"}
+            </span>
+            <span className="widget-header__status">
+              {proposals.length} linked
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="app-table min-w-full">
@@ -488,7 +517,9 @@ export function ClientDetail({ slug }: { slug: string }) {
                       <td>
                         <StatusBadge status={proposal.status} />
                       </td>
-                      <td className="text-[var(--text-3)]">{formatDate(proposal.updatedAt)}</td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(proposal.updatedAt)}</span>
+                      </td>
                       <td>
                         <Link
                           href={`/app/docs/${proposal.id}`}
@@ -502,25 +533,27 @@ export function ClientDetail({ slug }: { slug: string }) {
                 ) : (
                   <tr>
                     <td className="text-sm text-[var(--text-4)]" colSpan={4}>
-                      No documents linked yet. Add a client name to any WIP document to link it here.
+                      No documents linked yet. Add this client&rsquo;s name to any document draft to link it here.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
 
-        {/* Pulse Scans */}
+        {/* 11 // PULSE SCANS */}
         {pulseScans.length > 0 && (
-          <div className="app-table-shell">
-            <div className="border-b border-[var(--border-3)] px-5 py-4">
-              <div className="flex items-center gap-2">
-                <SignalIcon className="h-4 w-4 text-[var(--text-3)]" />
-                <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-                  Pulse Scans
-                </h3>
-              </div>
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">11</span>
+                {" // PULSE SCANS"}
+              </span>
+              <span className="widget-header__status">
+                <SignalIcon className="h-3 w-3" />
+                {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="app-table min-w-full">
@@ -539,17 +572,24 @@ export function ClientDetail({ slug }: { slug: string }) {
                       <td className="font-medium text-[var(--text-1)]">{scan.projectName}</td>
                       <td>
                         {scan.healthScore !== null ? (
-                          <span className="font-semibold">{scan.healthScore}</span>
+                          <span
+                            className="text-xl leading-none text-[var(--text-1)]"
+                            style={{ fontFamily: "var(--font-display)" }}
+                          >
+                            {scan.healthScore}
+                          </span>
                         ) : (
                           <span className="text-[var(--text-4)]">—</span>
                         )}
                       </td>
                       <td>
-                        <span className="text-sm capitalize text-[var(--text-3)]">
+                        <span className="widget-timestamp capitalize">
                           {scan.status.toLowerCase()}
                         </span>
                       </td>
-                      <td className="text-[var(--text-3)]">{formatDate(scan.createdAt)}</td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(scan.createdAt)}</span>
+                      </td>
                       <td>
                         <Link
                           href={`/app/pulse/${scan.id}`}
@@ -563,16 +603,17 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Proof Documents */}
+        {/* 12 // PROOF DOCUMENTS */}
         {proofDocuments.length > 0 && (
-          <div className="app-table-shell">
-            <div className="border-b border-[var(--border-3)] px-5 py-4">
-              <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-                Proof Documents
-              </h3>
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">12</span>
+                {" // PROOF DOCUMENTS"}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="app-table min-w-full">
@@ -589,7 +630,9 @@ export function ClientDetail({ slug }: { slug: string }) {
                     <tr key={document.id}>
                       <td className="font-medium text-[var(--text-1)]">{document.title}</td>
                       <td className="text-[var(--text-3)]">{document.proposalTitle || "—"}</td>
-                      <td className="text-[var(--text-3)]">{formatDate(document.updatedAt)}</td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(document.updatedAt)}</span>
+                      </td>
                       <td>
                         <a
                           href={document.shareUrl}
@@ -605,19 +648,20 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Developers */}
+        {/* 13 // DEVELOPERS */}
         {placements && placements.length > 0 && (
-          <div className="app-table-shell">
-            <div className="border-b border-[var(--border-3)] px-5 py-4">
-              <h3 className="text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-                Developers
-              </h3>
-              <p className="mt-0.5 text-sm text-[var(--text-3)]">
-                Developers placed with this client via CodeClear
-              </p>
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">13</span>
+                {" // DEVELOPERS"}
+              </span>
+              <span className="widget-header__status">
+                {placements.length} placed via CodeClear
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="app-table min-w-full">
@@ -635,8 +679,14 @@ export function ClientDetail({ slug }: { slug: string }) {
                     <tr key={placement.id}>
                       <td className="font-medium text-[var(--text-1)]">{placement.candidateName}</td>
                       <td className="text-[var(--text-3)]">{placement.projectName}</td>
-                      <td className="text-[var(--text-3)]">{formatDate(placement.startDate)}</td>
-                      <td className="text-[var(--text-3)]">{placement.endDate ? formatDate(placement.endDate) : "Present"}</td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(placement.startDate)}</span>
+                      </td>
+                      <td>
+                        <span className="widget-timestamp">
+                          {placement.endDate ? formatDate(placement.endDate) : "Present"}
+                        </span>
+                      </td>
                       <td>
                         <Link
                           href={`/app/codeclear?candidate=${placement.candidateId}`}
@@ -650,29 +700,36 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Care / Support link */}
+        {/* 14 // CARE */}
         {supportClient && (
-          <div className="app-card flex items-center justify-between p-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                Care
-              </p>
-              <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
-                {supportClient.name}
-              </p>
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">14</span>
+                {" // CARE"}
+              </span>
             </div>
-            <Link
-              href={`/app/care`}
-              className={buttonStyles({ variant: "secondary", size: "sm" })}
-            >
-              Open in Care
-            </Link>
-          </div>
+            <div className="flex items-center justify-between p-5">
+              <div>
+                <p className="widget-data-label mb-1">Support client</p>
+                <p className="text-sm font-medium text-[var(--text-1)]">
+                  {supportClient.name}
+                </p>
+              </div>
+              <Link
+                href="/app/care"
+                className={buttonStyles({ variant: "secondary", size: "sm" })}
+              >
+                Open in Care
+              </Link>
+            </div>
+          </section>
         )}
-      </section>
+
+      </div>
 
       {/* ── Edit client modal ── */}
       {editing && editForm && (
@@ -713,6 +770,34 @@ export function ClientDetail({ slug }: { slug: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// StatCard — individual metric widget
+// ---------------------------------------------------------------------------
+function StatCard({ number, label, value }: { number: string; label: string; value: number }) {
+  return (
+    <article className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{number}</span>
+          {` // ${label}`}
+        </span>
+      </div>
+      <div className="widget-body--compact">
+        <p
+          className="text-5xl leading-none tracking-tight text-[var(--text-1)]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {value}
+        </p>
+        <p className="widget-data-label mt-2">{label}</p>
+      </div>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PlatformCard — individual platform record widget
+// ---------------------------------------------------------------------------
 function PlatformCard({
   platform,
   slug,
@@ -758,91 +843,88 @@ function PlatformCard({
 
   return (
     <>
-      <article
-        className="app-card flex flex-col p-4 cursor-pointer hover:border-[var(--border-1)] transition-colors"
-        onClick={() => setEditing(true)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-[var(--text-1)]">{platform.name}</p>
-            {platform.platformType && (
-              <span className="mt-1 inline-block rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs text-[var(--text-3)]">
-                {platform.platformType}
-              </span>
-            )}
-          </div>
-          <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+      <article className="widget-card cursor-pointer" onClick={() => setEditing(true)}>
+        {/* Widget header */}
+        <div className="widget-header">
+          <span className="widget-header__label">
+            {platform.platformType
+              ? platform.platformType.toUpperCase()
+              : "PLATFORM"}
+          </span>
+          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="rounded p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
               title="Edit platform"
             >
-              <PencilIcon className="h-4 w-4" />
+              <PencilIcon className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               onClick={() => void handleDelete()}
               disabled={deletingId === platform.id}
-              className="rounded p-1 text-[var(--text-4)] hover:bg-rose-50 hover:text-rose-600"
+              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
               title="Delete platform"
             >
-              <TrashIcon className="h-4 w-4" />
+              <TrashIcon className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
-        <div className="mt-3 flex-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
-          {platform.url && (
-            <a
-              href={platform.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
-            >
-              <GlobeAltIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{platform.url.replace(/^https?:\/\//, "")}</span>
-            </a>
-          )}
-          {platform.stagingUrl && (
-            <a
-              href={platform.stagingUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
-            >
-              <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">Staging</span>
-            </a>
-          )}
-          {platform.repoUrl && (
-            <a
-              href={platform.repoUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
-            >
-              <CodeBracketIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">Repository</span>
-            </a>
+        {/* Body */}
+        <div className="flex flex-1 flex-col gap-3 p-4">
+          <p className="font-semibold text-[var(--text-1)]">{platform.name}</p>
+
+          <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+            {platform.url && (
+              <a
+                href={platform.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
+              >
+                <GlobeAltIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{platform.url.replace(/^https?:\/\//, "")}</span>
+              </a>
+            )}
+            {platform.stagingUrl && (
+              <a
+                href={platform.stagingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
+              >
+                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Staging</span>
+              </a>
+            )}
+            {platform.repoUrl && (
+              <a
+                href={platform.repoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
+              >
+                <CodeBracketIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Repository</span>
+              </a>
+            )}
+          </div>
+
+          {platform.notes && (
+            <p className="border-t border-[rgba(0,0,0,0.06)] pt-3 text-xs leading-5 text-[var(--text-3)]">
+              {platform.notes}
+            </p>
           )}
         </div>
-
-        {platform.notes && (
-          <p className="mt-3 border-t border-[var(--border-3)] pt-3 text-xs leading-5 text-[var(--text-3)]">
-            {platform.notes}
-          </p>
-        )}
       </article>
 
       {editing && (
         <ClientPlatformFormModal
           platform={platform}
           onSave={(input) => void handleSave(input)}
-          onClose={() => {
-            setEditing(false);
-            setError(null);
-          }}
+          onClose={() => { setEditing(false); setError(null); }}
           isSaving={updateMutation.isPending}
           error={error}
         />
@@ -851,6 +933,9 @@ function PlatformCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// DesignCard — individual design record widget
+// ---------------------------------------------------------------------------
 function DesignCard({
   design,
   slug,
@@ -888,64 +973,62 @@ function DesignCard({
 
   return (
     <>
-      <article
-        className="app-card flex flex-col p-4 cursor-pointer hover:border-[var(--border-1)] transition-colors"
-        onClick={() => setEditing(true)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-[var(--text-1)]">{design.name}</p>
-          </div>
-          <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+      <article className="widget-card cursor-pointer" onClick={() => setEditing(true)}>
+        {/* Widget header */}
+        <div className="widget-header">
+          <span className="widget-header__label">DESIGN</span>
+          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="rounded p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
               title="Edit design"
             >
-              <PencilIcon className="h-4 w-4" />
+              <PencilIcon className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               onClick={() => void handleDelete()}
               disabled={deletingId === design.id}
-              className="rounded p-1 text-[var(--text-4)] hover:bg-rose-50 hover:text-rose-600"
+              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
               title="Delete design"
             >
-              <TrashIcon className="h-4 w-4" />
+              <TrashIcon className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
 
-        <div className="mt-3 flex-1 space-y-1.5" onClick={(e) => e.stopPropagation()}>
-          {design.url && (
-            <a
-              href={design.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
-            >
-              <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{design.url.replace(/^https?:\/\//, "")}</span>
-            </a>
+        {/* Body */}
+        <div className="flex flex-1 flex-col gap-3 p-4">
+          <p className="font-semibold text-[var(--text-1)]">{design.name}</p>
+
+          <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+            {design.url && (
+              <a
+                href={design.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
+              >
+                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{design.url.replace(/^https?:\/\//, "")}</span>
+              </a>
+            )}
+          </div>
+
+          {design.notes && (
+            <p className="border-t border-[rgba(0,0,0,0.06)] pt-3 text-xs leading-5 text-[var(--text-3)]">
+              {design.notes}
+            </p>
           )}
         </div>
-
-        {design.notes && (
-          <p className="mt-3 border-t border-[var(--border-3)] pt-3 text-xs leading-5 text-[var(--text-3)]">
-            {design.notes}
-          </p>
-        )}
       </article>
 
       {editing && (
         <ClientDesignFormModal
           design={design}
           onSave={(input) => void handleSave(input)}
-          onClose={() => {
-            setEditing(false);
-            setError(null);
-          }}
+          onClose={() => { setEditing(false); setError(null); }}
           isSaving={updateMutation.isPending}
           error={error}
         />
@@ -954,6 +1037,9 @@ function DesignCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// ClientEditModal — edit client fields
+// ---------------------------------------------------------------------------
 function ClientEditModal({
   form,
   onChange,
@@ -982,196 +1068,193 @@ function ClientEditModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel w-full max-w-2xl p-6">
-          <p className="app-eyebrow">Client</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-            Edit client
-          </h2>
-
-          <div className="mt-5 max-h-[65vh] space-y-5 overflow-y-auto pr-1">
-            {/* Identity */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="app-field-label">Client name</span>
-                <input
-                  value={form.name}
-                  onChange={(e) => set("name", e.target.value)}
-                  className="app-input"
-                />
-              </label>
-              <div>
-                <span className="app-field-label mb-2 block">Logo</span>
-                <LogoImagePicker
-                  value={form.logoUrl}
-                  onChange={(value) => set("logoUrl", value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="app-field-label">Website</span>
-                <input
-                  value={form.website}
-                  onChange={(e) => set("website", e.target.value)}
-                  className="app-input"
-                  placeholder="https://client.com"
-                />
-              </label>
-              <label className="block">
-                <span className="app-field-label">Google Drive folder URL</span>
-                <input
-                  value={form.googleDriveFolderUrl}
-                  onChange={(e) => set("googleDriveFolderUrl", e.target.value)}
-                  className="app-input"
-                  placeholder="https://drive.google.com/drive/folders/…"
-                  type="url"
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="app-field-label">ClickUp folder URL</span>
-                <input
-                  value={form.clickupUrl}
-                  onChange={(e) => set("clickupUrl", e.target.value)}
-                  className="app-input"
-                  placeholder="https://app.clickup.com/…"
-                  type="url"
-                />
-              </label>
-            </div>
-
-            <div className="border-t border-[var(--border-2)] pt-4">
-              <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Primary contact</p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <label className="block">
-                  <span className="app-field-label">Name</span>
-                  <input
-                    value={form.primaryContactName}
-                    onChange={(e) => set("primaryContactName", e.target.value)}
-                    className="app-input"
-                    placeholder="Jane Smith"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Email</span>
-                  <input
-                    value={form.primaryContactEmail}
-                    onChange={(e) => set("primaryContactEmail", e.target.value)}
-                    className="app-input"
-                    placeholder="jane@client.com"
-                    type="email"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Phone</span>
-                  <input
-                    value={form.primaryContactPhone}
-                    onChange={(e) => set("primaryContactPhone", e.target.value)}
-                    className="app-input"
-                    placeholder="+44 7700 000000"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="border-t border-[var(--border-2)] pt-4">
-              <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Address</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="app-field-label">Address line 1</span>
-                  <input
-                    value={form.addressLine1}
-                    onChange={(e) => set("addressLine1", e.target.value)}
-                    className="app-input"
-                    placeholder="123 High Street"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Address line 2</span>
-                  <input
-                    value={form.addressLine2}
-                    onChange={(e) => set("addressLine2", e.target.value)}
-                    className="app-input"
-                    placeholder="Floor 2"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">City</span>
-                  <input
-                    value={form.city}
-                    onChange={(e) => set("city", e.target.value)}
-                    className="app-input"
-                    placeholder="London"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Postcode</span>
-                  <input
-                    value={form.postcode}
-                    onChange={(e) => set("postcode", e.target.value)}
-                    className="app-input"
-                    placeholder="SW1A 1AA"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Country</span>
-                  <input
-                    value={form.country}
-                    onChange={(e) => set("country", e.target.value)}
-                    className="app-input"
-                    placeholder="United Kingdom"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="border-t border-[var(--border-2)] pt-4">
-              <label className="block">
-                <span className="app-field-label">Notes</span>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  className="app-input min-h-[80px] resize-y"
-                  placeholder="General notes about this client…"
-                />
-              </label>
-            </div>
-
-            {error && <p className="text-sm text-rose-700">{error}</p>}
+        <div className="app-dialog-panel w-full max-w-2xl overflow-hidden">
+          {/* Modal widget header */}
+          <div className="widget-header">
+            <span className="widget-header__label">EDIT CLIENT</span>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="md" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              loading={isSaving}
-              onClick={onSave}
-            >
-              Save changes
-            </Button>
+          <div className="p-6">
+            <h2 className="mb-5 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+              Edit client
+            </h2>
+
+            <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
+              {/* Identity */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="app-field-label">Client name</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => set("name", e.target.value)}
+                    className="app-input"
+                  />
+                </label>
+                <div>
+                  <span className="app-field-label mb-2 block">Logo</span>
+                  <LogoImagePicker
+                    value={form.logoUrl}
+                    onChange={(value) => set("logoUrl", value)}
+                  />
+                </div>
+              </div>
+
+              {/* Links */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="app-field-label">Website</span>
+                  <input
+                    value={form.website}
+                    onChange={(e) => set("website", e.target.value)}
+                    className="app-input"
+                    placeholder="https://client.com"
+                  />
+                </label>
+                <label className="block">
+                  <span className="app-field-label">Google Drive folder URL</span>
+                  <input
+                    value={form.googleDriveFolderUrl}
+                    onChange={(e) => set("googleDriveFolderUrl", e.target.value)}
+                    className="app-input"
+                    placeholder="https://drive.google.com/drive/folders/…"
+                    type="url"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="app-field-label">ClickUp folder URL</span>
+                  <input
+                    value={form.clickupUrl}
+                    onChange={(e) => set("clickupUrl", e.target.value)}
+                    className="app-input"
+                    placeholder="https://app.clickup.com/…"
+                    type="url"
+                  />
+                </label>
+              </div>
+
+              {/* Primary contact */}
+              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
+                <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Primary contact</p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="app-field-label">Name</span>
+                    <input
+                      value={form.primaryContactName}
+                      onChange={(e) => set("primaryContactName", e.target.value)}
+                      className="app-input"
+                      placeholder="Jane Smith"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Email</span>
+                    <input
+                      value={form.primaryContactEmail}
+                      onChange={(e) => set("primaryContactEmail", e.target.value)}
+                      className="app-input"
+                      placeholder="jane@client.com"
+                      type="email"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Phone</span>
+                    <input
+                      value={form.primaryContactPhone}
+                      onChange={(e) => set("primaryContactPhone", e.target.value)}
+                      className="app-input"
+                      placeholder="+44 7700 000000"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
+                <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Address</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="app-field-label">Address line 1</span>
+                    <input
+                      value={form.addressLine1}
+                      onChange={(e) => set("addressLine1", e.target.value)}
+                      className="app-input"
+                      placeholder="123 High Street"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Address line 2</span>
+                    <input
+                      value={form.addressLine2}
+                      onChange={(e) => set("addressLine2", e.target.value)}
+                      className="app-input"
+                      placeholder="Floor 2"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">City</span>
+                    <input
+                      value={form.city}
+                      onChange={(e) => set("city", e.target.value)}
+                      className="app-input"
+                      placeholder="London"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Postcode</span>
+                    <input
+                      value={form.postcode}
+                      onChange={(e) => set("postcode", e.target.value)}
+                      className="app-input"
+                      placeholder="SW1A 1AA"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Country</span>
+                    <input
+                      value={form.country}
+                      onChange={(e) => set("country", e.target.value)}
+                      className="app-input"
+                      placeholder="United Kingdom"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
+                <label className="block">
+                  <span className="app-field-label">Notes</span>
+                  <textarea
+                    value={form.notes}
+                    onChange={(e) => set("notes", e.target.value)}
+                    className="app-input min-h-[80px] resize-y"
+                    placeholder="General notes about this client…"
+                  />
+                </label>
+              </div>
+
+              {error && <p className="text-sm text-rose-700">{error}</p>}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="secondary" size="md" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                loading={isSaving}
+                onClick={onSave}
+              >
+                Save changes
+              </Button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="app-card p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
-        {label}
-      </p>
-      <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-        {value}
-      </p>
-    </article>
   );
 }
