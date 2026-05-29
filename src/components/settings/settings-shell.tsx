@@ -4,20 +4,43 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
+  AdjustmentsHorizontalIcon,
   BellAlertIcon,
   BuildingOffice2Icon,
   ClipboardDocumentListIcon,
+  Cog6ToothIcon,
+  CommandLineIcon,
+  CpuChipIcon,
+  CreditCardIcon,
+  DocumentDuplicateIcon,
+  PaintBrushIcon,
+  PencilSquareIcon,
   ShieldCheckIcon,
+  Squares2X2Icon,
   UserCircleIcon,
+  UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 
 export type SettingsSectionId =
+  // My account
   | "account"
   | "notifications"
-  | "workspace"
+  // Workspace
+  | "general"
+  | "branding"
+  | "templates"
+  | "content"
+  | "rate-card"
+  | "team"
+  | "integrations"
+  | "agents-checks"
+  // System
   | "audit"
-  | "privacy";
+  | "developer"
+  | "privacy"
+  // Back-compat: the old "workspace" mega-section
+  | "workspace";
 
 interface SectionDef {
   id: SettingsSectionId;
@@ -27,39 +50,119 @@ interface SectionDef {
   adminOnly?: boolean;
 }
 
-const SECTIONS: SectionDef[] = [
+interface SectionGroup {
+  id: string;
+  label: string;
+  sections: SectionDef[];
+}
+
+const GROUPS: SectionGroup[] = [
   {
-    id: "account",
+    id: "you",
     label: "My account",
-    description: "Profile, sign-in, devices.",
-    icon: UserCircleIcon,
-  },
-  {
-    id: "notifications",
-    label: "Notifications",
-    description: "Where and when you get pinged.",
-    icon: BellAlertIcon,
+    sections: [
+      {
+        id: "account",
+        label: "Profile",
+        description: "Name, avatar, sign-in.",
+        icon: UserCircleIcon,
+      },
+      {
+        id: "notifications",
+        label: "Notifications",
+        description: "Channels, digests, quiet hours.",
+        icon: BellAlertIcon,
+      },
+    ],
   },
   {
     id: "workspace",
     label: "Workspace",
-    description: "Branding, content, integrations, team.",
-    icon: BuildingOffice2Icon,
-    adminOnly: true,
+    sections: [
+      {
+        id: "general",
+        label: "General",
+        description: "Proposal defaults.",
+        icon: AdjustmentsHorizontalIcon,
+        adminOnly: true,
+      },
+      {
+        id: "branding",
+        label: "Branding",
+        description: "Logo and cover accents.",
+        icon: PaintBrushIcon,
+        adminOnly: true,
+      },
+      {
+        id: "content",
+        label: "Content",
+        description: "Confidentiality + objective snippets.",
+        icon: PencilSquareIcon,
+        adminOnly: true,
+      },
+      {
+        id: "templates",
+        label: "Templates",
+        description: "Document section templates.",
+        icon: DocumentDuplicateIcon,
+        adminOnly: true,
+      },
+      {
+        id: "rate-card",
+        label: "Rate card",
+        description: "Team rates for costing.",
+        icon: CreditCardIcon,
+        adminOnly: true,
+      },
+      {
+        id: "team",
+        label: "Team",
+        description: "Invite teammates.",
+        icon: UserGroupIcon,
+        adminOnly: true,
+      },
+      {
+        id: "integrations",
+        label: "Integrations",
+        description: "AI, Google, Slack, email.",
+        icon: Squares2X2Icon,
+        adminOnly: true,
+      },
+      {
+        id: "agents-checks",
+        label: "Agents & checks",
+        description: "AI agent prompts and Pulse checks.",
+        icon: CpuChipIcon,
+        adminOnly: true,
+      },
+    ],
   },
   {
-    id: "audit",
-    label: "Audit log",
-    description: "Workspace settings & access history.",
-    icon: ClipboardDocumentListIcon,
-    adminOnly: true,
-  },
-  {
-    id: "privacy",
-    label: "Privacy & data",
-    description: "Exports, retention, deletion.",
-    icon: ShieldCheckIcon,
-    adminOnly: true,
+    id: "system",
+    label: "System",
+    sections: [
+      {
+        id: "audit",
+        label: "Audit log",
+        description: "Workspace activity history.",
+        icon: ClipboardDocumentListIcon,
+        adminOnly: true,
+      },
+      {
+        id: "developer",
+        label: "Developer",
+        description: "API keys, demo cleanup.",
+        icon: CommandLineIcon,
+        adminOnly: true,
+      },
+      {
+        id: "privacy",
+        label: "Privacy & data",
+        description: "Exports, retention, deletion.",
+        icon: ShieldCheckIcon,
+        adminOnly: true,
+      },
+    ],
   },
 ];
 
@@ -74,43 +177,52 @@ export function SettingsShell({
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "ADMIN";
 
-  const visible = SECTIONS.filter((section) => !section.adminOnly || isAdmin);
-
   return (
     <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="space-y-1">
-        <nav className="app-card overflow-hidden p-1.5">
-          {visible.map((section) => {
-            const href = `/app/settings/${section.id}`;
-            const active = activeSection === section.id || pathname === href;
-            const Icon = section.icon;
-            return (
-              <Link
-                key={section.id}
-                href={href}
-                className={cn(
-                  "flex items-start gap-3 rounded-[8px] px-3 py-2.5 text-left text-sm transition",
-                  active
-                    ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
-                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "mt-0.5 h-5 w-5 shrink-0",
-                    active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
-                  )}
-                />
-                <span className="min-w-0">
-                  <span className="block font-semibold">{section.label}</span>
-                  <span className="mt-0.5 block text-xs font-normal text-[var(--text-4)]">
-                    {section.description}
-                  </span>
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
+      <aside className="space-y-4">
+        {GROUPS.map((group) => {
+          const visible = group.sections.filter((section) => !section.adminOnly || isAdmin);
+          if (visible.length === 0) return null;
+          return (
+            <div key={group.id}>
+              <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                {group.label}
+              </p>
+              <nav className="app-card overflow-hidden p-1.5">
+                {visible.map((section) => {
+                  const href = `/app/settings/${section.id}`;
+                  const active = activeSection === section.id || pathname === href;
+                  const Icon = section.icon;
+                  return (
+                    <Link
+                      key={section.id}
+                      href={href}
+                      className={cn(
+                        "flex items-start gap-3 rounded-[8px] px-3 py-2 text-left text-sm transition",
+                        active
+                          ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                          : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0",
+                          active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+                        )}
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold leading-tight">{section.label}</span>
+                        <span className="mt-0.5 block text-[11px] font-normal leading-tight text-[var(--text-4)]">
+                          {section.description}
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+          );
+        })}
 
         {!isAdmin ? (
           <p className="px-3 text-xs text-[var(--text-4)]">
@@ -124,3 +236,6 @@ export function SettingsShell({
     </div>
   );
 }
+
+// Re-export so callers can import the icon name without importing from heroicons separately.
+export { BuildingOffice2Icon, Cog6ToothIcon };

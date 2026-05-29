@@ -2,42 +2,110 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { AccountSettingsPanel } from "@/components/account-settings-panel";
-import { SettingsPanel } from "@/components/settings-panel";
+import {
+  GeneralTab,
+  BrandingTab,
+  ContentTab,
+  TemplatesTab,
+  RateCardTab,
+  IntegrationsTab,
+  AgentsAndChecksTab,
+  DeveloperTab,
+} from "@/components/settings-panel";
 import { SettingsShell, type SettingsSectionId } from "@/components/settings/settings-shell";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { AuditLogSection } from "@/components/settings/audit-log-section";
 import { PrivacySection } from "@/components/settings/privacy-section";
+import { TeamSection } from "@/components/settings/team-section";
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
   "notifications",
-  "workspace",
+  "general",
+  "branding",
+  "templates",
+  "content",
+  "rate-card",
+  "team",
+  "integrations",
+  "agents-checks",
   "audit",
+  "developer",
   "privacy",
+  "workspace", // legacy
 ];
 
-const ADMIN_SECTIONS: SettingsSectionId[] = ["workspace", "audit", "privacy"];
+const ADMIN_SECTIONS = new Set<SettingsSectionId>([
+  "general",
+  "branding",
+  "templates",
+  "content",
+  "rate-card",
+  "team",
+  "integrations",
+  "agents-checks",
+  "audit",
+  "developer",
+  "privacy",
+  "workspace",
+]);
 
 const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string }> = {
   account: {
-    title: "My account",
-    subtitle: "Profile, sign-in, and personal preferences.",
+    title: "Profile",
+    subtitle: "Identity, avatar, and sign-in.",
   },
   notifications: {
     title: "Notifications",
     subtitle: "Where and when Foundry pings you.",
   },
-  workspace: {
-    title: "Workspace settings",
-    subtitle: "Branding, content, rate card, integrations, team.",
+  general: {
+    title: "General",
+    subtitle: "Workspace proposal defaults.",
+  },
+  branding: {
+    title: "Branding",
+    subtitle: "Cover assets for every document.",
+  },
+  templates: {
+    title: "Templates",
+    subtitle: "Document templates and section editing.",
+  },
+  content: {
+    title: "Content",
+    subtitle: "Confidentiality copy and reusable objective snippets.",
+  },
+  "rate-card": {
+    title: "Rate card",
+    subtitle: "Team members and day rates used in proposal costing.",
+  },
+  team: {
+    title: "Team",
+    subtitle: "Invite members and manage workspace access.",
+  },
+  integrations: {
+    title: "Integrations",
+    subtitle: "AI providers, Google, Slack, email.",
+  },
+  "agents-checks": {
+    title: "Agents & checks",
+    subtitle: "Per-agent prompts and Pulse check configuration.",
   },
   audit: {
     title: "Audit log",
-    subtitle: "Workspace settings, access, and security history.",
+    subtitle: "Workspace settings and access history.",
+  },
+  developer: {
+    title: "Developer",
+    subtitle: "External API key, demo cleanup, REST reference.",
   },
   privacy: {
     title: "Privacy & data",
-    subtitle: "Data exports, retention, and workspace deletion.",
+    subtitle: "Data exports, retention, workspace deletion.",
+  },
+  workspace: {
+    title: "Workspace",
+    subtitle: "Workspace-level settings (legacy view — pick a specific section).",
   },
 };
 
@@ -54,15 +122,14 @@ export default async function SettingsSectionPage({
 
   const session = await auth();
   const isAdmin = session?.user?.role === "ADMIN";
+  const userId = session?.user?.id ?? "";
 
-  if (ADMIN_SECTIONS.includes(sectionId) && !isAdmin) {
+  if (ADMIN_SECTIONS.has(sectionId) && !isAdmin) {
     return (
       <AppShell title={meta.title} subtitle="Admin access required.">
         <SettingsShell activeSection={sectionId}>
           <div className="app-card p-6">
-            <h2 className="text-lg font-semibold text-[var(--text-1)]">
-              Admins only
-            </h2>
+            <h2 className="text-lg font-semibold text-[var(--text-1)]">Admins only</h2>
             <p className="mt-2 text-sm text-[var(--text-3)]">
               This section is restricted to workspace admins. If you need access, ask a workspace
               admin to update your role on the Team tab.
@@ -80,12 +147,33 @@ export default async function SettingsSectionPage({
       <SettingsShell activeSection={sectionId}>
         {sectionId === "account" ? <AccountSettingsPanel /> : null}
         {sectionId === "notifications" ? <NotificationsSection /> : null}
-        {sectionId === "workspace" ? (
-          <SettingsPanel apiKeyConfigured={apiKeyConfigured} />
-        ) : null}
+        {sectionId === "general" ? <GeneralTab /> : null}
+        {sectionId === "branding" ? <BrandingTab /> : null}
+        {sectionId === "content" ? <ContentTab /> : null}
+        {sectionId === "templates" ? <TemplatesTab /> : null}
+        {sectionId === "rate-card" ? <RateCardTab /> : null}
+        {sectionId === "team" ? <TeamSection /> : null}
+        {sectionId === "integrations" ? <IntegrationsTab /> : null}
+        {sectionId === "agents-checks" ? <AgentsAndChecksTab /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
+        {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}
+        {sectionId === "workspace" ? <LegacyWorkspaceRedirect /> : null}
       </SettingsShell>
     </AppShell>
+  );
+}
+
+// The old "workspace" mega-section is now broken up into individual entries in the left rail.
+// We keep the route alive so external bookmarks don't 404, but immediately point users to General.
+function LegacyWorkspaceRedirect() {
+  return (
+    <div className="app-card p-6">
+      <h2 className="text-lg font-semibold text-[var(--text-1)]">Pick a section</h2>
+      <p className="mt-2 text-sm text-[var(--text-3)]">
+        Workspace settings have been split into individual sections in the left rail — General,
+        Branding, Templates, Content, Rate card, Team, Integrations, and Agents &amp; checks.
+      </p>
+    </div>
   );
 }

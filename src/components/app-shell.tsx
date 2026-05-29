@@ -20,7 +20,8 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
-import { useAccount, type AccountProfile } from "@/hooks/use-account";
+// Sidebar identity comes straight from the NextAuth session — fast, no extra round-trip.
+// Custom avatars set in account settings are shown only on the account page itself for now.
 
 type NavItem = {
   href?: string;
@@ -45,8 +46,6 @@ export function AppShell({
   mainClassName?: string;
 }) {
   const pathname = usePathname();
-  const accountQuery = useAccount();
-  const account = accountQuery.data ?? null;
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close drawer on route change
@@ -190,7 +189,6 @@ export function AppShell({
             pathname={pathname}
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
-            account={account}
           />
         </aside>
 
@@ -229,12 +227,10 @@ function ExpandedRail({
   pathname,
   primaryNav,
   secondaryNav,
-  account,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
-  account: AccountProfile | null;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -270,7 +266,7 @@ function ExpandedRail({
             item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
             active={Boolean(isActivePath(pathname, "/app/settings"))}
           />
-          <ProfileMenu account={account} />
+          <ProfileMenu />
         </div>
       </div>
     </div>
@@ -354,15 +350,16 @@ function Avatar({ name, url }: { name: string; url: string }) {
   );
 }
 
-function ProfileMenu({ account }: { account: AccountProfile | null }) {
+function ProfileMenu() {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
 
-  // Prefer the user's custom avatar (saved in account settings) over the OAuth photo.
-  // Fall back to the OAuth values if the DB record hasn't loaded yet.
-  const displayName = account?.name || session?.user?.name || "";
-  const displayEmail = account?.email || session?.user?.email || "";
-  const displayAvatar = account?.avatarUrl || session?.user?.image || "";
+  // Identity comes from the live Google session — it's already loaded by SessionProvider, no
+  // extra round-trip needed. Custom avatars set in account settings live there for now; we'll
+  // surface them here once name/avatar are persisted into the session JWT on update.
+  const displayName = session?.user?.name || "";
+  const displayEmail = session?.user?.email || "";
+  const displayAvatar = session?.user?.image || "";
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -404,7 +401,7 @@ function ProfileMenu({ account }: { account: AccountProfile | null }) {
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Link
-            href="/app/team"
+            href="/app/settings/team"
             onClick={() => setOpen(false)}
             className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >

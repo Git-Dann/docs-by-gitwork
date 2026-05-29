@@ -114,7 +114,7 @@ export function SettingsPanel({
   );
 }
 
-function GeneralTab() {
+export function GeneralTab() {
   const defaultsQuery = useWorkspaceDefaults();
   const updateDefaults = useUpdateWorkspaceDefaults();
   const defaults = defaultsQuery.data;
@@ -157,7 +157,7 @@ function GeneralTab() {
   );
 }
 
-function BrandingTab() {
+export function BrandingTab() {
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
   const workspaceBranding = brandingQuery.data ?? {};
@@ -212,7 +212,7 @@ function BrandingTab() {
   );
 }
 
-function ContentTab() {
+export function ContentTab() {
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
   const defaultsQuery = useWorkspaceDefaults();
@@ -329,7 +329,7 @@ function ContentTab() {
   );
 }
 
-function RateCardTab() {
+export function RateCardTab() {
   const [people, setPeople] = useState<RateCardPersonRecord[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RateCardDraft>(makeEmptyRateCardDraft());
@@ -1100,7 +1100,7 @@ function ProviderRow({
 
 // ── Agents & Checks Tab ──────────────────────────────────────────────────────
 
-function AgentsAndChecksTab() {
+export function AgentsAndChecksTab() {
   const [subTab, setSubTab] = useState<"agents" | "checks">("agents");
 
   return (
@@ -1148,7 +1148,7 @@ function AgentsAndChecksTab() {
 
 // ── Integrations Tab ─────────────────────────────────────────────────────────
 
-function IntegrationsTab() {
+export function IntegrationsTab() {
   const [config, setConfig] = useState<IntegrationsResponse | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
 
@@ -1267,7 +1267,7 @@ function IntegrationsTab() {
   );
 }
 
-function TeamTab({ currentUserId }: { currentUserId: string }) {
+export function TeamTab({ currentUserId }: { currentUserId: string }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -2389,7 +2389,7 @@ function EmailOutboundSection({
   );
 }
 
-function DeveloperTab({
+export function DeveloperTab({
   apiKeyConfigured,
 }: {
   apiKeyConfigured: boolean;
@@ -2981,7 +2981,7 @@ interface TemplateSectionDraft {
   data?: unknown;
 }
 
-function TemplatesTab() {
+export function TemplatesTab() {
   const [templates, setTemplates] = useState<TemplateRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);

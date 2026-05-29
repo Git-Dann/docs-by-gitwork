@@ -1,52 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 
 export function AccountSettingsPanel() {
+  const { data: session } = useSession();
   const accountQuery = useAccount();
   const updateAccount = useUpdateAccount();
 
   const profile = accountQuery.data;
-  const [name, setName] = useState("");
+
+  // Identity strings come from the live session (Google) so this page renders instantly even
+  // while the /api/account hook is in-flight. Name and email are not user-editable because
+  // they're owned by Google Workspace.
+  const sessionName = session?.user?.name ?? "";
+  const sessionEmail = session?.user?.email ?? "";
+
   const [avatarUrl, setAvatarUrl] = useState("");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (profile) {
-      setName(profile.name);
       setAvatarUrl(profile.avatarUrl);
       setDirty(false);
     }
-  }, [profile?.name, profile?.avatarUrl]);
+  }, [profile?.avatarUrl]);
 
   function save() {
-    updateAccount.mutate({ name, avatarUrl }, { onSuccess: () => setDirty(false) });
+    updateAccount.mutate({ avatarUrl }, { onSuccess: () => setDirty(false) });
   }
 
-  if (accountQuery.isLoading) {
-    return (
-      <div className="proposal-form-theme">
-        <div className="app-card p-6">
-          <p className="text-sm text-[var(--text-3)]">Loading your account…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (accountQuery.isError || !profile) {
-    return (
-      <div className="proposal-form-theme">
-        <div className="app-card p-6">
-          <p className="text-sm text-[var(--text-3)]">
-            Couldn&apos;t load your account. Try refreshing the page.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Soft-loading state — we still render the panel so identity from the session is visible.
+  const loading = accountQuery.isLoading && !profile;
 
   return (
     <div className="proposal-form-theme grid gap-4 xl:grid-cols-2">
@@ -56,7 +44,9 @@ export function AccountSettingsPanel() {
           Your account
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Manage the name and image shown in the sidebar and across the platform.
+          Your sign-in identity is managed by Google Workspace — change your name there and it
+          updates here automatically. The custom profile image below overrides your Google photo
+          inside Foundry.
         </p>
 
         <div className="mt-4 space-y-4">
@@ -70,34 +60,39 @@ export function AccountSettingsPanel() {
               }}
               previewClassName="h-40 w-full"
             />
+            <p className="text-xs text-[var(--text-4)]">
+              Optional. Leave blank to use your Google profile photo.
+            </p>
           </div>
 
-          <Input
-            label="Name"
-            value={name}
-            onChange={(value) => {
-              setName(value);
-              setDirty(true);
-            }}
-          />
-
-          <ReadOnlyField label="Email" value={profile.email} hint="Set by your Google sign-in." />
           <ReadOnlyField
-            label="Role"
-            value={profile.role === "ADMIN" ? "Admin" : "Staff"}
-            hint="Workspace admins set roles in Team settings."
+            label="Name"
+            value={sessionName}
+            hint="From Google Workspace. Change it in your Google profile to update."
           />
+          <ReadOnlyField
+            label="Email"
+            value={sessionEmail}
+            hint="Set by your Google sign-in."
+          />
+          {profile ? (
+            <ReadOnlyField
+              label="Role"
+              value={profile.role === "ADMIN" ? "Admin" : "Staff"}
+              hint="Workspace admins set roles in Settings → Team."
+            />
+          ) : null}
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
           {dirty ? (
-            <span className="text-xs text-[var(--text-4)]">Unsaved changes</span>
+            <span className="text-xs text-[var(--text-4)]">Unsaved avatar change</span>
           ) : null}
           <Button
             type="button"
             variant="primary"
             onClick={save}
-            disabled={!dirty || updateAccount.isPending}
+            disabled={!dirty || updateAccount.isPending || loading}
           >
             {updateAccount.isPending ? "Saving…" : "Save changes"}
           </Button>
@@ -116,7 +111,7 @@ export function AccountSettingsPanel() {
         <div className="mt-4 space-y-3 text-sm text-[var(--text-3)]">
           <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
             <p className="font-medium text-[var(--text-2)]">Connected with Google</p>
-            <p className="mt-0.5 text-xs text-[var(--text-4)]">{profile.email}</p>
+            <p className="mt-0.5 text-xs text-[var(--text-4)]">{sessionEmail || "—"}</p>
           </div>
           <p className="text-xs text-[var(--text-4)]">
             Need to sign out everywhere? Use the account menu &rarr; <em>Sign out</em> after a
@@ -125,28 +120,6 @@ export function AccountSettingsPanel() {
         </div>
       </section>
     </div>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        type="text"
-        className="w-full"
-      />
-    </label>
   );
 }
 
