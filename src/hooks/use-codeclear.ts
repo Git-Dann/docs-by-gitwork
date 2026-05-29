@@ -17,6 +17,8 @@ import {
   runCodeClearGitHubAnalysis,
   setCandidateCurrentClient,
   setCandidateCurrentClients,
+  updatePlacement,
+  deletePlacement,
   updateCodeClearCandidate,
   type CodeClearRunsResponse,
 } from "@/lib/api";
@@ -180,15 +182,55 @@ export function useApplyCodeClearGitHubRun(id: string | null) {
   });
 }
 
+/**
+ * Invalidate everywhere placements affect: the candidate's own detail,
+ * the candidates list (current-client chips), workspace schedule,
+ * per-client schedule, and the Portal client detail page (which shows
+ * a DEVELOPERS section pulled from placements).
+ */
+function invalidatePlacementSurfaces(
+  queryClient: ReturnType<typeof useQueryClient>,
+  candidateId: string | null,
+) {
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "schedule"] });
+  queryClient.invalidateQueries({ queryKey: ["client"] });
+  queryClient.invalidateQueries({ queryKey: ["clients"] });
+}
+
 export function useCreatePlacement(candidateId: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: Parameters<typeof createPlacement>[1]) =>
       createPlacement(candidateId as string, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
-    },
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
+  });
+}
+
+export function useUpdatePlacement(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      placementId,
+      input,
+    }: {
+      placementId: string;
+      input: Parameters<typeof updatePlacement>[2];
+    }) => updatePlacement(candidateId as string, placementId, input),
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
+  });
+}
+
+export function useDeletePlacement(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (placementId: string) =>
+      deletePlacement(candidateId as string, placementId),
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
   });
 }
 

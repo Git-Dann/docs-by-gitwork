@@ -81,6 +81,9 @@ export interface ClientPlacementRecord {
   projectName: string;
   startDate: string;
   endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+  updatedAt: string;
 }
 
 export interface ClientDetailRecord {

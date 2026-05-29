@@ -665,6 +665,9 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       projectName: string;
       startDate: Date;
       endDate: Date | null;
+      allocationPercent: number;
+      notes: string | null;
+      updatedAt: Date;
       candidate: { id: string; name: string };
     }>
   ).map((p) => ({
@@ -675,6 +678,9 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     projectName: p.projectName,
     startDate: p.startDate.toISOString(),
     endDate: p.endDate?.toISOString() ?? null,
+    allocationPercent: p.allocationPercent,
+    notes: p.notes,
+    updatedAt: p.updatedAt.toISOString(),
   }));
 
   return {
