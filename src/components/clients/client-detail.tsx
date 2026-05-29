@@ -685,25 +685,36 @@ export function ClientDetail({ slug }: { slug: string }) {
         )}
 
         {/* 13 // DEVELOPERS */}
-        {placements && placements.length > 0 && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">13</span>
-                {" // DEVELOPERS"}
-              </span>
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">13</span>
+              {" // DEVELOPERS"}
+            </span>
+            {placements && placements.length > 0 ? (
               <span className="widget-header__status">
-                {placements.length} placed via CodeClear
+                {placements.filter((p) => !p.endDate).length} active
+                {placements.filter((p) => p.endDate).length > 0 &&
+                  ` · ${placements.filter((p) => p.endDate).length} past`}
               </span>
-            </div>
+            ) : (
+              <Link
+                href="/app/codeclear/candidates"
+                className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
+              >
+                Assign in Code →
+              </Link>
+            )}
+          </div>
+          {placements && placements.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="app-table min-w-full">
                 <thead>
                   <tr>
                     <th className="text-left">Developer</th>
                     <th className="text-left">Project</th>
-                    <th className="text-left">Start</th>
-                    <th className="text-left">End</th>
+                    <th className="text-left">Since</th>
+                    <th className="text-left">Status</th>
                     <th className="text-left">Actions</th>
                   </tr>
                 </thead>
@@ -716,13 +727,22 @@ export function ClientDetail({ slug }: { slug: string }) {
                         <span className="widget-timestamp">{formatDate(placement.startDate)}</span>
                       </td>
                       <td>
-                        <span className="widget-timestamp">
-                          {placement.endDate ? formatDate(placement.endDate) : "Present"}
-                        </span>
+                        {placement.endDate ? (
+                          <span className="inline-flex items-center rounded-[4px] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
+                            style={{ fontFamily: "var(--font-mono)" }}>
+                            Past
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#dcfce7] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[#16a34a]"
+                            style={{ fontFamily: "var(--font-mono)" }}>
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
+                            Active
+                          </span>
+                        )}
                       </td>
                       <td>
                         <Link
-                          href={`/app/codeclear?candidate=${placement.candidateId}`}
+                          href={`/app/codeclear/candidates/${placement.candidateId}`}
                           className={buttonStyles({ variant: "secondary", size: "xs" })}
                         >
                           Profile
@@ -733,8 +753,18 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </tbody>
               </table>
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="p-6">
+              <p className="text-sm text-[var(--text-4)]">
+                No developers assigned yet. Open a developer profile in{" "}
+                <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
+                  Code
+                </Link>{" "}
+                and use the client picker to assign them here.
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* 14 // CARE */}
         {supportClient && (
