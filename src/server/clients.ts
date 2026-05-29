@@ -121,20 +121,23 @@ function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields
 }
 
 function buildContactData(input: ClientContactInput) {
-  return {
-    website: input.website?.trim() || null,
-    addressLine1: input.addressLine1?.trim() || null,
-    addressLine2: input.addressLine2?.trim() || null,
-    city: input.city?.trim() || null,
-    postcode: input.postcode?.trim() || null,
-    country: input.country?.trim() || null,
-    notes: input.notes?.trim() || null,
-    primaryContactName: input.primaryContactName?.trim() || null,
-    primaryContactEmail: input.primaryContactEmail?.trim() || null,
-    primaryContactPhone: input.primaryContactPhone?.trim() || null,
-    googleDriveFolderUrl: input.googleDriveFolderUrl?.trim() || null,
-    clickupUrl: input.clickupUrl?.trim() || null,
-  };
+  // Only include fields that were explicitly provided — omitting a field must
+  // not overwrite an existing DB value with null on a partial PATCH.
+  const data: Partial<Record<keyof ClientContactInput, string | null>> = {};
+  const trim = (v: string) => v.trim() || null;
+  if (input.website !== undefined)             data.website             = trim(input.website);
+  if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
+  if (input.addressLine2 !== undefined)        data.addressLine2        = trim(input.addressLine2);
+  if (input.city !== undefined)                data.city                = trim(input.city);
+  if (input.postcode !== undefined)            data.postcode            = trim(input.postcode);
+  if (input.country !== undefined)             data.country             = trim(input.country);
+  if (input.notes !== undefined)               data.notes               = trim(input.notes);
+  if (input.primaryContactName !== undefined)  data.primaryContactName  = trim(input.primaryContactName);
+  if (input.primaryContactEmail !== undefined) data.primaryContactEmail = trim(input.primaryContactEmail);
+  if (input.primaryContactPhone !== undefined) data.primaryContactPhone = trim(input.primaryContactPhone);
+  if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
+  if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
+  return data;
 }
 
 function summarizeSuggestedClients(
