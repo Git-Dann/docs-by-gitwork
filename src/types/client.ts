@@ -15,6 +15,8 @@ export interface ClientRecord {
 
 export interface ClientListItem extends ClientRecord {
   proposalCount: number;
+  googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
 }
 
 export interface ClientDetailFields {

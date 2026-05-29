@@ -212,6 +212,39 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Suggested
               </span>
             )}
+            {/* Integration quick-links */}
+            {client.googleDriveFolderUrl && (
+              <a
+                href={client.googleDriveFolderUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Open Google Drive folder"
+                className="opacity-40 hover:opacity-80 transition-opacity"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=16"
+                  alt="Google Drive"
+                  className="h-4 w-4 grayscale"
+                />
+              </a>
+            )}
+            {client.clickupUrl && (
+              <a
+                href={client.clickupUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Open ClickUp folder"
+                className="opacity-40 hover:opacity-80 transition-opacity"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="https://www.google.com/s2/favicons?domain=app.clickup.com&sz=16"
+                  alt="ClickUp"
+                  className="h-4 w-4 grayscale"
+                />
+              </a>
+            )}
             <Button type="button" variant="secondary" size="sm" onClick={openEdit}>
               <PencilIcon className="h-3.5 w-3.5" />
               Edit

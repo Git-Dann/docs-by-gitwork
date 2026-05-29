@@ -48,6 +48,8 @@ type ClientAggregateRecord = {
   updatedAt: string;
   proposalCount: number;
   source: ClientSource;
+  googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
 };
 
 type ManualClientRecord = {
@@ -182,6 +184,8 @@ function summarizeSuggestedClients(
       updatedAt,
       proposalCount: 1,
       source: "SUGGESTED",
+      googleDriveFolderUrl: null,
+      clickupUrl: null,
     });
   }
 
@@ -225,6 +229,8 @@ function mergeClients(
       updatedAt,
       proposalCount: suggested?.proposalCount ?? 0,
       source: "MANUAL",
+      googleDriveFolderUrl: manualClient.googleDriveFolderUrl,
+      clickupUrl: manualClient.clickupUrl,
     });
   }
 
@@ -241,6 +247,8 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     updatedAt: client.updatedAt,
     proposalCount: client.proposalCount,
     source: client.source,
+    googleDriveFolderUrl: client.googleDriveFolderUrl,
+    clickupUrl: client.clickupUrl,
   };
 }
 
@@ -399,6 +407,8 @@ export async function createClientRecord(input: {
     updatedAt: client.updatedAt.toISOString(),
     proposalCount,
     source: "MANUAL",
+    googleDriveFolderUrl: client.googleDriveFolderUrl,
+    clickupUrl: client.clickupUrl,
   });
 }
 
@@ -460,6 +470,8 @@ export async function updateClientRecord(
                 slug: persisted.slug,
                 logoUrl: persisted.logoUrl,
                 updatedAt: persisted.updatedAt,
+                googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+                clickupUrl: persisted.clickupUrl,
               }
             : client,
         )
@@ -480,8 +492,8 @@ export async function updateClientRecord(
             primaryContactName: null,
             primaryContactEmail: null,
             primaryContactPhone: null,
-            googleDriveFolderUrl: null,
-            clickupUrl: null,
+            googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+            clickupUrl: persisted.clickupUrl,
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },
@@ -500,6 +512,8 @@ export async function updateClientRecord(
       updatedAt: persisted.updatedAt.toISOString(),
       proposalCount: 0,
       source: "MANUAL",
+      googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+      clickupUrl: persisted.clickupUrl,
     },
   );
 }

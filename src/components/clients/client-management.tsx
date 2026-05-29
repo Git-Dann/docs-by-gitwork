@@ -137,7 +137,39 @@ function ClientCard({ client }: { client: ClientListItem }) {
             "CLIENT"
           )}
         </span>
-        <div onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {client.googleDriveFolderUrl && (
+            <a
+              href={client.googleDriveFolderUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Google Drive"
+              className="opacity-40 hover:opacity-70 transition-opacity"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=16"
+                alt="Google Drive"
+                className="h-3.5 w-3.5 grayscale"
+              />
+            </a>
+          )}
+          {client.clickupUrl && (
+            <a
+              href={client.clickupUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="ClickUp"
+              className="opacity-40 hover:opacity-70 transition-opacity"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://www.google.com/s2/favicons?domain=app.clickup.com&sz=16"
+                alt="ClickUp"
+                className="h-3.5 w-3.5 grayscale"
+              />
+            </a>
+          )}
           <DeleteButton clientSlug={client.slug} />
         </div>
       </div>
@@ -167,17 +199,29 @@ function ClientCard({ client }: { client: ClientListItem }) {
 
         {/* Stat + timestamp */}
         <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
-          <div>
-            <p
-              className="text-3xl leading-none tracking-tight text-[var(--text-1)]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {client.proposalCount}
-            </p>
-            <p className="widget-data-label mt-1">
-              {client.proposalCount === 1 ? "doc" : "docs"}
-            </p>
-          </div>
+          {client.proposalCount > 0 ? (
+            <div>
+              <p
+                className="text-3xl leading-none tracking-tight text-[var(--text-1)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {client.proposalCount}
+              </p>
+              <p className="widget-data-label mt-1">
+                {client.proposalCount === 1 ? "doc" : "docs"}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p
+                className="text-3xl leading-none tracking-tight text-[var(--text-4)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                —
+              </p>
+              <p className="widget-data-label mt-1 opacity-50">no docs yet</p>
+            </div>
+          )}
           <p className="widget-timestamp text-right">
             {formatDate(client.createdAt)}
           </p>
