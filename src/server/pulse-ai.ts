@@ -182,6 +182,42 @@ Vibe-coded apps across all verticals share common gaps:
 
 You are briefing the Gitwork consulting team — not the client directly. Be specific, commercially minded, and prioritise what will have the biggest impact on getting this product to market.
 
+=== WRITING STYLE — READ AND APPLY TO EVERY TEXT FIELD ===
+
+The output goes directly into client-facing PDF reports. Write like a sharp technical consultant, not like an AI assistant. Every sentence must sound like a human expert wrote it.
+
+BANNED WORDS AND PHRASES — never use these:
+- "robust", "seamless", "streamlined", "comprehensive", "leveraging", "utilising", "ecosystem", "landscape", "testament to", "thriving", "empowering", "game-changing", "best-in-class", "world-class", "cutting-edge", "innovative solution"
+- "actually", "additionally", "furthermore", "notably", "importantly", "it is worth noting", "it is important to highlight", "it should be noted"
+- "serves as", "acts as", "functions as", "boasts" — use "is" or "has"
+- "There are several", "various", "a number of", "multiple opportunities exist" — be specific or don't say it
+- "In order to" → use "To". "Due to the fact that" → use "Because". "At this point in time" → use "Now"
+- "could potentially", "may potentially", "might possibly" — pick one word: "may" or "will"
+- Any sycophantic opener: "Great project", "Impressive foundation", "Solid start"
+- Any chatbot sign-off: "I hope this helps", "Feel free to", "Don't hesitate to"
+- "The future looks bright", "exciting journey", "pivotal moment", "next chapter"
+- Forced triplets: if you have two things, list two. Don't pad to three for rhythm.
+- Em-dashes used for dramatic effect. Use a comma, colon, or new sentence.
+
+VOICE RULES:
+1. Say what something IS, not what it "serves as" or "represents". Use active voice — name the actor.
+2. Be specific. "No error monitoring" beats "the project lacks comprehensive observability infrastructure". "Add Sentry" beats "consider implementing a monitoring solution".
+3. Take a position. Don't hedge every recommendation. If something is broken, say it's broken.
+4. Short sentences beat long ones. If a sentence needs a semicolon, split it.
+5. Vary your sentence structure naturally. Don't start three sentences in a row with "The".
+6. Numbers and specifics beat vague adjectives. "18 checks failed" beats "numerous issues were found".
+7. Write conclusions that say something. "Fix auth before launch" beats "addressing these gaps will improve the overall product quality".
+
+EXAMPLES OF BAD → GOOD:
+✗ "The project leverages a modern tech stack and serves as a testament to the team's innovative approach."
+✓ "The stack is modern. The main gap is production infrastructure — no monitoring, no error tracking, no background job queue."
+
+✗ "There are several opportunities to enhance the platform's overall performance and user experience."
+✓ "Three things will move the needle: adding Sentry for error visibility, setting up Resend for transactional email, and wiring up a proper rate limiter."
+
+✗ "It is worth noting that the authentication flow could potentially benefit from additional security measures."
+✓ "The auth flow has no brute-force protection and no email verification — both are pre-launch requirements."
+
 You MUST respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.`;
 
 // Gitwork-preferred vendor list — always recommend specific service names, not generic categories.
@@ -502,10 +538,10 @@ Classify the project and return ONLY these 5 fields:
     "signals": ["array of strings — specific things in the scan that point to this classification"],
     "verticalInsights": ["array of 4–6 strings — specific, actionable recommendations that apply to THIS type of business, not generic SaaS advice"]
   },
-  "executiveSummary": "2–3 sentence summary of the project's current state and biggest risks. Write as if briefing the consulting team before a discovery call.",
-  "healthNarrative": "A paragraph explaining the health score in plain language — what's working, what's at risk, and the overall maturity level.",
-  "strengths": [{ "title": "string", "detail": "string" }],
-  "proposalHook": "One compelling sentence the sales team can use to open a discovery call with this client."
+  "executiveSummary": "2–3 sentences on the project's current state and biggest risks. Briefing the Gitwork team before a discovery call — be direct and specific. No AI vocabulary, no hedging, no 'it is worth noting'.",
+  "healthNarrative": "One paragraph explaining the health score. What's working, what's at risk, how mature the codebase looks. Plain language. Name specific things — don't say 'several issues', say what the issues are.",
+  "strengths": [{ "title": "short label, no fluff", "detail": "one specific sentence — what it is and why it matters. No 'testament to', no 'robust'" }],
+  "proposalHook": "One sharp sentence a salesperson can say on a discovery call. Specific to this product. No generic 'unlock your potential' — name the actual problem we'd solve."
 }`;
 
   // Detail call — heavy 7 fields (gaps, opportunities, roadmap, debt, blockers, checklist, stack)
@@ -518,15 +554,15 @@ Return ONLY these 7 fields:
   "criticalGaps": [
     {
       "category": "string (e.g. Security, Auth, Payments, Observability, SEO, Performance)",
-      "gap": "string — what is missing or broken",
-      "impact": "string — what business risk this creates",
+      "gap": "string — state it plainly. 'No error monitoring configured' not 'the project lacks comprehensive observability infrastructure'",
+      "impact": "string — the concrete business consequence. Name what breaks or what the legal exposure is. Not 'this could impact user trust'.",
       "urgency": "CRITICAL | HIGH | MEDIUM"
     }
   ],
   "buildOpportunities": [
     {
-      "title": "string — short name of the feature/service to build",
-      "description": "string — what it is and why it matters",
+      "title": "string — short label e.g. 'Add Sentry error monitoring', 'Wire up Resend for email'",
+      "description": "string — what it does and the specific outcome it unlocks. One or two sentences. No 'leveraging', no 'seamless'.",
       "estimatedEffort": "S | M | L | XL",
       "businessValue": "HIGH | MEDIUM | LOW",
       "category": "string — e.g. Auth, Payments, SEO, Monitoring, Performance, Analytics"
@@ -550,8 +586,8 @@ Return ONLY these 7 fields:
   "productionBlockers": [
     {
       "category": "string — e.g. Email, Monitoring, Legal, Auth, Security",
-      "blocker": "string — what is missing or broken, stated plainly. E.g. 'No transactional email provider configured'",
-      "why": "string — the concrete operational or legal consequence if not fixed before launch",
+      "blocker": "string — plain statement of what's missing. 'No transactional email provider' not 'the email infrastructure is not yet configured'",
+      "why": "string — the specific thing that breaks or the legal exposure. 'Password reset emails won't send' not 'this may impact user experience'.",
       "recommendedService": "string or omit — the specific named service Gitwork recommends for this gap",
       "urgency": "CRITICAL | HIGH"
     }
@@ -565,7 +601,7 @@ Return ONLY these 7 fields:
     }
   ],
   "techStackAnalysis": {
-    "assessment": "string — 2–3 sentence paragraph assessing the full infrastructure from a production-readiness standpoint",
+    "assessment": "string — 2–3 sentences assessing the infrastructure from a production-readiness standpoint. Be direct about what's missing. Name specific things. No 'robust', no 'comprehensive', no hedging.",
     "detectedStack": {
       "frontend": "string or null",
       "backend": "string or null",
