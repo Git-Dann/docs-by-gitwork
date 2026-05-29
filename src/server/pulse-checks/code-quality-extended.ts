@@ -6,9 +6,7 @@ export async function runCodeQualityExtended(ctx: ExtendedCheckContext): Promise
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
-  // These are primarily GitHub repo checks, but we can detect signals from the page
-  const hasGithubLink = /github\.com\/[a-z0-9_-]+\/[a-z0-9_-]+/i.test(html);
-
+  // These are primarily GitHub repo checks, but we can detect signals from the page HTML.
   const hasCodeScanning = /code.*scanning|codeql|snyk|sonarqube|semgrep|deepsource|code.*analysis/i.test(html);
   checks.push({ category: "Code Quality", checkKey: "github_code_scanning", label: "Code scanning (CodeQL / Snyk)", status: hasCodeScanning ? "PASS" : "WARN", detail: hasCodeScanning ? "Code scanning tool signals detected." : "No code scanning signals — integrate CodeQL, Snyk, or Semgrep to catch vulnerabilities before they reach production." });
 

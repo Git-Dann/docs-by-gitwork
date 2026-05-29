@@ -1,7 +1,7 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, checkDnsRecord, headRequest } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, checkDnsRecord } from "./_types";
 
 export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, hostname, httpsUrl } = ctx;
+  const { htmlLower, hostname } = ctx;
   const html = ctx.pageResult.html;
   const h = ctx.pageResult.headers;
   const checks: PulseScanCheckInput[] = [];

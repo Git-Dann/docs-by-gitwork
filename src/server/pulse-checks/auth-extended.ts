@@ -1,7 +1,7 @@
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 
 export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { pageResult, htmlLower, ctx: pctx } = ctx;
+  const { pageResult, ctx: pctx } = ctx;
   const html = pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
@@ -69,8 +69,8 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasApiKeyUi = /api key|api token|access token|create.*token|generate.*key|developer.*key/i.test(html);
   checks.push({ category: "Authentication", checkKey: "api_key_creation_ui", label: "API key generation UI", status: pctx.isSaas ? (hasApiKeyUi ? "PASS" : "WARN") : "PASS", detail: pctx.isSaas ? (hasApiKeyUi ? "API key generation UI detected." : "SaaS app detected but no API key creation UI — developer access is critical for integration adoption and partner workflows.") : "Not applicable." });
 
-  // OAuth minimal scopes
-  const hasOauthScopes = /scope.*profile|scope.*email|offline_access|requested.*permissions/i.test(html);
+  // OAuth minimal scopes — only the excessive-scope signal drives the verdict; the minimal-scope
+  // signal was used in an earlier version but didn't add value beyond the excessive check.
   const hasExcessiveScopes = /scope.*admin|scope.*write.*all|full.*access/i.test(html);
   checks.push({ category: "Authentication", checkKey: "oauth_minimal_scopes", label: "Minimal OAuth scope requests", status: hasExcessiveScopes ? "WARN" : "PASS", detail: hasExcessiveScopes ? "Broad OAuth scopes detected — request only the minimum permissions needed (principle of least privilege)." : "No overly broad OAuth scopes detected." });
 

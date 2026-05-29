@@ -15,7 +15,6 @@ import {
   getDefaultCostsPayload,
   getDefaultCtaPayload,
   getDefaultLinkPayload,
-  getDefaultSectionPayload,
   getDefaultTimelinePayload,
 } from "@/server/proposals";
 import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";

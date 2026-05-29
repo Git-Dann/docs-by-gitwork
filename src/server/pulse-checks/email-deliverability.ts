@@ -21,7 +21,7 @@ const ALL_CHECKS: Array<[string, string]> = [
 ];
 
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, hostname } = ctx;
+  const { hostname } = ctx;
   const html = ctx.pageResult.html;
 
   if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "DESKTOP_APP", "CLI_TOOL")) {

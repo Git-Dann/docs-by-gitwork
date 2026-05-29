@@ -20,6 +20,10 @@ export function AccountSettingsPanel() {
       setAvatarUrl(profile.avatarUrl);
       setDirty(false);
     }
+    // Intentionally subscribing on the two specific fields rather than the whole `profile`
+    // object — we only want to reset local edits when the underlying name/avatar actually
+    // change, not on every reference identity churn from refetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.name, profile?.avatarUrl]);
 
   function save() {

@@ -1,4 +1,4 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 
 export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, htmlLower } = ctx;

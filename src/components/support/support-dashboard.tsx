@@ -1911,7 +1911,9 @@ function EditConnectorModal({
 
 function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug: string }) {
   const { data, isLoading } = useSupportConnections(clientId);
-  const connections = data?.connections ?? [];
+  // Memoise so the effect below doesn't reset its setInterval timer on every render when data is
+  // a fresh undefined.
+  const connections = useMemo(() => data?.connections ?? [], [data?.connections]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const deleteConn = useDeleteConnection(clientId);

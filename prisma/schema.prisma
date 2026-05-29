@@ -312,6 +312,7 @@ model Document {
   comments       DocumentComment[]
   versions       DocumentVersion[]
   presence       EditorPresence[]
+  aiSession      DocumentAiSession?
 
   @@index([workspaceId, status])
   @@index([updatedAt])
@@ -403,6 +404,24 @@ model EditorPresence {
 
   @@unique([documentId, sessionId])
   @@index([documentId, lastSeenAt])
+}
+
+/**
+ * AI chat conversation persisted per document. One session per (documentId) — when the user
+ * reloads the editor, the chat panel hydrates from this row so the conversation history is not
+ * lost. The `messages` JSON is an array of `{ id, role: "user" | "assistant", content, proposals?}`
+ * objects that mirror the in-memory shape used by the AiChatPanel component.
+ *
+ * We don't store full proposal diffs in `messages` — accepted proposals are already applied to
+ * the document; rejected proposals fade away on the client. Only the prose turn-by-turn record
+ * is preserved so future turns can keep context.
+ */
+model DocumentAiSession {
+  id          String   @id @default(cuid())
+  documentId  String   @unique
+  messages    Json     // Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>
+  updatedAt   DateTime @default(now()) @updatedAt
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 /**

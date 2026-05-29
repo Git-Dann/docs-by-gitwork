@@ -26,7 +26,7 @@ const ALL_CHECKS: Array<[string, string]> = [
 ];
 
 export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, ctx: pctx } = ctx;
+  const { ctx: pctx } = ctx;
   const html = ctx.pageResult.html;
 
   if (platformIs(ctx.platform, "CLI_TOOL", "MARKETING_SITE")) {

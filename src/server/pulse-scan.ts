@@ -567,8 +567,6 @@ export async function runUrlChecks(url: string, platform?: string): Promise<{ ch
     // Extract OG title and description values for AI classification context
     const ogTitle = pageResult.html.match(/property=["']og:title["'][^>]*content=["']([^"']{1,200})["']/i)?.[1]?.trim()
       ?? pageResult.html.match(/content=["']([^"']{1,200})["'][^>]*property=["']og:title["']/i)?.[1]?.trim();
-    const ogDescription = pageResult.html.match(/property=["']og:description["'][^>]*content=["']([^"']{1,400})["']/i)?.[1]?.trim()
-      ?? pageResult.html.match(/content=["']([^"']{1,400})["'][^>]*property=["']og:description["']/i)?.[1]?.trim();
     checks.push({
       category: "SEO",
       checkKey: "og_tags",

@@ -1,7 +1,7 @@
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
 
 export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { pageResult, htmlLower } = ctx;
+  const { pageResult } = ctx;
   const html = pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 

@@ -1267,6 +1267,10 @@ function IntegrationsTab() {
   );
 }
 
+// TeamTab is kept around for the upcoming "Team" sub-tab in settings — it's the second-to-last
+// piece of the auth migration on the roadmap. Not yet wired into the tabs config so the
+// no-unused-vars warning is intentional.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TeamTab({ currentUserId }: { currentUserId: string }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);

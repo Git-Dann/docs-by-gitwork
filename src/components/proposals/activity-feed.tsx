@@ -11,58 +11,19 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import { EyeIcon, PaperAirplaneIcon, PencilSquareIcon, ShieldCheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { apiFetch } from "@/lib/api";
-
-type FeedItem =
-  | {
-      kind: "VIEW";
-      id: string;
-      createdAt: string;
-      origin: string;
-      signerName: string | null;
-      signerRole: string | null;
-      ip: string | null;
-    }
-  | {
-      kind: "SIGNATURE_EVENT";
-      id: string;
-      createdAt: string;
-      eventKind: string;
-      signerName: string | null;
-      signerRole: string | null;
-      ip: string | null;
-      metadata: unknown;
-    };
-
-interface ActivityResponse {
-  activity: FeedItem[];
-  summary: { totalViews: number; lastViewedAt: string | null };
-}
+import {
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  EyeIcon,
+  PaperAirplaneIcon,
+  PencilSquareIcon,
+  ShieldCheckIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import { useDocumentSnapshot, type ActivityFeedItem as FeedItem } from "@/hooks/use-document-collab";
 
 export function ActivityFeed({ documentId }: { documentId: string }) {
-  const [data, setData] = useState<ActivityResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await apiFetch<ActivityResponse>(`/api/documents/${documentId}/activity`);
-        if (!cancelled) setData(res);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      }
-    }
-    void load();
-    // Poll every 30s so the feed updates as signatures land. Cheap query (50-row cap each side).
-    const interval = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [documentId]);
+  const { data, error } = useDocumentSnapshot(documentId);
 
   return (
     <section className="widget-card overflow-hidden">
@@ -75,7 +36,7 @@ export function ActivityFeed({ documentId }: { documentId: string }) {
 
       <div className="p-5 sm:p-6">
         {error ? (
-          <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p>
+          <p className="text-sm font-medium text-[var(--danger-500)]">{(error as Error).message}</p>
         ) : null}
 
         {data && data.activity.length === 0 ? (
@@ -94,9 +55,19 @@ export function ActivityFeed({ documentId }: { documentId: string }) {
                   <p className="text-sm text-[var(--text-1)]">
                     {feedTitle(item)}
                   </p>
+                  {item.kind === "COMMENT" ? (
+                    <p className="mt-0.5 truncate text-xs italic text-[var(--text-3)]">
+                      &ldquo;{item.excerpt}&rdquo;
+                    </p>
+                  ) : null}
+                  {item.kind === "VERSION" && item.changelog ? (
+                    <p className="mt-0.5 truncate text-xs italic text-[var(--text-3)]">
+                      {item.changelog}
+                    </p>
+                  ) : null}
                   <p className="mt-0.5 text-[11px] text-[var(--text-4)]">
                     {new Date(item.createdAt).toLocaleString()}
-                    {item.ip ? ` · ${item.ip}` : ""}
+                    {feedMeta(item)}
                   </p>
                 </div>
               </li>
@@ -116,7 +87,21 @@ function FeedIcon({ item }: { item: FeedItem }) {
       </div>
     );
   }
-  // Pick an icon per signature event kind
+  if (item.kind === "COMMENT") {
+    return (
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--brand-200)] text-[var(--brand-700)]">
+        <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" />
+      </div>
+    );
+  }
+  if (item.kind === "VERSION") {
+    return (
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--surface-1)] text-[var(--text-3)]">
+        <ClockIcon className="h-3.5 w-3.5" />
+      </div>
+    );
+  }
+  // Signature event — pick an icon per kind
   const kind = item.eventKind;
   const Icon =
     kind === "SIGNER_SIGNED"
@@ -148,6 +133,13 @@ function feedTitle(item: FeedItem): string {
       ? "A signer viewed the signing page"
       : "Someone viewed the public share link";
   }
+  if (item.kind === "COMMENT") {
+    const source = item.authorKind === "PUBLIC" ? "public visitor" : "workspace";
+    return `${item.authorName} (${source}) left a comment${item.status === "RESOLVED" ? " · resolved" : ""}`;
+  }
+  if (item.kind === "VERSION") {
+    return `Snapshot saved as ${item.version}`;
+  }
   const subject = item.signerName ?? "Workspace";
   switch (item.eventKind) {
     case "REQUEST_CREATED":
@@ -171,4 +163,12 @@ function feedTitle(item: FeedItem): string {
     default:
       return item.eventKind;
   }
+}
+
+/** Trailing dot-separated metadata appended after the timestamp. IP for view/signer-event rows. */
+function feedMeta(item: FeedItem): string {
+  if (item.kind === "VIEW" || item.kind === "SIGNATURE_EVENT") {
+    return item.ip ? ` · ${item.ip}` : "";
+  }
+  return "";
 }

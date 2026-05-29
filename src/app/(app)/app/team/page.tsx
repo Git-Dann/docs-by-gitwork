@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { ClipboardDocumentIcon, TrashIcon, UserPlusIcon, CheckIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { AppShell } from "@/components/app-shell";

@@ -28,7 +28,6 @@ import {
   EyeSlashIcon,
   HomeIcon,
   LinkIcon,
-  MinusIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -52,7 +51,6 @@ import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
-import { proposalSectionBlueprints } from "@/lib/default-template";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";

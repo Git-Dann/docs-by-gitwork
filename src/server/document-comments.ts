@@ -7,7 +7,6 @@
  * via the editor and are tied to a User. Both flows funnel through the same model.
  */
 
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export interface CreatePublicCommentInput {

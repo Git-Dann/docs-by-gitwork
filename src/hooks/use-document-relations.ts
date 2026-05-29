@@ -1,44 +1,38 @@
 /**
- * React Query hook for the P5.18 linked-documents widget.
+ * Document relations hook (P5.18).
  *
- * Fetches the doc's parent (if any) and direct children. The relationship is one-level —
- * children are docs with `parentId` pointing at this one. Re-fetched whenever the underlying
- * proposal changes (caller invalidates).
+ * Reads from the shared `document-snapshot` React Query (`useDocumentCollab.useDocumentSnapshot`)
+ * so this hook doesn't issue its own HTTP request — the snapshot endpoint already includes the
+ * parent + children list. Same shape as the dedicated /api/proposals/[id]/relations route which
+ * is kept around for non-editor callers.
  */
 
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { DocumentType } from "@/types/proposal";
+import { snapshotKey, type DocumentSnapshot, type RelationDocument } from "@/hooks/use-document-collab";
 
-export interface RelationDocument {
-  id: string;
-  title: string;
-  documentNumber: string | null;
-  documentType: DocumentType;
-  status: string;
-  updatedAt: string;
-}
+export type { RelationDocument };
 
 export interface RelationsPayload {
   parent: RelationDocument | null;
   children: RelationDocument[];
 }
 
-const relationsKey = (id: string) => ["document-relations", id] as const;
-
 export function useDocumentRelations(documentId: string | undefined) {
   return useQuery({
-    queryKey: relationsKey(documentId ?? "—"),
+    queryKey: snapshotKey(documentId ?? "—"),
     enabled: Boolean(documentId),
-    queryFn: () => apiFetch<RelationsPayload>(`/api/proposals/${documentId}/relations`),
-    staleTime: 30_000,
+    queryFn: () => apiFetch<DocumentSnapshot>(`/api/documents/${documentId}/snapshot`),
+    refetchInterval: 10_000,
+    staleTime: 8_000,
+    select: (snap): RelationsPayload => snap.relations,
   });
 }
 
-/** Helper for callers that mutated parentId on the doc and want the widget to re-fetch. */
+/** Helper for callers that mutated parentId on the doc and want the snapshot to re-fetch. */
 export function useInvalidateDocumentRelations() {
   const qc = useQueryClient();
-  return (documentId: string) => qc.invalidateQueries({ queryKey: relationsKey(documentId) });
+  return (documentId: string) => qc.invalidateQueries({ queryKey: snapshotKey(documentId) });
 }

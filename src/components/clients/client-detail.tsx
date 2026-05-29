@@ -25,7 +25,7 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { formatDate } from "@/lib/format";
-import type { ClientDetailFields, ClientPlatformRecord } from "@/types/client";
+import type { ClientPlatformRecord } from "@/types/client";
 
 type EditFormState = {
   name: string;

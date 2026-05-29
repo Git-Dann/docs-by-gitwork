@@ -1,10 +1,16 @@
 /**
  * GET /api/documents/[id]/activity
  *
- * Workspace-side audit feed for a document. Merges DocumentView rows + SignatureEvent rows
- * into a single newest-first timeline. Used by the editor's "Recent activity" widget.
+ * Workspace-side audit feed for a document. Merges four event sources into a single newest-first
+ * timeline:
  *
- * The result is capped to the last 50 events.
+ *   - DocumentView      → "public viewer opened the doc"
+ *   - SignatureEvent    → REQUEST_SENT / SIGNER_SIGNED / SIGNER_DECLINED / REQUEST_COMPLETED…
+ *   - DocumentComment   → workspace + public comments (top-level only — replies stay nested in
+ *                         the CollabPanel comment thread; we don't double-surface them here)
+ *   - DocumentVersion   → version snapshots taken by operators
+ *
+ * Result is capped to the latest 50 events across all sources.
  */
 
 import { NextRequest } from "next/server";
@@ -25,7 +31,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     });
     if (!doc) return apiError("Document not found", 404);
 
-    const [views, sigEvents] = await Promise.all([
+    const [views, sigEvents, comments, versions] = await Promise.all([
       prisma.documentView.findMany({
         where: { documentId: id },
         orderBy: { createdAt: "desc" },
@@ -53,6 +59,30 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           signer: { select: { name: true, role: true } },
         },
       }),
+      prisma.documentComment.findMany({
+        where: { documentId: id, parentId: null },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          createdAt: true,
+          authorKind: true,
+          authorName: true,
+          body: true,
+          status: true,
+        },
+      }),
+      prisma.documentVersion.findMany({
+        where: { documentId: id },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          createdAt: true,
+          version: true,
+          changelog: true,
+        },
+      }),
     ]);
 
     // Merge + sort newest first, cap at 50
@@ -75,6 +105,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           signerRole: string | null;
           ip: string | null;
           metadata: unknown;
+        }
+      | {
+          kind: "COMMENT";
+          id: string;
+          createdAt: string;
+          authorKind: "PUBLIC" | "WORKSPACE";
+          authorName: string;
+          /** First 160 chars of the comment body — full text lives in the CollabPanel. */
+          excerpt: string;
+          status: "OPEN" | "RESOLVED";
+        }
+      | {
+          kind: "VERSION";
+          id: string;
+          createdAt: string;
+          version: string;
+          changelog: string | null;
         };
 
     const merged: FeedItem[] = [
@@ -97,6 +144,22 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         ip: e.ip,
         metadata: e.metadata,
       })),
+      ...comments.map<FeedItem>((c) => ({
+        kind: "COMMENT",
+        id: c.id,
+        createdAt: c.createdAt.toISOString(),
+        authorKind: c.authorKind,
+        authorName: c.authorName,
+        excerpt: c.body.length > 160 ? `${c.body.slice(0, 160)}…` : c.body,
+        status: c.status,
+      })),
+      ...versions.map<FeedItem>((v) => ({
+        kind: "VERSION",
+        id: v.id,
+        createdAt: v.createdAt.toISOString(),
+        version: v.version,
+        changelog: v.changelog,
+      })),
     ]
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .slice(0, 50);
@@ -106,6 +169,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       summary: {
         totalViews: views.length,
         lastViewedAt: views[0]?.createdAt.toISOString() ?? null,
+        totalComments: comments.length,
+        totalVersions: versions.length,
       },
     });
   } catch (error) {

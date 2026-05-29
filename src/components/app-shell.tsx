@@ -18,7 +18,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useAccount, type AccountProfile } from "@/hooks/use-account";
 

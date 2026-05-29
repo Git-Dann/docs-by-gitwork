@@ -1,7 +1,6 @@
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 
 export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, ctx: pctx } = ctx;
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 

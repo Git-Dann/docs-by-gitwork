@@ -72,11 +72,9 @@ export const coverSection = defineSection<CoverSectionData>({
     />
   ),
   Preview: ({ data, proposal, section }) => {
-    /* eslint-disable react-hooks/rules-of-hooks */
-    // This is rendered conditionally only when section.key === "cover", so the hook order is
-    // stable per render of the dispatcher.
+    // Preview is a regular component rendered by the section dispatcher, so hook ordering is
+    // stable within each render of this preview function.
     const brandingQuery = useWorkspaceBranding();
-    /* eslint-enable react-hooks/rules-of-hooks */
     const branding = brandingQuery.data;
 
     const signoff = proposal.sections.find((entry) => entry.key === "signoff_footer")?.data as

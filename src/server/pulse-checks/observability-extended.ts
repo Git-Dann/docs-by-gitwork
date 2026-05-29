@@ -1,7 +1,6 @@
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 
 export async function runObservabilityExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { htmlLower } = ctx;
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 

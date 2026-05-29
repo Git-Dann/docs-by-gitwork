@@ -62,7 +62,28 @@ export function AiChatPanel({ open, onClose, documentId, onAfterApply }: AiChatP
   const [scans, setScans] = useState<PulseScanListItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Hydrate from the persisted session on first open. Subsequent opens skip this — the panel
+  // stays mounted between toggles and `messages` already reflects the latest state.
+  useEffect(() => {
+    if (!open || hydrated) return;
+    let cancelled = false;
+    void apiFetch<{ messages: ChatMessage[] }>(`/api/documents/${documentId}/ai/session`)
+      .then((res) => {
+        if (cancelled) return;
+        setMessages((res.messages ?? []).map((m) => ({ ...m })));
+        setHydrated(true);
+      })
+      .catch(() => {
+        // No persisted session yet — start fresh.
+        if (!cancelled) setHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, hydrated, documentId]);
 
   // Lazy-load Pulse scans for the picker
   useEffect(() => {
@@ -89,6 +110,36 @@ export function AiChatPanel({ open, onClose, documentId, onAfterApply }: AiChatP
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  /**
+   * Persist the chat history. Called after each new assistant turn. We strip out the
+   * `proposals` array before saving — only the prose turns matter for context. Fire-and-
+   * forget so a slow Neon roundtrip doesn't block the UI.
+   */
+  function persistMessages(next: ChatMessage[]) {
+    const payload = {
+      messages: next.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: new Date().toISOString(),
+      })),
+    };
+    void apiFetch(`/api/documents/${documentId}/ai/session`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {
+      // Persistence is best-effort. A failure here doesn't break the UX — the chat is still
+      // alive in component state; it just won't survive a reload.
+    });
+  }
+
+  function handleClear() {
+    if (!confirm("Clear this conversation? The proposals already accepted stay in the document.")) return;
+    setMessages([]);
+    void apiFetch(`/api/documents/${documentId}/ai/session`, { method: "DELETE" }).catch(() => {});
+  }
 
   async function handleSubmit() {
     const text = composer.trim();
@@ -128,7 +179,11 @@ export function AiChatPanel({ open, onClose, documentId, onAfterApply }: AiChatP
         content: res.reply,
         proposals: res.proposals.map((p) => ({ ...p, id: mkId(), status: "pending" as const })),
       };
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => {
+        const next = [...prev, assistantMessage];
+        persistMessages(next);
+        return next;
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -204,14 +259,25 @@ export function AiChatPanel({ open, onClose, documentId, onAfterApply }: AiChatP
         {/* Header */}
         <div className="widget-header">
           <span className="widget-header-label">AI ASSISTANT</span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {messages.length > 0 ? (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+              >
+                Clear
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Conversation thread */}
