@@ -411,18 +411,14 @@ export function ClientDetail({ slug }: { slug: string }) {
             {" // PLATFORMS"}
           </span>
           {!isSuggested && (
-            <Button
+            <button
               type="button"
-              variant="primary"
-              size="xs"
-              onClick={() => {
-                setPlatformError(null);
-                setPlatformModal({ open: true, platform: null });
-              }}
+              onClick={() => { setPlatformError(null); setPlatformModal({ open: true, platform: null }); }}
+              className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+              title="Add platform"
             >
               <PlusIcon className="h-3.5 w-3.5" />
-              Add platform
-            </Button>
+            </button>
           )}
         </div>
 
@@ -430,9 +426,15 @@ export function ClientDetail({ slug }: { slug: string }) {
           {platforms.length === 0 ? (
             <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
-                {isSuggested
-                  ? "Save this client to start adding platforms."
-                  : "No platforms yet. Click \"Add platform\" to get started."}
+                {isSuggested ? "Save this client to start adding platforms." : (
+                  <button
+                    type="button"
+                    onClick={() => { setPlatformError(null); setPlatformModal({ open: true, platform: null }); }}
+                    className="text-[var(--brand-700)] hover:underline"
+                  >
+                    + Add your first platform
+                  </button>
+                )}
               </p>
             </div>
           ) : (
@@ -459,18 +461,14 @@ export function ClientDetail({ slug }: { slug: string }) {
             {" // DESIGNS"}
           </span>
           {!isSuggested && (
-            <Button
+            <button
               type="button"
-              variant="primary"
-              size="xs"
-              onClick={() => {
-                setDesignError(null);
-                setDesignModal({ open: true, design: null });
-              }}
+              onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
+              className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+              title="Add design"
             >
               <PlusIcon className="h-3.5 w-3.5" />
-              Add design
-            </Button>
+            </button>
           )}
         </div>
 
@@ -478,9 +476,15 @@ export function ClientDetail({ slug }: { slug: string }) {
           {designs.length === 0 ? (
             <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
-                {isSuggested
-                  ? "Save this client to start adding design files."
-                  : "No designs yet. Click \"Add design\" to get started."}
+                {isSuggested ? "Save this client to start adding design files." : (
+                  <button
+                    type="button"
+                    onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
+                    className="text-[var(--brand-700)] hover:underline"
+                  >
+                    + Add your first design
+                  </button>
+                )}
               </p>
             </div>
           ) : (
