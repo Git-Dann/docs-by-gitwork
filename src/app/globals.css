@@ -565,6 +565,7 @@ h2, h3, h4, h5 {
   }
 
   .app-select,
+  select.app-input,
   .app-select-compact,
   .proposal-form-theme select {
     appearance: none;
@@ -575,16 +576,17 @@ h2, h3, h4, h5 {
   }
 
   .app-select,
+  select.app-input,
   .proposal-form-theme select {
-    background-position: calc(100% - 14px) center;
+    background-position: calc(100% - 20px) center;
     background-size: 18px 18px;
-    padding-right: 42px;
+    padding-right: 48px;
   }
 
   .app-select-compact {
-    background-position: calc(100% - 12px) center;
+    background-position: calc(100% - 16px) center;
     background-size: 16px 16px;
-    padding-right: 36px;
+    padding-right: 40px;
   }
 
   .app-checkbox {
