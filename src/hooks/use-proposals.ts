@@ -62,6 +62,7 @@ export function useClientList(filters?: {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
+    staleTime: 30_000,
   });
 }
 

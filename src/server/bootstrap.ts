@@ -154,7 +154,16 @@ async function ensurePortalSchema() {
   }
 }
 
-export async function ensureBaseRecords() {
+type BaseRecords = Awaited<ReturnType<typeof _ensureBaseRecords>>;
+let baseRecordsCache: BaseRecords | null = null;
+
+export async function ensureBaseRecords(): Promise<BaseRecords> {
+  if (baseRecordsCache) return baseRecordsCache;
+  baseRecordsCache = await _ensureBaseRecords();
+  return baseRecordsCache;
+}
+
+async function _ensureBaseRecords() {
   await ensurePortalSchema();
 
   const user = await prisma.user.upsert({
