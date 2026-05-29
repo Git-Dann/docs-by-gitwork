@@ -883,6 +883,21 @@ export function SignaturesEditor({
 
   return (
     <div className="app-subtle-panel space-y-4 p-5">
+      {/* Explain the flow up front so operators don't expect the in-doc signature blocks to be
+          interactive. Actual signing runs through the right-rail Signatures tab → /sign/[token]. */}
+      <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--brand-200)]/30 px-4 py-3 text-sm leading-6 text-[var(--text-2)]">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+          How signing works
+        </p>
+        <p className="mt-1.5">
+          The blocks below are the <strong>layout</strong> &mdash; they appear on the rendered
+          document so signers can see who&rsquo;s expected to sign. To actually collect signatures,
+          open the <strong>Signatures</strong> tab on the right and click <em>Send for signature</em>.
+          Each signer gets a unique signing link (no email needed) and the audit trail is
+          captured on the Certificate of Completion.
+        </p>
+      </div>
+
       <div className="space-y-2">
         <FieldLabel>Introduction</FieldLabel>
         <textarea

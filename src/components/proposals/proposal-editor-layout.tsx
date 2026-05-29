@@ -34,7 +34,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
@@ -183,6 +183,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
   /** P5.17 — outline drawer toggle on < xl screens. */
   const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
+
+  // Scroll-position preservation when switching active section. We capture window.scrollY in
+  // a ref *before* setActiveSectionId fires, then a useLayoutEffect restores it on the next
+  // paint so React's section-editor swap doesn't yank the page back to the top.
+  const scrollRestoreRef = useRef<number | null>(null);
+  const selectSection = useCallback((id: string) => {
+    scrollRestoreRef.current = typeof window !== "undefined" ? window.scrollY : null;
+    setActiveSectionId(id);
+  }, []);
+  useLayoutEffect(() => {
+    if (scrollRestoreRef.current != null && typeof window !== "undefined") {
+      window.scrollTo({ top: scrollRestoreRef.current, behavior: "instant" as ScrollBehavior });
+      scrollRestoreRef.current = null;
+    }
+  }, [activeSectionId]);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
@@ -838,7 +853,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               sections={sectionEntries}
               activeId={activeEntry?.id ?? null}
               editable
-              onSelect={(id) => setActiveSectionId(id)}
+              onSelect={(id) => selectSection(id)}
               onInsertAt={(index) => setPaletteInsertAt(index)}
               onDeleteSection={handleDeleteSection}
               onReorder={updateSectionOrder}
@@ -886,7 +901,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     activeId={activeEntry?.id ?? null}
                     editable
                     onSelect={(id) => {
-                      setActiveSectionId(id);
+                      selectSection(id);
                       setMobileOutlineOpen(false);
                     }}
                     onInsertAt={(index) => {

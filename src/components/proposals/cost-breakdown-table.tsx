@@ -657,26 +657,26 @@ export function CostBreakdownTable({
             </colgroup>
             <thead>
               <tr>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   People
                 </th>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Tech Stack
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
                   <span className="block">Months</span>
                   <span className="block">Rqd.</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
                   <span className="block">Day</span>
                   <span className="block">Rate</span>
                   <span className="block">({currencySymbol(value.currency)})</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-xs font-semibold leading-[15px] text-[var(--text-4)]">
                   <span className="block">Monthly</span>
                   <span className="block">Cost ({currencySymbol(value.currency)})</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3" />
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -811,32 +811,32 @@ export function CostBreakdownTable({
             </colgroup>
             <thead>
               <tr>
-                <th className="bg-[var(--surface-1)] px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Phase
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Duration
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
                   <span className="block">Total</span>
                   <span className="block">Cost</span>
                   <span className="block">({currencySymbol(value.currency)})</span>
                   <span className="block">(Excl. VAT)</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Milestone
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-4)]">
                   Timing
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-xs font-semibold text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-xs font-semibold text-[var(--text-4)]">
                   Payment %
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
+                <th className="px-4 py-3 text-center text-[10px] font-semibold leading-[14px] text-[var(--text-4)]">
                   <span className="block">Amount ({currencySymbol(value.currency)})</span>
                   <span className="block">(Excl. VAT)</span>
                 </th>
-                <th className="bg-[var(--surface-1)] px-4 py-3" />
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -1108,19 +1108,23 @@ function TechStackPreview({
     return <span className="text-sm text-[var(--text-4)]">No stack set</span>;
   }
 
+  // Keep the chip row on a single line. We show the first 1–2 chips (greedy: 2 if both fit
+  // visually, 1 + "..." otherwise) and let the Tooltip surface the full list on hover.
+  // `flex-nowrap + overflow-hidden` clips anything past the cell width; the trailing "+N"
+  // pill replaces "..." with the actual hidden count so operators see how many they're missing.
   const visibleStacks = stacks.slice(0, 2);
-  const hiddenStacks = stacks.slice(2);
+  const hiddenCount = Math.max(stacks.length - visibleStacks.length, 0);
 
   const content = (
-    <span className="inline-flex max-w-[182px] flex-wrap gap-1.5">
+    <span className="inline-flex max-w-[182px] flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap">
       {visibleStacks.map((stack) => (
         <StackBadge key={stack} label={stack} />
       ))}
-      {hiddenStacks.length ? <StackBadge label="..." /> : null}
+      {hiddenCount > 0 ? <StackBadge label={`+${hiddenCount}`} /> : null}
     </span>
   );
 
-  return hiddenStacks.length ? (
+  return stacks.length > visibleStacks.length ? (
     <Tooltip label={stacks.join(", ")}>
       <span>{content}</span>
     </Tooltip>
@@ -1139,7 +1143,7 @@ function StackBadge({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
+        "inline-flex min-h-6 max-w-[88px] shrink items-center truncate rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
         tone,
       )}
     >

@@ -33,9 +33,11 @@ export const objectivesSection = defineSection<ObjectivesSectionData>({
             className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5"
           >
             <div className="flex items-start gap-4">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] bg-[var(--surface-brand)] text-[var(--brand-700)]">
-                <Icon className="h-5 w-5" />
-              </span>
+              {Icon ? (
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-[var(--brand-700)]">
+                  <Icon className="h-5 w-5" />
+                </span>
+              ) : null}
               <div className="min-w-0">
                 <p className="text-base font-semibold text-[var(--text-1)]">{item.title}</p>
                 <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{item.description}</p>

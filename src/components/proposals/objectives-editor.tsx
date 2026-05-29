@@ -2,7 +2,7 @@
 
 import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { IconSelect, getObjectiveIcon } from "@/components/proposals/icon-select";
+import { IconSelect } from "@/components/proposals/icon-select";
 import type { ObjectiveItem } from "@/types/proposal";
 
 export function ObjectivesEditor({
@@ -98,31 +98,19 @@ export function ObjectivesEditor({
                 </div>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-[var(--text-2)]">Icon</span>
-                  <IconSelect
-                    value={item.icon}
-                    onChange={(icon) =>
-                      onChange(
-                        safeItems.map((entry, entryIndex) =>
-                          entryIndex === index ? { ...entry, icon } : entry,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-
-                <div className="flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3 text-sm text-[var(--text-3)]">
-                  {(() => {
-                    const SelectedIcon = getObjectiveIcon(item.icon);
-                    return <SelectedIcon className="h-4 w-4 text-[var(--brand-600)]" />;
-                  })()}
-                  <span>
-                    Preview icon: <span className="font-medium text-[var(--text-2)]">{item.icon || "sparkles"}</span>
-                  </span>
-                </div>
-              </div>
+              <label className="block space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Icon (optional)</span>
+                <IconSelect
+                  value={item.icon}
+                  onChange={(icon) =>
+                    onChange(
+                      safeItems.map((entry, entryIndex) =>
+                        entryIndex === index ? { ...entry, icon } : entry,
+                      ),
+                    )
+                  }
+                />
+              </label>
             </article>
           ))}
         </div>
