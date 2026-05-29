@@ -28,7 +28,10 @@ export function useAccount() {
       const res = await apiFetch<{ account: AccountProfile }>("/api/account");
       return res.account;
     },
-    staleTime: 30_000,
+    // 5 min cache — most pages share the QueryClient, so navigation reuses this aggressively
+    // and we never re-fetch unless the user pauses for ages or explicitly invalidates.
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

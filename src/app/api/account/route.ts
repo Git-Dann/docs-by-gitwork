@@ -96,8 +96,11 @@ export async function GET() {
   }
 }
 
+// Avatar URLs can be either a remote URL (Google photo) or a base64 data URL coming from the
+// ImagePicker. We allow up to ~8MB encoded so even chunky uploads round-trip. Stored on the
+// User row — eventual move to an object-storage upload pipeline can shrink this back down.
 const patchSchema = z.object({
-  avatarUrl: z.string().trim().max(2048).optional(),
+  avatarUrl: z.string().trim().max(8_000_000).optional(),
 });
 
 export async function PATCH(request: NextRequest) {

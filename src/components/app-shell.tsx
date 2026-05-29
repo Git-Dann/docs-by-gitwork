@@ -20,8 +20,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
-// Sidebar identity comes straight from the NextAuth session — fast, no extra round-trip.
-// Custom avatars set in account settings are shown only on the account page itself for now.
+import { useAccount } from "@/hooks/use-account";
 
 type NavItem = {
   href?: string;
@@ -352,14 +351,16 @@ function Avatar({ name, url }: { name: string; url: string }) {
 
 function ProfileMenu() {
   const { data: session } = useSession();
+  const accountQuery = useAccount();
+  const account = accountQuery.data;
   const [open, setOpen] = useState(false);
 
-  // Identity comes from the live Google session — it's already loaded by SessionProvider, no
-  // extra round-trip needed. Custom avatars set in account settings live there for now; we'll
-  // surface them here once name/avatar are persisted into the session JWT on update.
+  // Identity reads from the live Google session by default. The account hook supplies the
+  // user's custom avatar (if they've uploaded one in Account settings); React Query caches
+  // it aggressively so it's a once-per-session fetch in practice.
   const displayName = session?.user?.name || "";
   const displayEmail = session?.user?.email || "";
-  const displayAvatar = session?.user?.image || "";
+  const displayAvatar = account?.avatarUrl || session?.user?.image || "";
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

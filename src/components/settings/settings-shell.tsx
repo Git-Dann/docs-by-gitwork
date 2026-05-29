@@ -11,7 +11,6 @@ import {
   Cog6ToothIcon,
   CommandLineIcon,
   CpuChipIcon,
-  CreditCardIcon,
   DocumentDuplicateIcon,
   PaintBrushIcon,
   PencilSquareIcon,
@@ -107,13 +106,9 @@ const GROUPS: SectionGroup[] = [
         icon: DocumentDuplicateIcon,
         adminOnly: true,
       },
-      {
-        id: "rate-card",
-        label: "Rate card",
-        description: "Team rates for costing.",
-        icon: CreditCardIcon,
-        adminOnly: true,
-      },
+      // Rate card management isn't surfaced in the Settings nav anymore — it belongs alongside
+      // the proposal builder where it's actually consumed. The route at
+      // /app/settings/rate-card still resolves for legacy bookmarks.
       {
         id: "team",
         label: "Team",
