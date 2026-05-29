@@ -92,7 +92,8 @@ export async function PUT(request: NextRequest) {
   try {
     const body = updateSchema.parse(await request.json());
 
-    const data: Record<string, string> = {};
+    // Build update payload with explicit Prisma-typed fields only
+    const data: Parameters<typeof prisma.workspace.updateMany>[0]["data"] = {};
     if (body.aiProvider) data.aiProvider = body.aiProvider;
     if (body.anthropicApiKey) data.anthropicApiKey = body.anthropicApiKey;
     if (body.anthropicModel) data.anthropicModel = body.anthropicModel;
@@ -108,15 +109,14 @@ export async function PUT(request: NextRequest) {
     if (body.googleCalendarId) data.googleCalendarId = body.googleCalendarId;
     if (body.slackBotToken) data.slackBotToken = body.slackBotToken;
     if (body.slackSummaryChannelId) data.slackSummaryChannelId = body.slackSummaryChannelId;
+    // slackChannels is Json — assign directly so Prisma stores it as JSON
+    if (body.slackChannels !== undefined) data.slackChannels = body.slackChannels;
 
-    const fullData: Record<string, unknown> = { ...data };
-    if (body.slackChannels !== undefined) fullData.slackChannels = body.slackChannels;
-
-    if (Object.keys(fullData).length === 0) return apiOk({ saved: false });
+    if (Object.keys(data).length === 0) return apiOk({ saved: false });
 
     await prisma.workspace.updateMany({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      data: fullData,
+      data,
     });
 
     return apiOk({ saved: true });

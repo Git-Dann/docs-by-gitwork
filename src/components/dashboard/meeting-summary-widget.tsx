@@ -172,13 +172,12 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      void handleSummarise(ev);
+                      setSelected(ev.id); // open panel so channel picker is visible
                     }}
-                    disabled={generating === ev.id}
-                    className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--accent)] hover:underline disabled:opacity-50"
+                    className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--accent)] hover:underline"
                   >
                     <SparklesIcon className="h-2.5 w-2.5" />
-                    {generating === ev.id ? "Generating…" : "Summarise"}
+                    Summarise
                   </button>
                 ) : (
                   <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600">

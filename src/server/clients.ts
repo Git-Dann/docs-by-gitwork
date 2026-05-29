@@ -182,8 +182,16 @@ function mergeClients(
     createdAt: Date;
     updatedAt: Date;
   }>,
+  hiddenSlugs = new Set<string>(),
 ): ClientAggregateRecord[] {
   const merged = summarizeSuggestedClients(proposals);
+
+  // Suppress SUGGESTED clients that have been hidden via the hidden flag
+  for (const [key, client] of [...merged.entries()]) {
+    if (hiddenSlugs.has(client.slug)) {
+      merged.delete(key);
+    }
+  }
 
   for (const manualClient of manualClients) {
     const key = getClientLookupKey(manualClient.name);
@@ -254,7 +262,7 @@ function serializeClientPlatform(platform: {
 async function loadClientCollections() {
   const { workspace } = await ensureBaseRecords();
 
-  const [manualClients, proposals] = await Promise.all([
+  const [allClients, proposals] = await Promise.all([
     workspaceClients.findMany({
       where: {
         workspaceId: workspace.id,
@@ -279,7 +287,11 @@ async function loadClientCollections() {
     }),
   ]);
 
-  return { workspace, manualClients: manualClients as ManualClientRecord[], proposals };
+  const typedClients = allClients as Array<ManualClientRecord & { hidden: boolean }>;
+  const manualClients = typedClients.filter((c) => !c.hidden) as ManualClientRecord[];
+  const hiddenSlugs = new Set(typedClients.filter((c) => c.hidden).map((c) => c.slug));
+
+  return { workspace, manualClients, hiddenSlugs, proposals };
 }
 
 async function assertClientSlugAvailable(
@@ -304,10 +316,10 @@ async function assertClientSlugAvailable(
 export async function listDerivedClients(filters?: {
   search?: string;
 }): Promise<{ clients: ClientListItem[] }> {
-  const { manualClients, proposals } = await loadClientCollections();
+  const { manualClients, hiddenSlugs, proposals } = await loadClientCollections();
   const search = filters?.search?.trim().toLowerCase() ?? "";
 
-  const clients = mergeClients(manualClients, proposals)
+  const clients = mergeClients(manualClients, proposals, hiddenSlugs)
     .filter((client) => {
       if (!search) {
         return true;
@@ -364,8 +376,8 @@ export async function updateClientRecord(
     logoUrl?: string;
   } & ClientContactInput,
 ): Promise<ClientListItem | null> {
-  const { workspace, manualClients, proposals } = await loadClientCollections();
-  const mergedClients = mergeClients(manualClients, proposals);
+  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections();
+  const mergedClients = mergeClients(manualClients, proposals, hiddenSlugs);
   const current = mergedClients.find((client) => client.slug === slug);
 
   if (!current) {
@@ -441,6 +453,7 @@ export async function updateClientRecord(
           },
         ],
     proposals,
+    hiddenSlugs,
   );
 
   return toClientListItem(
@@ -458,27 +471,41 @@ export async function updateClientRecord(
 }
 
 export async function deleteClientRecord(slug: string): Promise<boolean> {
-  const { workspace } = await loadClientCollections();
+  const { workspace, proposals } = await loadClientCollections();
 
-  const existing = await workspaceClients.findUnique({
-    where: {
-      workspaceId_slug: {
-        workspaceId: workspace.id,
-        slug,
-      },
-    },
+  // Check for an existing DB row (may be MANUAL or already a hidden suppression record)
+  const existing = await workspaceClients.findFirst({
+    where: { workspaceId: workspace.id, slug },
   });
 
-  if (!existing) {
+  if (existing) {
+    if (!(existing as typeof existing & { hidden: boolean }).hidden) {
+      await workspaceClients.update({
+        where: { id: existing.id },
+        data: { hidden: true },
+      });
+    }
+    return true;
+  }
+
+  // SUGGESTED client — no DB row exists; create a hidden suppression record so it
+  // doesn't re-surface from proposal clientName references.
+  const matchingProposal = proposals.find(
+    (p) => p.clientName && slugifyClientName(normalizeClientName(p.clientName)) === slug,
+  );
+
+  if (!matchingProposal) {
     return false;
   }
 
-  await workspaceClients.delete({
-    where: {
-      workspaceId_slug: {
-        workspaceId: workspace.id,
-        slug,
-      },
+  const clientName = normalizeClientName(matchingProposal.clientName!);
+
+  await workspaceClients.create({
+    data: {
+      workspaceId: workspace.id,
+      name: clientName,
+      slug,
+      hidden: true,
     },
   });
 
@@ -486,7 +513,7 @@ export async function deleteClientRecord(slug: string): Promise<boolean> {
 }
 
 export async function getDerivedClientDetail(slug: string): Promise<ClientDetailRecord | null> {
-  const { workspace, manualClients } = await loadClientCollections();
+  const { workspace, manualClients, hiddenSlugs } = await loadClientCollections();
 
   const proposals = await prisma.document.findMany({
     where: {
@@ -502,7 +529,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     },
   });
 
-  const client = mergeClients(manualClients, proposals).find((entry) => entry.slug === slug);
+  const client = mergeClients(manualClients, proposals, hiddenSlugs).find((entry) => entry.slug === slug);
   if (!client) {
     return null;
   }

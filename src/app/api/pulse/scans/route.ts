@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
+import { getRequestUser } from "@/server/auth/request-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -28,6 +29,11 @@ export async function POST(request: NextRequest) {
         ? body.inputDescription
         : body.projectDescription ?? body.inputDescription;
 
+    // Mobile JWT callers have a real userId — attribute the scan to them so
+    // completion push targets only their devices. Web/API_KEY callers are
+    // attributed to null and notify the whole workspace.
+    const requestUser = getRequestUser(request);
+
     const { scan, aiConfig } = await createPulseScanRecord({
       projectName: body.projectName,
       inputType: body.inputType,
@@ -38,6 +44,7 @@ export async function POST(request: NextRequest) {
       clientId: body.clientId,
       aiProvider: body.aiProvider,
       competitorUrls: body.competitorUrls,
+      triggeredByUserId: requestUser?.id ?? null,
     });
 
     after(() =>

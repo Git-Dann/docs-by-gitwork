@@ -16,6 +16,10 @@ import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
+import {
+  sendPulseScanCompletedPush,
+  sendPulseScanFailedPush,
+} from "@/server/push/notifications";
 import type {
   PulseScanRecord,
   PulseScanListItem,
@@ -252,6 +256,10 @@ export async function createPulseScanRecord(input: {
   clientId?: string;
   aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   competitorUrls?: string[];
+  /** User who initiated this scan — null for monitor/webhook triggers. Used by
+   *  push to route the completion notification to a single user vs. the whole
+   *  workspace. */
+  triggeredByUserId?: string | null;
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
   const { workspace } = await ensureBaseRecords();
   // Use only what the workspace has explicitly configured — no silent fallbacks.
@@ -290,6 +298,7 @@ export async function createPulseScanRecord(input: {
     data: {
       workspaceId: workspace.id,
       clientId: input.clientId ?? null,
+      triggeredByUserId: input.triggeredByUserId ?? null,
       projectName: input.projectName,
       inputType: input.inputType,
       inputUrl: input.inputUrl ?? null,
@@ -804,6 +813,37 @@ export async function runAnalysis(
         agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Push notification — best-effort, must not throw or the scan write looks
+    // failed to the caller. Audience is the triggering user (manual scan) or
+    // the whole workspace (monitor/webhook scan).
+    try {
+      const finalScan = await prisma.pulseScan.findUnique({
+        where: { id: scanId },
+        select: {
+          id: true,
+          workspaceId: true,
+          triggeredByUserId: true,
+          projectName: true,
+          healthScore: true,
+          previousHealthScore: true,
+          checks: { where: { status: "FAIL" }, select: { id: true } },
+        },
+      });
+      if (finalScan) {
+        await sendPulseScanCompletedPush({
+          scanId: finalScan.id,
+          workspaceId: finalScan.workspaceId,
+          triggeredByUserId: finalScan.triggeredByUserId,
+          projectName: finalScan.projectName,
+          healthScore: finalScan.healthScore,
+          previousHealthScore: finalScan.previousHealthScore,
+          failedCheckCount: finalScan.checks.length,
+        });
+      }
+    } catch (pushError) {
+      console.warn("[pulse] scan-completed push failed", pushError);
+    }
   } catch (error) {
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
     if (current?.status !== "RUNNING") return;
@@ -831,6 +871,31 @@ export async function runAnalysis(
         errorMessage: message,
       },
     });
+
+    // Push notification for scan failure — best-effort, same audience logic.
+    try {
+      const failedScan = await prisma.pulseScan.findUnique({
+        where: { id: scanId },
+        select: {
+          id: true,
+          workspaceId: true,
+          triggeredByUserId: true,
+          projectName: true,
+          errorMessage: true,
+        },
+      });
+      if (failedScan) {
+        await sendPulseScanFailedPush({
+          scanId: failedScan.id,
+          workspaceId: failedScan.workspaceId,
+          triggeredByUserId: failedScan.triggeredByUserId,
+          projectName: failedScan.projectName,
+          errorMessage: failedScan.errorMessage,
+        });
+      }
+    } catch (pushError) {
+      console.warn("[pulse] scan-failed push failed", pushError);
+    }
   }
 }
 

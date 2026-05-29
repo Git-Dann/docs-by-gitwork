@@ -136,6 +136,27 @@ model User {
   invitesAccepted  WorkspaceInvite[] @relation("InvitesAccepted")
   proofDocuments ProofDocument[]
   signatureRequestsCreated SignatureRequest[] @relation("SignatureRequestCreator")
+  deviceTokens     DeviceToken[]
+  triggeredPulseScans PulseScan[]    @relation("PulseScanTriggeredBy")
+}
+
+// APNs device registrations. One row per (user, device).
+// Push delivery: lookup by userId for personal scans, by workspaceId for monitor scans.
+model DeviceToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String   @unique         // APNs device token (hex)
+  platform    String                   // "ios" — leaves room for "android"/"web" later
+  environment String                   // "sandbox" | "production" — APNs gateway differs
+  appBuild    String?                  // CFBundleVersion at registration — useful for debugging
+  appVersion  String?                  // CFBundleShortVersionString
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime @default(now()) // bumped on every successful push send
+  failedAt    DateTime?                // set if APNs returns BadDeviceToken/Unregistered — soft delete
+
+  @@index([userId, environment])
+  @@index([token])
 }
 
 model Workspace {
@@ -602,6 +623,7 @@ model WorkspaceClient {
   primaryContactEmail  String?
   primaryContactPhone  String?
   googleDriveFolderUrl String?
+  hidden               Boolean          @default(false)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -934,6 +956,8 @@ model PulseScan {
   workspace           Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   clientId            String?
   client              WorkspaceClient?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  triggeredByUserId   String?            // null = monitor/webhook-triggered. Used by push to attribute scans to the user who started them.
+  triggeredByUser     User?              @relation("PulseScanTriggeredBy", fields: [triggeredByUserId], references: [id], onDelete: SetNull)
   projectName         String
   inputType           PulseScanInputType
   inputUrl            String?
