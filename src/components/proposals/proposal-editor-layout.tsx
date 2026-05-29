@@ -515,6 +515,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     });
   }
 
+  // P5.18 — surface the parent doc in the editor header so the link is visible at a glance.
+  // useDocumentRelations is cached, so the Linked-tab panel re-uses this query (no extra fetch).
+  // Declared before the early-returns to satisfy the rules-of-hooks linter.
+  const relations = useDocumentRelations(proposalId);
+  const parentDoc = relations.data?.parent ?? null;
+
   if (isPending) {
     return (
       <section className="app-card p-6">
@@ -530,11 +536,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       </section>
     );
   }
-
-  // P5.18 — surface the parent doc in the editor header so the link is visible at a glance.
-  // useDocumentRelations is cached, so the Linked-tab panel re-uses this query (no extra fetch).
-  const relations = useDocumentRelations(proposalId);
-  const parentDoc = relations.data?.parent ?? null;
 
   const saveTone =
     saveState === "saved"
