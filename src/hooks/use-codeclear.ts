@@ -13,6 +13,7 @@ import {
   getCodeClearStats,
   listCodeClearCandidates,
   listCodeClearGitHubRuns,
+  listTechStacks,
   runCodeClearGitHubAnalysis,
   setCandidateCurrentClient,
   updateCodeClearCandidate,
@@ -187,6 +188,14 @@ export function useCreatePlacement(candidateId: string | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
     },
+  });
+}
+
+export function useTechStacks() {
+  return useQuery({
+    queryKey: ["codeclear", "tech-stacks"],
+    queryFn: listTechStacks,
+    staleTime: 1000 * 60 * 5,
   });
 }
 

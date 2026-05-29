@@ -8,6 +8,7 @@ import {
   computeOverallScore,
   serializeCandidateDetails,
 } from "@/server/codeclear";
+import { deriveTier } from "@/server/codeclear-scoring";
 import { candidateScoreSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -85,10 +86,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       codeQuality,
       aiFluency,
       deliveryReadiness,
+      identityConfidence,
     });
     const verifiedAt = new Date();
     const validUntil = addDays(verifiedAt, 365);
     const nextStatus = existing.status === "PLACED" ? "PLACED" : "CODECLEAR_COMPLETE";
+    // Derived tier — kept in sync on the Candidate row for cheap reads / SQL filters.
+    const derivedTier = deriveTier(overallScore);
 
     await prisma.$transaction([
       prisma.codeClearScore.upsert({
@@ -130,6 +134,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         },
         data: {
           status: nextStatus,
+          // Persist the derived tier so list endpoints + filters can read it
+          // without recomputing on every row. The admin's manual override
+          // (tierManualOverride) is independent and stays whatever it was.
+          tier: derivedTier,
           ...(nextStatus === "CODECLEAR_COMPLETE"
             ? {
                 recheckDueAt: null,

@@ -12,6 +12,7 @@ import type {
   PipelineStatus,
 } from "@/types/codeclear";
 import { deriveCandidateAnalysisState } from "@/types/codeclear";
+import { computeOverallCalibre, effectiveTier } from "@/server/codeclear-scoring";
 
 type SeedCodeClearCandidate = {
   name: string;
@@ -99,24 +100,29 @@ export function clampScore(value: number | null | undefined) {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+/**
+ * Compatibility shim. Old callsites (apply-run route, score route, seed
+ * payloads) pass just the sub-scores; we forward to the new calibre module
+ * which can take identity confidence + red flags optionally.
+ *
+ * For the canonical scoring logic see src/server/codeclear-scoring.ts.
+ */
 export function computeOverallScore(values: {
   technicalDepth?: number | null;
   codeQuality?: number | null;
   aiFluency?: number | null;
   deliveryReadiness?: number | null;
+  identityConfidence?: IdentityConfidence | null;
+  redFlagsCount?: number;
 }) {
-  const metrics = [
-    values.technicalDepth,
-    values.codeQuality,
-    values.aiFluency,
-    values.deliveryReadiness,
-  ].filter((entry): entry is number => typeof entry === "number");
-
-  if (!metrics.length) {
-    return 0;
-  }
-
-  return Math.round(metrics.reduce((sum, value) => sum + clampScore(value), 0) / metrics.length);
+  return computeOverallCalibre({
+    technicalDepth: values.technicalDepth,
+    codeQuality: values.codeQuality,
+    aiFluency: values.aiFluency,
+    deliveryReadiness: values.deliveryReadiness,
+    identityConfidence: values.identityConfidence ?? "PENDING",
+    redFlagsCount: values.redFlagsCount,
+  });
 }
 
 function serializeScore(
@@ -262,6 +268,9 @@ export const codeClearDetailInclude = {
     },
     take: 8,
   },
+  checks: {
+    orderBy: [{ category: "asc" }, { sortOrder: "asc" }],
+  },
 } satisfies Prisma.CandidateInclude;
 
 export type CodeClearListCandidateRecord = Prisma.CandidateGetPayload<{
@@ -271,6 +280,73 @@ export type CodeClearListCandidateRecord = Prisma.CandidateGetPayload<{
 export type CodeClearDetailCandidateRecord = Prisma.CandidateGetPayload<{
   include: typeof codeClearDetailInclude;
 }>;
+
+/** Shape shared by both list and detail serializers. Keeps the new validation
+ *  fields in one place so we never miss one when adding to the other. */
+function commonCandidateFields(candidate: {
+  id: string;
+  workspaceId: string;
+  rateCardPersonId: string | null;
+  name: string;
+  githubHandle: string;
+  email: string | null;
+  primaryStack: string;
+  techStacks: string[];
+  signalSources: string[];
+  location: string | null;
+  bio: string | null;
+  status: PipelineStatus;
+  tier: "TIER_1" | "TIER_2" | "TIER_3";
+  tierManualOverride: "TIER_1" | "TIER_2" | "TIER_3" | null;
+  origin: "INTERNAL" | "EXTERNAL";
+  published: boolean;
+  avatarUrl: string | null;
+  linkedinUrl: string | null;
+  cvUrl: string | null;
+  portfolioUrl: string | null;
+  yearsExperience: number | null;
+  hourlyRate: Prisma.Decimal | null;
+  currency: string | null;
+  timezone: string | null;
+  availability: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
+  recheckDueAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: candidate.id,
+    workspaceId: candidate.workspaceId,
+    rateCardPersonId: candidate.rateCardPersonId ?? null,
+    name: candidate.name,
+    githubHandle: candidate.githubHandle,
+    email: candidate.email ?? null,
+    primaryStack: candidate.primaryStack,
+    techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
+    signalSources: candidate.signalSources.length
+      ? (candidate.signalSources as CandidateSignalSource[])
+      : ["GITHUB" as CandidateSignalSource],
+    location: candidate.location ?? null,
+    bio: candidate.bio ?? null,
+    status: candidate.status,
+    tier: candidate.tier,
+    tierManualOverride: candidate.tierManualOverride ?? null,
+    effectiveTier: effectiveTier(candidate.tier, candidate.tierManualOverride),
+    origin: candidate.origin,
+    published: candidate.published,
+    avatarUrl: candidate.avatarUrl ?? null,
+    linkedinUrl: candidate.linkedinUrl ?? null,
+    cvUrl: candidate.cvUrl ?? null,
+    portfolioUrl: candidate.portfolioUrl ?? null,
+    yearsExperience: candidate.yearsExperience ?? null,
+    hourlyRate: candidate.hourlyRate ? Number(candidate.hourlyRate.toString()) : null,
+    currency: candidate.currency ?? null,
+    timezone: candidate.timezone ?? null,
+    availability: candidate.availability ?? null,
+    recheckDueAt: toIsoString(candidate.recheckDueAt),
+    createdAt: candidate.createdAt.toISOString(),
+    updatedAt: candidate.updatedAt.toISOString(),
+  };
+}
 
 export function serializeCandidateListItem(
   candidate: CodeClearListCandidateRecord,
@@ -295,25 +371,7 @@ export function serializeCandidateListItem(
       : null;
 
   return {
-    id: candidate.id,
-    workspaceId: candidate.workspaceId,
-    rateCardPersonId: candidate.rateCardPersonId ?? null,
-    name: candidate.name,
-    githubHandle: candidate.githubHandle,
-    email: candidate.email ?? null,
-    primaryStack: candidate.primaryStack,
-    techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
-    signalSources: candidate.signalSources.length
-      ? (candidate.signalSources as CandidateSignalSource[])
-      : ["GITHUB"],
-    location: candidate.location ?? null,
-    bio: candidate.bio ?? null,
-    status: candidate.status,
-    tier: candidate.tier,
-    avatarUrl: candidate.avatarUrl ?? null,
-    recheckDueAt: toIsoString(candidate.recheckDueAt),
-    createdAt: candidate.createdAt.toISOString(),
-    updatedAt: candidate.updatedAt.toISOString(),
+    ...commonCandidateFields(candidate),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -335,25 +393,7 @@ export function serializeCandidateDetails(
     : null;
 
   return {
-    id: candidate.id,
-    workspaceId: candidate.workspaceId,
-    rateCardPersonId: candidate.rateCardPersonId ?? null,
-    name: candidate.name,
-    githubHandle: candidate.githubHandle,
-    email: candidate.email ?? null,
-    primaryStack: candidate.primaryStack,
-    techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
-    signalSources: candidate.signalSources.length
-      ? (candidate.signalSources as CandidateSignalSource[])
-      : ["GITHUB"],
-    location: candidate.location ?? null,
-    bio: candidate.bio ?? null,
-    status: candidate.status,
-    tier: candidate.tier,
-    avatarUrl: candidate.avatarUrl ?? null,
-    recheckDueAt: toIsoString(candidate.recheckDueAt),
-    createdAt: candidate.createdAt.toISOString(),
-    updatedAt: candidate.updatedAt.toISOString(),
+    ...commonCandidateFields(candidate),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -376,6 +416,20 @@ export function serializeCandidateDetails(
       ...entry,
       metadata: entry.metadata,
       createdAt: entry.createdAt.toISOString(),
+    })),
+    checks: candidate.checks.map((check) => ({
+      id: check.id,
+      candidateId: check.candidateId,
+      runId: check.runId,
+      category: check.category,
+      checkKey: check.checkKey,
+      label: check.label,
+      status: check.status,
+      detail: check.detail,
+      evidence: check.evidence,
+      weight: check.weight,
+      sortOrder: check.sortOrder,
+      createdAt: check.createdAt.toISOString(),
     })),
     analysisState: deriveCandidateAnalysisState(latestGitHubAnalysis, scoreDraft, score),
   };

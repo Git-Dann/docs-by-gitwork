@@ -408,3 +408,148 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     }),
   };
 }
+
+/**
+ * Translates the metrics + redFlags from an analysis run into a row-per-finding
+ * shape for the CodeClearCheck table. Mirrors Pulse's PulseScanCheck.
+ *
+ * This is what gives the calibre score "receipts" — every score line has
+ * matching PASS/WARN/FAIL evidence in the drawer.
+ *
+ * Categories follow the validation lens:
+ *   - GitHub Activity     — recency, sample size, commit cadence
+ *   - Code Quality        — docs, tests, CI, lint, manifests
+ *   - Delivery Signals    — recent repo ratio, manifest coverage
+ *   - AI Fluency          — placeholder; only populated by later runs that
+ *                           introspect AI/Copilot/LLM usage signals
+ *   - Identity & References — populated by external identity checks later
+ */
+export function buildChecksFromAnalysis(args: {
+  metrics: GitHubAnalysisMetrics;
+  redFlags: string[];
+}): Array<{
+  category: string;
+  checkKey: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+  detail: string | null;
+  weight: number;
+  sortOrder: number;
+}> {
+  const { metrics } = args;
+
+  // Threshold helper. PASS/WARN/FAIL banding matches Pulse conventions.
+  const band = (
+    value: number,
+    pass: number,
+    warn: number,
+  ): "PASS" | "WARN" | "FAIL" => (value >= pass ? "PASS" : value >= warn ? "WARN" : "FAIL");
+
+  const checks: Array<{
+    category: string;
+    checkKey: string;
+    label: string;
+    status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+    detail: string | null;
+    weight: number;
+    sortOrder: number;
+  }> = [
+    // GitHub Activity
+    {
+      category: "GitHub Activity",
+      checkKey: "public_repo_sample",
+      label: "Public repo sample size",
+      status: band(metrics.selectedRepoCount, 5, 2),
+      detail: `${metrics.selectedRepoCount} repositories sampled out of ${metrics.publicRepoCount} public`,
+      weight: 1,
+      sortOrder: 10,
+    },
+    {
+      category: "GitHub Activity",
+      checkKey: "recent_activity",
+      label: "Recent activity",
+      status: band(metrics.recentRepoRatio, 50, 25),
+      detail: `${metrics.recentRepoRatio}% of sampled repos have activity in the last 90 days`,
+      weight: 1,
+      sortOrder: 11,
+    },
+    {
+      category: "GitHub Activity",
+      checkKey: "commit_cadence",
+      label: "Commit cadence",
+      status: band(metrics.averageRecentCommitCount, 10, 3),
+      detail: `${metrics.averageRecentCommitCount} commits per repo on average (recent)`,
+      weight: 1,
+      sortOrder: 12,
+    },
+    {
+      category: "GitHub Activity",
+      checkKey: "language_breadth",
+      label: "Language breadth",
+      status: band(metrics.languageCount, 3, 2),
+      detail: `${metrics.languageCount} languages across sampled repos`,
+      weight: 1,
+      sortOrder: 13,
+    },
+
+    // Code Quality
+    {
+      category: "Code Quality",
+      checkKey: "docs_coverage",
+      label: "Documentation coverage",
+      status: band(metrics.docsCoverage, 60, 30),
+      detail: `${metrics.docsCoverage}% of sampled repos have a README`,
+      weight: 1,
+      sortOrder: 20,
+    },
+    {
+      category: "Code Quality",
+      checkKey: "tests_coverage",
+      label: "Test coverage signal",
+      status: band(metrics.testsCoverage, 50, 25),
+      detail: `${metrics.testsCoverage}% of sampled repos contain a test folder`,
+      weight: 2,
+      sortOrder: 21,
+    },
+    {
+      category: "Code Quality",
+      checkKey: "ci_coverage",
+      label: "CI present",
+      status: band(metrics.ciCoverage, 50, 25),
+      detail: `${metrics.ciCoverage}% of sampled repos have a CI workflow file`,
+      weight: 2,
+      sortOrder: 22,
+    },
+    {
+      category: "Code Quality",
+      checkKey: "lint_coverage",
+      label: "Linter configured",
+      status: band(metrics.lintCoverage, 50, 25),
+      detail: `${metrics.lintCoverage}% of sampled repos have a linter config`,
+      weight: 1,
+      sortOrder: 23,
+    },
+
+    // Delivery Signals
+    {
+      category: "Delivery Signals",
+      checkKey: "manifest_coverage",
+      label: "Package manifest present",
+      status: band(metrics.manifestCoverage, 70, 40),
+      detail: `${metrics.manifestCoverage}% of sampled repos have a package manifest`,
+      weight: 2,
+      sortOrder: 30,
+    },
+    {
+      category: "Delivery Signals",
+      checkKey: "average_repo_health",
+      label: "Average repository health",
+      status: band(metrics.averageHealthScore, 70, 40),
+      detail: `Average repo health score: ${metrics.averageHealthScore}/100`,
+      weight: 2,
+      sortOrder: 31,
+    },
+  ];
+
+  return checks;
+}

@@ -9,13 +9,13 @@ datasource db {
 }
 
 enum DocumentType {
-  PROPOSAL  // Project pitch / scope / costing
-  SLA       // Service Level Agreement
-  SOW       // Statement of Work (typically under a parent MSA)
-  MSA       // Master Service Agreement
-  NDA       // Non-Disclosure Agreement
-  CO        // Change Order (against a SOW)
-  OTHER     // Catch-all for one-offs without a dedicated template yet
+  PROPOSAL // Project pitch / scope / costing
+  SLA // Service Level Agreement
+  SOW // Statement of Work (typically under a parent MSA)
+  MSA // Master Service Agreement
+  NDA // Non-Disclosure Agreement
+  CO // Change Order (against a SOW)
+  OTHER // Catch-all for one-offs without a dedicated template yet
 }
 
 enum DocumentStatus {
@@ -113,6 +113,29 @@ enum CodeClearTier {
   TIER_3
 }
 
+/// Candidate origin — gates Gitwork-team devs from externally sourced devs that
+/// will eventually live in a marketplace catalogue. Defaults to INTERNAL so the
+/// existing 21 devs auto-tag correctly on migration.
+enum CandidateOrigin {
+  INTERNAL
+  EXTERNAL
+}
+
+enum CandidateAvailability {
+  AVAILABLE
+  ENGAGED
+  UNAVAILABLE
+}
+
+/// Mirrors PulseCheckStatus — the validation engine and the project-health engine
+/// share the same PASS/WARN/FAIL/SKIPPED vocabulary.
+enum CodeClearCheckStatus {
+  PASS
+  WARN
+  FAIL
+  SKIPPED
+}
+
 enum GitHubAnalysisStatus {
   RUNNING
   COMPLETED
@@ -124,101 +147,106 @@ enum GitHubAnalysisTriggerSource {
 }
 
 model User {
-  id            String            @id @default(cuid())
-  email         String            @unique
-  name          String?
-  avatarUrl     String?
-  passwordHash  String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  memberships      WorkspaceMember[]
-  documents        Document[]        @relation("DocumentOwner")
-  invitesSent      WorkspaceInvite[] @relation("InvitesSent")
-  invitesAccepted  WorkspaceInvite[] @relation("InvitesAccepted")
-  proofDocuments ProofDocument[]
-  signatureRequestsCreated SignatureRequest[] @relation("SignatureRequestCreator")
-  deviceTokens     DeviceToken[]
-  triggeredPulseScans PulseScan[]    @relation("PulseScanTriggeredBy")
-  notificationPreference NotificationPreference?
-  auditLogEntries  AuditLog[]
+  id                       String                  @id @default(cuid())
+  email                    String                  @unique
+  name                     String?
+  avatarUrl                String?
+  passwordHash             String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  memberships              WorkspaceMember[]
+  documents                Document[]              @relation("DocumentOwner")
+  invitesSent              WorkspaceInvite[]       @relation("InvitesSent")
+  invitesAccepted          WorkspaceInvite[]       @relation("InvitesAccepted")
+  proofDocuments           ProofDocument[]
+  signatureRequestsCreated SignatureRequest[]      @relation("SignatureRequestCreator")
+  deviceTokens             DeviceToken[]
+  triggeredPulseScans      PulseScan[]             @relation("PulseScanTriggeredBy")
+  notificationPreference   NotificationPreference?
+  auditLogEntries          AuditLog[]
 }
 
 // APNs device registrations. One row per (user, device).
 // Push delivery: lookup by userId for personal scans, by workspaceId for monitor scans.
 model DeviceToken {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token       String   @unique         // APNs device token (hex)
-  platform    String                   // "ios" — leaves room for "android"/"web" later
-  environment String                   // "sandbox" | "production" — APNs gateway differs
-  appBuild    String?                  // CFBundleVersion at registration — useful for debugging
-  appVersion  String?                  // CFBundleShortVersionString
-  createdAt   DateTime @default(now())
-  lastUsedAt  DateTime @default(now()) // bumped on every successful push send
-  failedAt    DateTime?                // set if APNs returns BadDeviceToken/Unregistered — soft delete
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String    @unique // APNs device token (hex)
+  platform    String // "ios" — leaves room for "android"/"web" later
+  environment String // "sandbox" | "production" — APNs gateway differs
+  appBuild    String? // CFBundleVersion at registration — useful for debugging
+  appVersion  String? // CFBundleShortVersionString
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime  @default(now()) // bumped on every successful push send
+  failedAt    DateTime? // set if APNs returns BadDeviceToken/Unregistered — soft delete
 
   @@index([userId, environment])
   @@index([token])
 }
 
 model Workspace {
-  id              String            @id @default(cuid())
-  name            String
-  slug            String            @unique
-  anthropicApiKey String?
-  anthropicModel  String?
-  aiProvider      String   @default("ANTHROPIC")
-  openaiApiKey    String?
-  openaiModel     String?
-  geminiApiKey    String?
-  geminiModel     String?
-  localLlmUrl     String?
-  localLlmModel   String?
-  externalApiKey            String?
-  googleServiceAccountJson  String?
-  googleSubjectEmail        String?
-  googleCalendarId          String?
-  googleOAuthRefreshToken   String?
-  slackBotToken             String?
-  slackSummaryChannelId     String?   // legacy single-channel — kept for migration
-  slackChannels             Json?     // Array<{ id: string; name: string }>
-  channelRoutes             Json?     // { "pulse.alert": "C123", "care.escalation": "C456", ... }
-  emailProvider             String?   // "RESEND" | "SMTP" | null
-  emailApiKey               String?   // Resend API key when emailProvider = RESEND
-  emailFromAddress          String?
-  emailFromName             String?
-  emailReplyTo              String?
-  emailSmtpHost             String?
-  emailSmtpPort             Int?
-  emailSmtpUser             String?
-  emailSmtpPassword         String?
-  branding                  Json?             // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
-  proposalDefaults          Json?             // preparedBy, team, contactDetails, objectiveSnippets
+  id                       String                     @id @default(cuid())
+  name                     String
+  slug                     String                     @unique
+  anthropicApiKey          String?
+  anthropicModel           String?
+  aiProvider               String                     @default("ANTHROPIC")
+  openaiApiKey             String?
+  openaiModel              String?
+  geminiApiKey             String?
+  geminiModel              String?
+  localLlmUrl              String?
+  localLlmModel            String?
+  externalApiKey           String?
+  googleServiceAccountJson String?
+  googleSubjectEmail       String?
+  googleCalendarId         String?
+  googleOAuthRefreshToken  String?
+  slackBotToken            String?
+  slackSummaryChannelId    String? // legacy single-channel — kept for migration
+  slackChannels            Json? // Array<{ id: string; name: string }>
+  channelRoutes            Json? // { "pulse.alert": "C123", "care.escalation": "C456", ... }
+  emailProvider            String? // "RESEND" | "SMTP" | null
+  emailApiKey              String? // Resend API key when emailProvider = RESEND
+  emailFromAddress         String?
+  emailFromName            String?
+  emailReplyTo             String?
+  emailSmtpHost            String?
+  emailSmtpPort            Int?
+  emailSmtpUser            String?
+  emailSmtpPassword        String?
+  branding                 Json? // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
+  proposalDefaults         Json? // preparedBy, team, contactDetails, objectiveSnippets
+  /// Workspace-wide default rates per CodeClear tier. Shape:
+  /// { tier1: { rate, currency, period }, tier2: {...}, tier3: {...} }
+  /// Populated by /api/codeclear/admin/tier-defaults; consumed when a
+  /// candidate's tier changes (unless RateCardPerson.manualRateOverride).
+  tierRateDefaults         Json?
   // ── Public-share branding (P5.19) ───────────────────────────────────
-  customHostname            String?   @unique  // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
-  customHostnameVerified    Boolean   @default(false)
-  customHostnameToken       String?   // Random CNAME challenge value for DNS verification
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  members         WorkspaceMember[]
-  invites         WorkspaceInvite[]
-  documents       Document[]
-  documentCounters DocumentCounter[]
-  templates       DocumentTemplate[]
-  clients         WorkspaceClient[]
-  rateCardPeople  RateCardPerson[]
-  proofDocuments  ProofDocument[]
-  candidates      Candidate[]
-  pulseScans      PulseScan[]
-  pulseMonitors   PulseMonitor[]
-  supportClients  SupportClient[]
-  studies         Study[]
-  agentConfigs    AgentConfig[]
-  checkConfigs    PulseCheckConfig[]
-  signatureRequests SignatureRequest[]
-  slackWebhooks   SlackWebhookSubscription[]
-  auditLogs       AuditLog[]
+  customHostname           String?                    @unique // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
+  customHostnameVerified   Boolean                    @default(false)
+  customHostnameToken      String? // Random CNAME challenge value for DNS verification
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  members                  WorkspaceMember[]
+  invites                  WorkspaceInvite[]
+  documents                Document[]
+  documentCounters         DocumentCounter[]
+  templates                DocumentTemplate[]
+  clients                  WorkspaceClient[]
+  rateCardPeople           RateCardPerson[]
+  proofDocuments           ProofDocument[]
+  candidates               Candidate[]
+  pulseScans               PulseScan[]
+  pulseMonitors            PulseMonitor[]
+  supportClients           SupportClient[]
+  studies                  Study[]
+  agentConfigs             AgentConfig[]
+  checkConfigs             PulseCheckConfig[]
+  signatureRequests        SignatureRequest[]
+  slackWebhooks            SlackWebhookSubscription[]
+  auditLogs                AuditLog[]
 }
 
 model WorkspaceMember {
@@ -239,7 +267,7 @@ model WorkspaceInvite {
   workspaceId  String
   token        String    @unique @default(cuid())
   label        String?
-  status       String    @default("PENDING")  // PENDING | ACCEPTED | REVOKED
+  status       String    @default("PENDING") // PENDING | ACCEPTED | REVOKED
   invitedById  String
   acceptedById String?
   createdAt    DateTime  @default(now())
@@ -266,52 +294,52 @@ model DocumentTemplate {
 }
 
 model Document {
-  id             String          @id @default(cuid())
-  workspaceId    String
-  ownerId        String
-  templateId     String?
-  documentType   DocumentType    @default(PROPOSAL)
-  status         DocumentStatus  @default(DRAFT)
-  title          String
-  productName    String?
-  clientName     String?
-  clientId       String?
-  client         WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  summary        String?
-  version        String          @default("v1.0")
-  expiresAt      DateTime?
-  metadata       Json?
-  exportSettings Json?
+  id                String             @id @default(cuid())
+  workspaceId       String
+  ownerId           String
+  templateId        String?
+  documentType      DocumentType       @default(PROPOSAL)
+  status            DocumentStatus     @default(DRAFT)
+  title             String
+  productName       String?
+  clientName        String?
+  clientId          String?
+  client            WorkspaceClient?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  summary           String?
+  version           String             @default("v1.0")
+  expiresAt         DateTime?
+  metadata          Json?
+  exportSettings    Json?
   // ── Sharing (Sprint 1) ──────────────────────────────────────────────
-  shareToken     String?         @unique     // Random URL-safe token for /docs/[token]
-  isShared       Boolean         @default(false)
+  shareToken        String?            @unique // Random URL-safe token for /docs/[token]
+  isShared          Boolean            @default(false)
   // ── Numbering (Sprint 1) ────────────────────────────────────────────
-  documentNumber String?         @unique     // e.g. PROP-2026-014, SLA-2026-003
+  documentNumber    String?            @unique // e.g. PROP-2026-014, SLA-2026-003
   // ── Organisation (P0) ───────────────────────────────────────────────
-  labels         Json?           // Array of workspace-defined label strings (["Q2", "Renewal", …])
+  labels            Json? // Array of workspace-defined label strings (["Q2", "Renewal", …])
   // ── Document relationships (P5) ─────────────────────────────────────
-  parentId       String?         // Self-ref: SOW under MSA, CO under SOW
-  parent         Document?       @relation("DocumentChildren", fields: [parentId], references: [id], onDelete: SetNull)
-  children       Document[]      @relation("DocumentChildren")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  archivedAt     DateTime?
-  owner          User            @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  template       DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  sections       DocumentSection[]
-  costLineItems  CostLineItem[]
-  timelinePhases TimelinePhase[]
-  assets         Asset[]
-  links          Link[]
-  ctas           CTA[]
-  exports        Export[]
-  proofDocuments ProofDocument[]
+  parentId          String? // Self-ref: SOW under MSA, CO under SOW
+  parent            Document?          @relation("DocumentChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children          Document[]         @relation("DocumentChildren")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  archivedAt        DateTime?
+  owner             User               @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template          DocumentTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  sections          DocumentSection[]
+  costLineItems     CostLineItem[]
+  timelinePhases    TimelinePhase[]
+  assets            Asset[]
+  links             Link[]
+  ctas              CTA[]
+  exports           Export[]
+  proofDocuments    ProofDocument[]
   signatureRequests SignatureRequest[]
   views             DocumentView[]
-  comments       DocumentComment[]
-  versions       DocumentVersion[]
-  presence       EditorPresence[]
+  comments          DocumentComment[]
+  versions          DocumentVersion[]
+  presence          EditorPresence[]
 
   @@index([workspaceId, status])
   @@index([updatedAt])
@@ -326,8 +354,8 @@ model Document {
  * can attach to a specific section or to the document overall.
  */
 enum DocumentCommentAuthorKind {
-  PUBLIC      // From the share URL — viewer typed a name + email
-  WORKSPACE   // From the editor — tied to a User
+  PUBLIC // From the share URL — viewer typed a name + email
+  WORKSPACE // From the editor — tied to a User
 }
 
 enum DocumentCommentStatus {
@@ -336,22 +364,22 @@ enum DocumentCommentStatus {
 }
 
 model DocumentComment {
-  id           String                     @id @default(cuid())
+  id           String                    @id @default(cuid())
   documentId   String
-  sectionId    String?                    // null = comment on the document as a whole
-  parentId     String?                    // For replies — points to the root comment
+  sectionId    String? // null = comment on the document as a whole
+  parentId     String? // For replies — points to the root comment
   authorKind   DocumentCommentAuthorKind
-  authorName   String                     // Always required — public: typed in form, workspace: User.name
-  authorEmail  String?                    // Required for PUBLIC, optional for WORKSPACE (we have the User)
-  authorUserId String?                    // Set when authorKind = WORKSPACE
-  body         String                     @db.Text
-  status       DocumentCommentStatus      @default(OPEN)
-  createdAt    DateTime                   @default(now())
+  authorName   String // Always required — public: typed in form, workspace: User.name
+  authorEmail  String? // Required for PUBLIC, optional for WORKSPACE (we have the User)
+  authorUserId String? // Set when authorKind = WORKSPACE
+  body         String                    @db.Text
+  status       DocumentCommentStatus     @default(OPEN)
+  createdAt    DateTime                  @default(now())
   resolvedAt   DateTime?
-  resolvedBy   String?                    // User.id who resolved
-  document     Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  parent       DocumentComment?           @relation("DocumentCommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
-  replies      DocumentComment[]          @relation("DocumentCommentReplies")
+  resolvedBy   String? // User.id who resolved
+  document     Document                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parent       DocumentComment?          @relation("DocumentCommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies      DocumentComment[]         @relation("DocumentCommentReplies")
 
   @@index([documentId, status, createdAt])
   @@index([documentId, sectionId])
@@ -360,26 +388,33 @@ model DocumentComment {
 /**
  * Frozen snapshot of a document at a particular version bump. Stores everything needed to
  * render the document in a read-only "viewing v1.2" mode and to diff against any other version.
- *
  * Created when the operator clicks "Save version" or bumps the version field in the editor.
  * Independent of the SignatureRequest.documentSnapshot frozen at send-time (which is signing-
  * scoped, not user-driven).
  */
 model DocumentVersion {
-  id              String   @id @default(cuid())
-  documentId      String
-  version         String   // e.g. "v1.0", "v1.1", "v2.0" — matches Document.version at snapshot time
-  /** Full snapshot of the document's sections array at this version. */
+  id               String   @id @default(cuid())
+  documentId       String
+  version          String // e.g. "v1.0", "v1.1", "v2.0" — matches Document.version at snapshot time
+  /**
+   * Full snapshot of the document's sections array at this version.
+   */
   sectionsSnapshot Json
-  /** Frozen cost line items (denormalized at snapshot time). */
+  /**
+   * Frozen cost line items (denormalized at snapshot time).
+   */
   costSnapshot     Json
-  /** Frozen timeline phases. */
+  /**
+   * Frozen timeline phases.
+   */
   timelineSnapshot Json
-  /** Free-text changelog the operator typed when bumping the version. */
-  changelog       String?  @db.Text
-  createdById     String
-  createdAt       DateTime @default(now())
-  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /**
+   * Free-text changelog the operator typed when bumping the version.
+   */
+  changelog        String?  @db.Text
+  createdById      String
+  createdAt        DateTime @default(now())
+  document         Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, version])
   @@index([documentId, createdAt])
@@ -389,17 +424,16 @@ model DocumentVersion {
  * Lightweight presence heartbeats. The editor pings POST /api/documents/[id]/presence every
  * ~8s with a session token; old rows are pruned. A SELECT for rows seen in the last 30s gives
  * the "who's here" list for the avatar bubbles in the editor header.
- *
  * Not a CRDT or real-time channel — just a polling-friendly "saw you" log.
  */
 model EditorPresence {
-  id          String   @id @default(cuid())
-  documentId  String
-  userId      String?  // Null for unauthenticated/system writes; usually populated for workspace operators
-  sessionId   String   // Browser-tab-scoped UUID
-  userName    String   // Snapshot for display so we don't join through User
-  lastSeenAt  DateTime @default(now()) @updatedAt
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String? // Null for unauthenticated/system writes; usually populated for workspace operators
+  sessionId  String // Browser-tab-scoped UUID
+  userName   String // Snapshot for display so we don't join through User
+  lastSeenAt DateTime @default(now()) @updatedAt
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, sessionId])
   @@index([documentId, lastSeenAt])
@@ -408,22 +442,23 @@ model EditorPresence {
 /**
  * Audit row for each visit to a document's public share URL or signing URL. Powers the view
  * count + last-viewed-at displays in the editor's sidebar, and feeds the activity feed.
- *
  * Recorded by the public pages via fire-and-forget POSTs. `signerId` is set when the visit
  * originated from /sign/[token]; null otherwise (visits to /docs/[token]).
  */
 model DocumentView {
-  id          String           @id @default(cuid())
-  documentId  String
-  signerId    String?
-  ip          String?
-  userAgent   String?          @db.Text
-  referer     String?
-  /** Origin of the view — DOCS for /docs/[token], SIGN for /sign/[token]. */
-  origin      String           @default("DOCS")
-  createdAt   DateTime         @default(now())
-  document    Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  signer      SignatureSigner? @relation(fields: [signerId], references: [id], onDelete: SetNull)
+  id         String           @id @default(cuid())
+  documentId String
+  signerId   String?
+  ip         String?
+  userAgent  String?          @db.Text
+  referer    String?
+  /**
+   * Origin of the view — DOCS for /docs/[token], SIGN for /sign/[token].
+   */
+  origin     String           @default("DOCS")
+  createdAt  DateTime         @default(now())
+  document   Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signer     SignatureSigner? @relation(fields: [signerId], references: [id], onDelete: SetNull)
 
   @@index([documentId, createdAt])
 }
@@ -448,24 +483,24 @@ model DocumentCounter {
 // ── E-signature (Sprint 4) ──────────────────────────────────────────────────────────────────
 
 enum SignatureRequestStatus {
-  DRAFT       // Request created but not yet sent — workspace can still edit
-  SENT        // Awaiting signatures
-  COMPLETED   // All signers signed
-  DECLINED    // At least one signer declined
-  REVOKED     // Workspace revoked the request before completion
-  EXPIRED     // Request passed its expiresAt without completing
+  DRAFT // Request created but not yet sent — workspace can still edit
+  SENT // Awaiting signatures
+  COMPLETED // All signers signed
+  DECLINED // At least one signer declined
+  REVOKED // Workspace revoked the request before completion
+  EXPIRED // Request passed its expiresAt without completing
 }
 
 enum SignatureSignerStatus {
-  PENDING    // Invited, not yet viewed
-  VIEWED     // Opened the signing page at least once
+  PENDING // Invited, not yet viewed
+  VIEWED // Opened the signing page at least once
   SIGNED
   DECLINED
 }
 
 enum SignatureCaptureMethod {
-  DRAWN   // Canvas / stylus / mouse — stored as PNG data URL
-  TYPED   // Stylised typed name — stored as the typed string + chosen font
+  DRAWN // Canvas / stylus / mouse — stored as PNG data URL
+  TYPED // Stylised typed name — stored as the typed string + chosen font
 }
 
 enum SignatureEventKind {
@@ -484,26 +519,26 @@ enum SignatureEventKind {
 /// immutable snapshot of the document at send-time (so subsequent edits to the doc don't change
 /// what someone is signing).
 model SignatureRequest {
-  id                String                 @id @default(cuid())
-  documentId        String
-  workspaceId       String
-  createdById       String
-  status            SignatureRequestStatus @default(DRAFT)
-  message           String?                @db.Text
-  expiresAt         DateTime?
-  sentAt            DateTime?
-  completedAt       DateTime?
+  id               String                 @id @default(cuid())
+  documentId       String
+  workspaceId      String
+  createdById      String
+  status           SignatureRequestStatus @default(DRAFT)
+  message          String?                @db.Text
+  expiresAt        DateTime?
+  sentAt           DateTime?
+  completedAt      DateTime?
   /// JSON snapshot of the document at the moment the request was SENT. Used by the public
   /// /sign/[token] page so subsequent edits don't change what's being signed. Null while the
   /// request is still DRAFT.
-  documentSnapshot  Json?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  document          Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy         User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  signers           SignatureSigner[]
-  events            SignatureEvent[]
+  documentSnapshot Json?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  document         Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace        Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy        User                   @relation("SignatureRequestCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  signers          SignatureSigner[]
+  events           SignatureEvent[]
 
   @@index([documentId, status])
   @@index([workspaceId, status])
@@ -513,37 +548,37 @@ model SignatureRequest {
 /// when the request flips from DRAFT to SENT. Once signed, the row carries the captured
 /// signature, signer-stated name, IP, and UA for audit.
 model SignatureSigner {
-  id                String                 @id @default(cuid())
-  requestId         String
+  id               String                  @id @default(cuid())
+  requestId        String
   /// Order key for sequential signing flows. Null for parallel signing (v1 default).
-  signingOrder      Int?
-  name              String
-  email             String
-  role              String
-  organization      String?
+  signingOrder     Int?
+  name             String
+  email            String
+  role             String
+  organization     String?
   /// Mirror of the signature block the parties/signatures section produced. Used to render the
   /// right block in the signed PDF.
-  signatureBlockId  String?
-  accessToken       String                 @unique
-  status            SignatureSignerStatus  @default(PENDING)
-  signedAt          DateTime?
-  declinedAt        DateTime?
-  declineReason     String?
-  signatureMethod   SignatureCaptureMethod?
+  signatureBlockId String?
+  accessToken      String                  @unique
+  status           SignatureSignerStatus   @default(PENDING)
+  signedAt         DateTime?
+  declinedAt       DateTime?
+  declineReason    String?
+  signatureMethod  SignatureCaptureMethod?
   /// Signature payload. For DRAWN: PNG data URL (base64). For TYPED: the typed string.
-  signaturePayload  String?                @db.Text
+  signaturePayload String?                 @db.Text
   /// The name the signer typed in the consent box — kept separate from `name` (which is the
   /// invite recipient's name) so we have an auditable record of what they declared.
-  signedName        String?
+  signedName       String?
   /// Optional font key for TYPED signatures (e.g. "caveat", "great-vibes").
-  signedFontKey     String?
-  signedIp          String?
-  signedUserAgent   String?                @db.Text
-  invitedAt         DateTime?
-  firstViewedAt     DateTime?
-  request           SignatureRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  events            SignatureEvent[]
-  documentViews     DocumentView[]
+  signedFontKey    String?
+  signedIp         String?
+  signedUserAgent  String?                 @db.Text
+  invitedAt        DateTime?
+  firstViewedAt    DateTime?
+  request          SignatureRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  events           SignatureEvent[]
+  documentViews    DocumentView[]
 
   @@index([requestId, signingOrder])
 }
@@ -551,16 +586,16 @@ model SignatureSigner {
 /// Append-only audit log for the entire signature lifecycle. Every view / send / sign / revoke
 /// creates a row. Used by the Certificate of Completion appendix and any compliance export.
 model SignatureEvent {
-  id          String              @id @default(cuid())
-  requestId   String
-  signerId    String?
-  kind        SignatureEventKind
-  ip          String?
-  userAgent   String?              @db.Text
-  metadata    Json?
-  createdAt   DateTime             @default(now())
-  request     SignatureRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  signer      SignatureSigner?     @relation(fields: [signerId], references: [id], onDelete: SetNull)
+  id        String             @id @default(cuid())
+  requestId String
+  signerId  String?
+  kind      SignatureEventKind
+  ip        String?
+  userAgent String?            @db.Text
+  metadata  Json?
+  createdAt DateTime           @default(now())
+  request   SignatureRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  signer    SignatureSigner?   @relation(fields: [signerId], references: [id], onDelete: SetNull)
 
   @@index([requestId, createdAt])
 }
@@ -569,30 +604,29 @@ model SignatureEvent {
  * Workspace-level Slack webhook subscriptions (P5). One row per (workspace × event class)
  * pairing. When the matching event fires (doc viewed, signed, completed, comment added), the
  * server POSTs a formatted Slack Block Kit message to `webhookUrl`.
- *
  * Distinct from Workspace.slackBotToken (which authenticates a full Slack bot for the meeting-
  * summary feature) — webhooks are simpler and per-event-class.
  */
 enum DocumentEventKind {
-  DOC_SHARED       // Workspace minted a share link
-  DOC_VIEWED       // Public visitor opened the share URL
-  DOC_SENT         // Sent for signature
-  DOC_SIGNED       // A signer signed
-  DOC_COMPLETED    // All signers signed
-  DOC_DECLINED     // A signer declined
-  COMMENT_ADDED    // Public or workspace comment added
+  DOC_SHARED // Workspace minted a share link
+  DOC_VIEWED // Public visitor opened the share URL
+  DOC_SENT // Sent for signature
+  DOC_SIGNED // A signer signed
+  DOC_COMPLETED // All signers signed
+  DOC_DECLINED // A signer declined
+  COMMENT_ADDED // Public or workspace comment added
 }
 
 model SlackWebhookSubscription {
-  id            String              @id @default(cuid())
-  workspaceId   String
-  label         String              // Operator-facing label ("#proposals notifications")
-  webhookUrl    String              @db.Text
-  eventKinds    Json                // Array<DocumentEventKind>
-  enabled       Boolean             @default(true)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  workspaceId String
+  label       String // Operator-facing label ("#proposals notifications")
+  webhookUrl  String    @db.Text
+  eventKinds  Json // Array<DocumentEventKind>
+  enabled     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, enabled])
 }
@@ -672,36 +706,97 @@ model ClientPlatform {
 }
 
 model Candidate {
-  id               String         @id @default(cuid())
-  workspaceId      String
-  rateCardPersonId String?
-  name             String
-  githubHandle     String
-  email            String?
-  primaryStack     String
-  techStacks       String[]       @default([])
-  signalSources    String[]       @default([])
-  location         String?
-  bio              String?
-  status           PipelineStatus @default(SOURCED)
-  tier             CodeClearTier  @default(TIER_1)
-  avatarUrl        String?
-  recheckDueAt     DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  rateCardPerson   RateCardPerson? @relation(fields: [rateCardPersonId], references: [id], onDelete: SetNull)
-  score            CodeClearScore?
-  scoreDraft       CodeClearScoreDraft?
+  id                 String                 @id @default(cuid())
+  workspaceId        String
+  rateCardPersonId   String?
+  name               String
+  githubHandle       String
+  email              String?
+  primaryStack       String
+  techStacks         String[]               @default([])
+  signalSources      String[]               @default([])
+  location           String?
+  bio                String?
+  status             PipelineStatus         @default(SOURCED)
+  /// Derived tier (see codeclear-scoring.ts deriveTier). Persisted as a
+  /// snapshot for cheap reads / SQL filters; rebuilt whenever the score
+  /// changes. Effective tier in the UI = tierManualOverride ?? tier.
+  tier               CodeClearTier          @default(TIER_3)
+  /// Admin escape hatch — when set, the UI shows this tier instead of the
+  /// derived one. We never overwrite the derived value, so we can show
+  /// "Override (was Tier 2)" in the drawer.
+  tierManualOverride CodeClearTier?
+  /// INTERNAL = a Gitwork team member. EXTERNAL = sourced for the marketplace.
+  /// Existing rows default to INTERNAL so nothing changes for current devs.
+  origin             CandidateOrigin        @default(INTERNAL)
+  /// Reserved flag for the future marketplace — flips a dev from "in
+  /// validation" to "available to clients". Does nothing yet client-side.
+  published          Boolean                @default(false)
+  avatarUrl          String?
+  linkedinUrl        String?
+  cvUrl              String?
+  portfolioUrl       String?
+  yearsExperience    Int?
+  hourlyRate         Decimal?               @db.Decimal(10, 2)
+  currency           String?                @db.VarChar(3)
+  timezone           String?
+  /// User-overridable availability. When null, derive from open Placement
+  /// (open placement → ENGAGED, otherwise AVAILABLE).
+  availability       CandidateAvailability?
+  recheckDueAt       DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rateCardPerson     RateCardPerson?        @relation(fields: [rateCardPersonId], references: [id], onDelete: SetNull)
+  score              CodeClearScore?
+  scoreDraft         CodeClearScoreDraft?
   githubAnalysisRuns GitHubAnalysisRun[]
-  placements       Placement[]
-  notes            Note[]
-  activityLog      ActivityLog[]
+  checks             CodeClearCheck[]
+  placements         Placement[]
+  notes              Note[]
+  activityLog        ActivityLog[]
 
   @@unique([workspaceId, githubHandle])
   @@index([workspaceId, status])
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, recheckDueAt])
+  @@index([workspaceId, origin, published])
+}
+
+/// One row per validation finding. Mirrors PulseScanCheck. The most recent run
+/// is the source of truth; older check rows hang around for audit.
+model CodeClearCheck {
+  id          String               @id @default(cuid())
+  candidateId String
+  candidate   Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  runId       String?
+  run         GitHubAnalysisRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  category    String
+  checkKey    String
+  label       String
+  status      CodeClearCheckStatus
+  detail      String?
+  evidence    String?
+  weight      Int                  @default(1)
+  sortOrder   Int                  @default(0)
+  createdAt   DateTime             @default(now())
+
+  @@index([candidateId, category])
+  @@index([candidateId, sortOrder])
+  @@index([runId])
+}
+
+/// Curated list of tech stacks. Replaces the hard-coded TECH_STACK_OPTIONS so
+/// admins can add stacks without a deploy. Seeded on first migration.
+model TechStack {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String?
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
 }
 
 model CodeClearScore {
@@ -750,6 +845,7 @@ model GitHubAnalysisRun {
   candidateId                  String
   candidate                    Candidate                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   drafts                       CodeClearScoreDraft[]       @relation("GitHubAnalysisRunDraftSource")
+  checks                       CodeClearCheck[]
   status                       GitHubAnalysisStatus        @default(RUNNING)
   triggerSource                GitHubAnalysisTriggerSource @default(MANUAL)
   analysisVersion              String
@@ -773,16 +869,16 @@ model GitHubAnalysisRun {
 }
 
 model Placement {
-  id          String          @id @default(cuid())
+  id          String           @id @default(cuid())
   candidateId String
-  candidate   Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidate   Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   clientId    String?
   client      WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientName  String
   projectName String
   startDate   DateTime
   endDate     DateTime?
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime         @default(now())
 
   @@index([candidateId, startDate])
   @@index([clientId])
@@ -846,23 +942,23 @@ model CostLineItem {
 }
 
 model TimelinePhase {
-  id          String       @id @default(cuid())
-  documentId  String
-  name        String
-  duration    String
-  summary     String
+  id           String       @id @default(cuid())
+  documentId   String
+  name         String
+  duration     String
+  summary      String
   deliverables Json
-  sortOrder   Int
-  viewMode    TimelineView @default(LIST)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  document    Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sortOrder    Int
+  viewMode     TimelineView @default(LIST)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId, sortOrder])
 }
 
 model Asset {
-  id         String         @id @default(cuid())
+  id         String           @id @default(cuid())
   documentId String
   sectionId  String?
   type       AssetType
@@ -871,12 +967,12 @@ model Asset {
   altText    String
   placement  String
   caption    String?
-  size       AssetSize      @default(MEDIUM)
-  alignment  AssetAlignment @default(LEFT)
-  sortOrder  Int            @default(0)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  document   Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  size       AssetSize        @default(MEDIUM)
+  alignment  AssetAlignment   @default(LEFT)
+  sortOrder  Int              @default(0)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  document   Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
   section    DocumentSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   @@index([documentId, placement])
@@ -932,6 +1028,12 @@ model RateCardPerson {
   seedIdentifier     String?
   name               String
   area               String
+  /// Pricing tier — when set, the rate can be auto-populated from the
+  /// workspace-level tierRateDefaults unless manualRateOverride is true.
+  tier               CodeClearTier?
+  /// When true, sourceRate is hand-set by an admin and won't be overwritten
+  /// when the candidate's derived tier changes.
+  manualRateOverride Boolean           @default(false)
   sourceRate         Decimal           @db.Decimal(12, 2)
   sourceCurrencyCode String
   billingPeriod      RateBillingPeriod @default(MONTH)
@@ -944,6 +1046,7 @@ model RateCardPerson {
   @@unique([workspaceId, seedIdentifier])
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, archivedAt])
+  @@index([workspaceId, tier])
 }
 
 enum PulseScanStatus {
@@ -971,7 +1074,7 @@ model PulseScan {
   workspace           Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   clientId            String?
   client              WorkspaceClient?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  triggeredByUserId   String?            // null = monitor/webhook-triggered. Used by push to attribute scans to the user who started them.
+  triggeredByUserId   String? // null = monitor/webhook-triggered. Used by push to attribute scans to the user who started them.
   triggeredByUser     User?              @relation("PulseScanTriggeredBy", fields: [triggeredByUserId], references: [id], onDelete: SetNull)
   projectName         String
   inputType           PulseScanInputType
@@ -987,10 +1090,10 @@ model PulseScan {
   previousHealthScore Int?
   techStack           Json?
   llmAnalysis         Json?
-  discoveryData       Json?              // DiscoveryKit — discovery call intelligence
-  agentData           Json?              // { codeInsights, deployInsights } from agent pipeline
-  competitorUrls      Json?              // string[] — optional competitor URLs to benchmark
-  competitorData      Json?              // CompetitorData — parallel scan results + AI comparison
+  discoveryData       Json? // DiscoveryKit — discovery call intelligence
+  agentData           Json? // { codeInsights, deployInsights } from agent pipeline
+  competitorUrls      Json? // string[] — optional competitor URLs to benchmark
+  competitorData      Json? // CompetitorData — parallel scan results + AI comparison
   shareToken          String?            @unique
   isShared            Boolean            @default(false)
   errorCode           String?
@@ -1018,7 +1121,7 @@ model PulseMonitor {
   webhookSecret   String             @unique @default(cuid())
   lastScanId      String?
   lastHealthScore Int?
-  alertThreshold  Int                @default(10)  // score drop that triggers alert
+  alertThreshold  Int                @default(10) // score drop that triggers alert
   isActive        Boolean            @default(true)
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
@@ -1195,11 +1298,11 @@ model ChannelToken {
 }
 
 model CustomerIdentity {
-  id              String   @id @default(cuid())
-  clientId        String
-  externalIdHash  String
-  displayLabel    String
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  clientId       String
+  externalIdHash String
+  displayLabel   String
+  createdAt      DateTime @default(now())
 
   @@unique([clientId, externalIdHash])
   @@index([clientId])
@@ -1357,17 +1460,17 @@ enum StudySessionStatus {
 }
 
 model Study {
-  id                 String           @id @default(cuid())
+  id                 String             @id @default(cuid())
   workspaceId        String
-  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   title              String
   problemStatement   String
-  researchGoals      String[]         @default([])
-  status             StudyStatus      @default(DRAFT)
-  sessionMode        StudySessionMode @default(ONE_ON_ONE)
-  selectedPersonaIds String[]         @default([])
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  researchGoals      String[]           @default([])
+  status             StudyStatus        @default(DRAFT)
+  sessionMode        StudySessionMode   @default(ONE_ON_ONE)
+  selectedPersonaIds String[]           @default([])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   plan               StudyResearchPlan?
   sessions           StudySession[]
   report             StudyReport?
@@ -1376,13 +1479,13 @@ model Study {
 }
 
 model StudyResearchPlan {
-  id        String            @id @default(cuid())
-  studyId   String            @unique
-  study     Study             @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  id        String              @id @default(cuid())
+  studyId   String              @unique
+  study     Study               @relation(fields: [studyId], references: [id], onDelete: Cascade)
   notes     String?
-  status    StudyPlanStatus   @default(DRAFT)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  status    StudyPlanStatus     @default(DRAFT)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
   questions StudyPlanQuestion[]
 }
 
@@ -1432,8 +1535,8 @@ model AgentConfig {
   id                   String    @id @default(cuid())
   workspaceId          String
   workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agentKey             String    // e.g. "pulse:synthesis", "study:researcher"
-  product              String    // "pulse" | "study"
+  agentKey             String // e.g. "pulse:synthesis", "study:researcher"
+  product              String // "pulse" | "study"
   enabled              Boolean   @default(true)
   systemPromptOverride String?   @db.Text
   modelOverride        String?
@@ -1449,12 +1552,12 @@ model PulseCheckConfig {
   id               String    @id @default(cuid())
   workspaceId      String
   workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  checkKey         String    // matches hardcoded checkKey, or cuid() for custom checks
+  checkKey         String // matches hardcoded checkKey, or cuid() for custom checks
   enabled          Boolean   @default(true)
   labelOverride    String?
-  severityOverride String?   // "WARN" | "FAIL" — downgrade/upgrade threshold
+  severityOverride String? // "WARN" | "FAIL" — downgrade/upgrade threshold
   isCustom         Boolean   @default(false)
-  customConfig     Json?     // for custom checks: { type, pattern, url, expected, ... }
+  customConfig     Json? // for custom checks: { type, pattern, url, expected, ... }
   sortOrder        Int       @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -1467,20 +1570,20 @@ model PulseCheckConfig {
 // `events` shape: { [eventKey: string]: ("email" | "push" | "slack" | "inApp")[] }
 // `digestCadence`: OFF | DAILY | WEEKLY
 model NotificationPreference {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emailEnabled    Boolean   @default(true)
-  pushEnabled     Boolean   @default(true)
-  slackEnabled    Boolean   @default(false)
-  inAppEnabled    Boolean   @default(true)
-  events          Json      @default("{}")
-  digestCadence   String    @default("OFF")
-  quietHoursStart String?   // "22:00" — 24h HH:mm, workspace timezone
-  quietHoursEnd   String?   // "07:00"
-  timezone        String?   // IANA tz, e.g. "Europe/London"
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled    Boolean  @default(true)
+  pushEnabled     Boolean  @default(true)
+  slackEnabled    Boolean  @default(false)
+  inAppEnabled    Boolean  @default(true)
+  events          Json     @default("{}")
+  digestCadence   String   @default("OFF")
+  quietHoursStart String? // "22:00" — 24h HH:mm, workspace timezone
+  quietHoursEnd   String? // "07:00"
+  timezone        String? // IANA tz, e.g. "Europe/London"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // Workspace-scoped audit trail. Recorded by `recordAuditEntry()` for critical actions
@@ -1491,11 +1594,11 @@ model AuditLog {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   actorId     String?
   actor       User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  action      String    // e.g. "settings.ai_provider.changed", "team.member.invited"
-  target      String?   // resource identifier (e.g. "workspace:aiProvider", "user:abc123")
-  before      Json?     // previous value (omit for create events)
-  after       Json?     // new value (omit for delete events)
-  metadata    Json?     // free-form context (ip, userAgent, source)
+  action      String // e.g. "settings.ai_provider.changed", "team.member.invited"
+  target      String? // resource identifier (e.g. "workspace:aiProvider", "user:abc123")
+  before      Json? // previous value (omit for create events)
+  after       Json? // new value (omit for delete events)
+  metadata    Json? // free-form context (ip, userAgent, source)
   createdAt   DateTime  @default(now())
 
   @@index([workspaceId, createdAt])
