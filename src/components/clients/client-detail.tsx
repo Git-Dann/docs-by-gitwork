@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
+import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -788,16 +789,13 @@ function ClientEditModal({
                   className="app-input"
                 />
               </label>
-              <label className="block">
-                <span className="app-field-label">Logo URL</span>
-                <input
+              <div>
+                <span className="app-field-label mb-2 block">Logo</span>
+                <LogoImagePicker
                   value={form.logoUrl}
-                  onChange={(e) => set("logoUrl", e.target.value)}
-                  className="app-input"
-                  placeholder="https://…"
-                  type="url"
+                  onChange={(value) => set("logoUrl", value)}
                 />
-              </label>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
