@@ -46,8 +46,15 @@ function formatTime(iso: string): string {
   }
 }
 
+interface CachedSummary {
+  summary: string;
+  cached: boolean;
+  cachedAt?: string;
+  generatedBy?: string | null;
+}
+
 export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [summaries, setSummaries] = useState<Record<string, CachedSummary>>({});
   const [generating, setGenerating] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
@@ -77,8 +84,10 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
     });
   }
 
-  async function handleSummarise(event: CalendarEvent) {
-    if (summaries[event.id]) {
+  async function handleSummarise(event: CalendarEvent, opts?: { force?: boolean }) {
+    // Re-fetch even when we already have a local copy if `force` is set (user clicked
+    // Regenerate). Otherwise short-circuit when we've already loaded this one.
+    if (!opts?.force && summaries[event.id]) {
       setSelected(event.id);
       return;
     }
@@ -92,12 +101,24 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
         eventDate: event.start,
         attendees: event.attendees,
         channelIds,
+        force: opts?.force,
       });
-      setSummaries((prev) => ({ ...prev, [event.id]: res.summary }));
+      setSummaries((prev) => ({
+        ...prev,
+        [event.id]: {
+          summary: res.summary,
+          cached: res.cached,
+          cachedAt: res.cachedAt,
+          generatedBy: res.generatedBy ?? null,
+        },
+      }));
     } catch {
       setSummaries((prev) => ({
         ...prev,
-        [event.id]: "Failed to generate summary. Check your AI and Google settings.",
+        [event.id]: {
+          summary: "Failed to generate summary. Check your AI and Google settings.",
+          cached: false,
+        },
       }));
     } finally {
       setGenerating(null);
@@ -214,8 +235,27 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                 Generating summary…
               </div>
             ) : activeSummary ? (
-              <div className="flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">
-                {activeSummary}
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className="flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">
+                  {activeSummary.summary}
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-[var(--border-1)] pt-2 text-[10px]">
+                  {activeSummary.cached ? (
+                    <span className="text-[var(--text-4)]">
+                      ⚡ Cached
+                      {activeSummary.generatedBy ? ` · by ${activeSummary.generatedBy}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-4)]">Fresh summary saved to workspace</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSummarise(activeEvent, { force: true })}
+                    className="text-[var(--brand-700)] hover:underline"
+                  >
+                    Regenerate
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">

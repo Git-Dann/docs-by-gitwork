@@ -164,6 +164,7 @@ model User {
   triggeredPulseScans      PulseScan[]             @relation("PulseScanTriggeredBy")
   notificationPreference   NotificationPreference?
   auditLogEntries          AuditLog[]
+  meetingSummariesGenerated MeetingSummary[]       @relation("MeetingSummaryGenerator")
 }
 
 // APNs device registrations. One row per (user, device).
@@ -247,6 +248,7 @@ model Workspace {
   signatureRequests        SignatureRequest[]
   slackWebhooks            SlackWebhookSubscription[]
   auditLogs                AuditLog[]
+  meetingSummaries         MeetingSummary[]
 }
 
 model WorkspaceMember {
@@ -1655,4 +1657,26 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([action])
   @@index([actorId])
+}
+
+// Workspace-shared cache for AI-generated meeting summaries.
+// Keyed by (workspaceId, eventId) — Google Calendar event IDs are stable across all
+// attendees, so anyone on the same call gets the same cached summary instead of paying
+// for another AI call. Cached entries also store `inputsHash` so we know to invalidate
+// when meeting details change (new attendee added, different channels selected, etc.).
+model MeetingSummary {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventId           String
+  summary           String   @db.Text
+  inputsHash        String
+  modelUsed         String?
+  generatedByUserId String?
+  generatedBy       User?    @relation("MeetingSummaryGenerator", fields: [generatedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([workspaceId, eventId])
+  @@index([workspaceId, updatedAt])
 }

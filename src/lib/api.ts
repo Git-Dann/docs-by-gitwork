@@ -1041,6 +1041,21 @@ export interface SlackChannel {
   name: string;
 }
 
+export interface SlackAvailableChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+  memberCount: number;
+}
+
+export async function fetchSlackChannels(): Promise<SlackAvailableChannel[]> {
+  const data = await apiFetch<{ channels: SlackAvailableChannel[] }>(
+    "/api/integrations/slack/channels",
+  );
+  return data.channels;
+}
+
 export interface ModelOption {
   id: string;
   name: string;
@@ -1401,13 +1416,22 @@ export async function getCalendarEvents(): Promise<{ connected: boolean; events:
   return apiFetch("/api/integrations/calendar");
 }
 
+export interface MeetingSummaryResponse {
+  summary: string;
+  cached: boolean;
+  cachedAt?: string;
+  generatedBy?: string | null;
+}
+
 export async function generateMeetingSummary(data: {
   eventId: string;
   eventTitle: string;
   eventDate: string;
   attendees: string[];
   channelIds?: string[];
-}): Promise<{ summary: string }> {
+  /** Bypass the workspace cache and regenerate. */
+  force?: boolean;
+}): Promise<MeetingSummaryResponse> {
   return apiFetch("/api/integrations/meeting-summary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1941,6 +1941,14 @@ const SLACK_ROUTE_EVENTS: { id: string; label: string; module: string }[] = [
   { id: "docs.signed", label: "Doc signed", module: "Docs" },
 ];
 
+interface SlackAvailableChannelRow {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+  memberCount: number;
+}
+
 function SlackSection({
   config,
   onSaved,
@@ -1949,10 +1957,12 @@ function SlackSection({
   onSaved: (updated: IntegrationsResponse) => void;
 }) {
   const [tokenInput, setTokenInput] = useState("");
-  const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [routes, setRoutes] = useState<Record<string, string>>({});
-  const [newChannelId, setNewChannelId] = useState("");
-  const [newChannelName, setNewChannelName] = useState("");
+  const [available, setAvailable] = useState<SlackAvailableChannelRow[] | null>(null);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1960,47 +1970,64 @@ function SlackSection({
   useEffect(() => {
     if (!config) return;
     const saved = (config.slackChannels ?? []) as Array<{ id: string; name: string }>;
-    // If no multi-channel data yet but legacy single channel exists, seed from that
-    if (saved.length === 0 && config.slackSummaryChannelId) {
-      setChannels([{ id: config.slackSummaryChannelId, name: "General" }]);
-    } else {
-      setChannels(saved);
+    const ids = new Set(saved.map((c) => c.id));
+    if (ids.size === 0 && config.slackSummaryChannelId) {
+      ids.add(config.slackSummaryChannelId);
     }
+    setSelectedChannelIds(ids);
     setRoutes(config.channelRoutes ?? {});
   }, [config]);
 
-  function addChannel() {
-    const id = newChannelId.trim();
-    const name = newChannelName.trim() || id;
-    if (!id) return;
-    if (channels.some((c) => c.id === id)) return; // already added
-    setChannels((prev) => [...prev, { id, name }]);
-    setNewChannelId("");
-    setNewChannelName("");
+  // Auto-load channels from Slack the first time we have a token connected.
+  useEffect(() => {
+    if (available !== null) return;
+    if (!config?.slackBotTokenMasked) return;
+    void loadChannels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config?.slackBotTokenMasked]);
+
+  async function loadChannels() {
+    setLoadingChannels(true);
+    setChannelsError(null);
+    try {
+      const channels = await apiFetch<{ channels: SlackAvailableChannelRow[] }>(
+        "/api/integrations/slack/channels",
+      );
+      setAvailable(channels.channels);
+    } catch (err) {
+      setChannelsError(
+        err instanceof Error ? err.message : "Couldn't fetch channels from Slack.",
+      );
+    } finally {
+      setLoadingChannels(false);
+    }
   }
 
-  function removeChannel(id: string) {
-    setChannels((prev) => prev.filter((c) => c.id !== id));
-  }
-
-  function updateChannelName(id: string, name: string) {
-    setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  function toggleChannel(id: string) {
+    setSelectedChannelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
     try {
-      // Auto-flush any channel typed in the inputs but not yet added via +
-      let finalChannels = channels;
-      const pendingId = newChannelId.trim();
-      if (pendingId && !channels.some((c) => c.id === pendingId)) {
-        const pendingName = newChannelName.trim() || pendingId;
-        finalChannels = [...channels, { id: pendingId, name: pendingName }];
-        setChannels(finalChannels);
-        setNewChannelId("");
-        setNewChannelName("");
-      }
+      // Build slackChannels from currently-selected IDs. Resolve names from the live list
+      // when possible; for any IDs that no longer appear (bot removed?), fall back to the
+      // previously-saved name so we don't lose it.
+      const previouslySaved = (config?.slackChannels ?? []) as Array<{ id: string; name: string }>;
+      const nameForId = new Map<string, string>();
+      for (const c of previouslySaved) nameForId.set(c.id, c.name);
+      for (const c of available ?? []) nameForId.set(c.id, c.name);
+
+      const finalChannels = Array.from(selectedChannelIds).map((id) => ({
+        id,
+        name: nameForId.get(id) ?? id,
+      }));
 
       const payload: Parameters<typeof saveIntegrations>[0] = {};
       if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
@@ -2013,6 +2040,8 @@ function SlackSection({
       setTokenInput("");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // If they pasted a new token, refresh the channel list so it reflects the new auth.
+      if (tokenInput.trim()) void loadChannels();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Save failed — please try again.");
     } finally {
@@ -2027,9 +2056,13 @@ function SlackSection({
         Slack context for meeting summaries
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Add the channels
-        you want available — you can pick which ones to search per meeting. Requires a bot token with{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code> scope.
+        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Once the
+        bot is connected, Foundry pulls the live channel list so you can multi-select instead
+        of pasting IDs. Bot needs{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:read</code>,{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">groups:read</code>, and{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code>{" "}
+        scopes.
       </p>
 
       <div className="mt-5 space-y-5">
@@ -2053,63 +2086,92 @@ function SlackSection({
           />
         </div>
 
-        {/* Channel list */}
+        {/* Channel multi-select — fetched from Slack */}
         <div>
-          <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
-            Channels
-          </label>
-          {channels.length > 0 && (
-            <div className="mb-3 space-y-2">
-              {channels.map((ch) => (
-                <div key={ch.id} className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-                  <input
-                    type="text"
-                    className="min-w-0 flex-1 bg-transparent text-xs font-medium text-[var(--text-1)] outline-none"
-                    value={ch.name}
-                    onChange={(e) => updateChannelName(ch.id, e.target.value)}
-                    placeholder="Channel name"
-                  />
-                  <span className="font-mono text-[10px] text-[var(--text-4)]">{ch.id}</span>
-                  <button
-                    onClick={() => removeChannel(ch.id)}
-                    className="ml-1 rounded p-0.5 text-[var(--text-4)] hover:text-red-500"
-                  >
-                    <XMarkIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add channel row */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="app-input w-40 font-mono text-sm"
-              placeholder="C0123456789"
-              value={newChannelId}
-              onChange={(e) => setNewChannelId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addChannel()}
-            />
-            <input
-              type="text"
-              className="app-input flex-1 text-sm"
-              placeholder="Label (e.g. #general)"
-              value={newChannelName}
-              onChange={(e) => setNewChannelName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addChannel()}
-            />
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <label className="block text-xs font-medium text-[var(--text-2)]">
+              Channels to search ({selectedChannelIds.size} selected)
+            </label>
             <button
-              onClick={addChannel}
-              disabled={!newChannelId.trim()}
-              className="app-button app-button-secondary px-3 py-2 text-sm disabled:opacity-40"
+              type="button"
+              onClick={() => void loadChannels()}
+              disabled={loadingChannels || !config?.slackBotTokenMasked}
+              className="text-[11px] font-medium text-[var(--brand-700)] hover:underline disabled:opacity-50"
             >
-              <PlusIcon className="h-4 w-4" />
+              {loadingChannels ? "Refreshing…" : "Refresh from Slack"}
             </button>
           </div>
-          <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
-            Right-click a channel in Slack → Copy link — the ID is the last segment (e.g. <span className="font-mono">C0123456789</span>).
-          </p>
+
+          {!config?.slackBotTokenMasked ? (
+            <p className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+              Connect a bot token above and save — the channel list will appear once Slack
+              authenticates.
+            </p>
+          ) : channelsError ? (
+            <div className="rounded-[6px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+              {channelsError}
+            </div>
+          ) : available === null && loadingChannels ? (
+            <p className="text-xs text-[var(--text-4)]">Loading channels from Slack…</p>
+          ) : (
+            <>
+              <input
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter channels…"
+                className="app-input mb-2 w-full text-sm"
+              />
+              <div className="max-h-72 overflow-y-auto rounded-[8px] border border-[var(--border-2)]">
+                {(available ?? [])
+                  .filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
+                  .map((ch) => {
+                    const checked = selectedChannelIds.has(ch.id);
+                    return (
+                      <label
+                        key={ch.id}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-3 border-b border-[var(--border-3)] px-3 py-2 text-sm last:border-b-0",
+                          checked
+                            ? "bg-[var(--surface-brand)]"
+                            : "bg-white hover:bg-[var(--surface-1)]",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleChannel(ch.id)}
+                          className="h-4 w-4 shrink-0"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium text-[var(--text-1)]">
+                            {ch.isPrivate ? "🔒 " : "#"}
+                            {ch.name}
+                          </span>
+                          {!ch.isMember ? (
+                            <span className="ml-2 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+                              Bot not in channel
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] text-[var(--text-4)]">
+                          {ch.memberCount} members
+                        </span>
+                      </label>
+                    );
+                  })}
+                {(available ?? []).length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-[var(--text-4)]">
+                    No channels visible to this bot.
+                  </p>
+                ) : null}
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--text-4)]">
+                Tip: invite the bot to a channel from Slack ({`/invite @your-bot`}) before
+                selecting it — Slack won&apos;t let the bot read history otherwise.
+              </p>
+            </>
+          )}
         </div>
 
         {saveError && (
@@ -2117,54 +2179,68 @@ function SlackSection({
         )}
 
         {/* Per-event routing — assign a channel to each Foundry event. Empty = no Slack post. */}
-        {channels.length > 0 ? (
-          <div>
-            <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
-              Per-event routing
-            </label>
-            <p className="mb-1.5 text-[11px] text-[var(--text-4)]">
-              Route specific Foundry events to specific channels. Events left as &ldquo;None&rdquo;
-              won&rsquo;t post to Slack — they&rsquo;ll still appear in per-user notification
-              preferences and email/push if configured.
-            </p>
-            <p className="mb-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]">
-              <strong>Saved &mdash; not yet firing.</strong> Per-event Slack delivery ships
-              alongside the notification dispatcher in the next release.
-            </p>
-            <div className="space-y-1.5">
-              {SLACK_ROUTE_EVENTS.map((event) => (
-                <div
-                  key={event.id}
-                  className="grid grid-cols-[120px_minmax(0,1fr)_minmax(0,180px)] items-center gap-3 rounded-[6px] border border-[var(--border-3)] bg-[var(--surface-1)] px-3 py-2"
-                >
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                    {event.module}
-                  </span>
-                  <span className="text-xs text-[var(--text-2)]">{event.label}</span>
-                  <select
-                    value={routes[event.id] ?? ""}
-                    onChange={(e) =>
-                      setRoutes((current) => {
-                        const next = { ...current };
-                        if (e.target.value) next[event.id] = e.target.value;
-                        else delete next[event.id];
-                        return next;
-                      })
-                    }
-                    className="app-select text-xs"
+        {(() => {
+          // Build the dropdown options from the currently-selected channels — names come from
+          // either the live Slack list or the previously-saved workspace data.
+          const nameFor = new Map<string, string>();
+          for (const c of (config?.slackChannels ?? []) as Array<{ id: string; name: string }>) {
+            nameFor.set(c.id, c.name);
+          }
+          for (const c of available ?? []) nameFor.set(c.id, c.name);
+          const routingOptions = Array.from(selectedChannelIds).map((id) => ({
+            id,
+            name: nameFor.get(id) ?? id,
+          }));
+          if (routingOptions.length === 0) return null;
+          return (
+            <div>
+              <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
+                Per-event routing
+              </label>
+              <p className="mb-1.5 text-[11px] text-[var(--text-4)]">
+                Route specific Foundry events to specific channels. Events left as &ldquo;None&rdquo;
+                won&rsquo;t post to Slack — they&rsquo;ll still appear in per-user notification
+                preferences and email/push if configured.
+              </p>
+              <p className="mb-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]">
+                <strong>Saved &mdash; not yet firing.</strong> Per-event Slack delivery ships
+                alongside the notification dispatcher in the next release.
+              </p>
+              <div className="space-y-1.5">
+                {SLACK_ROUTE_EVENTS.map((event) => (
+                  <div
+                    key={event.id}
+                    className="grid grid-cols-[120px_minmax(0,1fr)_minmax(0,180px)] items-center gap-3 rounded-[6px] border border-[var(--border-3)] bg-[var(--surface-1)] px-3 py-2"
                   >
-                    <option value="">None</option>
-                    {channels.map((ch) => (
-                      <option key={ch.id} value={ch.id}>
-                        {ch.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                      {event.module}
+                    </span>
+                    <span className="text-xs text-[var(--text-2)]">{event.label}</span>
+                    <select
+                      value={routes[event.id] ?? ""}
+                      onChange={(e) =>
+                        setRoutes((current) => {
+                          const next = { ...current };
+                          if (e.target.value) next[event.id] = e.target.value;
+                          else delete next[event.id];
+                          return next;
+                        })
+                      }
+                      className="app-select text-xs"
+                    >
+                      <option value="">None</option>
+                      {routingOptions.map((ch) => (
+                        <option key={ch.id} value={ch.id}>
+                          {ch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : null}
+          );
+        })()}
 
         <button
           onClick={() => void handleSave()}
