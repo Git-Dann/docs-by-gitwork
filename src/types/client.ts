@@ -29,6 +29,7 @@ export interface ClientDetailFields {
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
 }
 
 export interface ClientPlatformRecord {

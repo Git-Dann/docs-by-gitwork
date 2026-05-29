@@ -691,6 +691,7 @@ model WorkspaceClient {
   primaryContactEmail  String?
   primaryContactPhone  String?
   googleDriveFolderUrl String?
+  clickupUrl           String?          @db.Text
   hidden               Boolean          @default(false)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt

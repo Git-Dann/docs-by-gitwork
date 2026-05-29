@@ -177,6 +177,7 @@ const clientContactFields = {
   primaryContactEmail: z.string().trim().optional(),
   primaryContactPhone: z.string().trim().optional(),
   googleDriveFolderUrl: z.string().trim().optional(),
+  clickupUrl: z.string().trim().optional(),
 };
 
 export const clientCreateSchema = z.object({

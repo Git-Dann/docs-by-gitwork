@@ -297,6 +297,7 @@ export async function updateClient(
     primaryContactEmail?: string;
     primaryContactPhone?: string;
     googleDriveFolderUrl?: string;
+    clickupUrl?: string;
   },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {

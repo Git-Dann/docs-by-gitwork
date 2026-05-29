@@ -66,6 +66,7 @@ type ManualClientRecord = {
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -82,6 +83,7 @@ type ClientContactInput = {
   primaryContactEmail?: string;
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
+  clickupUrl?: string;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -97,6 +99,7 @@ function emptyContactFields(): ClientDetailFields {
     primaryContactEmail: null,
     primaryContactPhone: null,
     googleDriveFolderUrl: null,
+    clickupUrl: null,
   };
 }
 
@@ -113,6 +116,7 @@ function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields
     primaryContactEmail: record.primaryContactEmail,
     primaryContactPhone: record.primaryContactPhone,
     googleDriveFolderUrl: record.googleDriveFolderUrl,
+    clickupUrl: record.clickupUrl,
   };
 }
 
@@ -129,6 +133,7 @@ function buildContactData(input: ClientContactInput) {
     primaryContactEmail: input.primaryContactEmail?.trim() || null,
     primaryContactPhone: input.primaryContactPhone?.trim() || null,
     googleDriveFolderUrl: input.googleDriveFolderUrl?.trim() || null,
+    clickupUrl: input.clickupUrl?.trim() || null,
   };
 }
 
@@ -473,6 +478,7 @@ export async function updateClientRecord(
             primaryContactEmail: null,
             primaryContactPhone: null,
             googleDriveFolderUrl: null,
+            clickupUrl: null,
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },

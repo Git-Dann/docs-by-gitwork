@@ -45,6 +45,7 @@ type EditFormState = {
   primaryContactEmail: string;
   primaryContactPhone: string;
   googleDriveFolderUrl: string;
+  clickupUrl: string;
 };
 
 export function ClientDetail({ slug }: { slug: string }) {
@@ -100,6 +101,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       primaryContactEmail: client.primaryContactEmail ?? "",
       primaryContactPhone: client.primaryContactPhone ?? "",
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
+      clickupUrl: client.clickupUrl ?? "",
     });
     setEditing(true);
   }
@@ -123,6 +125,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         primaryContactEmail: editForm.primaryContactEmail || undefined,
         primaryContactPhone: editForm.primaryContactPhone || undefined,
         googleDriveFolderUrl: editForm.googleDriveFolderUrl || undefined,
+        clickupUrl: editForm.clickupUrl || undefined,
       });
       setEditing(false);
       setEditForm(null);
@@ -243,6 +246,17 @@ export function ClientDetail({ slug }: { slug: string }) {
                   >
                     <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                     Google Drive
+                  </a>
+                )}
+                {client.clickupUrl && (
+                  <a
+                    href={client.clickupUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                    ClickUp
                   </a>
                 )}
               </div>
@@ -1011,6 +1025,19 @@ function ClientEditModal({
                   onChange={(e) => set("googleDriveFolderUrl", e.target.value)}
                   className="app-input"
                   placeholder="https://drive.google.com/drive/folders/…"
+                  type="url"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="app-field-label">ClickUp folder URL</span>
+                <input
+                  value={form.clickupUrl}
+                  onChange={(e) => set("clickupUrl", e.target.value)}
+                  className="app-input"
+                  placeholder="https://app.clickup.com/…"
                   type="url"
                 />
               </label>

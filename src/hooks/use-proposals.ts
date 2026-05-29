@@ -102,6 +102,7 @@ type ClientUpdatePayload = {
   primaryContactEmail?: string;
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
+  clickupUrl?: string;
 };
 
 export function useUpdateClient(slug: string) {
