@@ -20,25 +20,23 @@ import {
   type IdentityConfidence,
   type PipelineStatus,
 } from "@/types/codeclear";
-import { useClientList } from "@/hooks/use-proposals";
+import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
 import {
   CodeClearTabs,
   EmptyState,
-  RosterGroups,
+  RosterTierBadge,
 } from "@/components/codeclear/codeclear-shared";
 import {
   CandidateProfileForm,
   emptyCandidateProfile,
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
-import { CodeClearCandidateDrawer } from "@/components/codeclear/codeclear-candidate-drawer";
 
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const selectedCandidateId = searchParams.get("candidate");
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState<PipelineStatus | "">(
@@ -69,8 +67,6 @@ export function CodeClearCandidatesWorkspace() {
   });
   const createCandidate = useCreateCodeClearCandidate();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
-  const clientsQuery = useClientList();
-  const clients = clientsQuery.data?.clients ?? [];
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
 
   // Same canonical sort as the overview: roster order first, then any new
@@ -251,27 +247,128 @@ export function CodeClearCandidatesWorkspace() {
         ) : null}
 
         {candidates.length ? (
-          <div className="mt-5">
-            <RosterGroups
-              candidates={orderedCandidates}
-              clients={clients}
-              clientsLoading={clientsQuery.isLoading}
-              selectable
-              selectedIds={selectedIdSet}
-              onSelectChange={(id, checked) => {
-                setSelectedIds((current) =>
-                  checked
-                    ? current.includes(id) ? current : [...current, id]
-                    : current.filter((entry) => entry !== id),
-                );
-              }}
-            />
+          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+            <table className="app-table">
+              <thead>
+                <tr>
+                  <th className="w-10 text-left" />
+                  <th className="text-left">Dev</th>
+                  <th className="text-left">Stack</th>
+                  <th className="text-left">Current client</th>
+                  <th className="text-right">Calibre</th>
+                  <th className="text-left">Tier</th>
+                  <th className="text-right">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderedCandidates.map((candidate) => {
+                  const checked = selectedIdSet.has(candidate.id);
+                  const score =
+                    candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
+                  return (
+                    <tr
+                      key={candidate.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/app/codeclear/candidates/${candidate.id}`)}
+                    >
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setSelectedIds((current) =>
+                              event.target.checked
+                                ? current.includes(candidate.id)
+                                  ? current
+                                  : [...current, candidate.id]
+                                : current.filter((entry) => entry !== candidate.id),
+                            )
+                          }
+                          className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
+                          aria-label={`Select ${candidate.name}`}
+                        />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          {candidate.avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={candidate.avatarUrl}
+                              alt=""
+                              className="h-8 w-8 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-xs font-semibold text-[var(--brand-700)]">
+                              {candidate.name
+                                .split(" ")
+                                .map((part) => part[0])
+                                .join("")
+                                .slice(0, 2)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+                              {candidate.name}
+                            </p>
+                            <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
+                              @{candidate.githubHandle}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="text-sm text-[var(--text-2)]">
+                          {candidate.primaryStack}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="text-sm text-[var(--text-3)]">
+                          {candidate.currentClient?.name ?? (
+                            <span className="text-[var(--text-4)]">Unassigned</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="text-right">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
+                            score == null
+                              ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
+                              : score >= 80
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : score >= 65
+                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
+                          )}
+                        >
+                          {score ?? "—"}
+                        </span>
+                      </td>
+                      <td>
+                        <RosterTierBadge
+                          effectiveTier={candidate.effectiveTier}
+                          isOverridden={
+                            candidate.tierManualOverride !== null &&
+                            candidate.tierManualOverride !== candidate.tier
+                          }
+                        />
+                      </td>
+                      <td className="text-right">
+                        <span className="font-mono text-[11px] text-[var(--text-4)]">
+                          {formatDate(candidate.updatedAt)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="mt-5">
             <EmptyState
-              title="No candidates match these filters"
-              body="Try widening the search or add a new CodeClear profile."
+              title="No devs match these filters"
+              body="Try widening the search or add a new dev to the registry."
             />
           </div>
         )}
@@ -358,11 +455,6 @@ export function CodeClearCandidatesWorkspace() {
         </div>
       ) : null}
 
-      <CodeClearCandidateDrawer
-        candidateId={selectedCandidateId}
-        onClose={() => updateQuery({ candidate: null })}
-        onDeleted={() => setSelectedIds((current) => current.filter((id) => id !== selectedCandidateId))}
-      />
     </div>
   );
 }

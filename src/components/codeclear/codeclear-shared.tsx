@@ -564,7 +564,7 @@ export function RosterCard({
   const setCurrentClient = useSetCandidateCurrentClient(candidate.id);
   const currentClientId = candidate.currentClient?.id ?? "";
   const score = candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore;
-  const linkHref = href ?? `/app/codeclear/candidates?candidate=${candidate.id}`;
+  const linkHref = href ?? `/app/codeclear/candidates/${candidate.id}`;
 
   return (
     <div
