@@ -458,6 +458,13 @@ export const currentClientUpdateSchema = z.object({
   clientId: z.string().cuid().nullable().optional(),
 });
 
+// Multi-client version. Empty array → unassigned everywhere. The endpoint
+// closes any open placement whose clientId isn't in this list and opens new
+// placements for ids that don't have one open yet.
+export const currentClientsUpdateSchema = z.object({
+  clientIds: z.array(z.string().cuid()).max(20),
+});
+
 export const proposalUpdateSchema = z.object({
   title: z.string().optional(),
   status: documentStatusSchema.optional(),

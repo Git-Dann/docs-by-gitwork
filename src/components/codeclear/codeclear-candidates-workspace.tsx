@@ -22,6 +22,7 @@ import {
 } from "@/types/codeclear";
 import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
+import { useClientList } from "@/hooks/use-proposals";
 import {
   CodeClearTabs,
   EmptyState,
@@ -32,6 +33,7 @@ import {
   emptyCandidateProfile,
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
+import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
 
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
@@ -67,6 +69,8 @@ export function CodeClearCandidatesWorkspace() {
   });
   const createCandidate = useCreateCodeClearCandidate();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
+  const clientsQuery = useClientList();
+  const clientOptions = clientsQuery.data?.clients ?? [];
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
 
   // Same canonical sort as the overview: roster order first, then any new
@@ -321,12 +325,15 @@ export function CodeClearCandidatesWorkspace() {
                           {candidate.primaryStack}
                         </span>
                       </td>
-                      <td>
-                        <span className="text-sm text-[var(--text-3)]">
-                          {candidate.currentClient?.name ?? (
-                            <span className="text-[var(--text-4)]">Unassigned</span>
-                          )}
-                        </span>
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <CurrentClientPicker
+                          candidateId={candidate.id}
+                          candidateName={candidate.name}
+                          currentClients={candidate.currentClients}
+                          clients={clientOptions}
+                          clientsLoading={clientsQuery.isLoading}
+                          size="sm"
+                        />
                       </td>
                       <td className="text-right">
                         <span

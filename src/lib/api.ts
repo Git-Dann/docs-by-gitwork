@@ -607,6 +607,21 @@ export async function setCandidateCurrentClient(
   });
 }
 
+/**
+ * Multi-client assignment. Replaces the dev's set of open Portal placements
+ * with exactly the ones for clientIds. Empty array = unassigned.
+ */
+export async function setCandidateCurrentClients(
+  candidateId: string,
+  clientIds: string[],
+): Promise<{ clientIds: string[] }> {
+  return apiFetch(`/api/codeclear/candidates/${candidateId}/current-clients`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientIds }),
+  });
+}
+
 export interface TechStackOption {
   id: string;
   name: string;

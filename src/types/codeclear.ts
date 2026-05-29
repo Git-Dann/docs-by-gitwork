@@ -270,8 +270,9 @@ export interface CodeClearCandidateListItem extends CodeClearCandidateRecord {
   scoreDraft: CodeClearScoreDraftRecord | null;
   latestGitHubAnalysis: GitHubAnalysisRunRecord | null;
   analysisState: CandidateAnalysisState;
-  // Current Portal client (open-ended placement). Null when unassigned.
-  currentClient: CodeClearCandidateCurrentClient | null;
+  // Every current Portal client the dev is open against (derived from
+  // open-ended placements). Empty array = unassigned. Order: alpha by name.
+  currentClients: CodeClearCandidateCurrentClient[];
 }
 
 export interface CodeClearCandidateDetail extends CodeClearCandidateRecord {
@@ -284,8 +285,8 @@ export interface CodeClearCandidateDetail extends CodeClearCandidateRecord {
   activityLog: CodeClearActivityRecord[];
   checks: CodeClearCheckRecord[];
   analysisState: CandidateAnalysisState;
-  /** Current Portal client (derived from the open placement). Same shape as list item. */
-  currentClient: CodeClearCandidateCurrentClient | null;
+  /** Every current Portal client (derived from open-ended placements). */
+  currentClients: CodeClearCandidateCurrentClient[];
 }
 
 export interface CandidateListParams {

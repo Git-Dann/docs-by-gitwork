@@ -16,6 +16,7 @@ import {
   listTechStacks,
   runCodeClearGitHubAnalysis,
   setCandidateCurrentClient,
+  setCandidateCurrentClients,
   updateCodeClearCandidate,
   type CodeClearRunsResponse,
 } from "@/lib/api";
@@ -199,13 +200,29 @@ export function useTechStacks() {
   });
 }
 
-// Used by the Code roster's per-dev "Current client" dropdown.
-// Pass clientId=null to clear the assignment.
+// Single-client setter kept around for backwards-compatible callers; new UI
+// uses the multi-client setter below.
 export function useSetCandidateCurrentClient(candidateId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (clientId: string | null) => setCandidateCurrentClient(candidateId, clientId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "stats"] });
+    },
+  });
+}
+
+// Multi-client setter — set the full list of clients the dev is engaged
+// with right now. Empty array = unassigned.
+export function useSetCandidateCurrentClients(candidateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (clientIds: string[]) =>
+      setCandidateCurrentClients(candidateId, clientIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
