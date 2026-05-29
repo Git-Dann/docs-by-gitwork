@@ -1,3 +1,4 @@
+import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { fetchNewMessages } from "@/server/discord-sync";
@@ -66,6 +67,7 @@ interface DiscordScraperConfig {
 }
 
 export interface SyncResult {
+  fetched?: number;
   ingested: number;
   filtered: number;
   errors: string[];
@@ -85,6 +87,7 @@ export interface SyncContext {
     id: string;
     googleServiceAccountJson: string | null;
     googleSubjectEmail: string | null;
+    googleOAuthRefreshToken: string | null;
     aiProvider: string;
     anthropicApiKey: string | null;
     anthropicModel: string | null;
@@ -106,6 +109,7 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
       id: true,
       googleServiceAccountJson: true,
       googleSubjectEmail: true,
+      googleOAuthRefreshToken: true,
       aiProvider: true,
       anthropicApiKey: true,
       anthropicModel: true,
@@ -339,10 +343,191 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   return { ingested, filtered, errors };
 }
 
+// ─── Gmail sync ───────────────────────────────────────────────────────────────
+
+function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string } | null }): string {
+  const payload = msg.payload;
+  if (!payload) return "";
+
+  function decodeBase64(data: string): string {
+    return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+  }
+
+  function extractFromParts(parts: unknown[]): string {
+    const p = parts as Array<{ mimeType?: string; body?: { data?: string | null }; parts?: unknown[] }>;
+    for (const part of p) {
+      if (part.mimeType === "text/plain" && part.body?.data) return decodeBase64(part.body.data);
+    }
+    for (const part of p) {
+      if (part.mimeType === "text/html" && part.body?.data) {
+        return decodeBase64(part.body.data).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      }
+    }
+    for (const part of p) {
+      if (part.parts) {
+        const found = extractFromParts(part.parts);
+        if (found) return found;
+      }
+    }
+    return "";
+  }
+
+  if (payload.parts) return extractFromParts(payload.parts);
+  if (payload.body?.data) return decodeBase64(payload.body.data);
+  return "";
+}
+
+async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
+  const { workspace, connection, client } = ctx;
+
+  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+
+  if (workspace.googleOAuthRefreshToken) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return { fetched: 0, ingested: 0, filtered: 0, errors: ["GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars not configured"] };
+    }
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken });
+    gmailAuth = oauth2 as Parameters<typeof google.gmail>[0]["auth"];
+  } else if (workspace.googleServiceAccountJson) {
+    try {
+      const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      });
+      const authClient = await auth.getClient();
+      if (workspace.googleSubjectEmail && "subject" in authClient) {
+        (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
+      }
+      gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+    } catch (err) {
+      return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
+    }
+  } else {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: ["Gmail not connected — go to Settings → Google Workspace and click Connect Gmail"] };
+  }
+
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
+  const config = (connection.scraperConfig ?? {}) as { query?: string; intakeAddress?: string };
+  const queryBase = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
+  const lastSyncedAt = connection.lastSyncedAt;
+  const afterSeconds = lastSyncedAt
+    ? Math.floor(lastSyncedAt.getTime() / 1000)
+    : Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+  const fullQuery = [queryBase, `after:${afterSeconds}`].filter(Boolean).join(" ");
+
+  let ingested = 0;
+  let filtered = 0;
+  const errors: string[] = [];
+
+  try {
+    const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults: 50 });
+    const messageItems = listRes.data.messages ?? [];
+    const fetched = messageItems.length;
+    const threadsSeen = new Set<string>();
+
+    for (const item of messageItems) {
+      if (!item.id || !item.threadId) continue;
+      if (threadsSeen.has(item.threadId)) { filtered++; continue; }
+      threadsSeen.add(item.threadId);
+
+      try {
+        const threadRes = await gmail.users.threads.get({
+          userId: "me",
+          id: item.threadId,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From", "Date"],
+        });
+        const threadMessages = threadRes.data.messages ?? [];
+        if (threadMessages.length === 0) { filtered++; continue; }
+
+        const firstMsg = threadMessages[0];
+        const hdrs = firstMsg.payload?.headers ?? [];
+        const subject = hdrs.find((h) => h.name === "Subject")?.value ?? "(no subject)";
+        const from = hdrs.find((h) => h.name === "From")?.value ?? "unknown";
+        const dateStr = hdrs.find((h) => h.name === "Date")?.value;
+        const receivedAt = dateStr ? new Date(dateStr) : new Date();
+        const customerLabel = from.replace(/<[^>]+>/g, "").trim() || from;
+
+        let conv = await prisma.supportConversation.findFirst({
+          where: { clientId: client.id, source: "GMAIL", externalId: item.threadId },
+        });
+
+        if (!conv) {
+          conv = await prisma.supportConversation.create({
+            data: {
+              clientId: client.id,
+              source: "GMAIL",
+              externalId: item.threadId,
+              customerLabel,
+              subject,
+              preview: subject,
+              receivedAt,
+              unread: true,
+              tags: ["gmail"],
+            },
+          });
+          ingested++;
+        } else {
+          filtered++;
+        }
+
+        for (const msg of threadMessages) {
+          if (!msg.id) continue;
+          const already = await prisma.supportMessage.findFirst({
+            where: { conversationId: conv.id, externalId: msg.id },
+            select: { id: true },
+          });
+          if (already) continue;
+
+          try {
+            const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
+            const body = extractGmailBodyText(msgRes.data);
+            if (!body.trim()) continue;
+
+            const msgHdrs = (msg.payload?.headers ?? []) as Array<{ name?: string | null; value?: string | null }>;
+            const msgFrom = msgHdrs.find((h) => h.name === "From")?.value ?? "";
+            const isOutbound = workspace.googleSubjectEmail ? msgFrom.includes(workspace.googleSubjectEmail) : false;
+
+            await prisma.supportMessage.create({
+              data: {
+                conversationId: conv.id,
+                direction: isOutbound ? "outbound" : "inbound",
+                authorLabel: msgFrom.replace(/<[^>]+>/g, "").trim() || msgFrom,
+                body: body.slice(0, 4000),
+                externalId: msg.id,
+                createdAt: msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt,
+              },
+            });
+          } catch {
+            // skip individual message errors
+          }
+        }
+      } catch (err) {
+        errors.push(`Thread ${item.threadId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    await prisma.accountConnection.update({
+      where: { id: connection.id },
+      data: { lastSyncedAt: new Date() },
+    });
+
+    return { fetched, ingested, filtered, errors };
+  } catch (err) {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${err instanceof Error ? err.message : String(err)}`] };
+  }
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
   switch (ctx.connection.source) {
+    case "GMAIL":
+      return syncGmailConnection(ctx);
     case "DISCORD":
       return syncDiscordConnection(ctx);
     case "REDDIT":

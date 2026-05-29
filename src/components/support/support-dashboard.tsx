@@ -2073,9 +2073,9 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : sr.fetched === 0
-                            ? "Synced — no new emails since last sync"
-                            : `Synced — ${sr.fetched} fetched, ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered by AI`}
+                          : (sr.ingested ?? 0) === 0
+                            ? "Synced — no new items since last sync"
+                            : `Synced — ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered`}
                       </p>
                     )}
                   </div>
