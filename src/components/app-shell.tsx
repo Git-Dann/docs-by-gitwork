@@ -82,7 +82,7 @@ export function AppShell({
       {
         href: "/app/portal",
         label: "Portal",
-        description: "Client-support workspace",
+        description: "Client management",
         icon: UserGroupIcon,
       },
       {
