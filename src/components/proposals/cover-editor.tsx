@@ -1,6 +1,6 @@
 "use client";
 
-import { resolveConfidentialityText, useLocalSettings } from "@/lib/local-settings";
+import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import type { CoverSectionData } from "@/types/proposal";
 
 export function CoverEditor({
@@ -14,13 +14,15 @@ export function CoverEditor({
   preparedBy: string;
   onPreparedByChange: (value: string) => void;
 }) {
-  const { settings } = useLocalSettings();
+  const brandingQuery = useWorkspaceBranding();
+  const branding = brandingQuery.data;
   const confidentialityMode = value.confidentialityMode ?? "INTERNAL";
-  const confidentialityText = resolveConfidentialityText(
-    confidentialityMode,
-    settings,
-    value.confidentiality,
-  );
+  const confidentialityText =
+    (confidentialityMode === "EXTERNAL"
+      ? branding?.defaultConfidentialityExternal
+      : branding?.defaultConfidentialityInternal) ||
+    value.confidentiality ||
+    "";
 
   return (
     <div className="space-y-4">
@@ -53,14 +55,14 @@ export function CoverEditor({
             value={confidentialityMode}
             onChange={(event) => {
               const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
+              const fromBranding =
+                nextMode === "EXTERNAL"
+                  ? branding?.defaultConfidentialityExternal
+                  : branding?.defaultConfidentialityInternal;
               onChange({
                 ...value,
                 confidentialityMode: nextMode,
-                confidentiality: resolveConfidentialityText(
-                  nextMode,
-                  settings,
-                  value.confidentiality,
-                ),
+                confidentiality: fromBranding || value.confidentiality || "",
               });
             }}
             className="app-select w-full"

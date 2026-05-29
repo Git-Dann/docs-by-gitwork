@@ -20,7 +20,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
-import { useLocalSettings, type AccountSettings } from "@/lib/local-settings";
+import { useAccount, type AccountProfile } from "@/hooks/use-account";
 
 type NavItem = {
   href?: string;
@@ -45,7 +45,8 @@ export function AppShell({
   mainClassName?: string;
 }) {
   const pathname = usePathname();
-  const { settings } = useLocalSettings();
+  const accountQuery = useAccount();
+  const account = accountQuery.data ?? null;
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close drawer on route change
@@ -189,7 +190,7 @@ export function AppShell({
             pathname={pathname}
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
-            account={settings.account}
+            account={account}
           />
         </aside>
 
@@ -233,7 +234,7 @@ function ExpandedRail({
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
-  account: AccountSettings;
+  account: AccountProfile | null;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -353,15 +354,15 @@ function Avatar({ name, url }: { name: string; url: string }) {
   );
 }
 
-function ProfileMenu({ account }: { account: AccountSettings }) {
-  const { settings } = useLocalSettings();
+function ProfileMenu({ account }: { account: AccountProfile | null }) {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
 
-  // Use Google session data when available, fall back to local settings
-  const displayName = session?.user?.name ?? account.name;
-  const displayEmail = session?.user?.email ?? account.email;
-  const displayAvatar = session?.user?.image ?? account.avatarUrl;
+  // Prefer the user's custom avatar (saved in account settings) over the OAuth photo.
+  // Fall back to the OAuth values if the DB record hasn't loaded yet.
+  const displayName = account?.name || session?.user?.name || "";
+  const displayEmail = account?.email || session?.user?.email || "";
+  const displayAvatar = account?.avatarUrl || session?.user?.image || "";
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

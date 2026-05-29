@@ -795,6 +795,16 @@ export interface IntegrationsResponse {
   slackBotTokenMasked: string | null;
   slackSummaryChannelId: string | null; // legacy
   slackChannels: SlackChannel[];
+  channelRoutes: Record<string, string>;
+  emailProvider: "RESEND" | "SMTP" | null;
+  emailFromAddress: string | null;
+  emailFromName: string | null;
+  emailReplyTo: string | null;
+  emailApiKeyMasked: string | null;
+  emailSmtpHost: string | null;
+  emailSmtpPort: number | null;
+  emailSmtpUser: string | null;
+  emailSmtpPasswordSet: boolean;
 }
 
 export interface SlackChannel {
@@ -837,6 +847,16 @@ export async function saveIntegrations(data: {
   slackBotToken?: string;
   slackSummaryChannelId?: string;
   slackChannels?: SlackChannel[];
+  channelRoutes?: Record<string, string>;
+  emailProvider?: "RESEND" | "SMTP" | null;
+  emailApiKey?: string;
+  emailFromAddress?: string;
+  emailFromName?: string;
+  emailReplyTo?: string;
+  emailSmtpHost?: string;
+  emailSmtpPort?: number;
+  emailSmtpUser?: string;
+  emailSmtpPassword?: string;
 }): Promise<{ saved: boolean }> {
   return apiFetch("/api/settings/integrations", {
     method: "PUT",

@@ -9,9 +9,11 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { recordAuditEntry } from "@/server/audit-log";
 import {
   EMPTY_WORKSPACE_BRANDING,
   parseWorkspaceBranding,
@@ -66,6 +68,22 @@ export async function PATCH(request: NextRequest) {
       data: { branding: next as unknown as Prisma.InputJsonValue },
       select: { branding: true },
     });
+
+    const session = await auth();
+    const changedFields = Object.keys(parsed.data).filter(
+      (key) =>
+        JSON.stringify(parsed.data[key as keyof typeof parsed.data]) !==
+        JSON.stringify(current[key as keyof typeof current]),
+    );
+    if (changedFields.length > 0) {
+      await recordAuditEntry({
+        workspaceId: workspace.id,
+        actorId: session?.user?.id ?? null,
+        action: "settings.branding.updated",
+        target: `workspace.branding.${changedFields.join("+")}`,
+        metadata: { changedFields },
+      });
+    }
 
     return apiOk({ branding: parseWorkspaceBranding(updated.branding) });
   } catch (error) {

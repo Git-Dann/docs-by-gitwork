@@ -26,8 +26,8 @@ import {
   type DemoCleanupPreviewResponse, type DemoCleanupApplyResponse,
 } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
-import { useLocalSettings } from "@/lib/local-settings";
 import { useUpdateWorkspaceBranding, useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { useUpdateWorkspaceDefaults, useWorkspaceDefaults } from "@/hooks/use-workspace-defaults";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
@@ -115,7 +115,13 @@ export function SettingsPanel({
 }
 
 function GeneralTab() {
-  const { settings, updateSettings } = useLocalSettings();
+  const defaultsQuery = useWorkspaceDefaults();
+  const updateDefaults = useUpdateWorkspaceDefaults();
+  const defaults = defaultsQuery.data;
+
+  function patch(patchObject: Partial<{ preparedBy: string; team: string; contactDetails: string }>) {
+    updateDefaults.mutate(patchObject);
+  }
 
   return (
     <div className="space-y-6">
@@ -125,39 +131,25 @@ function GeneralTab() {
           Proposal defaults
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Shared defaults pre-filled across proposals and sign-off sections.
+          Shared defaults pre-filled across proposals and sign-off sections. Saved to the
+          workspace so every teammate sees the same values.
         </p>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <FieldInput
             label="Prepared by"
-            value={settings.workspace.preparedBy}
-            onChange={(preparedBy) =>
-              updateSettings((current) => ({
-                ...current,
-                workspace: { ...current.workspace, preparedBy },
-              }))
-            }
+            value={defaults?.preparedBy ?? ""}
+            onChange={(preparedBy) => patch({ preparedBy })}
           />
           <FieldInput
             label="Team / department"
-            value={settings.workspace.team}
-            onChange={(team) =>
-              updateSettings((current) => ({
-                ...current,
-                workspace: { ...current.workspace, team },
-              }))
-            }
+            value={defaults?.team ?? ""}
+            onChange={(team) => patch({ team })}
           />
           <FieldInput
             label="Contact details"
-            value={settings.workspace.contactDetails}
-            onChange={(contactDetails) =>
-              updateSettings((current) => ({
-                ...current,
-                workspace: { ...current.workspace, contactDetails },
-              }))
-            }
+            value={defaults?.contactDetails ?? ""}
+            onChange={(contactDetails) => patch({ contactDetails })}
           />
         </div>
       </section>
@@ -166,45 +158,12 @@ function GeneralTab() {
 }
 
 function BrandingTab() {
-  // Workspace branding is now the source of truth (Sprint 1 of the Docs rebuild). Local settings
-  // are kept temporarily so users with values trapped on this device can one-click migrate them
-  // to the workspace.
-  const { settings, updateSettings } = useLocalSettings();
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
-
   const workspaceBranding = brandingQuery.data ?? {};
-  const local = settings.templateBranding;
-
-  // True when the local-storage values exist but the workspace doesn't have them yet. We surface
-  // a "copy to workspace" affordance in that case.
-  const localOnly =
-    (local.coverBrandLogoUrl && !workspaceBranding.brandLogoUrl) ||
-    (local.coverTopAccentUrl && !workspaceBranding.coverTopAccentUrl) ||
-    (local.coverBottomAccentUrl && !workspaceBranding.coverBottomAccentUrl);
 
   function patch(field: keyof typeof workspaceBranding, value: string) {
-    // Optimistically keep localStorage in sync so any code still reading from it doesn't lag.
-    if (field === "brandLogoUrl") {
-      updateSettings((current) => ({
-        ...current,
-        templateBranding: { ...current.templateBranding, coverBrandLogoUrl: value },
-      }));
-    } else if (field === "coverTopAccentUrl" || field === "coverBottomAccentUrl") {
-      updateSettings((current) => ({
-        ...current,
-        templateBranding: { ...current.templateBranding, [field]: value } as typeof current.templateBranding,
-      }));
-    }
     updateBranding.mutate({ [field]: value });
-  }
-
-  function importFromLocal() {
-    updateBranding.mutate({
-      brandLogoUrl: local.coverBrandLogoUrl || workspaceBranding.brandLogoUrl,
-      coverTopAccentUrl: local.coverTopAccentUrl || workspaceBranding.coverTopAccentUrl,
-      coverBottomAccentUrl: local.coverBottomAccentUrl || workspaceBranding.coverBottomAccentUrl,
-    });
   }
 
   return (
@@ -220,28 +179,6 @@ function BrandingTab() {
             Stored on the workspace so every member sees the same look. Per-document overrides
             still live in the proposal builder.
           </p>
-
-          {localOnly && !brandingQuery.isPending ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--brand-300)] bg-[var(--brand-200)]/40 px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium text-[var(--text-1)]">
-                  Branding from this browser isn&rsquo;t on the workspace yet.
-                </p>
-                <p className="mt-0.5 text-[var(--text-3)]">
-                  Push your local values up so every teammate sees them too.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={importFromLocal}
-                loading={updateBranding.isPending}
-              >
-                Copy to workspace
-              </Button>
-            </div>
-          ) : null}
 
           <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2">
@@ -276,7 +213,17 @@ function BrandingTab() {
 }
 
 function ContentTab() {
-  const { settings, updateSettings } = useLocalSettings();
+  const brandingQuery = useWorkspaceBranding();
+  const updateBranding = useUpdateWorkspaceBranding();
+  const defaultsQuery = useWorkspaceDefaults();
+  const updateDefaults = useUpdateWorkspaceDefaults();
+
+  const branding = brandingQuery.data;
+  const snippets = defaultsQuery.data?.objectiveSnippets ?? [];
+
+  function updateSnippets(next: Array<{ title: string; description: string }>) {
+    updateDefaults.mutate({ objectiveSnippets: next });
+  }
 
   return (
     <div className="space-y-6">
@@ -292,22 +239,16 @@ function ContentTab() {
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
           <FieldTextArea
             label="Internal statement"
-            value={settings.workspace.internalConfidentialityText}
-            onChange={(internalConfidentialityText) =>
-              updateSettings((current) => ({
-                ...current,
-                workspace: { ...current.workspace, internalConfidentialityText },
-              }))
+            value={branding?.defaultConfidentialityInternal ?? ""}
+            onChange={(value) =>
+              updateBranding.mutate({ defaultConfidentialityInternal: value })
             }
           />
           <FieldTextArea
             label="External statement"
-            value={settings.workspace.externalConfidentialityText}
-            onChange={(externalConfidentialityText) =>
-              updateSettings((current) => ({
-                ...current,
-                workspace: { ...current.workspace, externalConfidentialityText },
-              }))
+            value={branding?.defaultConfidentialityExternal ?? ""}
+            onChange={(value) =>
+              updateBranding.mutate({ defaultConfidentialityExternal: value })
             }
           />
         </div>
@@ -330,26 +271,15 @@ function ContentTab() {
             variant="secondary"
             size="sm"
             leadingIcon={<PlusIcon className="h-4 w-4" />}
-            onClick={() =>
-              updateSettings((current) => ({
-                ...current,
-                proposalDefaults: {
-                  ...current.proposalDefaults,
-                  objectiveSnippets: [
-                    ...current.proposalDefaults.objectiveSnippets,
-                    { title: "", description: "" },
-                  ],
-                },
-              }))
-            }
+            onClick={() => updateSnippets([...snippets, { title: "", description: "" }])}
           >
             Add snippet
           </Button>
         </div>
 
-        {settings.proposalDefaults.objectiveSnippets.length > 0 ? (
+        {snippets.length > 0 ? (
           <div className="mt-6 space-y-3">
-            {settings.proposalDefaults.objectiveSnippets.map((snippet, index) => (
+            {snippets.map((snippet, index) => (
               <article
                 key={`${snippet.title}-${index}`}
                 className="grid gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
@@ -358,32 +288,22 @@ function ContentTab() {
                   label="Title"
                   value={snippet.title}
                   onChange={(title) =>
-                    updateSettings((current) => ({
-                      ...current,
-                      proposalDefaults: {
-                        ...current.proposalDefaults,
-                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map(
-                          (entry, entryIndex) =>
-                            entryIndex === index ? { ...entry, title } : entry,
-                        ),
-                      },
-                    }))
+                    updateSnippets(
+                      snippets.map((entry, entryIndex) =>
+                        entryIndex === index ? { ...entry, title } : entry,
+                      ),
+                    )
                   }
                 />
                 <FieldInput
                   label="Description"
                   value={snippet.description}
                   onChange={(description) =>
-                    updateSettings((current) => ({
-                      ...current,
-                      proposalDefaults: {
-                        ...current.proposalDefaults,
-                        objectiveSnippets: current.proposalDefaults.objectiveSnippets.map(
-                          (entry, entryIndex) =>
-                            entryIndex === index ? { ...entry, description } : entry,
-                        ),
-                      },
-                    }))
+                    updateSnippets(
+                      snippets.map((entry, entryIndex) =>
+                        entryIndex === index ? { ...entry, description } : entry,
+                      ),
+                    )
                   }
                 />
                 <div className="flex items-end justify-end">
@@ -392,15 +312,7 @@ function ContentTab() {
                     variant="danger"
                     size="sm"
                     onClick={() =>
-                      updateSettings((current) => ({
-                        ...current,
-                        proposalDefaults: {
-                          ...current.proposalDefaults,
-                          objectiveSnippets: current.proposalDefaults.objectiveSnippets.filter(
-                            (_, entryIndex) => entryIndex !== index,
-                          ),
-                        },
-                      }))
+                      updateSnippets(snippets.filter((_, entryIndex) => entryIndex !== index))
                     }
                   >
                     Remove
@@ -1342,6 +1254,9 @@ function IntegrationsTab() {
 
       {/* ── Slack ─────────────────────────────────────────────────── */}
       <SlackSection config={config} onSaved={setConfig} />
+
+      {/* ── Email outbound ────────────────────────────────────────── */}
+      <EmailOutboundSection config={config} onSaved={setConfig} />
     </div>
   );
 }
@@ -2014,6 +1929,16 @@ function GoogleWorkspaceSection({
   );
 }
 
+const SLACK_ROUTE_EVENTS: { id: string; label: string; module: string }[] = [
+  { id: "pulse.scan_failed", label: "Pulse scan failed", module: "Pulse" },
+  { id: "pulse.monitor_drift", label: "Pulse monitor drift", module: "Pulse" },
+  { id: "study.report_ready", label: "Study report ready", module: "Study" },
+  { id: "care.ticket_created", label: "Care ticket created", module: "Care" },
+  { id: "care.ticket_escalated", label: "Care ticket escalated", module: "Care" },
+  { id: "docs.viewed_by_client", label: "Doc viewed by client", module: "Docs" },
+  { id: "docs.signed", label: "Doc signed", module: "Docs" },
+];
+
 function SlackSection({
   config,
   onSaved,
@@ -2023,6 +1948,7 @@ function SlackSection({
 }) {
   const [tokenInput, setTokenInput] = useState("");
   const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
+  const [routes, setRoutes] = useState<Record<string, string>>({});
   const [newChannelId, setNewChannelId] = useState("");
   const [newChannelName, setNewChannelName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2038,6 +1964,7 @@ function SlackSection({
     } else {
       setChannels(saved);
     }
+    setRoutes(config.channelRoutes ?? {});
   }, [config]);
 
   function addChannel() {
@@ -2076,6 +2003,7 @@ function SlackSection({
       const payload: Parameters<typeof saveIntegrations>[0] = {};
       if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
       payload.slackChannels = finalChannels;
+      payload.channelRoutes = routes;
 
       await saveIntegrations(payload);
       const updated = await getIntegrations();
@@ -2185,12 +2113,270 @@ function SlackSection({
         {saveError && (
           <p className="text-xs text-red-500">{saveError}</p>
         )}
+
+        {/* Per-event routing — assign a channel to each Foundry event. Empty = no Slack post. */}
+        {channels.length > 0 ? (
+          <div>
+            <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
+              Per-event routing
+            </label>
+            <p className="mb-1.5 text-[11px] text-[var(--text-4)]">
+              Route specific Foundry events to specific channels. Events left as &ldquo;None&rdquo;
+              won&rsquo;t post to Slack — they&rsquo;ll still appear in per-user notification
+              preferences and email/push if configured.
+            </p>
+            <p className="mb-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]">
+              <strong>Saved &mdash; not yet firing.</strong> Per-event Slack delivery ships
+              alongside the notification dispatcher in the next release.
+            </p>
+            <div className="space-y-1.5">
+              {SLACK_ROUTE_EVENTS.map((event) => (
+                <div
+                  key={event.id}
+                  className="grid grid-cols-[120px_minmax(0,1fr)_minmax(0,180px)] items-center gap-3 rounded-[6px] border border-[var(--border-3)] bg-[var(--surface-1)] px-3 py-2"
+                >
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                    {event.module}
+                  </span>
+                  <span className="text-xs text-[var(--text-2)]">{event.label}</span>
+                  <select
+                    value={routes[event.id] ?? ""}
+                    onChange={(e) =>
+                      setRoutes((current) => {
+                        const next = { ...current };
+                        if (e.target.value) next[event.id] = e.target.value;
+                        else delete next[event.id];
+                        return next;
+                      })
+                    }
+                    className="app-select text-xs"
+                  >
+                    <option value="">None</option>
+                    {channels.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <button
           onClick={() => void handleSave()}
           disabled={saving}
           className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
         >
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// Outbound email — used for proposal sends, Care replies, notifications. Two providers:
+// Resend (API-key-based, recommended) and SMTP (any provider that exposes SMTP).
+function EmailOutboundSection({
+  config,
+  onSaved,
+}: {
+  config: IntegrationsResponse | null;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [provider, setProvider] = useState<"RESEND" | "SMTP" | "NONE">("NONE");
+  const [apiKey, setApiKey] = useState("");
+  const [fromAddress, setFromAddress] = useState("");
+  const [fromName, setFromName] = useState("");
+  const [replyTo, setReplyTo] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState<string>("587");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!config) return;
+    setProvider(config.emailProvider ?? "NONE");
+    setFromAddress(config.emailFromAddress ?? "");
+    setFromName(config.emailFromName ?? "");
+    setReplyTo(config.emailReplyTo ?? "");
+    setSmtpHost(config.emailSmtpHost ?? "");
+    setSmtpPort(config.emailSmtpPort ? String(config.emailSmtpPort) : "587");
+    setSmtpUser(config.emailSmtpUser ?? "");
+  }, [config]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const payload: Parameters<typeof saveIntegrations>[0] = {
+        emailProvider: provider === "NONE" ? null : provider,
+      };
+      if (apiKey.trim()) payload.emailApiKey = apiKey.trim();
+      if (fromAddress.trim()) payload.emailFromAddress = fromAddress.trim();
+      if (fromName.trim()) payload.emailFromName = fromName.trim();
+      if (replyTo.trim()) payload.emailReplyTo = replyTo.trim();
+      if (provider === "SMTP") {
+        if (smtpHost.trim()) payload.emailSmtpHost = smtpHost.trim();
+        const port = Number.parseInt(smtpPort, 10);
+        if (Number.isFinite(port) && port > 0) payload.emailSmtpPort = port;
+        if (smtpUser.trim()) payload.emailSmtpUser = smtpUser.trim();
+        if (smtpPassword.trim()) payload.emailSmtpPassword = smtpPassword.trim();
+      }
+      await saveIntegrations(payload);
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setApiKey("");
+      setSmtpPassword("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Email</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Outbound email
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Used for proposal sends, Care replies, and notification emails. Pick a provider, set the
+        From identity, and Foundry will route outgoing mail through it.
+      </p>
+      <p className="mt-3 max-w-2xl rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+        <strong>Saved &mdash; not yet active.</strong> Email delivery still flows through the
+        existing Care Gmail connector. Switching everything to this provider ships in the next
+        release.
+      </p>
+
+      <div className="mt-5 space-y-5">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+            Provider
+          </label>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as "RESEND" | "SMTP" | "NONE")}
+            className="app-select"
+          >
+            <option value="NONE">Not configured</option>
+            <option value="RESEND">Resend (recommended)</option>
+            <option value="SMTP">Custom SMTP</option>
+          </select>
+        </div>
+
+        {provider !== "NONE" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">From address</span>
+              <input
+                type="email"
+                value={fromAddress}
+                onChange={(e) => setFromAddress(e.target.value)}
+                placeholder="hello@gitwork.co.uk"
+                className="app-input w-full"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">From name</span>
+              <input
+                type="text"
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                placeholder="Gitwork"
+                className="app-input w-full"
+              />
+            </label>
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-medium text-[var(--text-2)]">Reply-to (optional)</span>
+              <input
+                type="email"
+                value={replyTo}
+                onChange={(e) => setReplyTo(e.target.value)}
+                placeholder="Defaults to From address"
+                className="app-input w-full"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {provider === "RESEND" ? (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+              Resend API key
+            </label>
+            {config?.emailApiKeyMasked && !apiKey ? (
+              <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
+                <span className="font-mono text-xs text-[var(--text-2)]">
+                  {config.emailApiKeyMasked}
+                </span>
+                <span className="ml-auto text-[10px] text-emerald-600">Connected</span>
+              </div>
+            ) : null}
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={config?.emailApiKeyMasked ? "Paste new key to replace…" : "re_…"}
+              className="app-input w-full font-mono text-sm"
+            />
+          </div>
+        ) : null}
+
+        {provider === "SMTP" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">SMTP host</span>
+              <input
+                type="text"
+                value={smtpHost}
+                onChange={(e) => setSmtpHost(e.target.value)}
+                placeholder="smtp.eu.mailgun.org"
+                className="app-input w-full"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">Port</span>
+              <input
+                type="number"
+                value={smtpPort}
+                onChange={(e) => setSmtpPort(e.target.value)}
+                placeholder="587"
+                className="app-input w-full"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">SMTP username</span>
+              <input
+                type="text"
+                value={smtpUser}
+                onChange={(e) => setSmtpUser(e.target.value)}
+                className="app-input w-full"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-[var(--text-2)]">SMTP password</span>
+              <input
+                type="password"
+                value={smtpPassword}
+                onChange={(e) => setSmtpPassword(e.target.value)}
+                placeholder={config?.emailSmtpPasswordSet ? "Paste new to replace…" : ""}
+                className="app-input w-full font-mono text-sm"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save email settings"}
         </button>
       </div>
     </section>
