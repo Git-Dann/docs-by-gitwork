@@ -13,18 +13,14 @@ import {
   SparklesIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
-import { useMemo } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
-import { useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
-import { rosterIndexFor } from "@/lib/gitwork-roster";
 import { statusLabel } from "@/types/codeclear";
 import {
   CodeClearStatusBadge,
   CodeClearTabs,
-  RosterGroups,
   WidgetCard,
 } from "@/components/codeclear/codeclear-shared";
 
@@ -94,34 +90,17 @@ function getEventMeta(eventType: string) {
 
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
+  // Overview is the health/stats view — pull lightweight aggregates only.
+  // The full roster lives in /app/codeclear/candidates.
   const allCandidatesQuery = useCodeClearCandidates({
     page: 1,
     pageSize: 100,
     sortBy: "createdAt",
     sortDir: "desc",
   });
-  const clientsQuery = useClientList();
 
   const stats = statsQuery.data;
-  const allCandidates = useMemo(
-    () => allCandidatesQuery.data?.items ?? [],
-    [allCandidatesQuery.data],
-  );
-  const clients = clientsQuery.data?.clients ?? [];
-
-  // Sort roster: canonical Slack order first (Shahab → Ali Asghar), then any
-  // new devs added later — by createdAt so they slot in at the bottom in the
-  // order they were added. This keeps the familiar list stable while still
-  // welcoming additions.
-  const orderedRoster = useMemo(() => {
-    return [...allCandidates].sort((a, b) => {
-      const ai = rosterIndexFor(a.name);
-      const bi = rosterIndexFor(b.name);
-      if (ai !== bi) return ai - bi;
-      // Both in roster or both outside — fall back to createdAt asc
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-  }, [allCandidates]);
+  const allCandidates = allCandidatesQuery.data?.items ?? [];
 
   const stageTotal = (stats?.byStatus ?? []).reduce((sum, e) => sum + e.count, 0);
 
@@ -343,31 +322,6 @@ export function CodeClearOverview() {
           </div>
         </WidgetCard>
 
-        {/* Roster — grouped by current client, dev cards within each group */}
-        <WidgetCard
-          number="09"
-          name="ROSTER"
-          className="col-span-12"
-          status={`${orderedRoster.length} ${orderedRoster.length === 1 ? "DEV" : "DEVS"}`}
-          statusTone="muted"
-          bodyClassName="widget-body--compact"
-        >
-          {orderedRoster.length ? (
-            <RosterGroups
-              candidates={orderedRoster}
-              clients={clients}
-              clientsLoading={clientsQuery.isLoading}
-            />
-          ) : (
-            <div className="px-6 py-8 text-center">
-              <p className="text-sm font-semibold text-[var(--text-1)]">No devs yet</p>
-              <p className="mt-2 text-sm text-[var(--text-4)]">
-                Use <span className="font-medium text-[var(--text-2)]">Add candidate</span> at the
-                top of the page to start building your roster.
-              </p>
-            </div>
-          )}
-        </WidgetCard>
       </div>
     </div>
   );

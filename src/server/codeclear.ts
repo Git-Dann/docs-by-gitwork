@@ -248,6 +248,7 @@ export const codeClearDetailInclude = {
   score: true,
   scoreDraft: true,
   placements: {
+    include: { client: { select: { id: true, name: true, slug: true } } },
     orderBy: {
       startDate: "desc",
     },
@@ -272,6 +273,10 @@ export const codeClearDetailInclude = {
     orderBy: [{ category: "asc" }, { sortOrder: "asc" }],
   },
 } satisfies Prisma.CandidateInclude;
+
+// Detail include still uses `placements` (already there) — but the serializer
+// derives `currentClient` from the FIRST open placement found. The placements
+// orderBy is `startDate desc` which puts the most recent open one first.
 
 export type CodeClearListCandidateRecord = Prisma.CandidateGetPayload<{
   include: typeof codeClearListInclude;
@@ -392,12 +397,25 @@ export function serializeCandidateDetails(
     ? serializeScoreDraft(candidate.scoreDraft)
     : null;
 
+  // Mirror the list serializer: open-ended (endDate=null) placement → currentClient.
+  const openPlacement = candidate.placements.find((p) => p.endDate === null);
+  const currentClient = openPlacement?.client
+    ? {
+        id: openPlacement.client.id,
+        name: openPlacement.client.name,
+        slug: openPlacement.client.slug,
+      }
+    : openPlacement
+      ? { id: null, name: openPlacement.clientName, slug: null }
+      : null;
+
   return {
     ...commonCandidateFields(candidate),
     score,
     scoreDraft,
     latestGitHubAnalysis,
     githubAnalysisRuns,
+    currentClient,
     placements: candidate.placements.map((placement) => ({
       id: placement.id,
       candidateId: placement.candidateId,

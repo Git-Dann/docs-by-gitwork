@@ -45,6 +45,16 @@ export interface ClientPlatformRecord {
   updatedAt: string;
 }
 
+export interface ClientDesignRecord {
+  id: string;
+  clientId: string;
+  name: string;
+  url: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientPulseScanSummary {
   id: string;
   projectName: string;
@@ -72,6 +82,7 @@ export interface ClientPlacementRecord {
 export interface ClientDetailRecord {
   client: ClientListItem & ClientDetailFields;
   platforms: ClientPlatformRecord[];
+  designs: ClientDesignRecord[];
   proposals: ProposalListItem[];
   proofDocuments: ProofDocumentRecord[];
   pulseScans: ClientPulseScanSummary[];
