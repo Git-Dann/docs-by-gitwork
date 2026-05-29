@@ -1,156 +1,154 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 
 export function AccountSettingsPanel() {
+  const { data: session } = useSession();
   const accountQuery = useAccount();
   const updateAccount = useUpdateAccount();
 
   const profile = accountQuery.data;
-  const [name, setName] = useState("");
+
+  // Identity strings come from the live session (Google) so this page renders instantly even
+  // while the /api/account hook is in-flight. Name and email are not user-editable because
+  // they're owned by Google Workspace.
+  const sessionName = session?.user?.name ?? "";
+  const sessionEmail = session?.user?.email ?? "";
+  const googleAvatarUrl = session?.user?.image ?? "";
+
   const [avatarUrl, setAvatarUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Pre-fill the picker with whatever's currently displayed. Priority is:
+  //   1. The user's custom avatar from /api/account
+  //   2. The Google profile photo from the session
+  // If we showed an empty preview while the API call is in flight the page would flicker.
   useEffect(() => {
     if (profile) {
-      setName(profile.name);
-      setAvatarUrl(profile.avatarUrl);
+      setAvatarUrl(profile.avatarUrl || googleAvatarUrl);
       setDirty(false);
+      setSaveError(null);
     }
-    // Intentionally subscribing on the two specific fields rather than the whole `profile`
-    // object — we only want to reset local edits when the underlying name/avatar actually
-    // change, not on every reference identity churn from refetches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.name, profile?.avatarUrl]);
+  }, [profile?.avatarUrl, googleAvatarUrl]);
 
   function save() {
-    updateAccount.mutate({ name, avatarUrl }, { onSuccess: () => setDirty(false) });
-  }
-
-  if (accountQuery.isLoading) {
-    return (
-      <div className="proposal-form-theme">
-        <div className="app-card p-6">
-          <p className="text-sm text-[var(--text-3)]">Loading your account…</p>
-        </div>
-      </div>
+    setSaveError(null);
+    // Only persist when the user actually picked a custom value. If they left it as the Google
+    // photo, we send an empty string so /api/account stays "no custom avatar" and Google's
+    // image stays the source of truth.
+    const value = avatarUrl === googleAvatarUrl ? "" : avatarUrl;
+    updateAccount.mutate(
+      { avatarUrl: value },
+      {
+        onSuccess: () => setDirty(false),
+        onError: (err) =>
+          setSaveError(err instanceof Error ? err.message : "Couldn't save — try again."),
+      },
     );
   }
 
-  if (accountQuery.isError || !profile) {
-    return (
-      <div className="proposal-form-theme">
-        <div className="app-card p-6">
-          <p className="text-sm text-[var(--text-3)]">
-            Couldn&apos;t load your account. Try refreshing the page.
-          </p>
-        </div>
-      </div>
-    );
+  function resetToGoogle() {
+    setAvatarUrl(googleAvatarUrl);
+    setDirty(Boolean(profile?.avatarUrl));
+    setSaveError(null);
   }
+
+  const loading = accountQuery.isLoading && !profile;
+  const hasCustomAvatar = Boolean(profile?.avatarUrl);
 
   return (
-    <div className="proposal-form-theme grid gap-4 xl:grid-cols-2">
+    <div className="proposal-form-theme space-y-6">
       <section className="app-card p-6">
         <p className="app-eyebrow">Profile</p>
         <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
           Your account
         </h2>
         <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          Manage the name and image shown in the sidebar and across the platform.
+          Sign-in identity is managed by Google Workspace — change your name there and it
+          updates here automatically. The profile image below overrides your Google photo inside
+          Foundry, including the sidebar.
         </p>
 
-        <div className="mt-4 space-y-4">
-          <div className="space-y-1.5">
+        <div className="mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
+          {/* Avatar column */}
+          <div className="space-y-2">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
             <ImagePicker
               value={avatarUrl}
               onChange={(value) => {
                 setAvatarUrl(value);
                 setDirty(true);
+                setSaveError(null);
               }}
               previewClassName="h-40 w-full"
             />
+            {hasCustomAvatar || avatarUrl !== googleAvatarUrl ? (
+              <button
+                type="button"
+                onClick={resetToGoogle}
+                className="text-xs font-medium text-[var(--brand-700)] hover:underline"
+              >
+                Use my Google photo
+              </button>
+            ) : googleAvatarUrl ? (
+              <p className="text-xs text-[var(--text-4)]">
+                Currently showing your Google photo. Choose a custom one to override.
+              </p>
+            ) : (
+              <p className="text-xs text-[var(--text-4)]">
+                Google hasn&apos;t supplied a profile photo. Upload one here.
+              </p>
+            )}
           </div>
 
-          <Input
-            label="Name"
-            value={name}
-            onChange={(value) => {
-              setName(value);
-              setDirty(true);
-            }}
-          />
-
-          <ReadOnlyField label="Email" value={profile.email} hint="Set by your Google sign-in." />
-          <ReadOnlyField
-            label="Role"
-            value={profile.role === "ADMIN" ? "Admin" : "Staff"}
-            hint="Workspace admins set roles in Team settings."
-          />
+          {/* Read-only identity */}
+          <div className="space-y-4">
+            <ReadOnlyField
+              label="Name"
+              value={sessionName}
+              hint="From Google Workspace. Change it in your Google profile to update."
+            />
+            <ReadOnlyField
+              label="Email"
+              value={sessionEmail}
+              hint="Set by your Google sign-in."
+            />
+            {profile ? (
+              <ReadOnlyField
+                label="Role"
+                value={profile.role === "ADMIN" ? "Admin" : "Staff"}
+                hint="Workspace admins set roles in Settings → Team."
+              />
+            ) : null}
+            <p className="text-xs text-[var(--text-4)]">
+              Signed in via Google for <code className="font-mono">{sessionEmail || "—"}</code>.
+              To sign out everywhere, use the account menu.
+            </p>
+          </div>
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          {dirty ? (
+          {saveError ? (
+            <span className="text-xs text-[var(--danger-500)]">{saveError}</span>
+          ) : dirty ? (
             <span className="text-xs text-[var(--text-4)]">Unsaved changes</span>
           ) : null}
           <Button
             type="button"
             variant="primary"
             onClick={save}
-            disabled={!dirty || updateAccount.isPending}
+            disabled={!dirty || updateAccount.isPending || loading}
           >
             {updateAccount.isPending ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </section>
-
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Security</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Sign-in &amp; sessions
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-          You sign in with Google for @gitwork.co.uk. Passwords aren&apos;t used.
-        </p>
-
-        <div className="mt-4 space-y-3 text-sm text-[var(--text-3)]">
-          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3">
-            <p className="font-medium text-[var(--text-2)]">Connected with Google</p>
-            <p className="mt-0.5 text-xs text-[var(--text-4)]">{profile.email}</p>
-          </div>
-          <p className="text-xs text-[var(--text-4)]">
-            Need to sign out everywhere? Use the account menu &rarr; <em>Sign out</em> after a
-            password change in Google Workspace.
-          </p>
-        </div>
-      </section>
     </div>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        type="text"
-        className="w-full"
-      />
-    </label>
   );
 }
 

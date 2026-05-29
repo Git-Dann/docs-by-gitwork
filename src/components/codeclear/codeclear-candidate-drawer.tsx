@@ -51,6 +51,10 @@ import {
   SignalSourcePill,
   StackPill,
 } from "@/components/codeclear/codeclear-shared";
+import {
+  CalibreBreakdown,
+  ValidationCheckList,
+} from "@/components/codeclear/calibre-breakdown";
 
 // Sources that support automated scraping
 const SCRAPABLE_SOURCES: CandidateSignalSource[] = ["GITHUB", "LINKEDIN", "PORTFOLIO"];
@@ -288,7 +292,7 @@ export function CodeClearCandidateDrawer({
                             loading={runAnalysis.isPending}
                             className="min-w-[146px]"
                           >
-                            {candidate.analysisState === "NEVER_RUN" ? "Run CodeClear" : "Re-run CodeClear"}
+                            {candidate.analysisState === "NEVER_RUN" ? "Run validation" : "Re-run validation"}
                           </CodeClearActionButton>
                           <Button
                             type="button"
@@ -348,6 +352,33 @@ export function CodeClearCandidateDrawer({
                     label="Delivery fit"
                     value={candidate.status === "CODECLEAR_COMPLETE" ? "Ready to place" : "In review"}
                   />
+                </div>
+              </section>
+
+              {/* Calibre breakdown — sub-scores, identity caps, red-flag penalty */}
+              <CalibreBreakdown
+                score={candidate.score}
+                scoreDraft={candidate.scoreDraft}
+                effectiveTier={candidate.effectiveTier}
+                redFlagsCount={
+                  Array.isArray(candidate.latestGitHubAnalysis?.redFlags)
+                    ? (candidate.latestGitHubAnalysis!.redFlags as string[]).length
+                    : 0
+                }
+              />
+
+              {/* Validation checks — receipts behind the calibre score */}
+              <section className="app-card p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text-1)]">Validation checks</p>
+                    <p className="mt-1 text-sm text-[var(--text-4)]">
+                      Signals from the latest validation run. Each line feeds the calibre score.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <ValidationCheckList checks={candidate.checks ?? []} />
                 </div>
               </section>
 

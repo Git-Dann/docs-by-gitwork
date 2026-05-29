@@ -139,11 +139,16 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     const deliveryReadiness = clampScore(run.recommendedDeliveryReadiness ?? 0);
     const aiFluency = inferAiFluency(run);
     const identityConfidence = inferIdentityConfidence(run);
+    // Identity + red flags feed into the calibre formula. Red flag count
+    // comes from the run's redFlags JSON; capping happens inside the helper.
+    const redFlagsCount = Array.isArray(run.redFlags) ? run.redFlags.length : 0;
     const overallScore = computeOverallScore({
       technicalDepth,
       codeQuality,
       aiFluency,
       deliveryReadiness,
+      identityConfidence,
+      redFlagsCount,
     });
     const profile =
       run.profileSnapshot && typeof run.profileSnapshot === "object" && !Array.isArray(run.profileSnapshot)

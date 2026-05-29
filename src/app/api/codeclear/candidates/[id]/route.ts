@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { serializeCandidateDetails } from "@/server/codeclear";
+import { codeClearDetailInclude, serializeCandidateDetails } from "@/server/codeclear";
 import { candidateUpdateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -21,31 +21,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         id,
         workspaceId: workspace.id,
       },
-      include: {
-        score: true,
-        scoreDraft: true,
-        placements: {
-          orderBy: {
-            startDate: "desc",
-          },
-        },
-        notes: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-        activityLog: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-        githubAnalysisRuns: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 8,
-        },
-      },
+      include: codeClearDetailInclude,
     });
 
     if (!candidate) {
@@ -111,6 +87,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...(body.bio !== undefined ? { bio: body.bio } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...(body.tier !== undefined ? { tier: body.tier } : {}),
+        ...(body.tierManualOverride !== undefined
+          ? { tierManualOverride: body.tierManualOverride }
+          : {}),
+        ...(body.origin !== undefined ? { origin: body.origin } : {}),
+        ...(body.published !== undefined ? { published: body.published } : {}),
+        ...(body.linkedinUrl !== undefined ? { linkedinUrl: body.linkedinUrl } : {}),
+        ...(body.cvUrl !== undefined ? { cvUrl: body.cvUrl } : {}),
+        ...(body.portfolioUrl !== undefined ? { portfolioUrl: body.portfolioUrl } : {}),
+        ...(body.yearsExperience !== undefined
+          ? { yearsExperience: body.yearsExperience }
+          : {}),
+        ...(body.hourlyRate !== undefined ? { hourlyRate: body.hourlyRate } : {}),
+        ...(body.currency !== undefined ? { currency: body.currency } : {}),
+        ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.availability !== undefined ? { availability: body.availability } : {}),
         ...(body.rateCardPersonId !== undefined
           ? { rateCardPersonId: body.rateCardPersonId }
           : {}),
@@ -160,31 +151,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             }
           : {}),
       },
-      include: {
-        score: true,
-        scoreDraft: true,
-        placements: {
-          orderBy: {
-            startDate: "desc",
-          },
-        },
-        notes: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-        activityLog: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-        githubAnalysisRuns: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 8,
-        },
-      },
+      include: codeClearDetailInclude,
     });
 
     return apiOk({ candidate: serializeCandidateDetails(candidate) });

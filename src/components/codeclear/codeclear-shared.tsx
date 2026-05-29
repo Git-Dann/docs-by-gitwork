@@ -470,6 +470,45 @@ export function CandidateMeta({
 }
 
 /**
+ * Compact tier badge derived from the candidate's effective tier. T1 is
+ * emerald (premium), T2 amber, T3 neutral. Shows an "Override" indicator
+ * when the admin has forced a tier different from the derived one.
+ */
+export function RosterTierBadge({
+  effectiveTier,
+  isOverridden,
+  size = "sm",
+}: {
+  effectiveTier: CodeClearTier;
+  /** True when tierManualOverride !== tier on the server. */
+  isOverridden?: boolean;
+  size?: "sm" | "md";
+}) {
+  const label =
+    effectiveTier === "TIER_1" ? "T1" : effectiveTier === "TIER_2" ? "T2" : "T3";
+  const tone =
+    effectiveTier === "TIER_1"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : effectiveTier === "TIER_2"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
+  const sizeClass = size === "md" ? "px-2 py-1 text-[11px]" : "px-1.5 py-0.5 text-[10px]";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-[4px] border font-mono font-semibold uppercase tracking-[0.08em]",
+        tone,
+        sizeClass,
+      )}
+      title={isOverridden ? "Admin override" : undefined}
+    >
+      {label}
+      {isOverridden ? <span className="text-[8px] opacity-70">★</span> : null}
+    </span>
+  );
+}
+
+/**
  * Compact score chip — quiet by default, green when 80+, amber 65–79,
  * neutral below. Used on the dev roster cards.
  */
@@ -551,7 +590,16 @@ export function RosterCard({
           <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
           <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">{candidate.primaryStack}</p>
         </Link>
-        <RosterScoreChip value={score} />
+        <div className="flex shrink-0 items-center gap-1">
+          <RosterTierBadge
+            effectiveTier={candidate.effectiveTier}
+            isOverridden={
+              candidate.tierManualOverride !== null &&
+              candidate.tierManualOverride !== candidate.tier
+            }
+          />
+          <RosterScoreChip value={score} />
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-1.5">

@@ -8,6 +8,12 @@ export type PipelineStatus =
 
 export type CodeClearTier = "TIER_1" | "TIER_2" | "TIER_3";
 
+export type CandidateOrigin = "INTERNAL" | "EXTERNAL";
+
+export type CandidateAvailability = "AVAILABLE" | "ENGAGED" | "UNAVAILABLE";
+
+export type CodeClearCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
+
 export type IdentityConfidence = "HIGH" | "MEDIUM" | "LOW" | "PENDING";
 
 export type GitHubAnalysisStatus = "RUNNING" | "COMPLETED" | "FAILED";
@@ -55,9 +61,48 @@ export interface CodeClearCandidateRecord {
   location: string | null;
   bio: string | null;
   status: PipelineStatus;
+  /** Derived tier snapshot — recomputed when score changes. */
   tier: CodeClearTier;
+  /** Admin override. When set, UI shows this instead of `tier`. */
+  tierManualOverride: CodeClearTier | null;
+  /** Tier to show in the UI: override ?? derived. */
+  effectiveTier: CodeClearTier;
+  origin: CandidateOrigin;
+  published: boolean;
   avatarUrl: string | null;
+  linkedinUrl: string | null;
+  cvUrl: string | null;
+  portfolioUrl: string | null;
+  yearsExperience: number | null;
+  hourlyRate: number | null;
+  currency: string | null;
+  timezone: string | null;
+  availability: CandidateAvailability | null;
   recheckDueAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CodeClearCheckRecord {
+  id: string;
+  candidateId: string;
+  runId: string | null;
+  category: string;
+  checkKey: string;
+  label: string;
+  status: CodeClearCheckStatus;
+  detail: string | null;
+  evidence: string | null;
+  weight: number;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface TechStackRecord {
+  id: string;
+  name: string;
+  category: string | null;
+  color: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +282,7 @@ export interface CodeClearCandidateDetail extends CodeClearCandidateRecord {
   placements: CodeClearPlacementRecord[];
   notes: CodeClearNoteRecord[];
   activityLog: CodeClearActivityRecord[];
+  checks: CodeClearCheckRecord[];
   analysisState: CandidateAnalysisState;
 }
 

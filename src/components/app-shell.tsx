@@ -19,7 +19,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
-import { useAccount, type AccountProfile } from "@/hooks/use-account";
+import { useAccount } from "@/hooks/use-account";
 
 type NavItem = {
   href?: string;
@@ -44,8 +44,6 @@ export function AppShell({
   mainClassName?: string;
 }) {
   const pathname = usePathname();
-  const accountQuery = useAccount();
-  const account = accountQuery.data ?? null;
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close drawer on route change
@@ -81,7 +79,7 @@ export function AppShell({
       {
         href: "/app/portal",
         label: "Portal",
-        description: "Client-support workspace",
+        description: "Client management",
         icon: UserGroupIcon,
       },
       {
@@ -189,7 +187,6 @@ export function AppShell({
             pathname={pathname}
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
-            account={account}
           />
         </aside>
 
@@ -228,12 +225,10 @@ function ExpandedRail({
   pathname,
   primaryNav,
   secondaryNav,
-  account,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
-  account: AccountProfile | null;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -269,7 +264,7 @@ function ExpandedRail({
             item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
             active={Boolean(isActivePath(pathname, "/app/settings"))}
           />
-          <ProfileMenu account={account} />
+          <ProfileMenu />
         </div>
       </div>
     </div>
@@ -353,14 +348,17 @@ function Avatar({ name, url }: { name: string; url: string }) {
   );
 }
 
-function ProfileMenu({ account }: { account: AccountProfile | null }) {
+function ProfileMenu() {
   const { data: session } = useSession();
+  const accountQuery = useAccount();
+  const account = accountQuery.data;
   const [open, setOpen] = useState(false);
 
-  // Prefer the user's custom avatar (saved in account settings) over the OAuth photo.
-  // Fall back to the OAuth values if the DB record hasn't loaded yet.
-  const displayName = account?.name || session?.user?.name || "";
-  const displayEmail = account?.email || session?.user?.email || "";
+  // Identity reads from the live Google session by default. The account hook supplies the
+  // user's custom avatar (if they've uploaded one in Account settings); React Query caches
+  // it aggressively so it's a once-per-session fetch in practice.
+  const displayName = session?.user?.name || "";
+  const displayEmail = session?.user?.email || "";
   const displayAvatar = account?.avatarUrl || session?.user?.image || "";
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -403,7 +401,7 @@ function ProfileMenu({ account }: { account: AccountProfile | null }) {
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <Link
-            href="/app/team"
+            href="/app/settings/team"
             onClick={() => setOpen(false)}
             className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >

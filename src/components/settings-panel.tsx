@@ -22,8 +22,10 @@ import {
   getIntegrations, saveIntegrations, fetchProviderModels,
   listTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember, resetTeamMemberPassword,
   previewDemoCleanup, applyDemoCleanup,
+  bulkImportCandidates,
   type IntegrationsResponse, type ModelOption, type TeamMember,
   type DemoCleanupPreviewResponse, type DemoCleanupApplyResponse,
+  type BulkImportCandidateRow, type BulkImportResult,
 } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 import { useUpdateWorkspaceBranding, useWorkspaceBranding } from "@/hooks/use-workspace-branding";
@@ -114,7 +116,7 @@ export function SettingsPanel({
   );
 }
 
-function GeneralTab() {
+export function GeneralTab() {
   const defaultsQuery = useWorkspaceDefaults();
   const updateDefaults = useUpdateWorkspaceDefaults();
   const defaults = defaultsQuery.data;
@@ -157,7 +159,7 @@ function GeneralTab() {
   );
 }
 
-function BrandingTab() {
+export function BrandingTab() {
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
   const workspaceBranding = brandingQuery.data ?? {};
@@ -170,49 +172,43 @@ function BrandingTab() {
     <div className="space-y-6">
       <section className="widget-card overflow-hidden">
         <div className="widget-header">
-          <span className="widget-header-label">01 {"// "}DOCUMENT BRANDING</span>
-          <span className="widget-header-right">WORKSPACE-WIDE</span>
+          <span className="widget-header-label">01 {"// "}WORKSPACE LOGO</span>
+          <span className="widget-header-right">FALLBACK</span>
         </div>
         <div className="p-6">
           <p className="text-sm leading-6 text-[var(--text-3)]">
-            Cover assets used across every document the team produces — proposals, SLAs, SOWs.
-            Stored on the workspace so every member sees the same look. Per-document overrides
-            still live in the proposal builder.
+            The workspace logo used wherever a document doesn&apos;t specify its own. Templates
+            in Docs now carry their own cover art and accents, so this is the fallback for ad-hoc
+            documents plus places outside Docs (email signatures, scan reports, the favicon when
+            we get there).
           </p>
 
-          <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:max-w-md">
             <div className="space-y-2">
-              <FieldLabel>Gitwork cover logo</FieldLabel>
+              <FieldLabel>Workspace logo</FieldLabel>
               <ImagePicker
                 value={workspaceBranding.brandLogoUrl ?? ""}
                 onChange={(value) => patch("brandLogoUrl", value)}
                 previewClassName="h-36 w-full"
               />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Cover top accent</FieldLabel>
-              <ImagePicker
-                value={workspaceBranding.coverTopAccentUrl ?? ""}
-                onChange={(value) => patch("coverTopAccentUrl", value)}
-                previewClassName="h-36 w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel>Cover bottom accent</FieldLabel>
-              <ImagePicker
-                value={workspaceBranding.coverBottomAccentUrl ?? ""}
-                onChange={(value) => patch("coverBottomAccentUrl", value)}
-                previewClassName="h-36 w-full"
-              />
+              <p className="text-xs text-[var(--text-4)]">
+                Used as the cover logo when a document has no template-defined override.
+              </p>
             </div>
           </div>
+
+          <p className="mt-6 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+            <strong>Cover accents moved to templates.</strong> Edit per-template branding in
+            Settings → Templates so different document types can carry their own visual style.
+            Confidentiality copy lives under Content.
+          </p>
         </div>
       </section>
     </div>
   );
 }
 
-function ContentTab() {
+export function ContentTab() {
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
   const defaultsQuery = useWorkspaceDefaults();
@@ -329,7 +325,7 @@ function ContentTab() {
   );
 }
 
-function RateCardTab() {
+export function RateCardTab() {
   const [people, setPeople] = useState<RateCardPersonRecord[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RateCardDraft>(makeEmptyRateCardDraft());
@@ -1100,7 +1096,7 @@ function ProviderRow({
 
 // ── Agents & Checks Tab ──────────────────────────────────────────────────────
 
-function AgentsAndChecksTab() {
+export function AgentsAndChecksTab() {
   const [subTab, setSubTab] = useState<"agents" | "checks">("agents");
 
   return (
@@ -1148,7 +1144,7 @@ function AgentsAndChecksTab() {
 
 // ── Integrations Tab ─────────────────────────────────────────────────────────
 
-function IntegrationsTab() {
+export function IntegrationsTab() {
   const [config, setConfig] = useState<IntegrationsResponse | null>(null);
   const [savingProvider, setSavingProvider] = useState(false);
 
@@ -1267,11 +1263,7 @@ function IntegrationsTab() {
   );
 }
 
-// TeamTab is kept around for the upcoming "Team" sub-tab in settings — it's the second-to-last
-// piece of the auth migration on the roadmap. Not yet wired into the tabs config so the
-// no-unused-vars warning is intentional.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function TeamTab({ currentUserId }: { currentUserId: string }) {
+export function TeamTab({ currentUserId }: { currentUserId: string }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -2393,7 +2385,7 @@ function EmailOutboundSection({
   );
 }
 
-function DeveloperTab({
+export function DeveloperTab({
   apiKeyConfigured,
 }: {
   apiKeyConfigured: boolean;
@@ -2402,8 +2394,301 @@ function DeveloperTab({
     <div className="space-y-6">
       <ExternalApiKeySection />
       <DemoDataCleanupSection />
+      <CandidateBulkImportSection />
       <ApiSection apiKeyConfigured={apiKeyConfigured} />
     </div>
+  );
+}
+
+/**
+ * Bulk-import devs from CSV/JSON into the CodeClear roster. Two modes:
+ *   - Paste JSON (advanced)
+ *   - Upload CSV (helper) — first row is the header
+ * The endpoint dedupes by GitHub handle and reports per-row outcomes.
+ */
+function CandidateBulkImportSection() {
+  const [origin, setOrigin] = useState<"INTERNAL" | "EXTERNAL">("EXTERNAL");
+  const [rows, setRows] = useState<BulkImportCandidateRow[]>([]);
+  const [jsonText, setJsonText] = useState("");
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<BulkImportResult | null>(null);
+
+  // Lightweight CSV parser — first row is the header. Supports double-quoted
+  // values with embedded commas. Sufficient for typical sourcing exports;
+  // doesn't try to be a full RFC 4180 parser.
+  function parseCsv(text: string): BulkImportCandidateRow[] {
+    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    if (lines.length < 2) return [];
+    const splitRow = (line: string): string[] => {
+      const out: string[] = [];
+      let current = "";
+      let quoted = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const char = line[i];
+        if (char === '"' && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else if (char === '"') {
+          quoted = !quoted;
+        } else if (char === "," && !quoted) {
+          out.push(current);
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      out.push(current);
+      return out.map((v) => v.trim());
+    };
+
+    const headers = splitRow(lines[0]).map((h) => h.toLowerCase());
+    const parsed: BulkImportCandidateRow[] = [];
+    for (let i = 1; i < lines.length; i += 1) {
+      const cells = splitRow(lines[i]);
+      const row: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        const value = cells[index] ?? "";
+        if (value !== "") row[header] = value;
+      });
+      if (!row.name || !row.githubhandle || !row.primarystack) continue;
+      parsed.push({
+        name: row.name,
+        githubHandle: row.githubhandle,
+        primaryStack: row.primarystack,
+        techStacks: row.techstacks ? row.techstacks.split("|").map((s) => s.trim()) : undefined,
+        email: row.email || undefined,
+        linkedinUrl: row.linkedinurl || undefined,
+        cvUrl: row.cvurl || undefined,
+        portfolioUrl: row.portfoliourl || undefined,
+        yearsExperience: row.yearsexperience ? Number(row.yearsexperience) : undefined,
+        hourlyRate: row.hourlyrate ? Number(row.hourlyrate) : undefined,
+        currency: row.currency || undefined,
+        timezone: row.timezone || undefined,
+        location: row.location || undefined,
+        bio: row.bio || undefined,
+      });
+    }
+    return parsed;
+  }
+
+  async function handleFile(file: File) {
+    setParseError(null);
+    setResult(null);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      if (parsed.length === 0) {
+        setParseError("CSV is empty or missing required columns (name, githubHandle, primaryStack).");
+        return;
+      }
+      setRows(parsed);
+      setJsonText(JSON.stringify(parsed, null, 2));
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Failed to read file");
+    }
+  }
+
+  function handleJsonChange(text: string) {
+    setJsonText(text);
+    setParseError(null);
+    if (!text.trim()) {
+      setRows([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        setParseError("Expected a JSON array of candidate rows.");
+        return;
+      }
+      setRows(parsed as BulkImportCandidateRow[]);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Invalid JSON");
+    }
+  }
+
+  async function handleSubmit() {
+    if (rows.length === 0) return;
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await bulkImportCandidates({ candidates: rows, origin });
+      setResult(res);
+      // Clear input on full success so the user knows it landed
+      if (res.errors.length === 0 && res.skipped.length === 0) {
+        setRows([]);
+        setJsonText("");
+      }
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function downloadTemplate() {
+    const headers = [
+      "name",
+      "githubHandle",
+      "primaryStack",
+      "techStacks",
+      "email",
+      "linkedinUrl",
+      "cvUrl",
+      "portfolioUrl",
+      "yearsExperience",
+      "hourlyRate",
+      "currency",
+      "timezone",
+      "location",
+      "bio",
+    ].join(",");
+    const example = `"Jane Doe",janedoe,TypeScript,React|Next.js|Node.js,jane@example.com,https://linkedin.com/in/janedoe,,,5,75,USD,Europe/London,London,Senior full-stack engineer.`;
+    const csv = `${headers}\n${example}\n`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "codeclear-import-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Catalogue</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Bulk import candidates
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Upload a CSV or paste a JSON array to add up to 500 devs in one go.
+        Dedupes by GitHub handle within this workspace. New rows are marked{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs">EXTERNAL</code>{" "}
+        by default — flip to{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs">INTERNAL</code>{" "}
+        if you&apos;re bulk-adding teammates instead of catalogue devs.
+      </p>
+
+      <div className="mt-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={downloadTemplate}>
+            Download CSV template
+          </Button>
+          <label className="inline-flex items-center">
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) handleFile(file);
+                event.target.value = "";
+              }}
+            />
+            <span className="app-button app-button-secondary cursor-pointer px-3 py-1.5 text-[13px]">
+              Upload CSV…
+            </span>
+          </label>
+          <div className="ml-auto flex items-center gap-2 text-xs">
+            <span className="font-medium text-[var(--text-3)]">Origin</span>
+            {(["INTERNAL", "EXTERNAL"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setOrigin(value)}
+                className={cn(
+                  "rounded-[6px] border px-2.5 py-1 font-semibold transition",
+                  origin === value
+                    ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:border-[var(--border-1)]",
+                )}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <textarea
+          value={jsonText}
+          onChange={(event) => handleJsonChange(event.target.value)}
+          rows={8}
+          placeholder='[{"name":"Jane Doe","githubHandle":"janedoe","primaryStack":"TypeScript"}]'
+          className="app-input min-h-[140px] resize-y font-mono text-xs"
+          spellCheck={false}
+        />
+        {parseError ? (
+          <p className="text-xs text-rose-600">{parseError}</p>
+        ) : rows.length > 0 ? (
+          <p className="text-xs text-[var(--text-4)]">
+            {rows.length} row{rows.length === 1 ? "" : "s"} parsed. Ready to import.
+          </p>
+        ) : null}
+
+        {submitError ? (
+          <div className="rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {submitError}
+          </div>
+        ) : null}
+
+        {result ? (
+          <div className="space-y-2">
+            <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <p className="font-semibold">
+                Imported {result.created.length} / {result.total}
+              </p>
+              {(result.skipped.length > 0 || result.errors.length > 0) && (
+                <p className="mt-1 text-xs">
+                  {result.skipped.length} skipped, {result.errors.length} errored.
+                </p>
+              )}
+            </div>
+            {result.skipped.length > 0 ? (
+              <details className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-[var(--text-2)]">
+                  Skipped ({result.skipped.length})
+                </summary>
+                <ul className="mt-2 space-y-1">
+                  {result.skipped.map((row) => (
+                    <li key={row.githubHandle} className="font-mono text-[var(--text-4)]">
+                      @{row.githubHandle} — {row.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+            {result.errors.length > 0 ? (
+              <details className="rounded-[10px] border border-rose-200 bg-white px-4 py-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-rose-700">
+                  Errors ({result.errors.length})
+                </summary>
+                <ul className="mt-2 space-y-1">
+                  {result.errors.map((row) => (
+                    <li key={row.githubHandle} className="font-mono text-rose-600">
+                      @{row.githubHandle} — {row.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            disabled={rows.length === 0 || submitting}
+            onClick={handleSubmit}
+          >
+            {submitting ? "Importing…" : `Import ${rows.length || ""} dev${rows.length === 1 ? "" : "s"}`}
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2985,7 +3270,7 @@ interface TemplateSectionDraft {
   data?: unknown;
 }
 
-function TemplatesTab() {
+export function TemplatesTab() {
   const [templates, setTemplates] = useState<TemplateRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);

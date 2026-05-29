@@ -262,6 +262,12 @@ const githubHandleSchema = requiredTrimmedString.transform((value) =>
   value.replace(/^@+/, ""),
 );
 
+// Shared by create + update: the validation-product fields beyond the
+// original lightweight pipeline. URLs are accepted as plain strings (not
+// strict z.string().url()) so legacy data with bare domains still validates.
+const candidateOriginSchema = z.enum(["INTERNAL", "EXTERNAL"]);
+const candidateAvailabilitySchema = z.enum(["AVAILABLE", "ENGAGED", "UNAVAILABLE"]);
+
 export const candidateCreateSchema = z.object({
   name: requiredTrimmedString,
   githubHandle: githubHandleSchema,
@@ -271,8 +277,27 @@ export const candidateCreateSchema = z.object({
   signalSources: z.array(candidateSignalSourceSchema).min(1).optional(),
   location: optionalTrimmedString,
   bio: optionalTrimmedString,
-  tier: codeClearTierSchema.default("TIER_1"),
+  // Allow admin to set tier on create (will be overwritten by the derived
+  // value once a score lands unless tierManualOverride is also set).
+  tier: codeClearTierSchema.default("TIER_3"),
+  tierManualOverride: codeClearTierSchema.nullable().optional(),
   rateCardPersonId: z.string().cuid().nullable().optional(),
+  origin: candidateOriginSchema.default("INTERNAL"),
+  published: z.boolean().optional(),
+  linkedinUrl: optionalTrimmedString,
+  cvUrl: optionalTrimmedString,
+  portfolioUrl: optionalTrimmedString,
+  yearsExperience: z.coerce.number().int().min(0).max(60).nullable().optional(),
+  hourlyRate: z.coerce.number().min(0).nullable().optional(),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((value) => value.toUpperCase())
+    .nullable()
+    .optional(),
+  timezone: optionalTrimmedString,
+  availability: candidateAvailabilitySchema.nullable().optional(),
 });
 
 export const candidateUpdateSchema = z
@@ -287,14 +312,71 @@ export const candidateUpdateSchema = z
     bio: optionalTrimmedString,
     status: pipelineStatusSchema.optional(),
     tier: codeClearTierSchema.optional(),
+    tierManualOverride: codeClearTierSchema.nullable().optional(),
     rateCardPersonId: z.string().cuid().nullable().optional(),
     recheckDueAt: z.coerce.date().nullable().optional(),
+    origin: candidateOriginSchema.optional(),
+    published: z.boolean().optional(),
+    linkedinUrl: optionalTrimmedString,
+    cvUrl: optionalTrimmedString,
+    portfolioUrl: optionalTrimmedString,
+    yearsExperience: z.coerce.number().int().min(0).max(60).nullable().optional(),
+    hourlyRate: z.coerce.number().min(0).nullable().optional(),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase())
+      .nullable()
+      .optional(),
+    timezone: optionalTrimmedString,
+    availability: candidateAvailabilitySchema.nullable().optional(),
     requestSignalSource: candidateSignalSourceSchema.optional(),
     scrapeSignalSource: candidateSignalSourceSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one candidate field is required.",
   });
+
+/** TechStack create/update — admin-only endpoint inputs. */
+export const techStackCreateSchema = z.object({
+  name: requiredTrimmedString,
+  category: optionalTrimmedString,
+  color: optionalTrimmedString,
+});
+
+export const techStackUpdateSchema = techStackCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required.",
+  });
+
+/** Bulk-import — accepts a small array of candidate rows with permissive
+ *  field types so an upstream CSV → JSON helper can hand them straight here. */
+export const candidateBulkImportSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        name: requiredTrimmedString,
+        githubHandle: githubHandleSchema,
+        primaryStack: requiredTrimmedString,
+        techStacks: z.array(requiredTrimmedString).optional(),
+        email: optionalTrimmedString,
+        linkedinUrl: optionalTrimmedString,
+        cvUrl: optionalTrimmedString,
+        portfolioUrl: optionalTrimmedString,
+        yearsExperience: z.coerce.number().int().min(0).max(60).optional(),
+        hourlyRate: z.coerce.number().min(0).optional(),
+        currency: z.string().trim().length(3).optional(),
+        timezone: optionalTrimmedString,
+        location: optionalTrimmedString,
+        bio: optionalTrimmedString,
+      }),
+    )
+    .min(1)
+    .max(500),
+  origin: candidateOriginSchema.default("EXTERNAL"),
+});
 
 export const candidateBulkUpdateSchema = z.discriminatedUnion("action", [
   z.object({

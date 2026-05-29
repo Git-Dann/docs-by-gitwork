@@ -550,6 +550,17 @@ export async function setCandidateCurrentClient(
   });
 }
 
+export interface TechStackOption {
+  id: string;
+  name: string;
+  category: string | null;
+  color: string | null;
+}
+
+export async function listTechStacks(): Promise<{ stacks: TechStackOption[] }> {
+  return apiFetch<{ stacks: TechStackOption[] }>("/api/codeclear/tech-stacks");
+}
+
 export interface DemoCleanupPreviewResponse {
   candidates: Array<{ id: string; name: string; githubHandle: string }>;
   ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
@@ -570,6 +581,41 @@ export async function previewDemoCleanup(): Promise<DemoCleanupPreviewResponse> 
 export async function applyDemoCleanup(): Promise<DemoCleanupApplyResponse> {
   return apiFetch<DemoCleanupApplyResponse>("/api/codeclear/admin/cleanup-demo", {
     method: "POST",
+  });
+}
+
+export interface BulkImportCandidateRow {
+  name: string;
+  githubHandle: string;
+  primaryStack: string;
+  techStacks?: string[];
+  email?: string;
+  linkedinUrl?: string;
+  cvUrl?: string;
+  portfolioUrl?: string;
+  yearsExperience?: number;
+  hourlyRate?: number;
+  currency?: string;
+  timezone?: string;
+  location?: string;
+  bio?: string;
+}
+
+export interface BulkImportResult {
+  total: number;
+  created: Array<{ id: string; name: string; githubHandle: string }>;
+  skipped: Array<{ githubHandle: string; reason: string }>;
+  errors: Array<{ githubHandle: string; error: string }>;
+}
+
+export async function bulkImportCandidates(input: {
+  candidates: BulkImportCandidateRow[];
+  origin?: "INTERNAL" | "EXTERNAL";
+}): Promise<BulkImportResult> {
+  return apiFetch<BulkImportResult>("/api/codeclear/admin/bulk-import-candidates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }
 

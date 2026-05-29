@@ -11,6 +11,7 @@ import {
 import {
   GitHubAnalysisError,
   analyzeGitHubProfile,
+  buildChecksFromAnalysis,
   getGitHubAnalysisVersion,
 } from "@/server/codeclear-analysis";
 
@@ -116,7 +117,32 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         },
       });
 
+      // Translate the analysis findings into CodeClearCheck rows so the drawer
+      // can show PASS/WARN/FAIL evidence under "Validation checks". The latest
+      // run's rows replace any older rows for this candidate (audit-safe: we
+      // only delete rows tied to a non-null runId so manual checks survive).
+      const checks = buildChecksFromAnalysis({
+        metrics: analysis.metrics,
+        redFlags: analysis.redFlags,
+      });
+
       await prisma.$transaction([
+        prisma.codeClearCheck.deleteMany({
+          where: { candidateId: candidate.id, runId: { not: null } },
+        }),
+        prisma.codeClearCheck.createMany({
+          data: checks.map((check) => ({
+            candidateId: candidate.id,
+            runId: completedRun.id,
+            category: check.category,
+            checkKey: check.checkKey,
+            label: check.label,
+            status: check.status,
+            detail: check.detail,
+            weight: check.weight,
+            sortOrder: check.sortOrder,
+          })),
+        }),
         prisma.candidate.update({
           where: {
             id: candidate.id,
@@ -134,6 +160,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
             metadata: {
               by: user.name ?? user.email,
               runId: completedRun.id,
+              checkCount: checks.length,
             } as Prisma.InputJsonValue,
           },
         }),

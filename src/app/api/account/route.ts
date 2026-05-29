@@ -1,9 +1,10 @@
 /**
  * GET   /api/account → current signed-in user's profile (id, email, name, avatarUrl, role)
- * PATCH /api/account → update the current user's name and/or avatarUrl
+ * PATCH /api/account → update the current user's avatarUrl
  *
- * Email is sourced from the OAuth provider and treated as read-only. Role lives on
- * `WorkspaceMember` and is also read-only here — admin promotion is done from the Team UI.
+ * `email` and `name` are sourced from the OAuth provider and treated as read-only here. We sync
+ * `User.name` from the session on every GET so the DB never drifts behind a Google profile
+ * update. Avatar URL is the one piece of identity the user can override locally.
  */
 
 import { NextRequest } from "next/server";
@@ -20,7 +21,13 @@ export async function GET() {
     const session = await auth();
     if (!session?.user?.id) return apiError("Not authenticated", 401);
 
-    const user = await prisma.user.findUnique({
+    const sessionName = session.user.name?.trim() || "";
+    const sessionEmail = session.user.email?.trim() || "";
+
+    // Look up the User row. If it's missing for any reason (e.g. the DB was reset after the
+    // JWT was issued), we still return something useful so the UI doesn't break — and we
+    // upsert behind the scenes so subsequent requests are consistent.
+    let user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
         id: true,
@@ -34,7 +41,43 @@ export async function GET() {
         },
       },
     });
+
+    if (!user && sessionEmail) {
+      // Lazy re-provision from session — same shape as the auth.ts JWT callback uses on
+      // first sign-in. Falling back to email-prefix is harmless and short-lived.
+      user = await prisma.user.upsert({
+        where: { email: sessionEmail },
+        create: {
+          id: session.user.id,
+          email: sessionEmail,
+          name: sessionName || sessionEmail.split("@")[0],
+        },
+        update: {},
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatarUrl: true,
+          memberships: {
+            where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+            take: 1,
+            select: { role: true, permissions: true },
+          },
+        },
+      });
+    }
+
     if (!user) return apiError("User not found", 404);
+
+    // Keep DB name in sync with the live Google profile name. We only update when something
+    // changed — most reads are no-ops.
+    if (sessionName && sessionName !== (user.name ?? "")) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { name: sessionName },
+      });
+      user.name = sessionName;
+    }
 
     const membership = user.memberships[0];
     return apiOk({
@@ -43,8 +86,9 @@ export async function GET() {
         email: user.email,
         name: user.name ?? "",
         avatarUrl: user.avatarUrl ?? "",
-        role: membership?.role ?? "STAFF",
-        permissions: (membership?.permissions as string[] | null) ?? [],
+        role: membership?.role ?? (session.user.role ?? "STAFF"),
+        permissions:
+          (membership?.permissions as string[] | null) ?? session.user.permissions ?? [],
       },
     });
   } catch (error) {
@@ -52,9 +96,11 @@ export async function GET() {
   }
 }
 
+// Avatar URLs can be either a remote URL (Google photo) or a base64 data URL coming from the
+// ImagePicker. We allow up to ~8MB encoded so even chunky uploads round-trip. Stored on the
+// User row — eventual move to an object-storage upload pipeline can shrink this back down.
 const patchSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  avatarUrl: z.string().trim().max(2048).optional(),
+  avatarUrl: z.string().trim().max(8_000_000).optional(),
 });
 
 export async function PATCH(request: NextRequest) {
@@ -73,7 +119,6 @@ export async function PATCH(request: NextRequest) {
     const updated = await prisma.user.update({
       where: { id: session.user.id },
       data: {
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.avatarUrl !== undefined ? { avatarUrl: parsed.data.avatarUrl } : {}),
       },
       select: { id: true, email: true, name: true, avatarUrl: true },
