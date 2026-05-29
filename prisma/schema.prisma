@@ -692,6 +692,10 @@ model WorkspaceClient {
   primaryContactPhone  String?
   googleDriveFolderUrl String?
   clickupUrl           String?          @db.Text
+  /// Slack channel ID (e.g. C0123ABC) the client's project updates live in.
+  /// Read-only: the Portal mobile app pulls recent messages via the workspace
+  /// Slack bot token. Null when no channel is linked.
+  slackChannelId       String?
   hidden               Boolean          @default(false)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt

@@ -32,6 +32,7 @@ export interface ClientDetailFields {
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
+  slackChannelId: string | null;
 }
 
 export interface ClientPlatformRecord {

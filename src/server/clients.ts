@@ -69,6 +69,7 @@ type ManualClientRecord = {
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
+  slackChannelId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -86,6 +87,7 @@ type ClientContactInput = {
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
+  slackChannelId?: string;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -102,6 +104,7 @@ function emptyContactFields(): ClientDetailFields {
     primaryContactPhone: null,
     googleDriveFolderUrl: null,
     clickupUrl: null,
+    slackChannelId: null,
   };
 }
 
@@ -119,6 +122,7 @@ function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields
     primaryContactPhone: record.primaryContactPhone,
     googleDriveFolderUrl: record.googleDriveFolderUrl,
     clickupUrl: record.clickupUrl,
+    slackChannelId: record.slackChannelId,
   };
 }
 
@@ -139,6 +143,7 @@ function buildContactData(input: ClientContactInput) {
   if (input.primaryContactPhone !== undefined) data.primaryContactPhone = trim(input.primaryContactPhone);
   if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
   if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
+  if (input.slackChannelId !== undefined)      data.slackChannelId      = trim(input.slackChannelId);
   return data;
 }
 
@@ -494,6 +499,7 @@ export async function updateClientRecord(
             primaryContactPhone: null,
             googleDriveFolderUrl: persisted.googleDriveFolderUrl,
             clickupUrl: persisted.clickupUrl,
+            slackChannelId: persisted.slackChannelId,
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },

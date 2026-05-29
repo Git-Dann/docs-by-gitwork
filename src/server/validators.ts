@@ -178,6 +178,7 @@ const clientContactFields = {
   primaryContactPhone: z.string().trim().optional(),
   googleDriveFolderUrl: z.string().trim().optional(),
   clickupUrl: z.string().trim().optional(),
+  slackChannelId: z.string().trim().optional(),
 };
 
 export const clientCreateSchema = z.object({
@@ -451,6 +452,13 @@ export const placementCreateSchema = z.object({
   projectName: requiredTrimmedString,
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
+});
+
+// Update an existing placement's end date — drives "schedule off" with a
+// future date and the Portal's ending-soon (within 7 days → orange) indicator.
+// endDate: null clears the end date (back to open-ended); a date sets it.
+export const placementUpdateSchema = z.object({
+  endDate: z.coerce.date().nullable(),
 });
 
 // Used by the Code roster's per-dev "Current client" dropdown.
