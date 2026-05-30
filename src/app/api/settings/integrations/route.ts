@@ -15,6 +15,16 @@ function maskKey(key: string): string {
 
 export async function GET() {
   try {
+    // Look up the signed-in user's per-user Google connection too — Calendar/Gmail widgets
+    // run off this token, not the workspace one.
+    const session = await auth();
+    const currentUser = session?.user?.id
+      ? await prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: { googleOAuthRefreshToken: true, googleOAuthEmail: true },
+        })
+      : null;
+
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
       select: {
@@ -71,7 +81,13 @@ export async function GET() {
       googleServiceAccountJsonSet: Boolean(workspace?.googleServiceAccountJson),
       googleSubjectEmail: workspace?.googleSubjectEmail ?? null,
       googleCalendarId: workspace?.googleCalendarId ?? null,
-      googleOAuthConnected: Boolean(workspace?.googleOAuthRefreshToken),
+      // `googleOAuthConnected` now reflects the *current user's* per-user connection — that's
+      // what drives the dashboard Calendar + Gmail widgets and the meeting-summary email
+      // context. The workspace token still exists for shared cron sync and is reported
+      // separately as `workspaceGoogleOAuthConnected` for the admin shared-sync UI.
+      googleOAuthConnected: Boolean(currentUser?.googleOAuthRefreshToken),
+      googleOAuthConnectedAs: currentUser?.googleOAuthEmail ?? null,
+      workspaceGoogleOAuthConnected: Boolean(workspace?.googleOAuthRefreshToken),
       slackBotTokenMasked: workspace?.slackBotToken ? maskKey(workspace.slackBotToken) : null,
       slackSummaryChannelId: workspace?.slackSummaryChannelId ?? null,
       slackChannels: workspace?.slackChannels ?? [],

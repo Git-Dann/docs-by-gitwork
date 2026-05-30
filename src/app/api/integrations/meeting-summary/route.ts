@@ -8,6 +8,7 @@ import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { getUserGoogleAuth } from "@/server/google-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -112,11 +113,16 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Fetch related Gmail threads ────────────────────────────────────────────
+    // Pull email context from the *signed-in user's* Gmail (or the workspace service account
+    // if one is configured). The previous workspace OAuth path leaked the most-recent
+    // signer's inbox to everyone else — removed. With a workspace-shared cache, the first
+    // caller's email context informs the summary; subsequent callers reuse the cached output.
     let emailContext = "";
     const hasServiceAccount = !!(workspace.googleServiceAccountJson && workspace.googleSubjectEmail);
-    const hasOAuthToken = !!workspace.googleOAuthRefreshToken;
+    const userAuth = hasServiceAccount ? null : await getUserGoogleAuth();
+    const hasUserGoogle = userAuth?.ok === true;
 
-    if (hasServiceAccount || hasOAuthToken) {
+    if (hasServiceAccount || hasUserGoogle) {
       try {
         let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
 
@@ -131,13 +137,12 @@ export async function POST(req: NextRequest) {
             (authClient as { subject?: string }).subject = workspace.googleSubjectEmail!;
           }
           gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+        } else if (userAuth?.ok) {
+          // Per-user Google OAuth — same identity used by Calendar + Gmail widgets.
+          gmailAuth = userAuth.client;
         } else {
-          // OAuth path — user's Google login token
-          const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-          const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
-          const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-          oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken! });
-          gmailAuth = oauth2Client;
+          // Defensive — shouldn't reach here given the outer guard, but TS needs the narrowing.
+          throw new Error("No Google auth available for meeting summary");
         }
 
         const gmail = google.gmail({ version: "v1", auth: gmailAuth });

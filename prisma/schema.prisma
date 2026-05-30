@@ -165,6 +165,12 @@ model User {
   notificationPreference   NotificationPreference?
   auditLogEntries          AuditLog[]
   meetingSummariesGenerated MeetingSummary[]       @relation("MeetingSummaryGenerator")
+  // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
+  // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
+  // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
+  // shared org-wide sync (cron / Care Gmail ingest) — an admin sets that explicitly.
+  googleOAuthRefreshToken  String?
+  googleOAuthEmail         String?
 }
 
 // APNs device registrations. One row per (user, device).

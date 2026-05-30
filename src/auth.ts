@@ -23,9 +23,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             "https://www.googleapis.com/auth/gmail.readonly " +
             "https://www.googleapis.com/auth/calendar.readonly",
           access_type: "offline",
-          // No prompt override — Google shows consent only when needed (new scopes
-          // or first authorisation). Refresh token is stored in the DB permanently
-          // so subsequent logins are frictionless.
+          // Force the consent prompt every sign-in so Google always returns a refresh_token.
+          // Without this, Google only returns refresh_token on the *first* consent — which
+          // meant the workspace held whichever person signed in first, and personal widgets
+          // would cross-pollute as people re-signed in. With per-user tokens, each member
+          // gets their own refresh_token captured on each sign-in, so the dashboard always
+          // shows their own data.
+          prompt: "consent",
         },
       },
     }),
@@ -97,12 +101,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = membership?.role ?? "STAFF";
         token.permissions = (membership?.permissions as string[]) ?? [];
 
-        // Persist Google OAuth refresh token so dashboard Gmail/Calendar widgets work.
-        // Google only returns refresh_token on the first consent — store it now.
+        // Persist the Google OAuth refresh token on the *current user* so personal dashboard
+        // widgets (Calendar, Gmail, Meeting summary) only ever see the signed-in user's data.
+        // Previously this was written to the workspace row, which meant every new sign-in
+        // overwrote whoever signed in last — so the dashboard widgets cross-polluted between
+        // teammates. Workspace-level token is reserved now for shared org-wide cron sync.
         if (account.refresh_token) {
-          await prisma.workspace.updateMany({
-            where: { slug: DEFAULT_WORKSPACE_SLUG },
-            data: { googleOAuthRefreshToken: account.refresh_token },
+          await prisma.user.update({
+            where: { id: dbUser.id },
+            data: {
+              googleOAuthRefreshToken: account.refresh_token,
+              googleOAuthEmail: user.email,
+            },
           });
         }
       }

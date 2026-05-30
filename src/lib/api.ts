@@ -1020,7 +1020,12 @@ export interface IntegrationsResponse {
   googleServiceAccountJsonSet: boolean;
   googleSubjectEmail: string | null;
   googleCalendarId: string | null;
+  /** Whether the *signed-in user* has connected their personal Google. Drives Calendar/Gmail widgets. */
   googleOAuthConnected: boolean;
+  /** Email the current user is connected as (null when not connected). */
+  googleOAuthConnectedAs: string | null;
+  /** Whether the workspace-shared sync Google account is configured (admin-managed, cron only). */
+  workspaceGoogleOAuthConnected: boolean;
   slackBotTokenMasked: string | null;
   slackSummaryChannelId: string | null; // legacy
   slackChannels: SlackChannel[];
