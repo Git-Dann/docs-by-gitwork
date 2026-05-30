@@ -335,90 +335,14 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 02-05 // STATS — 2×2 ── */}
-      {(() => {
-        const latestScan = pulseScans[0] ?? null;
-        const activeDevs = (placements ?? []).filter((p) => !p.endDate).length;
-        return (
-          <div className="grid grid-cols-2 gap-4">
-            {/* 02 // DOCS */}
-            <StatCard number="02" label="DOCS" value={proposals.length} />
-
-            {/* 03 // PLATFORMS */}
-            <StatCard number="03" label="PLATFORMS" value={platforms.length} />
-
-            {/* 04 // PULSE — latest score + scan count + link */}
-            <article className="widget-card">
-              <div className="widget-header">
-                <span className="widget-header__label">
-                  <span className="widget-header__label--number">04</span>
-                  {" // PULSE"}
-                </span>
-                {latestScan && (
-                  <Link
-                    href={`/app/pulse/${latestScan.id}`}
-                    className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
-                    title="Open latest scan"
-                  >
-                    <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                  </Link>
-                )}
-              </div>
-              <div className="widget-body--compact">
-                <p
-                  className="text-5xl leading-none tracking-tight"
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    color: latestScan?.healthScore
-                      ? latestScan.healthScore >= 75 ? "#16a34a"
-                        : latestScan.healthScore >= 50 ? "#d97706"
-                        : "#dc2626"
-                      : "var(--text-4)",
-                  }}
-                >
-                  {latestScan?.healthScore ?? "—"}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <p className="widget-data-label">HEALTH SCORE</p>
-                  {pulseScans.length > 0 && (
-                    <p className="widget-data-label opacity-50">
-                      · {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </article>
-
-            {/* 05 // DEVS — active placements */}
-            <article className="widget-card">
-              <div className="widget-header">
-                <span className="widget-header__label">
-                  <span className="widget-header__label--number">05</span>
-                  {" // DEVS"}
-                </span>
-                {activeDevs > 0 && (
-                  <Link
-                    href="/app/codeclear/candidates"
-                    className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
-                    title="View in Code"
-                  >
-                    <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                  </Link>
-                )}
-              </div>
-              <div className="widget-body--compact">
-                <p
-                  className="text-5xl leading-none tracking-tight text-[var(--text-1)]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  {activeDevs}
-                </p>
-                <p className="widget-data-label mt-2">ACTIVE</p>
-              </div>
-            </article>
-          </div>
-        );
-      })()}
+      {/* ── 02-06 // STATS ── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard number="02" label="DOCS" value={proposals.length} />
+        <StatCard number="03" label="PLATFORMS" value={platforms.length} />
+        <StatCard number="04" label="DESIGNS" value={designs.length} />
+        <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
+        <StatCard number="06" label="STUDIES" value={studies.length} />
+      </div>
 
       {/* ── 07 // SLACK ACTIVITY ── */}
       <section className="widget-card">
@@ -650,8 +574,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* ── ACTIVITY ── */}
-      <div className="space-y-4">
+      {/* ── ACTIVITY — 2×2 grid ── */}
+      {/* Row 1: Documents + Pulse */}
+      <div className="grid grid-cols-2 gap-4 items-start">
 
         {/* 12 // DOCUMENTS */}
         <section className="widget-card">
@@ -709,115 +634,80 @@ export function ClientDetail({ slug }: { slug: string }) {
           </div>
         </section>
 
+
         {/* 13 // PULSE SCANS */}
-        {pulseScans.length > 0 && (
-          <section className="widget-card">
+        <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
                 <span className="widget-header__label--number">13</span>
                 {" // PULSE SCANS"}
               </span>
-              <span className="widget-header__status">
-                <SignalIcon className="h-3 w-3" />
-                {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
-              </span>
+              {pulseScans.length > 0 && (
+                <span className="widget-header__status">
+                  <SignalIcon className="h-3 w-3" />
+                  {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="app-table min-w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left">Project</th>
-                    <th className="text-left">Score</th>
-                    <th className="text-left">Status</th>
-                    <th className="text-left">Date</th>
-                    <th className="text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pulseScans.map((scan) => (
-                    <tr key={scan.id}>
-                      <td className="font-medium text-[var(--text-1)]">{scan.projectName}</td>
-                      <td>
-                        {scan.healthScore !== null ? (
-                          <span
-                            className="text-xl leading-none text-[var(--text-1)]"
-                            style={{ fontFamily: "var(--font-display)" }}
+            {pulseScans.length === 0 ? (
+              <div className="p-5">
+                <p className="text-sm text-[var(--text-4)]">
+                  No scans yet.{" "}
+                  <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
+                    Run a Pulse scan →
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="app-table min-w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Project</th>
+                      <th className="text-left">Score</th>
+                      <th className="text-left">Date</th>
+                      <th className="text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pulseScans.map((scan) => (
+                      <tr key={scan.id}>
+                        <td className="font-medium text-[var(--text-1)]">{scan.projectName}</td>
+                        <td>
+                          {scan.healthScore !== null ? (
+                            <span
+                              className="text-xl leading-none text-[var(--text-1)]"
+                              style={{ fontFamily: "var(--font-display)" }}
+                            >
+                              {scan.healthScore}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-4)]">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="widget-timestamp">{formatDate(scan.createdAt)}</span>
+                        </td>
+                        <td>
+                          <Link
+                            href={`/app/pulse/${scan.id}`}
+                            className={buttonStyles({ variant: "secondary", size: "xs" })}
                           >
-                            {scan.healthScore}
-                          </span>
-                        ) : (
-                          <span className="text-[var(--text-4)]">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className="widget-timestamp capitalize">
-                          {scan.status.toLowerCase()}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="widget-timestamp">{formatDate(scan.createdAt)}</span>
-                      </td>
-                      <td>
-                        <Link
-                          href={`/app/pulse/${scan.id}`}
-                          className={buttonStyles({ variant: "secondary", size: "xs" })}
-                        >
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            Open
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
-        )}
 
-        {/* 14 // PROOF DOCUMENTS */}
-        {proofDocuments.length > 0 && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">14</span>
-                {" // PROOF DOCUMENTS"}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="app-table min-w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left">Document</th>
-                    <th className="text-left">Source</th>
-                    <th className="text-left">Updated</th>
-                    <th className="text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proofDocuments.map((document) => (
-                    <tr key={document.id}>
-                      <td className="font-medium text-[var(--text-1)]">{document.title}</td>
-                      <td className="text-[var(--text-3)]">{document.proposalTitle || "—"}</td>
-                      <td>
-                        <span className="widget-timestamp">{formatDate(document.updatedAt)}</span>
-                      </td>
-                      <td>
-                        <a
-                          href={document.shareUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={buttonStyles({ variant: "secondary", size: "xs" })}
-                        >
-                          Open
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+      </div>
 
+      {/* Row 2: Developers + Studies */}
+      <div className="grid grid-cols-2 gap-4 items-start">
         {/* 15 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
@@ -847,31 +737,6 @@ export function ClientDetail({ slug }: { slug: string }) {
           />
         </section>
 
-        {/* 16 // CARE */}
-        {supportClient && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">16</span>
-                {" // CARE"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-5">
-              <div>
-                <p className="widget-data-label mb-1">Support client</p>
-                <p className="text-sm font-medium text-[var(--text-1)]">
-                  {supportClient.name}
-                </p>
-              </div>
-              <Link
-                href="/app/care"
-                className={buttonStyles({ variant: "secondary", size: "sm" })}
-              >
-                Open in Care
-              </Link>
-            </div>
-          </section>
-        )}
 
         {/* 17 // STUDIES */}
         {!isSuggested && (
@@ -985,6 +850,78 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 
       </div>
+
+      {/* Full-width optionals */}
+        {/* 14 // PROOF DOCUMENTS */}
+        {proofDocuments.length > 0 && (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">14</span>
+                {" // PROOF DOCUMENTS"}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="app-table min-w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Document</th>
+                    <th className="text-left">Source</th>
+                    <th className="text-left">Updated</th>
+                    <th className="text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {proofDocuments.map((document) => (
+                    <tr key={document.id}>
+                      <td className="font-medium text-[var(--text-1)]">{document.title}</td>
+                      <td className="text-[var(--text-3)]">{document.proposalTitle || "—"}</td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(document.updatedAt)}</span>
+                      </td>
+                      <td>
+                        <a
+                          href={document.shareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={buttonStyles({ variant: "secondary", size: "xs" })}
+                        >
+                          Open
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* 16 // CARE */}
+        {supportClient && (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">16</span>
+                {" // CARE"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-5">
+              <div>
+                <p className="widget-data-label mb-1">Support client</p>
+                <p className="text-sm font-medium text-[var(--text-1)]">
+                  {supportClient.name}
+                </p>
+              </div>
+              <Link
+                href="/app/care"
+                className={buttonStyles({ variant: "secondary", size: "sm" })}
+              >
+                Open in Care
+              </Link>
+            </div>
+          </section>
+        )}
 
       {/* ── Edit client modal ── */}
       {editing && editForm && (
