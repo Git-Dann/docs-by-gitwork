@@ -1381,6 +1381,7 @@ function PlatformCard({
     repoUrl?: string;
     credentials?: string;
     notes?: string;
+    previewImageUrl?: string;
   }) {
     setError(null);
     try {
@@ -1522,7 +1523,7 @@ function DesignCard({
   const updateMutation = useUpdateClientDesign(slug, design.id);
   const deleteMutation = useDeleteClientDesign(slug);
 
-  async function handleSave(input: { name: string; url?: string; notes?: string }) {
+  async function handleSave(input: { name: string; url?: string; notes?: string; previewImageUrl?: string }) {
     setError(null);
     try {
       await updateMutation.mutateAsync(input);

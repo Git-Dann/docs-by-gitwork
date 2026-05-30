@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
 import type { ClientPlatformRecord } from "@/types/client";
 
 type PlatformInput = {
@@ -12,6 +13,7 @@ type PlatformInput = {
   repoUrl: string;
   credentials: string;
   notes: string;
+  previewImageUrl: string;
 };
 
 const PLATFORM_TYPES = [
@@ -50,6 +52,7 @@ export function ClientPlatformFormModal({
     repoUrl: platform?.repoUrl ?? "",
     credentials: platform?.credentials ?? "",
     notes: platform?.notes ?? "",
+    previewImageUrl: platform?.previewImageUrl ?? "",
   });
 
   function set(field: keyof PlatformInput, value: string) {
@@ -174,6 +177,16 @@ export function ClientPlatformFormModal({
                 placeholder="Deployment notes, gotchas, client contacts for this platform…"
               />
             </label>
+
+            <div>
+              <span className="mb-2 block text-sm font-medium text-[var(--text-2)]">
+                Card preview image
+              </span>
+              <PreviewImagePicker
+                value={form.previewImageUrl}
+                onChange={(value) => set("previewImageUrl", value)}
+              />
+            </div>
 
             {error ? <p className="text-sm text-rose-700">{error}</p> : null}
           </div>

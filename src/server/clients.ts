@@ -774,6 +774,7 @@ export async function updateClientPlatform(
     repoUrl?: string;
     credentials?: string;
     notes?: string;
+    previewImageUrl?: string;
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -786,6 +787,7 @@ export async function updateClientPlatform(
       ...(input.repoUrl !== undefined ? { repoUrl: input.repoUrl.trim() || null } : {}),
       ...(input.credentials !== undefined ? { credentials: input.credentials.trim() || null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+      ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
   });
 
@@ -813,7 +815,7 @@ export async function createClientDesign(
 
 export async function updateClientDesign(
   designId: string,
-  input: { name?: string; url?: string; notes?: string },
+  input: { name?: string; url?: string; notes?: string; previewImageUrl?: string },
 ): Promise<ClientDesignRecord | null> {
   const design = await clientDesigns.update({
     where: { id: designId },
@@ -821,6 +823,7 @@ export async function updateClientDesign(
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+      ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
   });
   return serializeClientDesign(design as Parameters<typeof serializeClientDesign>[0]);

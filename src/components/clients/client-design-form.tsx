@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
 import type { ClientDesignRecord } from "@/types/client";
 
 type DesignInput = {
   name: string;
   url: string;
   notes: string;
+  previewImageUrl: string;
 };
 
 export function ClientDesignFormModal({
@@ -27,6 +29,7 @@ export function ClientDesignFormModal({
     name: design?.name ?? "",
     url: design?.url ?? "",
     notes: design?.notes ?? "",
+    previewImageUrl: design?.previewImageUrl ?? "",
   });
 
   function set(field: keyof DesignInput, value: string) {
@@ -91,6 +94,16 @@ export function ClientDesignFormModal({
                 placeholder="Status, access notes, component library info…"
               />
             </label>
+
+            <div>
+              <span className="mb-2 block text-sm font-medium text-[var(--text-2)]">
+                Card preview image
+              </span>
+              <PreviewImagePicker
+                value={form.previewImageUrl}
+                onChange={(value) => set("previewImageUrl", value)}
+              />
+            </div>
 
             {error ? <p className="text-sm text-rose-700">{error}</p> : null}
           </div>

@@ -205,6 +205,7 @@ export const clientPlatformCreateSchema = z.object({
   repoUrl: z.string().trim().optional(),
   credentials: z.string().trim().optional(),
   notes: z.string().trim().optional(),
+  previewImageUrl: z.string().optional(),
 });
 
 export const clientPlatformUpdateSchema = clientPlatformCreateSchema
@@ -217,6 +218,7 @@ export const clientDesignCreateSchema = z.object({
   name: requiredTrimmedString,
   url: z.string().trim().optional(),
   notes: z.string().trim().optional(),
+  previewImageUrl: z.string().optional(),
 });
 
 export const clientDesignUpdateSchema = clientDesignCreateSchema
