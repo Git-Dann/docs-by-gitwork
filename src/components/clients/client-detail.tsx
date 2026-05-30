@@ -335,14 +335,90 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 02-06 // STATS ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard number="02" label="DOCS" value={proposals.length} />
-        <StatCard number="03" label="PLATFORMS" value={platforms.length} />
-        <StatCard number="04" label="DESIGNS" value={designs.length} />
-        <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
-        <StatCard number="06" label="STUDIES" value={studies.length} />
-      </div>
+      {/* ── 02-05 // STATS — 2×2 ── */}
+      {(() => {
+        const latestScan = pulseScans[0] ?? null;
+        const activeDevs = (placements ?? []).filter((p) => !p.endDate).length;
+        return (
+          <div className="grid grid-cols-2 gap-4">
+            {/* 02 // DOCS */}
+            <StatCard number="02" label="DOCS" value={proposals.length} />
+
+            {/* 03 // PLATFORMS */}
+            <StatCard number="03" label="PLATFORMS" value={platforms.length} />
+
+            {/* 04 // PULSE — latest score + scan count + link */}
+            <article className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">04</span>
+                  {" // PULSE"}
+                </span>
+                {latestScan && (
+                  <Link
+                    href={`/app/pulse/${latestScan.id}`}
+                    className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
+                    title="Open latest scan"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+              <div className="widget-body--compact">
+                <p
+                  className="text-5xl leading-none tracking-tight"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    color: latestScan?.healthScore
+                      ? latestScan.healthScore >= 75 ? "#16a34a"
+                        : latestScan.healthScore >= 50 ? "#d97706"
+                        : "#dc2626"
+                      : "var(--text-4)",
+                  }}
+                >
+                  {latestScan?.healthScore ?? "—"}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <p className="widget-data-label">HEALTH SCORE</p>
+                  {pulseScans.length > 0 && (
+                    <p className="widget-data-label opacity-50">
+                      · {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </article>
+
+            {/* 05 // DEVS — active placements */}
+            <article className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">05</span>
+                  {" // DEVS"}
+                </span>
+                {activeDevs > 0 && (
+                  <Link
+                    href="/app/codeclear/candidates"
+                    className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
+                    title="View in Code"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+              <div className="widget-body--compact">
+                <p
+                  className="text-5xl leading-none tracking-tight text-[var(--text-1)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {activeDevs}
+                </p>
+                <p className="widget-data-label mt-2">ACTIVE</p>
+              </div>
+            </article>
+          </div>
+        );
+      })()}
 
       {/* ── 07 // SLACK ACTIVITY ── */}
       <section className="widget-card">
