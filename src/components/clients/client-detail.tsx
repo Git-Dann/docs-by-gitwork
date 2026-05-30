@@ -1332,62 +1332,74 @@ function SlackActivityBody({
     ? data.summary.split("\n").map((l) => l.trim()).filter(Boolean)
     : [];
 
-  return (
-    <div>
-      {/* AI summary */}
-      {summaryLines.length > 0 && (
-        <div className="border-b border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-5 py-4">
-          <p className="widget-data-label mb-2">AI digest</p>
-          <ul className="space-y-1">
-            {summaryLines.map((line, i) => (
-              <li key={i} className="flex gap-2 text-sm leading-6 text-[var(--text-2)]">
-                {line.startsWith("•") ? (
-                  <>{line}</>
-                ) : (
-                  <><span className="text-[var(--text-4)]">•</span> {line}</>
-                )}
-              </li>
-            ))}
-          </ul>
-          {data.generatedAt && (
-            <p className="widget-timestamp mt-2 opacity-60">
-              Generated {formatDate(data.generatedAt)}
-            </p>
-          )}
-        </div>
-      )}
+  const recentMessages = data.messages.slice(-8).reverse();
 
-      {/* Messages */}
-      <div className="divide-y divide-[rgba(0,0,0,0.05)]">
-        {data.messages.slice(-10).reverse().map((msg) => {
+  return (
+    <div className="grid grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)]" style={{ maxHeight: 360 }}>
+
+      {/* ── Left: AI summary ── */}
+      <div className="overflow-y-auto p-5">
+        <p className="widget-data-label mb-3">AI digest</p>
+        {summaryLines.length > 0 ? (
+          <ul className="space-y-2">
+            {summaryLines.map((line, i) => {
+              const clean = line.replace(/^\•\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
+              const colonIdx = clean.indexOf(":");
+              const label = colonIdx > 0 && colonIdx < 30 ? clean.slice(0, colonIdx) : null;
+              const body = label ? clean.slice(colonIdx + 1).trim() : clean;
+              return (
+                <li key={i} className="flex gap-2 text-sm leading-5 text-[var(--text-2)]">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-600)]" />
+                  <span>
+                    {label && (
+                      <span className="font-semibold text-[var(--text-1)]">{label}: </span>
+                    )}
+                    {body}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No digest yet.</p>
+        )}
+        {data.generatedAt && (
+          <p className="widget-timestamp mt-4 opacity-50">
+            {formatDate(data.generatedAt)}
+          </p>
+        )}
+      </div>
+
+      {/* ── Right: Messages ── */}
+      <div className="overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
+        {recentMessages.map((msg) => {
           const initials = msg.author
             .split(" ")
             .map((w) => w[0])
             .join("")
             .slice(0, 2)
             .toUpperCase();
-          // Deterministic colour from name
           let h = 0;
           for (let i = 0; i < msg.author.length; i++) h = msg.author.charCodeAt(i) + ((h << 5) - h);
           const avatarColors = ["#1D4ED8", "#0F766E", "#7C3AED", "#B45309", "#DC2626", "#16A34A"];
           const avatarBg = avatarColors[Math.abs(h) % avatarColors.length];
 
           return (
-            <div key={msg.id} className="flex gap-3 px-5 py-3">
+            <div key={msg.id} className="flex gap-2.5 px-4 py-3">
               <div
-                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
                 style={{ background: avatarBg, fontFamily: "var(--font-mono)" }}
               >
                 {initials}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-baseline gap-1.5">
                   <span className="text-xs font-semibold text-[var(--text-1)]">{msg.author}</span>
-                  <span className="widget-timestamp opacity-60">
+                  <span className="widget-timestamp text-[10px] opacity-50">
                     {formatDate(msg.ts)}
                   </span>
                 </div>
-                <p className="mt-0.5 text-sm leading-5 text-[var(--text-2)] line-clamp-3">
+                <p className="mt-0.5 text-xs leading-[1.55] text-[var(--text-3)] line-clamp-2">
                   {formatSlackText(msg.text)}
                 </p>
               </div>
@@ -1395,6 +1407,7 @@ function SlackActivityBody({
           );
         })}
       </div>
+
     </div>
   );
 }

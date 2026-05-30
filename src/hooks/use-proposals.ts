@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  apiFetch,
   archiveProposal,
   createClient,
   createClientDesign,
@@ -353,24 +354,19 @@ export function useExportProposal(id: string) {
 export function useClientSlackActivity(slug: string, enabled = true) {
   return useQuery({
     queryKey: ["client-slack-activity", slug],
-    queryFn: async () => {
-      const res = await fetch(`/api/clients/${slug}/slack-activity`, {
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY ?? ""}`,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to fetch Slack activity");
-      return res.json() as Promise<{
+    // Use apiFetch so the browser's gitwork_api_session cookie handles auth —
+    // sending an empty `Authorization: Bearer ` header was blocking requests.
+    queryFn: () =>
+      apiFetch<{
         configured: boolean;
         channelName: string | null;
         summary: string | null;
         generatedAt: string | null;
         reason: string;
         messages: Array<{ id: string; author: string; text: string; ts: string }>;
-      }>;
-    },
+      }>(`/api/clients/${slug}/slack-activity`),
     enabled: Boolean(slug) && enabled,
-    staleTime: 5 * 60 * 1000, // 5 min — Slack data changes slowly
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
@@ -380,18 +376,12 @@ export function useOgPreview(url: string | null | undefined) {
     queryKey: ["og-preview", url],
     queryFn: async () => {
       if (!url) return { imageUrl: null, title: null };
-      const encoded = encodeURIComponent(url);
-      const res = await fetch(`/api/og-preview?url=${encoded}`, {
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY ?? ""}`,
-        },
-      });
-      if (!res.ok) return { imageUrl: null, title: null };
-      const data = await res.json() as { imageUrl: string | null; title: string | null };
-      return data;
+      return apiFetch<{ imageUrl: string | null; title: string | null }>(
+        `/api/og-preview?url=${encodeURIComponent(url)}`,
+      );
     },
     enabled: Boolean(url),
-    staleTime: 30 * 60 * 1000, // 30 min — OG data rarely changes
+    staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
