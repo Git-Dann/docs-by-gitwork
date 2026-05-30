@@ -12,6 +12,8 @@ import {
   useCodeClearCandidates,
   useCreateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
+import { setCandidateCurrentClients } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
@@ -68,6 +70,7 @@ export function CodeClearCandidatesWorkspace() {
     identityConfidence: confidenceFilter || undefined,
   });
   const createCandidate = useCreateCodeClearCandidate();
+  const queryClient = useQueryClient();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
   const clientsQuery = useClientList();
   const clientOptions = clientsQuery.data?.clients ?? [];
@@ -414,7 +417,11 @@ export function CodeClearCandidatesWorkspace() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <CandidateProfileForm value={createForm} onChange={setCreateForm} />
+              <CandidateProfileForm
+                value={createForm}
+                onChange={setCreateForm}
+                showClientsPicker
+              />
             </div>
 
             <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
@@ -451,10 +458,29 @@ export function CodeClearCandidatesWorkspace() {
                       availability: createForm.availability || null,
                     },
                     {
-                      onSuccess: (result) => {
+                      onSuccess: async (result) => {
+                        // If the user picked any clients in the form, attach
+                        // them now as open-ended placements. Mirrors what the
+                        // CurrentClientPicker does after the dev exists.
+                        if (createForm.clientIds.length > 0) {
+                          try {
+                            await setCandidateCurrentClients(
+                              result.candidate.id,
+                              createForm.clientIds,
+                            );
+                            queryClient.invalidateQueries({
+                              queryKey: ["codeclear", "candidates"],
+                            });
+                            queryClient.invalidateQueries({
+                              queryKey: ["codeclear", "candidate", result.candidate.id],
+                            });
+                          } catch (error) {
+                            console.error("Failed to attach clients on create", error);
+                          }
+                        }
                         setShowCreateModal(false);
                         setCreateForm(emptyCandidateProfile);
-                        updateQuery({ candidate: result.candidate.id });
+                        router.push(`/app/codeclear/candidates/${result.candidate.id}`);
                       },
                     },
                   )

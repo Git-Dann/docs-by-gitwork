@@ -79,6 +79,9 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       timezone: candidate.timezone ?? "",
       availability: candidate.availability ?? "",
       origin: candidate.origin,
+      // Profile edit doesn't manage clients here — the hero already has the
+      // live current-client picker. Kept empty to satisfy the type.
+      clientIds: [],
     });
   }, [candidate, showEdit]);
 
