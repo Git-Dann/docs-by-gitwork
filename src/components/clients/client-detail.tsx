@@ -1332,13 +1332,21 @@ function SlackActivityBody({
     ? data.summary.split("\n").map((l) => l.trim()).filter(Boolean)
     : [];
 
-  const recentMessages = data.messages.slice(-8).reverse();
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const recentMessages = data.messages
+    .filter((msg) => new Date(msg.ts).getTime() > oneDayAgo)
+    .reverse();
+  // Fall back to last 5 if nothing in 24 h
+  const displayMessages = recentMessages.length > 0
+    ? recentMessages
+    : data.messages.slice(-5).reverse();
+  const is24hView = recentMessages.length > 0;
 
   return (
-    <div className="grid grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)]" style={{ maxHeight: 360 }}>
+    <div className="grid h-[360px] grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)]">
 
       {/* ── Left: AI summary ── */}
-      <div className="overflow-y-auto p-5">
+      <div className="h-full overflow-y-auto p-5">
         <p className="widget-data-label mb-3">AI digest</p>
         {summaryLines.length > 0 ? (
           <ul className="space-y-2">
@@ -1371,8 +1379,13 @@ function SlackActivityBody({
       </div>
 
       {/* ── Right: Messages ── */}
-      <div className="overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
-        {recentMessages.map((msg) => {
+      <div className="h-full overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
+        {!is24hView && (
+          <div className="px-4 py-2 bg-[var(--surface-1)]">
+            <p className="widget-data-label">No messages in last 24 h — showing recent</p>
+          </div>
+        )}
+        {displayMessages.map((msg) => {
           const initials = msg.author
             .split(" ")
             .map((w) => w[0])
