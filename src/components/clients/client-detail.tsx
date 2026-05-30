@@ -1345,8 +1345,9 @@ function SlackActivityBody({
   return (
     <div className="grid h-[360px] grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)]">
 
-      {/* ── Left: AI summary ── */}
-      <div className="h-full overflow-y-auto p-5">
+      {/* ── Left: AI summary — fade at bottom signals scrollability ── */}
+      <div className="relative h-full">
+        <div className="h-full overflow-y-auto p-5 pb-10">
         <p className="widget-data-label mb-3">AI digest</p>
         {summaryLines.length > 0 ? (
           <ul className="space-y-2">
@@ -1376,6 +1377,13 @@ function SlackActivityBody({
             {formatDate(data.generatedAt)}
           </p>
         )}
+        </div>
+        {/* Fade gradient — no hard crop */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-10"
+          style={{ background: "linear-gradient(to bottom, transparent, white)" }}
+        />
       </div>
 
       {/* ── Right: Messages ── */}
