@@ -1507,14 +1507,15 @@ function PlatformCard({
           label={platform.platformType || platform.name}
         />
 
-        {/* Widget header */}
-        <div className="widget-header">
-          <span className="widget-header__label">
-            {platform.platformType
-              ? platform.platformType.toUpperCase()
-              : "PLATFORM"}
-          </span>
-          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+        {/* Card label + actions — compact, not a section header */}
+        <div className="flex items-center justify-between border-b border-[rgba(0,0,0,0.06)] px-3 py-1.5">
+          {platform.platformType && (
+            <span className="rounded-[3px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}>
+              {platform.platformType}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -1643,28 +1644,26 @@ function DesignCard({
         {/* Preview image area */}
         <LinkPreviewArea imageUrl={previewImage} domain={design.url} label={design.name} />
 
-        {/* Widget header */}
-        <div className="widget-header">
-          <span className="widget-header__label">DESIGN</span>
-          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-              title="Edit design"
-            >
-              <PencilIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={deletingId === design.id}
-              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
-              title="Delete design"
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
+        {/* Card label + actions — compact, not a section header */}
+        <div className="flex items-center justify-end border-b border-[rgba(0,0,0,0.06)] px-3 py-1.5 gap-0.5"
+          onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
+            title="Edit design"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete()}
+            disabled={deletingId === design.id}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
+            title="Delete design"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         {/* Body */}
