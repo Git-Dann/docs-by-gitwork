@@ -140,6 +140,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       // Oldest → newest reads naturally for a summary.
       .reverse();
 
+    // Devs active in the channel — resolved names, generic placeholders dropped.
+    // The app shows these and focuses its on-device summary on "who did what".
+    const participants = [...new Set(
+      messages.map((m) => m.author).filter((a) => a !== "Bot" && a !== "Teammate"),
+    )];
+
     if (messages.length === 0) {
       return apiOk({
         configured: true,
@@ -147,6 +153,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         summary: null,
         generatedAt: null,
         reason: "empty",
+        participants: [] as string[],
         messages: [],
       });
     }
@@ -183,6 +190,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       generatedAt: cacheResult.cachedAt ?? new Date().toISOString(),
       cached: cacheResult.cached,
       reason: "ok",
+      participants,
       messages,
     });
   } catch (error) {
@@ -197,6 +205,7 @@ function notConfigured(reason: string) {
     summary: null,
     generatedAt: null,
     reason,
+    participants: [] as string[],
     messages: [] as SlackMessage[],
   });
 }
