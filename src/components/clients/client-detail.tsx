@@ -340,7 +340,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
-        <StatCard number="06" label="STUDIES" value={studies.length} />
+        <StatCard number="06" label="DEVS" value={(placements ?? []).filter((p) => !p.endDate).length} />
       </div>
 
       {/* ── 07 // SLACK ACTIVITY ── */}
