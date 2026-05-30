@@ -458,7 +458,7 @@ function AddConnectorModal({
                 type="button"
                 onClick={() => setSource(s)}
                 className={cn(
-                  "flex items-start gap-3 rounded-[12px] border p-3.5 text-left transition",
+                  "flex items-start gap-3 rounded-lg border p-3.5 text-left transition",
                   source === s
                     ? "border-[var(--brand-700)] bg-[var(--mist)] shadow-sm"
                     : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
@@ -1090,52 +1090,74 @@ function InboxView({ clientId }: { clientId: string }) {
       {/* two-column layout */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
         {/* conversation list */}
-        <div className="space-y-2">
-          <div className="max-h-[calc(100vh-18rem)] space-y-2 overflow-y-auto pr-0.5">
-          {convosLoading && (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
-              ))}
-            </div>
-          )}
-          {!convosLoading && filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
-          )}
-          {paginated.map((c) => (
-            <ConversationCard
-              key={c.id}
-              convo={c}
-              active={c.id === selectedConvId}
-              onClick={() => setSelectedConvId(c.id)}
-            />
-          ))}
+        <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // CONVERSATIONS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {filtered.length}
+            </span>
           </div>
-          {totalPages > 1 && (
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-              >
-                ← Prev
-              </button>
-              <span className="text-xs text-[var(--text-4)]">{page + 1} / {totalPages}</span>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-              >
-                Next →
-              </button>
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-0.5">
+            {convosLoading && (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                ))}
+              </div>
+            )}
+            {!convosLoading && filtered.length === 0 && (
+              <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
+            )}
+            {paginated.map((c) => (
+              <ConversationCard
+                key={c.id}
+                convo={c}
+                active={c.id === selectedConvId}
+                onClick={() => setSelectedConvId(c.id)}
+              />
+            ))}
             </div>
-          )}
+            {totalPages > 1 && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-[var(--text-4)]">{page + 1} / {totalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* detail pane */}
       <div className="app-card flex min-w-0 flex-col overflow-hidden">
+        {/* widget header */}
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            01 // CONVERSATION
+          </span>
+          {activeConvo && (
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
+          )}
+        </div>
         {!activeConvo ? (
           <div className="flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
             Select a conversation
@@ -1207,7 +1229,7 @@ function InboxView({ clientId }: { clientId: string }) {
                     <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
                     <span className="text-xs font-semibold text-[var(--brand-700)]">AI draft</span>
                     {draft.status === "approved" && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                         Approved
                       </span>
                     )}
@@ -1369,7 +1391,16 @@ function TicketsView({ clientId }: { clientId: string }) {
   function TicketTable({ rows }: { rows: Ticket[] }) {
     return (
       <div className="app-card overflow-hidden p-0">
-        {/* header */}
+        {/* widget header */}
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            01 // TICKETS
+          </span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+            {rows.length}
+          </span>
+        </div>
+        {/* column header */}
         <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
           <span>Title</span>
           <span className="w-20 text-center">Priority</span>
@@ -1402,7 +1433,7 @@ function TicketsView({ clientId }: { clientId: string }) {
                     </span>
                   </div>
                 </div>
-                <span className={cn("inline-flex w-20 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
+                <span className={cn("inline-flex w-20 items-center justify-center rounded-md px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
                   {ticket.priority}
                 </span>
                 <span className="w-24 text-right text-[11px] text-[var(--text-4)]">{formatShort(ticket.updatedAt)}</span>
@@ -1418,7 +1449,7 @@ function TicketsView({ clientId }: { clientId: string }) {
                     value={ticket.status}
                     onChange={(e) => updateTicket.mutate({ ticketId: ticket.id, data: { status: e.target.value as TicketStatus } })}
                     className={cn(
-                      "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
+                      "cursor-pointer rounded-md border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
                       STATUS_TONE[ticket.status],
                     )}
                   >
@@ -1509,12 +1540,21 @@ function ReportsView({ client }: { client: SupportClient }) {
   return (
     <div className="space-y-4">
       {hasAllocation && (
-        <div className="app-card p-5">
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // SUPPORT DAYS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {month}
+            </span>
+          </div>
+          <div className="p-5">
           <p className="text-sm font-medium text-[var(--text-3)]">
             Support days — {month}
           </p>
           <div className="mt-4 flex items-end gap-4">
-            <p className="text-[32px] font-semibold leading-none tracking-[-0.03em] text-[var(--text-1)]">
+            <p className="font-display text-[32px] leading-none text-[var(--text-1)]">
               {used}
               <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
             </p>
@@ -1534,10 +1574,20 @@ function ReportsView({ client }: { client: SupportClient }) {
             {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"}
             {client.reportingRecipient && ` → ${client.reportingRecipient}`}
           </p>
+          </div>
         </div>
       )}
 
-      <div className="app-card p-5">
+      <div className="app-card overflow-hidden p-0">
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            02 // MONTHLY REPORT
+          </span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+            DRAFT
+          </span>
+        </div>
+        <div className="p-5">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-medium text-[var(--text-3)]">Monthly report draft</p>
           <button
@@ -1566,6 +1616,7 @@ function ReportsView({ client }: { client: SupportClient }) {
           <Button type="button" variant="primary" size="sm">
             Save draft
           </Button>
+        </div>
         </div>
       </div>
     </div>
@@ -2024,6 +2075,15 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
 
       {connections.length > 0 && (
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // CONNECTORS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {connections.length}
+            </span>
+          </div>
           {connections.map((conn, idx) => {
             const sr = syncResults[conn.id];
             return (
@@ -2169,12 +2229,16 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
       </button>
 
       {agentLogs.length > 0 && (
-        <div className="app-card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-            <span className="text-sm font-semibold text-[var(--text-1)]">Agent activity</span>
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // AGENT ACTIVITY
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 p-4">
             {agentLogs.map((log: AuditLog) => {
               const agentName = log.actor.replace("agent:", "");
               const agentLabel =
@@ -2360,12 +2424,20 @@ function AgentsView({ clientId }: { clientId: string }) {
     <div className="space-y-6">
       {/* agent cards */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent pipeline</h3>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="app-card mb-4 overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // AGENT PIPELINE
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-3">
           {AGENT_CARDS.map((agent) => {
             const enabled = toggles[agent.key];
             return (
-              <div key={agent.key} className="app-card p-5">
+              <div key={agent.key} className="rounded-lg border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div
                     className={cn(
@@ -2417,14 +2489,23 @@ function AgentsView({ clientId }: { clientId: string }) {
               </div>
             );
           })}
+          </div>
         </div>
       </section>
 
       {/* manual sync */}
       {connections.length > 0 && (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Manual sync</h3>
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                02 // MANUAL SYNC
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+                {connections.length}
+              </span>
+            </div>
             {connections.map((conn, idx) => {
               const pending = syncConn.isPending && syncConn.variables === conn.id;
               const sr = syncResults[conn.id];
@@ -2504,13 +2585,21 @@ function AgentsView({ clientId }: { clientId: string }) {
 
       {/* agent activity feed */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent activity</h3>
         {agentLogs.length === 0 ? (
           <p className="py-6 text-center text-sm text-[var(--text-4)]">
             No agent activity yet — run a sync to get started.
           </p>
         ) : (
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                03 // AGENT ACTIVITY
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+                LIVE
+              </span>
+            </div>
             {agentLogs.map((log: AuditLog, idx: number) => {
               const agentName = log.actor.replace("agent:", "");
               const badgeCls = AGENT_BADGE[agentName] ?? "bg-[var(--surface-1)] text-[var(--text-3)]";
@@ -2584,8 +2673,16 @@ function SettingsView({ clientId }: { clientId: string }) {
     <div className="space-y-6">
       {/* workflow rules */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Workflow rules</h3>
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // WORKFLOW RULES
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {rules.length}
+            </span>
+          </div>
           {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
           {!rulesLoading && rules.length === 0 && (
             <div className="flex items-center justify-between px-5 py-4">
@@ -2650,13 +2747,16 @@ function SettingsView({ clientId }: { clientId: string }) {
 
       {/* team */}
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[var(--text-2)]">Team access</h3>
-          <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] text-[var(--text-4)]">
-            Full team management coming with auth
-          </span>
-        </div>
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // TEAM ACCESS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              AUTH PENDING
+            </span>
+          </div>
           <div className="flex items-center justify-between px-5 py-3.5">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mist)] text-sm font-semibold text-[var(--brand-700)]">
@@ -2685,8 +2785,16 @@ function SettingsView({ clientId }: { clientId: string }) {
       {/* audit log */}
       {(logsLoading || logs.length > 0) && (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Audit log</h3>
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                03 // AUDIT LOG
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+                {logs.length}
+              </span>
+            </div>
             {logsLoading && <div className="h-16 animate-pulse bg-[var(--surface-1)]" />}
             {logs.map((log, idx) => (
               <div
@@ -2892,7 +3000,7 @@ export function SupportDashboard() {
               type="button"
               title="Add client"
               onClick={() => setShowAddClient(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-dashed border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
             >
               <PlusIcon className="h-4 w-4" />
             </button>
