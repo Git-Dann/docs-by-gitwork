@@ -93,8 +93,18 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       (m) => m.type === "message" && !m.subtype && (m.text ?? "").trim().length > 0,
     );
 
-    // 2. Resolve author display names.
-    const userIds = [...new Set(raw.map((m) => m.user).filter(Boolean) as string[])];
+    // 2. Resolve display names — for authors AND anyone @-mentioned in the
+    //    message bodies, so we can render mentions as "@Name".
+    const mentionIds = new Set<string>();
+    for (const m of raw) {
+      for (const match of (m.text ?? "").matchAll(/<@([A-Z0-9]+)/g)) {
+        mentionIds.add(match[1]);
+      }
+    }
+    const userIds = [...new Set([
+      ...(raw.map((m) => m.user).filter(Boolean) as string[]),
+      ...mentionIds,
+    ])];
     const nameById = new Map<string, string>();
     await Promise.all(
       userIds.map(async (uid) => {
@@ -140,7 +150,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .map((m) => ({
         id: m.ts,
         author: (m.user && nameById.get(m.user)) || (m.bot_id ? "Bot" : "Teammate"),
-        text: m.text ?? "",
+        text: formatSlackText(m.text ?? "", nameById),
         ts: new Date(Math.floor(Number(m.ts) * 1000)).toISOString(),
       }))
       // Oldest → newest reads naturally for a summary.
@@ -202,6 +212,27 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   } catch (error) {
     return fromError(error);
   }
+}
+
+/// Turns Slack's mrkdwn tokens into readable text:
+/// <@U123> → @Name, <#C123|name> → #name, <url|label> → label, and unescapes
+/// &amp;/&lt;/&gt;. Used for the message bodies the app displays.
+function formatSlackText(text: string, names: Map<string, string>): string {
+  let t = text;
+  // User mentions: <@U123> or <@U123|fallback>
+  t = t.replace(/<@([A-Z0-9]+)(?:\|([^>]+))?>/g, (_m, id: string, fb: string) =>
+    "@" + (names.get(id) || fb || "someone"));
+  // Channels: <#C123|name> or <#C123>
+  t = t.replace(/<#[A-Z0-9]+(?:\|([^>]+))?>/g, (_m, name: string) => "#" + (name || "channel"));
+  // Subteam / group mentions: <!subteam^S123|@group>
+  t = t.replace(/<!subteam\^[A-Z0-9]+(?:\|([^>]+))?>/g, (_m, label: string) => label || "@group");
+  // Special mentions: <!here> <!channel> <!everyone>
+  t = t.replace(/<!(here|channel|everyone)>/g, (_m, k: string) => "@" + k);
+  // Links: <https://x|label> or <https://x>
+  t = t.replace(/<((?:https?|mailto):[^>|]+)(?:\|([^>]+))?>/g, (_m, url: string, label: string) => label || url);
+  // Unescape Slack HTML entities.
+  t = t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  return t;
 }
 
 function notConfigured(reason: string) {
