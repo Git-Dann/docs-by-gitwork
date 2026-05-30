@@ -14,6 +14,39 @@ interface DiscordChannelCursor {
 interface RedditScraperConfig {
   subreddit?: string;
   keywords?: string[];
+  excludeKeywords?: string[];
+  lookbackDays?: number;
+  maxItems?: number;
+}
+
+// ─── Shared filter helpers ──────────────────────────────────────────────────────
+
+function normalizeKeywords(list?: string[]): string[] {
+  return (list ?? []).map((k) => k.toLowerCase().trim()).filter(Boolean);
+}
+
+/**
+ * Returns true if `text` passes the include/exclude keyword filters.
+ * - include: if non-empty, text must contain at least one term
+ * - exclude: if any term is present, the item is rejected
+ */
+function passesKeywordFilters(text: string, include: string[], exclude: string[]): boolean {
+  const lower = text.toLowerCase();
+  if (exclude.length > 0 && exclude.some((kw) => lower.includes(kw))) return false;
+  if (include.length > 0 && !include.some((kw) => lower.includes(kw))) return false;
+  return true;
+}
+
+function lookbackSeconds(lookbackDays: number | undefined, fallbackDays: number): number {
+  const days = lookbackDays && lookbackDays > 0 ? lookbackDays : fallbackDays;
+  return Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+}
+
+/** Convert a Date to a Discord snowflake (used as an `after` cursor). */
+function dateToSnowflake(date: Date): string {
+  const DISCORD_EPOCH = 1420070400000;
+  const ms = Math.max(0, date.getTime() - DISCORD_EPOCH);
+  return String(ms * 4194304); // << 22
 }
 
 // ─── Reddit RSS helpers ───────────────────────────────────────────────────────
@@ -64,6 +97,10 @@ interface DiscordScraperConfig {
   botToken?: string;
   channels?: DiscordChannelCursor[];
   keywords?: string[];
+  excludeKeywords?: string[];
+  lookbackDays?: number;
+  maxItems?: number;
+  ignoreBots?: boolean;
 }
 
 export interface SyncResult {
@@ -158,10 +195,22 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   const errors: string[] = [];
   const updatedChannels = [...channels];
 
+  // ── Filters ──
+  const include = normalizeKeywords(config.keywords);
+  const exclude = normalizeKeywords(config.excludeKeywords);
+  const ignoreBots = config.ignoreBots ?? true;
+  const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
+  // On first sync (no per-channel cursor), only reach back `lookbackDays` (default 7)
+  const firstSyncAfter = dateToSnowflake(
+    new Date(lookbackSeconds(config.lookbackDays, 7) * 1000),
+  );
+
   for (let i = 0; i < channels.length; i++) {
     const ch = channels[i];
+    if (maxItems && ingested >= maxItems) break;
     try {
-      const messages = await fetchNewMessages(ch.id, botToken, ch.lastMessageId);
+      const afterCursor = ch.lastMessageId ?? firstSyncAfter;
+      const messages = await fetchNewMessages(ch.id, botToken, afterCursor);
       if (messages.length === 0) continue;
 
       // Find or create one conversation per Discord channel
@@ -187,17 +236,20 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
       let lastMessageId = ch.lastMessageId ?? null;
 
-      const keywords = (config.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
-
       for (const msg of messages) {
-        if (msg.author.bot) { filtered++; continue; }
+        // Stop before advancing the cursor when the cap is hit, so capped messages
+        // are picked up on the next sync rather than silently skipped.
+        if (maxItems && ingested >= maxItems) break;
+
+        // Advance the cursor past messages we've seen, even when filtered out,
+        // so filtered noise isn't re-evaluated on every sync.
+        lastMessageId = msg.id;
+
+        if (ignoreBots && msg.author.bot) { filtered++; continue; }
         if (!msg.content.trim()) { filtered++; continue; }
 
-        // Keyword filter — if configured, only ingest messages containing at least one keyword
-        if (keywords.length > 0) {
-          const lower = msg.content.toLowerCase();
-          if (!keywords.some((kw) => lower.includes(kw))) { filtered++; continue; }
-        }
+        // Include / exclude keyword filters
+        if (!passesKeywordFilters(msg.content, include, exclude)) { filtered++; continue; }
 
         // Skip already-ingested messages (guards against partial sync failures)
         const already = await prisma.supportMessage.findFirst({
@@ -218,7 +270,6 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
         });
 
         ingested++;
-        lastMessageId = msg.id;
       }
 
       if (ingested > 0) {
@@ -257,20 +308,23 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
   }
 
-  // Use lastSyncedAt as cursor; on first sync go back 7 days
+  // Use lastSyncedAt as cursor; on first sync go back `lookbackDays` (default 7)
   const lastSyncedAt = ctx.connection.lastSyncedAt;
   const afterUtc = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+    : lookbackSeconds(config?.lookbackDays, 7);
 
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
-  const keywords = (config?.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
+  const include = normalizeKeywords(config?.keywords);
+  const exclude = normalizeKeywords(config?.excludeKeywords);
+  const maxItems = config?.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
+  const limit = Math.min(maxItems ?? 25, 100);
 
   try {
     // Use the RSS/Atom feed — no credentials required
-    const res = await fetch(`https://www.reddit.com/r/${subreddit}/new.rss?limit=25`, {
+    const res = await fetch(`https://www.reddit.com/r/${subreddit}/new.rss?limit=${limit}`, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; FeedReader/1.0)",
         Accept: "application/atom+xml, application/rss+xml, text/xml, */*",
@@ -285,11 +339,10 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     const posts = parseRedditAtom(xml).filter((p) => p.created_utc > afterUtc);
 
     for (const post of posts) {
-      // Keyword filter — if configured, skip posts that don't match
-      if (keywords.length > 0) {
-        const text = `${post.title} ${post.body}`.toLowerCase();
-        if (!keywords.some((kw) => text.includes(kw))) { filtered++; continue; }
-      }
+      if (maxItems && ingested >= maxItems) break;
+
+      // Include / exclude keyword filters on title + body
+      if (!passesKeywordFilters(`${post.title} ${post.body}`, include, exclude)) { filtered++; continue; }
 
       if (!post.title.trim()) { filtered++; continue; }
 
@@ -413,20 +466,32 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   }
 
   const gmail = google.gmail({ version: "v1", auth: gmailAuth });
-  const config = (connection.scraperConfig ?? {}) as { query?: string; intakeAddress?: string };
+  const config = (connection.scraperConfig ?? {}) as RedditScraperConfig & {
+    query?: string;
+    intakeAddress?: string;
+  };
   const queryBase = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
   const lastSyncedAt = connection.lastSyncedAt;
   const afterSeconds = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
-  const fullQuery = [queryBase, `after:${afterSeconds}`].filter(Boolean).join(" ");
+    : lookbackSeconds(config.lookbackDays, 30);
+
+  // Push keyword filters into the Gmail query itself (server-side, most efficient).
+  const include = normalizeKeywords(config.keywords);
+  const exclude = normalizeKeywords(config.excludeKeywords);
+  const includeClause = include.length > 0 ? `(${include.map((k) => `"${k}"`).join(" OR ")})` : "";
+  const excludeClause = exclude.map((k) => `-"${k}"`).join(" ");
+  const maxResults = config.maxItems && config.maxItems > 0 ? Math.min(config.maxItems, 100) : 50;
+  const fullQuery = [queryBase, includeClause, excludeClause, `after:${afterSeconds}`]
+    .filter(Boolean)
+    .join(" ");
 
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
 
   try {
-    const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults: 50 });
+    const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults });
     const messageItems = listRes.data.messages ?? [];
     const fetched = messageItems.length;
     const threadsSeen = new Set<string>();

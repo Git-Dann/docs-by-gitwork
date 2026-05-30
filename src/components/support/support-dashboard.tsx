@@ -101,14 +101,14 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   stripe: "Stripe",
 };
 
-const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "youtube"];
-const COMING_SOON_SOURCES: SupportSource[] = ["instagram", "clickup", "stripe"];
+const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit"];
+const COMING_SOON_SOURCES: SupportSource[] = ["youtube", "instagram", "clickup", "stripe"];
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
   discord: "Monitor channels on a client's server",
   reddit: "Watch public subreddits for mentions",
-  youtube: "Ingest comments from videos or channel",
+  youtube: "Comments from videos — coming soon",
   instagram: "DMs & comments — coming soon",
   clickup: "Sync tasks and comments",
   stripe: "Disputes & payment events via webhook",
@@ -313,6 +313,121 @@ function sourceAuthMode(s: SupportSource): Connection["authMode"] {
   return "api_key";
 }
 
+// ─── shared connector filter state + UI ────────────────────────────────────────
+
+interface FilterState {
+  keywords: string;
+  excludeKeywords: string;
+  lookbackDays: string;
+  maxItems: string;
+  ignoreBots: boolean;
+}
+
+/** Initialise unified filter state from a saved scraperConfig. */
+function initFilterState(cfg: Connection["scraperConfig"]): FilterState {
+  return {
+    keywords: (cfg?.keywords ?? []).join(", "),
+    excludeKeywords: (cfg?.excludeKeywords ?? []).join(", "),
+    lookbackDays: cfg?.lookbackDays ? String(cfg.lookbackDays) : "",
+    maxItems: cfg?.maxItems ? String(cfg.maxItems) : "",
+    ignoreBots: cfg?.ignoreBots ?? true,
+  };
+}
+
+/** Serialise unified filter state into scraperConfig fields. */
+function buildFilterConfig(source: SupportSource, f: FilterState) {
+  const lookback = Number(f.lookbackDays);
+  const max = Number(f.maxItems);
+  return {
+    keywords: f.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+    excludeKeywords: f.excludeKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+    ...(lookback > 0 ? { lookbackDays: lookback } : {}),
+    ...(max > 0 ? { maxItems: max } : {}),
+    ...(source === "discord" ? { ignoreBots: f.ignoreBots } : {}),
+  };
+}
+
+function ConnectorFilterFields({
+  source,
+  filters,
+  setFilters,
+}: {
+  source: SupportSource;
+  filters: FilterState;
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+}) {
+  const set = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  const lookbackPlaceholder = source === "gmail" ? "30" : "7";
+  const maxPlaceholder = source === "reddit" ? "25" : "50";
+
+  return (
+    <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+      <p className="app-field-label">
+        Filters <span className="font-normal text-[var(--text-4)]">— dial in exactly what gets ingested</span>
+      </p>
+      <label className="block space-y-1">
+        <span className="app-field-label">
+          Include keywords{" "}
+          <span className="font-normal text-[var(--text-4)]">(comma-separated · match any · blank = everything)</span>
+        </span>
+        <input
+          value={filters.keywords}
+          onChange={(e) => set("keywords", e.target.value)}
+          className="app-input w-full"
+          placeholder="e.g. bug, help, broken, refund"
+        />
+      </label>
+      <label className="block space-y-1">
+        <span className="app-field-label">
+          Exclude keywords <span className="font-normal text-[var(--text-4)]">(drop items containing any)</span>
+        </span>
+        <input
+          value={filters.excludeKeywords}
+          onChange={(e) => set("excludeKeywords", e.target.value)}
+          className="app-input w-full"
+          placeholder="e.g. spam, giveaway, promo"
+        />
+      </label>
+      <div className="flex gap-2">
+        <label className="block flex-1 space-y-1">
+          <span className="app-field-label">Lookback (days)</span>
+          <input
+            type="number"
+            min={1}
+            value={filters.lookbackDays}
+            onChange={(e) => set("lookbackDays", e.target.value)}
+            className="app-input w-full"
+            placeholder={lookbackPlaceholder}
+          />
+        </label>
+        <label className="block flex-1 space-y-1">
+          <span className="app-field-label">Max per sync</span>
+          <input
+            type="number"
+            min={1}
+            value={filters.maxItems}
+            onChange={(e) => set("maxItems", e.target.value)}
+            className="app-input w-full"
+            placeholder={maxPlaceholder}
+          />
+        </label>
+      </div>
+      {source === "discord" && (
+        <label className="flex cursor-pointer items-center gap-2.5">
+          <input
+            type="checkbox"
+            checked={filters.ignoreBots}
+            onChange={(e) => set("ignoreBots", e.target.checked)}
+            className="h-3.5 w-3.5 accent-[var(--brand-700)]"
+          />
+          <span className="text-xs text-[var(--text-2)]">Ignore messages from bots</span>
+        </label>
+      )}
+    </div>
+  );
+}
+
 function AddConnectorModal({
   clientId,
   clientSlug,
@@ -334,7 +449,6 @@ function AddConnectorModal({
   const [discordToken, setDiscordToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
   const [discordGuildName, setDiscordGuildName] = useState("");
-  const [discordKeywords, setDiscordKeywords] = useState("");
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [fetchingChannels, setFetchingChannels] = useState(false);
@@ -343,11 +457,9 @@ function AddConnectorModal({
 
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
-  const [redditKeywords, setRedditKeywords] = useState("");
 
-  // YouTube fields
-  const [ytChannelId, setYtChannelId] = useState("");
-  const [ytVideoIds, setYtVideoIds] = useState("");
+  // Shared filters (keywords, exclude, lookback, max, ignore-bots)
+  const [filters, setFilters] = useState<FilterState>(() => initFilterState(undefined));
 
   const createConnection = useCreateSupportConnection(clientId);
 
@@ -386,8 +498,9 @@ function AddConnectorModal({
   }
 
   function buildScraperConfig(): Connection["scraperConfig"] {
+    const f = buildFilterConfig(source, filters);
     if (source === "gmail") {
-      return { query: gmailQuery.trim(), intakeAddress: defaultIntake };
+      return { query: gmailQuery.trim(), intakeAddress: defaultIntake, ...f };
     }
     if (source === "discord") {
       const channels = availableChannels
@@ -398,20 +511,11 @@ function AddConnectorModal({
         guildName: discordGuildName,
         botToken: discordToken.trim(),
         channels,
-        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     if (source === "reddit") {
-      return {
-        subreddit: redditSubreddit.trim(),
-        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-    }
-    if (source === "youtube") {
-      return {
-        youtubeChannelId: ytChannelId.trim() || undefined,
-        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
-      };
+      return { subreddit: redditSubreddit.trim(), ...f };
     }
     return undefined;
   }
@@ -624,17 +728,6 @@ function AddConnectorModal({
               </div>
             )}
 
-            <label className="block space-y-1">
-              <span className="app-field-label">
-                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
-              </span>
-              <input
-                value={discordKeywords}
-                onChange={(e) => setDiscordKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug, help, issue, broken"
-              />
-            </label>
           </div>
         )}
 
@@ -653,43 +746,12 @@ function AddConnectorModal({
                 placeholder="e.g. acmeapp"
               />
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Keywords (optional, comma-separated)</span>
-              <input
-                value={redditKeywords}
-                onChange={(e) => setRedditKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug report, acme help"
-              />
-            </label>
           </div>
         )}
 
-        {/* YouTube config */}
-        {source === "youtube" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <p className="text-[11px] text-[var(--text-4)]">
-              Uses the Google service account from Settings → Integrations. Enter a channel ID or specific video IDs.
-            </p>
-            <label className="block space-y-1">
-              <span className="app-field-label">YouTube channel ID (optional)</span>
-              <input
-                value={ytChannelId}
-                onChange={(e) => setYtChannelId(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder="UCxxxxxxxxxxxxxxxxxxxx"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Video IDs (comma-separated, optional)</span>
-              <input
-                value={ytVideoIds}
-                onChange={(e) => setYtVideoIds(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder="dQw4w9WgXcQ, abc123"
-              />
-            </label>
-          </div>
+        {/* Shared filters — live sources only */}
+        {LIVE_SOURCES.includes(source) && (
+          <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
         )}
 
         {error && (
@@ -1646,9 +1708,6 @@ function EditConnectorModal({
   const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
   const [discordGuildId, setDiscordGuildId] = useState(conn.scraperConfig?.guildId ?? "");
   const [discordGuildName, setDiscordGuildName] = useState(conn.scraperConfig?.guildName ?? "");
-  const [discordKeywords, setDiscordKeywords] = useState(
-    (conn.scraperConfig?.keywords ?? []).join(", "),
-  );
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(
     new Set((conn.scraperConfig?.channels ?? []).map((c) => c.id)),
@@ -1659,15 +1718,9 @@ function EditConnectorModal({
 
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
-  const [redditKeywords, setRedditKeywords] = useState(
-    (conn.scraperConfig?.keywords ?? []).join(", "),
-  );
 
-  // YouTube
-  const [ytChannelId, setYtChannelId] = useState(conn.scraperConfig?.youtubeChannelId ?? "");
-  const [ytVideoIds, setYtVideoIds] = useState(
-    (conn.scraperConfig?.videoIds ?? []).join(", "),
-  );
+  // Shared filters (keywords, exclude, lookback, max, ignore-bots)
+  const [filters, setFilters] = useState<FilterState>(() => initFilterState(conn.scraperConfig));
 
   async function handleFetchChannels() {
     const guildId = discordGuildId.trim();
@@ -1703,8 +1756,9 @@ function EditConnectorModal({
   }
 
   function buildScraperConfig(): Connection["scraperConfig"] {
+    const f = buildFilterConfig(conn.source, filters);
     if (conn.source === "gmail") {
-      return { ...conn.scraperConfig, query: gmailQuery.trim() };
+      return { ...conn.scraperConfig, query: gmailQuery.trim(), ...f };
     }
     if (conn.source === "discord") {
       // Preserve existing channel cursors for channels that were already tracked
@@ -1722,21 +1776,14 @@ function EditConnectorModal({
         guildName: discordGuildName,
         botToken: discordToken.trim(),
         channels,
-        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     if (conn.source === "reddit") {
       return {
         ...conn.scraperConfig,
         subreddit: redditSubreddit.trim(),
-        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-    }
-    if (conn.source === "youtube") {
-      return {
-        ...conn.scraperConfig,
-        youtubeChannelId: ytChannelId.trim() || undefined,
-        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     return conn.scraperConfig;
@@ -1878,17 +1925,6 @@ function EditConnectorModal({
               </div>
             )}
 
-            <label className="block space-y-1">
-              <span className="app-field-label">
-                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
-              </span>
-              <input
-                value={discordKeywords}
-                onChange={(e) => setDiscordKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug, help, issue, broken"
-              />
-            </label>
           </div>
         )}
 
@@ -1899,25 +1935,12 @@ function EditConnectorModal({
               <span className="app-field-label">Subreddit (without r/)</span>
               <input value={redditSubreddit} onChange={(e) => setRedditSubreddit(e.target.value)} className="app-input w-full" placeholder="e.g. acmeapp" />
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Keywords (comma-separated)</span>
-              <input value={redditKeywords} onChange={(e) => setRedditKeywords(e.target.value)} className="app-input w-full" placeholder="e.g. bug, help" />
-            </label>
           </div>
         )}
 
-        {/* YouTube config */}
-        {conn.source === "youtube" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <label className="block space-y-1">
-              <span className="app-field-label">YouTube channel ID</span>
-              <input value={ytChannelId} onChange={(e) => setYtChannelId(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="UCxxxxxxxxxxxxxxxxxxxx" />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Video IDs (comma-separated)</span>
-              <input value={ytVideoIds} onChange={(e) => setYtVideoIds(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="dQw4w9WgXcQ, abc123" />
-            </label>
-          </div>
+        {/* Shared filters — live sources only */}
+        {LIVE_SOURCES.includes(conn.source) && (
+          <ConnectorFilterFields source={conn.source} filters={filters} setFilters={setFilters} />
         )}
 
         <label className="block space-y-1.5">
@@ -2126,9 +2149,24 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                     {conn.scraperConfig?.subreddit && (
                       <p className="mt-1 text-[11px] text-[var(--text-4)]">
                         r/{conn.scraperConfig.subreddit}
-                        {conn.scraperConfig.keywords?.length ? ` · keywords: ${conn.scraperConfig.keywords.join(", ")}` : ""}
                       </p>
                     )}
+                    {(() => {
+                      const cfg = conn.scraperConfig;
+                      if (!cfg) return null;
+                      const parts: string[] = [];
+                      if (cfg.keywords?.length) parts.push(`incl: ${cfg.keywords.join(", ")}`);
+                      if (cfg.excludeKeywords?.length) parts.push(`excl: ${cfg.excludeKeywords.join(", ")}`);
+                      if (cfg.lookbackDays) parts.push(`${cfg.lookbackDays}d lookback`);
+                      if (cfg.maxItems) parts.push(`max ${cfg.maxItems}`);
+                      if (conn.source === "discord" && cfg.ignoreBots === false) parts.push("includes bots");
+                      if (parts.length === 0) return null;
+                      return (
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.4px] text-[var(--text-4)]">
+                          {parts.join("  ·  ")}
+                        </p>
+                      );
+                    })()}
                     {sr && (
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0

@@ -56,10 +56,15 @@ export interface Connection {
     botToken?: string;
     // Reddit
     subreddit?: string;
-    keywords?: string[];
     // YouTube
     youtubeChannelId?: string;
     videoIds?: string[];
+    // ── Shared filters (apply to all sources) ──
+    keywords?: string[];          // include — only ingest items matching at least one
+    excludeKeywords?: string[];   // exclude — drop items matching any
+    lookbackDays?: number;        // how far back to pull on first sync / re-sync
+    maxItems?: number;            // cap items fetched per sync
+    ignoreBots?: boolean;         // Discord only — skip bot-authored messages (default true)
     // Legacy / generic
     intervalHours?: number;
     channelId?: string;
