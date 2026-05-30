@@ -345,7 +345,9 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
 
 // ─── Gmail sync ───────────────────────────────────────────────────────────────
 
-function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string } | null }): string {
+// Gmail API types: `mimeType` is `string | null | undefined`. Widening here so
+// callers can hand us the raw Schema$Message without an intermediate cast.
+function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string | null } | null }): string {
   const payload = msg.payload;
   if (!payload) return "";
 

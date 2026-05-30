@@ -33,7 +33,7 @@ import {
   emptyCandidateProfile,
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
-import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
+import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
@@ -325,15 +325,26 @@ export function CodeClearCandidatesWorkspace() {
                           {candidate.primaryStack}
                         </span>
                       </td>
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <CurrentClientPicker
-                          candidateId={candidate.id}
-                          candidateName={candidate.name}
-                          currentClients={candidate.currentClients}
-                          clients={clientOptions}
-                          clientsLoading={clientsQuery.isLoading}
-                          size="sm"
-                        />
+                      <td>
+                        {candidate.currentClients.length === 0 ? (
+                          <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {candidate.currentClients.map((entry) => {
+                              const logoUrl = entry.id
+                                ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
+                                : null;
+                              return (
+                                <ClientAvatar
+                                  key={entry.id ?? entry.name}
+                                  name={entry.name}
+                                  logoUrl={logoUrl}
+                                  size="md"
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
                       <td className="text-right">
                         <span

@@ -27,6 +27,7 @@ import {
   RosterScoreChip,
   RosterTierBadge,
 } from "@/components/codeclear/codeclear-shared";
+import { ClientAvatar } from "@/components/codeclear/client-avatar";
 import { ScheduleEditor } from "@/components/codeclear/schedule-editor";
 import { Button } from "@/components/ui/button";
 import { CalendarDaysIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -136,9 +137,12 @@ export function CodeClearPipelineWorkspace() {
   // Column order: clients with assigned devs first, then empty clients,
   // then Unassigned at the end. Alpha within each tier.
   const columns = useMemo(() => {
-    const withClients: Array<{ id: string; name: string }> = clients.map(
-      (client) => ({ id: client.id, name: client.name }),
-    );
+    const withClients: Array<{ id: string; name: string; logoUrl: string | null }> =
+      clients.map((client) => ({
+        id: client.id,
+        name: client.name,
+        logoUrl: client.logoUrl ?? null,
+      }));
     withClients.sort((a, b) => {
       const aHas = (grouped.get(a.id)?.length ?? 0) > 0;
       const bHas = (grouped.get(b.id)?.length ?? 0) > 0;
@@ -147,7 +151,7 @@ export function CodeClearPipelineWorkspace() {
     });
     return [
       ...withClients,
-      { id: UNASSIGNED_COLUMN_ID, name: "Unassigned" },
+      { id: UNASSIGNED_COLUMN_ID, name: "Unassigned", logoUrl: null as string | null },
     ];
   }, [clients, grouped]);
 
@@ -330,7 +334,7 @@ function PipelineColumn({
   onCardClick,
   onSchedule,
 }: {
-  column: { id: string; name: string };
+  column: { id: string; name: string; logoUrl: string | null };
   candidates: CodeClearCandidateListItem[];
   activeDragId: string | null;
   onCardClick: (candidateId: string) => void;
@@ -350,17 +354,20 @@ function PipelineColumn({
       )}
     >
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border-2)] px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "h-2 w-2 rounded-full",
-              isUnassigned ? "bg-[var(--text-4)]" : "bg-emerald-500",
-            )}
-            aria-hidden
-          />
+        <div className="flex min-w-0 items-center gap-2">
+          {isUnassigned ? (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-[var(--text-4)]"
+              aria-hidden
+            />
+          ) : (
+            <ClientAvatar name={column.name} logoUrl={column.logoUrl} size="sm" />
+          )}
           <p className="truncate text-sm font-semibold text-[var(--text-1)]">{column.name}</p>
         </div>
-        <span className="font-mono text-[11px] text-[var(--text-4)]">{candidates.length}</span>
+        <span className="shrink-0 font-mono text-[11px] text-[var(--text-4)]">
+          {candidates.length}
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
