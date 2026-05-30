@@ -1343,10 +1343,10 @@ function SlackActivityBody({
   const is24hView = recentMessages.length > 0;
 
   return (
-    <div className="grid h-[360px] grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)]">
+    <div className="grid h-[360px] grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)] overflow-hidden">
 
-      {/* ── Left: AI summary — fade at bottom signals scrollability ── */}
-      <div className="relative h-full">
+      {/* ── Left: AI summary — min-h-0 lets the grid item shrink + scroll ── */}
+      <div className="relative min-h-0">
         <div className="h-full overflow-y-auto p-5 pb-10">
         <p className="widget-data-label mb-3">AI digest</p>
         {summaryLines.length > 0 ? (
@@ -1387,7 +1387,7 @@ function SlackActivityBody({
       </div>
 
       {/* ── Right: Messages ── */}
-      <div className="h-full overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
+      <div className="min-h-0 overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
         {!is24hView && (
           <div className="px-4 py-2 bg-[var(--surface-1)]">
             <p className="widget-data-label">No messages in last 24 h — showing recent</p>
