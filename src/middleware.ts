@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import { authConfig } from "@/auth.config";
+import { authConfig, SESSION_VERSION } from "@/auth.config";
 import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-jwt";
 
 const { auth } = NextAuth(authConfig);
@@ -138,9 +138,16 @@ export default auth(async (req) => {
     return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  // Already logged in + visiting /login → send straight to the dashboard
+  // Already logged in + visiting /login → send straight to the dashboard. But not if their
+  // session is from before the latest SESSION_VERSION — those users NEED to reach /login to
+  // re-authenticate, otherwise we'd loop them back through this middleware.
   if (pathname === "/login" && req.auth) {
-    return NextResponse.redirect(new URL("/app", req.url));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tokenVersion = (req.auth.user as any)?.sessionVersion;
+    if (tokenVersion === SESSION_VERSION) {
+      return NextResponse.redirect(new URL("/app", req.url));
+    }
+    // else: let them through to sign in again
   }
 
   // App pages: require NextAuth session
@@ -148,6 +155,22 @@ export default auth(async (req) => {
     if (!req.auth) {
       const loginUrl = new URL("/login", req.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Reject pre-migration sessions. The `authorized` callback in auth.config.ts only fires
+    // when NextAuth's default middleware is used — with this custom middleware wrapping
+    // `auth()`, we have to enforce the version check ourselves. Tokens issued before
+    // SESSION_VERSION bumped are missing the claim and get bounced to /login so the user
+    // signs in fresh (capturing their per-user Google refresh token in the process).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tokenVersion = (req.auth.user as any)?.sessionVersion;
+    if (tokenVersion !== SESSION_VERSION) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", pathname);
+      // Hint to the login page why we bounced — useful for debug and for showing a one-time
+      // notice ("Please sign in again to keep your account secure").
+      loginUrl.searchParams.set("reason", "session_expired");
       return NextResponse.redirect(loginUrl);
     }
 
