@@ -263,6 +263,7 @@ function serializeClientDesign(design: {
   name: string;
   url: string | null;
   notes: string | null;
+  previewImageUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientDesignRecord {
@@ -272,6 +273,7 @@ function serializeClientDesign(design: {
     name: design.name,
     url: design.url,
     notes: design.notes,
+    previewImageUrl: design.previewImageUrl ?? null,
     createdAt: design.createdAt.toISOString(),
     updatedAt: design.updatedAt.toISOString(),
   };
@@ -287,6 +289,7 @@ function serializeClientPlatform(platform: {
   repoUrl: string | null;
   credentials: string | null;
   notes: string | null;
+  previewImageUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -300,6 +303,7 @@ function serializeClientPlatform(platform: {
     repoUrl: platform.repoUrl,
     credentials: platform.credentials,
     notes: platform.notes,
+    previewImageUrl: platform.previewImageUrl ?? null,
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };

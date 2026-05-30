@@ -45,6 +45,7 @@ export interface ClientPlatformRecord {
   repoUrl: string | null;
   credentials: string | null;
   notes: string | null;
+  previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +56,7 @@ export interface ClientDesignRecord {
   name: string;
   url: string | null;
   notes: string | null;
+  previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

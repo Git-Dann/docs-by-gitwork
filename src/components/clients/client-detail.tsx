@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
   CalendarDaysIcon,
+  ChatBubbleLeftRightIcon,
   CodeBracketIcon,
   GlobeAltIcon,
   PencilIcon,
@@ -14,7 +16,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
@@ -23,15 +25,18 @@ import { ClientPlatformFormModal } from "@/components/clients/client-platform-fo
 import { StatusBadge } from "@/components/status-badge";
 import {
   useClientDetail,
+  useClientSlackActivity,
   useCreateClientDesign,
   useCreateClientPlatform,
   useDeleteClientDesign,
   useDeleteClientPlatform,
+  useOgPreview,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
-import { formatDate } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
+import { fetchSlackChannels, type SlackAvailableChannel } from "@/lib/api";
 import type { ClientDesignRecord, ClientPlatformRecord } from "@/types/client";
 import { ScheduleEditor } from "@/components/codeclear/schedule-editor";
 
@@ -50,6 +55,7 @@ type EditFormState = {
   primaryContactPhone: string;
   googleDriveFolderUrl: string;
   clickupUrl: string;
+  slackChannelId: string;
 };
 
 export function ClientDetail({ slug }: { slug: string }) {
@@ -74,6 +80,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const updateClientMutation = useUpdateClient(slug);
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
+  const slackActivity = useClientSlackActivity(slug);
 
   if (isPending) {
     return (
@@ -116,6 +123,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       primaryContactPhone: client.primaryContactPhone ?? "",
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
       clickupUrl: client.clickupUrl ?? "",
+      slackChannelId: client.slackChannelId ?? "",
     });
     setEditing(true);
   }
@@ -139,6 +147,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         primaryContactPhone: editForm.primaryContactPhone || undefined,
         googleDriveFolderUrl: editForm.googleDriveFolderUrl || undefined,
         clickupUrl: editForm.clickupUrl || undefined,
+        slackChannelId: editForm.slackChannelId || undefined,
       });
       setEditing(false);
       setEditForm(null);
@@ -832,6 +841,40 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
+        {/* 17 // SLACK ACTIVITY */}
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">17</span>
+              {" // SLACK ACTIVITY"}
+            </span>
+            <div className="flex items-center gap-2">
+              {slackActivity.data?.channelName && (
+                <span className="widget-header__status">
+                  <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                  {slackActivity.data.channelName}
+                </span>
+              )}
+              {slackActivity.data?.configured && (
+                <button
+                  type="button"
+                  onClick={() => void slackActivity.refetch()}
+                  disabled={slackActivity.isFetching}
+                  className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+                  title="Refresh activity"
+                >
+                  <ArrowPathIcon className={cn("h-3.5 w-3.5", slackActivity.isFetching && "animate-spin")} />
+                </button>
+              )}
+            </div>
+          </div>
+          <SlackActivityBody
+            data={slackActivity.data}
+            isLoading={slackActivity.isPending}
+            onConfigureClick={openEdit}
+          />
+        </section>
+
       </div>
 
       {/* ── Edit client modal ── */}
@@ -1068,6 +1111,224 @@ function StatCard({ number, label, value }: { number: string; label: string; val
 }
 
 // ---------------------------------------------------------------------------
+// LinkPreviewArea — fixed 130px image strip at the top of platform/design cards
+// ---------------------------------------------------------------------------
+function LinkPreviewArea({
+  imageUrl,
+  domain,
+  label,
+}: {
+  imageUrl: string | null | undefined;
+  domain: string | null | undefined;
+  label: string | null | undefined;
+}) {
+  const domainLabel = domain
+    ? domain.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]
+    : label || "Link";
+
+  // Hash the label to pick a consistent gradient
+  let hash = 0;
+  for (let i = 0; i < domainLabel.length; i++) {
+    hash = domainLabel.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const gradients = [
+    "linear-gradient(135deg, #1D4ED8 0%, #1E3A8A 100%)",
+    "linear-gradient(135deg, #0F766E 0%, #134E4A 100%)",
+    "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)",
+    "linear-gradient(135deg, #B45309 0%, #78350F 100%)",
+    "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
+  ];
+  const gradient = gradients[Math.abs(hash) % gradients.length];
+
+  if (imageUrl) {
+    return (
+      <div
+        className="h-[130px] w-full overflow-hidden"
+        style={{ background: "#f1f5f9" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageUrl}
+          alt={domainLabel}
+          className="h-full w-full object-cover"
+          onError={(e) => {
+            // Hide broken image, let the parent show placeholder
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex h-[130px] w-full items-center justify-center"
+      style={{ background: gradient }}
+    >
+      <div className="text-center">
+        <p
+          className="text-2xl font-semibold text-white/90 tracking-[-0.02em]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {domainLabel.charAt(0).toUpperCase()}
+        </p>
+        <p
+          className="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] text-white/50 max-w-[120px] truncate"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {domainLabel}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SlackActivityBody — content panel for the 17 // SLACK ACTIVITY widget
+// ---------------------------------------------------------------------------
+function SlackActivityBody({
+  data,
+  isLoading,
+  onConfigureClick,
+}: {
+  data: {
+    configured: boolean;
+    channelName: string | null;
+    summary: string | null;
+    generatedAt: string | null;
+    reason: string;
+    messages: Array<{ id: string; author: string; text: string; ts: string }>;
+  } | undefined;
+  isLoading: boolean;
+  onConfigureClick: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="p-5">
+        <p className="widget-data-label animate-pulse">Loading activity…</p>
+      </div>
+    );
+  }
+
+  if (!data || !data.configured) {
+    const reason = data?.reason;
+    return (
+      <div className="p-5">
+        {reason === "no_token" ? (
+          <p className="text-sm text-[var(--text-4)]">
+            No Slack bot token configured.{" "}
+            <Link href="/app/settings" className="text-[var(--brand-700)] hover:underline">
+              Add one in Settings →
+            </Link>
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">
+            No Slack channel linked.{" "}
+            <button
+              type="button"
+              onClick={onConfigureClick}
+              className="text-[var(--brand-700)] hover:underline"
+            >
+              Set one in Edit →
+            </button>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (data.reason === "not_in_channel") {
+    return (
+      <div className="p-5">
+        <p className="text-sm text-[var(--text-4)]">
+          The Foundry bot hasn&apos;t been invited to{" "}
+          <span className="font-medium text-[var(--text-2)]">{data.channelName}</span>.
+          Invite it in Slack then refresh.
+        </p>
+      </div>
+    );
+  }
+
+  if (data.messages.length === 0) {
+    return (
+      <div className="p-5">
+        <p className="text-sm text-[var(--text-4)]">No recent messages in {data.channelName}.</p>
+      </div>
+    );
+  }
+
+  const summaryLines = data.summary
+    ? data.summary.split("\n").map((l) => l.trim()).filter(Boolean)
+    : [];
+
+  return (
+    <div>
+      {/* AI summary */}
+      {summaryLines.length > 0 && (
+        <div className="border-b border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-5 py-4">
+          <p className="widget-data-label mb-2">AI digest</p>
+          <ul className="space-y-1">
+            {summaryLines.map((line, i) => (
+              <li key={i} className="flex gap-2 text-sm leading-6 text-[var(--text-2)]">
+                {line.startsWith("•") ? (
+                  <>{line}</>
+                ) : (
+                  <><span className="text-[var(--text-4)]">•</span> {line}</>
+                )}
+              </li>
+            ))}
+          </ul>
+          {data.generatedAt && (
+            <p className="widget-timestamp mt-2 opacity-60">
+              Generated {formatDate(data.generatedAt)}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="divide-y divide-[rgba(0,0,0,0.05)]">
+        {data.messages.slice(-10).reverse().map((msg) => {
+          const initials = msg.author
+            .split(" ")
+            .map((w) => w[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
+          // Deterministic colour from name
+          let h = 0;
+          for (let i = 0; i < msg.author.length; i++) h = msg.author.charCodeAt(i) + ((h << 5) - h);
+          const avatarColors = ["#1D4ED8", "#0F766E", "#7C3AED", "#B45309", "#DC2626", "#16A34A"];
+          const avatarBg = avatarColors[Math.abs(h) % avatarColors.length];
+
+          return (
+            <div key={msg.id} className="flex gap-3 px-5 py-3">
+              <div
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{ background: avatarBg, fontFamily: "var(--font-mono)" }}
+              >
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-[var(--text-1)]">{msg.author}</span>
+                  <span className="widget-timestamp opacity-60">
+                    {formatDate(msg.ts)}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-sm leading-5 text-[var(--text-2)] line-clamp-3">
+                  {msg.text}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PlatformCard — individual platform record widget
 // ---------------------------------------------------------------------------
 function PlatformCard({
@@ -1113,9 +1374,20 @@ function PlatformCard({
     }
   }
 
+  const linkForPreview = platform.url || platform.stagingUrl;
+  const ogQuery = useOgPreview(!platform.previewImageUrl ? linkForPreview : null);
+  const previewImage = platform.previewImageUrl || ogQuery.data?.imageUrl || null;
+
   return (
     <>
-      <article className="widget-card cursor-pointer" onClick={() => setEditing(true)}>
+      <article className="widget-card cursor-pointer overflow-hidden" onClick={() => setEditing(true)}>
+        {/* Preview image area — fixed 130px, always present */}
+        <LinkPreviewArea
+          imageUrl={previewImage}
+          domain={linkForPreview}
+          label={platform.platformType || platform.name}
+        />
+
         {/* Widget header */}
         <div className="widget-header">
           <span className="widget-header__label">
@@ -1243,9 +1515,15 @@ function DesignCard({
     }
   }
 
+  const ogQuery = useOgPreview(!design.previewImageUrl ? design.url : null);
+  const previewImage = design.previewImageUrl || ogQuery.data?.imageUrl || null;
+
   return (
     <>
-      <article className="widget-card cursor-pointer" onClick={() => setEditing(true)}>
+      <article className="widget-card cursor-pointer overflow-hidden" onClick={() => setEditing(true)}>
+        {/* Preview image area */}
+        <LinkPreviewArea imageUrl={previewImage} domain={design.url} label={design.name} />
+
         {/* Widget header */}
         <div className="widget-header">
           <span className="widget-header__label">DESIGN</span>
@@ -1327,6 +1605,17 @@ function ClientEditModal({
   isSaving: boolean;
   error: string | null;
 }) {
+  const [channels, setChannels] = useState<SlackAvailableChannel[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+
+  useEffect(() => {
+    setLoadingChannels(true);
+    fetchSlackChannels()
+      .then(setChannels)
+      .catch(() => setChannels([]))
+      .finally(() => setLoadingChannels(false));
+  }, []);
+
   function set(field: keyof EditFormState, value: string) {
     onChange({ ...form, [field]: value });
   }
@@ -1404,6 +1693,32 @@ function ClientEditModal({
                     placeholder="https://app.clickup.com/…"
                     type="url"
                   />
+                </label>
+                <label className="block">
+                  <span className="app-field-label">
+                    Slack channel
+                    {loadingChannels && (
+                      <span className="ml-2 text-[var(--text-4)]">Loading…</span>
+                    )}
+                  </span>
+                  <select
+                    value={form.slackChannelId}
+                    onChange={(e) => set("slackChannelId", e.target.value)}
+                    className="app-select w-full"
+                  >
+                    <option value="">— None —</option>
+                    {channels.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.isPrivate ? "🔒 " : "#"}{ch.name}
+                        {ch.isMember ? "" : " (invite bot)"}
+                      </option>
+                    ))}
+                  </select>
+                  {channels.length === 0 && !loadingChannels && (
+                    <p className="mt-1 text-xs text-[var(--text-4)]">
+                      Add a Slack bot token in Settings → Integrations to enable this.
+                    </p>
+                  )}
                 </label>
               </div>
 

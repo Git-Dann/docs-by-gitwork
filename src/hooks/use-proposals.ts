@@ -106,6 +106,7 @@ type ClientUpdatePayload = {
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
+  slackChannelId?: string;
 };
 
 export function useUpdateClient(slug: string) {
@@ -142,6 +143,7 @@ type PlatformInput = {
   repoUrl?: string;
   credentials?: string;
   notes?: string;
+  previewImageUrl?: string;
 };
 
 export function useCreateClientPlatform(slug: string) {
@@ -190,6 +192,7 @@ type DesignInput = {
   name: string;
   url?: string;
   notes?: string;
+  previewImageUrl?: string;
 };
 
 export function useCreateClientDesign(slug: string) {
@@ -344,5 +347,51 @@ export function useExportProposal(id: string) {
       format: "PRINT" | "PDF" | "SHARE_LINK";
       settings?: Record<string, unknown>;
     }) => requestExport(id, payload),
+  });
+}
+
+export function useClientSlackActivity(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-slack-activity", slug],
+    queryFn: async () => {
+      const res = await fetch(`/api/clients/${slug}/slack-activity`, {
+        headers: {
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY ?? ""}`,
+        },
+      });
+      if (!res.ok) throw new Error("Failed to fetch Slack activity");
+      return res.json() as Promise<{
+        configured: boolean;
+        channelName: string | null;
+        summary: string | null;
+        generatedAt: string | null;
+        reason: string;
+        messages: Array<{ id: string; author: string; text: string; ts: string }>;
+      }>;
+    },
+    enabled: Boolean(slug) && enabled,
+    staleTime: 5 * 60 * 1000, // 5 min — Slack data changes slowly
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useOgPreview(url: string | null | undefined) {
+  return useQuery({
+    queryKey: ["og-preview", url],
+    queryFn: async () => {
+      if (!url) return { imageUrl: null, title: null };
+      const encoded = encodeURIComponent(url);
+      const res = await fetch(`/api/og-preview?url=${encoded}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY ?? ""}`,
+        },
+      });
+      if (!res.ok) return { imageUrl: null, title: null };
+      const data = await res.json() as { imageUrl: string | null; title: string | null };
+      return data;
+    },
+    enabled: Boolean(url),
+    staleTime: 30 * 60 * 1000, // 30 min — OG data rarely changes
+    refetchOnWindowFocus: false,
   });
 }
