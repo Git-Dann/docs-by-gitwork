@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 45;
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -13,7 +16,7 @@ type SlackMessage = {
   id: string;
   author: string;
   text: string;
-  ts: string; // ISO8601 — already converted from Slack's epoch ts
+  ts: string; // ISO8601 — converted from Slack's epoch ts
 };
 
 const SLACK_API = "https://slack.com/api";
@@ -21,12 +24,16 @@ const SLACK_API = "https://slack.com/api";
 /**
  * GET /api/clients/{slug}/slack-activity
  *
- * Read-only timeline of recent messages in the client's linked Slack channel —
- * "what updates the devs have posted". Pulls via the workspace's Slack bot
- * token (same mechanism as the meeting-summary integration). Never throws to
- * the client: any misconfiguration or Slack error returns `configured: false`.
+ * Pulls the client's linked Slack channel via the workspace bot token (same
+ * mechanism as the meeting-summary integration) and returns an AI-summarised
+ * digest of what the devs have posted — plus the raw recent messages.
  *
- * Response: { configured, channelName, messages: SlackMessage[] }
+ * Polled by the Portal mobile app (~30 min) and on pull-to-refresh. Never
+ * throws to the client; any misconfiguration returns `configured:false` with a
+ * `reason` the app can surface.
+ *
+ * Response:
+ *   { configured, channelName, summary, generatedAt, reason, messages[] }
  */
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
@@ -40,26 +47,33 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       }),
       prisma.workspace.findUnique({
         where: { id: workspace.id },
-        select: { slackBotToken: true },
+        select: {
+          slackBotToken: true,
+          aiProvider: true,
+          anthropicApiKey: true,
+          anthropicModel: true,
+          openaiApiKey: true,
+          openaiModel: true,
+          geminiApiKey: true,
+          geminiModel: true,
+          localLlmUrl: true,
+          localLlmModel: true,
+        },
       }),
     ]);
 
+    if (!ws) return notConfigured("no_token");
     const channelId = client?.slackChannelId?.trim();
-    const token = ws?.slackBotToken?.trim();
+    const token = ws.slackBotToken?.trim();
 
-    if (!channelId || !token) {
-      return apiOk({
-        configured: false,
-        channelName: null,
-        messages: [] as SlackMessage[],
-      });
-    }
+    if (!token) return notConfigured("no_token");
+    if (!channelId) return notConfigured("no_channel");
 
     const auth = { Authorization: `Bearer ${token}` };
 
-    // 1. Recent channel history.
+    // 1. Channel history.
     const historyRes = await fetch(
-      `${SLACK_API}/conversations.history?channel=${encodeURIComponent(channelId)}&limit=20`,
+      `${SLACK_API}/conversations.history?channel=${encodeURIComponent(channelId)}&limit=40`,
       { headers: auth, cache: "no-store" },
     );
     const history = (await historyRes.json()) as {
@@ -68,30 +82,23 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       messages?: Array<{ type: string; subtype?: string; text?: string; ts: string; user?: string; bot_id?: string }>;
     };
 
-    if (!history.ok || !history.messages) {
-      return apiOk({
-        configured: false,
-        channelName: null,
-        messages: [] as SlackMessage[],
-        reason: history.error ?? "slack_history_failed",
-      });
+    if (!history.ok) {
+      // Most common: the bot hasn't been invited to the channel.
+      const reason = history.error === "not_in_channel" ? "not_in_channel" : "slack_error";
+      return notConfigured(reason);
     }
 
-    // Keep human messages with text (drop joins/leaves/system subtypes).
-    const raw = history.messages.filter(
+    const raw = (history.messages ?? []).filter(
       (m) => m.type === "message" && !m.subtype && (m.text ?? "").trim().length > 0,
     );
 
-    // 2. Resolve author display names (bounded — one channel page).
+    // 2. Resolve author display names.
     const userIds = [...new Set(raw.map((m) => m.user).filter(Boolean) as string[])];
     const nameById = new Map<string, string>();
     await Promise.all(
       userIds.map(async (uid) => {
         try {
-          const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, {
-            headers: auth,
-            cache: "no-store",
-          });
+          const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, { headers: auth, cache: "no-store" });
           const data = (await res.json()) as {
             ok: boolean;
             user?: { real_name?: string; profile?: { display_name?: string; real_name?: string } };
@@ -104,12 +111,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
             if (name) nameById.set(uid, name);
           }
         } catch {
-          // leave unresolved → "Teammate"
+          /* leave unresolved */
         }
       }),
     );
 
-    // 3. Optional channel name.
+    // 3. Channel name (best-effort).
     let channelName: string | null = client?.name ?? null;
     try {
       const infoRes = await fetch(
@@ -119,18 +126,132 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       const info = (await infoRes.json()) as { ok: boolean; channel?: { name?: string } };
       if (info.ok && info.channel?.name) channelName = `#${info.channel.name}`;
     } catch {
-      // keep fallback
+      /* keep fallback */
     }
 
-    const messages: SlackMessage[] = raw.map((m) => ({
-      id: m.ts,
-      author: (m.user && nameById.get(m.user)) || (m.bot_id ? "Bot" : "Teammate"),
-      text: m.text ?? "",
-      ts: new Date(Math.floor(Number(m.ts) * 1000)).toISOString(),
-    }));
+    const messages: SlackMessage[] = raw
+      .map((m) => ({
+        id: m.ts,
+        author: (m.user && nameById.get(m.user)) || (m.bot_id ? "Bot" : "Teammate"),
+        text: m.text ?? "",
+        ts: new Date(Math.floor(Number(m.ts) * 1000)).toISOString(),
+      }))
+      // Oldest → newest reads naturally for a summary.
+      .reverse();
 
-    return apiOk({ configured: true, channelName, messages });
+    if (messages.length === 0) {
+      return apiOk({
+        configured: true,
+        channelName,
+        summary: null,
+        generatedAt: null,
+        reason: "empty",
+        messages: [],
+      });
+    }
+
+    // 4. AI summary of the recent updates.
+    const summary = await summarise(messages, channelName ?? client?.name ?? "this project", ws);
+
+    return apiOk({
+      configured: true,
+      channelName,
+      summary,
+      generatedAt: new Date().toISOString(),
+      reason: "ok",
+      messages,
+    });
   } catch (error) {
     return fromError(error);
+  }
+}
+
+function notConfigured(reason: string) {
+  return apiOk({
+    configured: false,
+    channelName: null,
+    summary: null,
+    generatedAt: null,
+    reason,
+    messages: [] as SlackMessage[],
+  });
+}
+
+/** Concise digest of recent dev updates. Returns null if AI isn't configured. */
+async function summarise(
+  messages: SlackMessage[],
+  channelLabel: string,
+  ws: {
+    aiProvider: string;
+    anthropicApiKey: string | null;
+    anthropicModel: string | null;
+    openaiApiKey: string | null;
+    openaiModel: string | null;
+    geminiApiKey: string | null;
+    geminiModel: string | null;
+    localLlmUrl: string | null;
+    localLlmModel: string | null;
+  },
+): Promise<string | null> {
+  const provider = (ws.aiProvider || "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+  let apiKey: string | null;
+  let model: string;
+  let baseUrl: string | null = null;
+
+  if (provider === "OPENAI") {
+    apiKey = process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null;
+    model = ws.openaiModel ?? "gpt-4o";
+  } else if (provider === "GEMINI") {
+    apiKey = process.env.GEMINI_API_KEY ?? ws.geminiApiKey ?? null;
+    model = ws.geminiModel ?? "gemini-2.0-flash";
+    baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
+  } else if (provider === "LOCAL") {
+    apiKey = ws.openaiApiKey ?? "local";
+    model = ws.localLlmModel ?? "llama3.1";
+    baseUrl = ws.localLlmUrl ?? "http://localhost:11434/v1";
+  } else {
+    apiKey = process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null;
+    model = ws.anthropicModel ?? "claude-sonnet-4-6";
+  }
+
+  if (!apiKey) return null;
+
+  const transcript = messages
+    .slice(-40)
+    .map((m) => `${m.author}: ${m.text}`)
+    .join("\n");
+
+  const systemPrompt = `You summarise a development team's Slack channel for an agency project lead.
+Produce a tight digest of what the devs have posted recently — British English, no filler.
+Format as 2–5 short bullet points starting with "•". Lead with progress/shipped, then in-progress, then any blockers or asks for the client. If there's nothing substantive, reply exactly: "No significant updates."`;
+
+  const userPrompt = `Channel: ${channelLabel}\nRecent messages (oldest first):\n${transcript}`;
+
+  try {
+    if (provider === "ANTHROPIC") {
+      const client = new Anthropic({ apiKey });
+      const res = await client.messages.create({
+        model,
+        max_tokens: 400,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+      const block = res.content[0];
+      return block.type === "text" ? block.text.trim() : null;
+    } else {
+      const openai = new OpenAI({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
+      const res = await openai.chat.completions.create({
+        model,
+        max_tokens: 400,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      });
+      return res.choices[0]?.message?.content?.trim() ?? null;
+    }
+  } catch {
+    // AI failure shouldn't break the activity feed — fall back to no summary.
+    return null;
   }
 }
