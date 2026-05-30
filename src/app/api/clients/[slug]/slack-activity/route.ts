@@ -102,13 +102,19 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, { headers: auth, cache: "no-store" });
           const data = (await res.json()) as {
             ok: boolean;
-            user?: { real_name?: string; profile?: { display_name?: string; real_name?: string } };
+            user?: {
+              name?: string; // the @username handle
+              real_name?: string;
+              profile?: { display_name?: string; real_name?: string };
+            };
           };
           if (data.ok && data.user) {
+            // Friendliest first: Slack display name → full name → @username handle.
             const name =
               data.user.profile?.display_name?.trim() ||
               data.user.profile?.real_name?.trim() ||
-              data.user.real_name?.trim();
+              data.user.real_name?.trim() ||
+              data.user.name?.trim();
             if (name) nameById.set(uid, name);
           }
         } catch {
