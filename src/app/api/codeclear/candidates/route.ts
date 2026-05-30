@@ -8,7 +8,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { codeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
+import { buildCodeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
 import {
   candidateBulkUpdateSchema,
   candidateCreateSchema,
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
     const [items, total, stackRecords] = await Promise.all([
       prisma.candidate.findMany({
         where,
-        include: codeClearListInclude,
+        include: buildCodeClearListInclude(),
         orderBy: buildCandidateOrderBy(sortBy, sortDir),
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
         availability: body.availability ?? null,
         status: "SOURCED",
       },
-      include: codeClearListInclude,
+      include: buildCodeClearListInclude(),
     });
 
     await prisma.activityLog.create({
@@ -362,7 +362,7 @@ export async function PATCH(request: NextRequest) {
           in: body.ids,
         },
       },
-      include: codeClearListInclude,
+      include: buildCodeClearListInclude(),
       orderBy: {
         name: "asc",
       },

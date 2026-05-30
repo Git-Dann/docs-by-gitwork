@@ -233,14 +233,41 @@ export const codeClearListInclude = {
     },
     take: 1,
   },
-  // Every current Portal client (= every open-ended placement) so the
-  // UI can render the full set of chips per dev without an N+1.
+  // Placements filter uses an OR so the shape covers both branches at the
+  // type level. The literal here uses `endDate: null` AND `endDate: gte
+  // now` so callers don't need to override it per query — except for the
+  // `now` boundary, which buildCodeClearListInclude() refreshes.
   placements: {
-    where: { endDate: null },
+    where: {
+      OR: [
+        { endDate: null },
+        // A placeholder timestamp so the `satisfies` shape is correct;
+        // overridden per-query in buildCodeClearListInclude().
+        { endDate: { gte: new Date(0) } },
+      ],
+    },
     include: { client: { select: { id: true, name: true, slug: true } } },
     orderBy: { startDate: "desc" },
   },
 } satisfies Prisma.CandidateInclude;
+
+/**
+ * Build a fresh CandidateInclude for "list" queries. The placements filter
+ * needs `new Date()` evaluated NOW (not at module load) so we capture
+ * currently-active + upcoming placements (not just open-ended ones).
+ */
+export function buildCodeClearListInclude(): typeof codeClearListInclude {
+  return {
+    ...codeClearListInclude,
+    placements: {
+      where: {
+        OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+      },
+      include: { client: { select: { id: true, name: true, slug: true } } },
+      orderBy: { startDate: "desc" },
+    },
+  };
+}
 
 export const codeClearDetailInclude = {
   score: true,
@@ -396,10 +423,17 @@ export function serializeCandidateDetails(
     ? serializeScoreDraft(candidate.scoreDraft)
     : null;
 
-  // Mirror the list serializer — every open placement maps to a current
-  // client. Closed placements (endDate set) live in `placements` history.
+  // Mirror the list serializer — placements that haven't ended yet count
+  // as "current clients". This includes:
+  //   - open-ended placements (endDate null — default from the picker)
+  //   - bounded placements whose endDate is in the future (currently
+  //     active or upcoming)
+  const nowMs = Date.now();
   const currentClients = candidate.placements
-    .filter((placement) => placement.endDate === null)
+    .filter((placement) => {
+      if (placement.endDate === null) return true;
+      return placement.endDate.getTime() >= nowMs;
+    })
     .map((placement) =>
       placement.client
         ? {

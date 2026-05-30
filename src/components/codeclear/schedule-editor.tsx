@@ -201,8 +201,16 @@ function PlacementRow({
     setEditing(false);
   }
 
+  // Status derived from dates, not from whether endDate is set:
+  //   - past:    endDate set AND endDate < now
+  //   - upcoming: startDate > now
+  //   - active:  otherwise (started, not yet ended)
+  const nowMs = Date.now();
+  const startMs = new Date(placement.startDate).getTime();
+  const endMs = placement.endDate ? new Date(placement.endDate).getTime() : null;
+  const isPast = endMs !== null && endMs < nowMs;
+  const isUpcoming = !isPast && startMs > nowMs;
   const isOpenEnded = !placement.endDate;
-  const isUpcoming = new Date(placement.startDate).getTime() > Date.now();
 
   if (!editing) {
     return (
@@ -210,13 +218,14 @@ function PlacementRow({
         <span
           className={cn(
             "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-            placement.endDate
+            isPast
               ? "bg-[var(--text-4)]"
               : isUpcoming
                 ? "bg-amber-500"
                 : "bg-emerald-500",
           )}
           aria-hidden
+          title={isPast ? "Past" : isUpcoming ? "Upcoming" : "Active"}
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">

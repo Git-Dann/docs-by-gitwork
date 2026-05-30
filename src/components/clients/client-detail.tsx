@@ -843,8 +843,13 @@ function ClientDevelopersSection({
           </thead>
           <tbody>
             {placements.map((placement) => {
-              const isOpen = !placement.endDate;
-              const isUpcoming = isOpen && new Date(placement.startDate).getTime() > Date.now();
+              // Status from dates: past = endDate set AND endDate < now;
+              // upcoming = startDate > now; active otherwise.
+              const nowMs = Date.now();
+              const startMs = new Date(placement.startDate).getTime();
+              const endMs = placement.endDate ? new Date(placement.endDate).getTime() : null;
+              const isPast = endMs !== null && endMs < nowMs;
+              const isUpcoming = !isPast && startMs > nowMs;
               return (
                 <tr key={placement.id}>
                   <td className="font-medium text-[var(--text-1)]">{placement.candidateName}</td>
@@ -861,7 +866,7 @@ function ClientDevelopersSection({
                     </span>
                   </td>
                   <td>
-                    {placement.endDate ? (
+                    {isPast ? (
                       <span
                         className="inline-flex items-center rounded-[4px] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
                         style={{ fontFamily: "var(--font-mono)" }}
