@@ -282,7 +282,18 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
       updatedChannels[i] = { ...ch, lastMessageId };
     } catch (err) {
-      errors.push(`#${ch.name}: ${err instanceof Error ? err.message : String(err)}`);
+      const raw = err instanceof Error ? err.message : String(err);
+      // Discord error code 50001 = Missing Access: the bot is in the server but lacks
+      // permission on THIS channel. Surface an actionable hint rather than the raw payload.
+      if (raw.includes("50001") || raw.includes("Missing Access")) {
+        errors.push(
+          `#${ch.name}: bot lacks access to this channel. In Discord, edit the channel → ` +
+            `Permissions → add the bot (or its role) with "View Channel" + "Read Message History". ` +
+            `Private, announcement, and forum channels need this granted per-channel.`,
+        );
+      } else {
+        errors.push(`#${ch.name}: ${raw}`);
+      }
     }
   }
 
@@ -432,19 +443,62 @@ function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { dat
   return "";
 }
 
+/**
+ * Resolve the Google OAuth refresh token to use for the shared Care Gmail sync.
+ *
+ * Order of preference:
+ *   1. `workspace.googleOAuthRefreshToken` (legacy shared org token, if still set)
+ *   2. An ADMIN member's `user.googleOAuthRefreshToken` — NextAuth keeps this fresh on
+ *      every sign-in, so it's the reliable source now that sign-in no longer writes the
+ *      workspace row.
+ *
+ * Both are minted by the SAME OAuth client (AUTH_GOOGLE_ID via NextAuth, or the
+ * GOOGLE_CLIENT_ID "Connect Gmail" flow), so refreshing must use matching credentials —
+ * see resolveGoogleOAuthClientCreds().
+ */
+async function resolveGmailRefreshToken(ctx: SyncContext): Promise<string | null> {
+  if (ctx.workspace.googleOAuthRefreshToken) return ctx.workspace.googleOAuthRefreshToken;
+
+  const adminMember = await prisma.workspaceMember.findFirst({
+    where: {
+      workspaceId: ctx.workspace.id,
+      role: "ADMIN",
+      user: { googleOAuthRefreshToken: { not: null } },
+    },
+    orderBy: { user: { updatedAt: "desc" } },
+    select: { user: { select: { googleOAuthRefreshToken: true } } },
+  });
+
+  return adminMember?.user.googleOAuthRefreshToken ?? null;
+}
+
+/**
+ * The Care Gmail refresh token is minted either by NextAuth (AUTH_GOOGLE_ID/SECRET) or the
+ * explicit Connect-Gmail flow (GOOGLE_CLIENT_ID/SECRET). Refreshing a token with a client
+ * that didn't issue it returns `unauthorized_client`, so prefer AUTH_GOOGLE_* and fall back
+ * to GOOGLE_CLIENT_* — matching getUserGoogleAuth() in src/server/google-auth.ts.
+ */
+function resolveGoogleOAuthClientCreds(): { clientId?: string; clientSecret?: string } {
+  return {
+    clientId: process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET,
+  };
+}
+
 async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   const { workspace, connection, client } = ctx;
 
   let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
 
-  if (workspace.googleOAuthRefreshToken) {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = await resolveGmailRefreshToken(ctx);
+
+  if (refreshToken) {
+    const { clientId, clientSecret } = resolveGoogleOAuthClientCreds();
     if (!clientId || !clientSecret) {
-      return { fetched: 0, ingested: 0, filtered: 0, errors: ["GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars not configured"] };
+      return { fetched: 0, ingested: 0, filtered: 0, errors: ["Google OAuth client not configured — set AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET (or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)"] };
     }
     const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
-    oauth2.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken });
+    oauth2.setCredentials({ refresh_token: refreshToken });
     gmailAuth = oauth2 as Parameters<typeof google.gmail>[0]["auth"];
   } else if (workspace.googleServiceAccountJson) {
     try {
@@ -585,7 +639,19 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 
     return { fetched, ingested, filtered, errors };
   } catch (err) {
-    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${err instanceof Error ? err.message : String(err)}`] };
+    const raw = err instanceof Error ? err.message : String(err);
+    if (raw.includes("unauthorized_client") || raw.includes("invalid_grant")) {
+      return {
+        fetched: 0,
+        ingested: 0,
+        filtered: 0,
+        errors: [
+          "Gmail sync failed: Google rejected the stored refresh token (unauthorized_client). " +
+            "Reconnect Gmail in Settings → Integrations so a fresh token is issued by the current OAuth client.",
+        ],
+      };
+    }
+    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${raw}`] };
   }
 }
 
