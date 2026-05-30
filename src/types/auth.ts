@@ -6,9 +6,12 @@ declare module "next-auth" {
       id: string;
       role: string;
       permissions: string[];
+      /** Bumped to force re-auth — see SESSION_VERSION in auth.config.ts. */
+      sessionVersion?: number;
     } & DefaultSession["user"];
   }
 }
+
 
 export const MODULE_PERMISSIONS = [
   { id: "pulse", label: "Pulse", description: "Health and delivery tracking" },

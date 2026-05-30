@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { authConfig } from "./auth.config";
+import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
@@ -100,6 +100,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = dbUser.id;
         token.role = membership?.role ?? "STAFF";
         token.permissions = (membership?.permissions as string[]) ?? [];
+        // Stamp this fresh sign-in with the current SESSION_VERSION. The `authorized`
+        // callback rejects tokens with an older value, forcing teammates with stale
+        // sessions to sign in again so their per-user Google refresh token gets captured.
+        token.sessionVersion = SESSION_VERSION;
 
         // Persist the Google OAuth refresh token on the *current user* so personal dashboard
         // widgets (Calendar, Gmail, Meeting summary) only ever see the signed-in user's data.
