@@ -7,20 +7,26 @@
  *
  * Anatomy (top to bottom):
  *
- *   01 // EYEBROW                                                ┐ row 1
- *   Big editorial title.                                  [ring] │
- *   Optional subtitle line.                                       │
- *   META: value · META: value                                     ┘
+ *   ┌──────────────────────────────────────────────────────┐  ← Blue gradient hero
+ *   │  FOUNDRY // PROPOSAL                    [rightSlot]  │
+ *   │                                                      │
+ *   │  Big editorial title in DM Serif Display.            │
+ *   │                                                      │
+ *   │  v1.0  ·  PROJECT NAME                               │
+ *   │  CLIENT: Acme  ·  PREPARED BY: Dan                   │
+ *   └──────────────────────────────────────────────────────┘
  *
- *   ┌─────────┬─────────┬─────────┬─────────┐                    ┐ row 2 (stats)
- *   │ 84      │ 12      │ 03      │ 02      │                    │ optional
- *   │ PASS    │ WARN    │ FAIL    │ SKIP    │                    │
- *   └─────────┴─────────┴─────────┴─────────┘                    ┘
+ *   [logo]                                                    ← white content
  *
- *   Executive summary paragraph, max 70ch wide.                   ┐ row 3
- *   Optional callout (left-bordered).                             ┘ optional
+ *   Executive summary paragraph.
  *
- *   foundry-logo.png ────────────────── Dated 23 May 2026         ← footer (border-top)
+ *   ┌──────────┬──────────┬──────────┬──────────┐
+ *   │  84 PASS │  12 WARN │  03 FAIL │  £45k    │
+ *   └──────────┴──────────┴──────────┴──────────┘
+ *
+ *   Confidentiality callout.
+ *
+ *   ──────────────────────────────── 29 May 2026  ← footer
  *
  * Uses inline styles intentionally — the component is rendered inside print pages where
  * Tailwind utility classes can be unreliable at PDF time. CSS variables are still consulted
@@ -57,7 +63,7 @@ export interface DocumentCoverProps {
   subtitle?: string;
   /** Mono key:value pairs rendered under the subtitle. */
   meta?: DocumentCoverMeta[];
-  /** Visual anchor on the right side of the title row (e.g. Pulse score ring, Docs version chip). */
+  /** Visual anchor on the right side of the header (e.g. Pulse score ring, Docs version chip). */
   rightSlot?: ReactNode;
   /** 4-up stat strip. Omitted when there are no relevant numbers to surface. */
   stats?: DocumentCoverStat[];
@@ -84,10 +90,10 @@ export interface DocumentCoverProps {
   watermarkTone?: "neutral" | "warning" | "danger";
 }
 
-const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; bg: string; text: string }> = {
-  blue:    { border: "#1D4ED8", bg: "transparent",  text: "#1D4ED8" },
-  amber:   { border: "#D97706", bg: "transparent",  text: "#92400E" },
-  neutral: { border: "#475569", bg: "transparent",  text: "#475569" },
+const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
+  blue:    { border: "#1D4ED8", text: "#1D4ED8" },
+  amber:   { border: "#D97706", text: "#92400E" },
+  neutral: { border: "#475569", text: "#475569" },
 };
 
 export function DocumentCover({
@@ -106,11 +112,11 @@ export function DocumentCover({
   watermarkTone = "neutral",
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
-  const callTone = callout ? TONE_PALETTE[callout.tone ?? "blue"] : null;
-  const watermarkColor =
-    watermarkTone === "danger" ? "rgba(220, 38, 38, 0.10)"
-    : watermarkTone === "warning" ? "rgba(217, 119, 6, 0.12)"
-    : "rgba(15, 23, 42, 0.08)";
+  const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
+  const watermarkAlpha = watermarkTone === "danger" ? "0.13" : watermarkTone === "warning" ? "0.14" : "0.10";
+
+  const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+  const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
 
   return (
     <section
@@ -120,258 +126,313 @@ export function DocumentCover({
         display: "flex",
         flexDirection: "column",
         background: "white",
-        padding: isPrint ? "56px 60px 40px" : "40px 40px 28px",
         minHeight: isPrint ? "100vh" : undefined,
-        borderBottom: isPrint ? "none" : "1px solid rgba(0,0,0,0.08)",
         breakAfter: isPrint ? "page" : undefined,
         pageBreakAfter: isPrint ? "always" : undefined,
         overflow: "hidden",
       }}
     >
-      {watermark ? (
+      {/* ── Blue gradient hero ──────────────────────────────────────────────── */}
+      <div
+        style={{
+          position: "relative",
+          background: "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)",
+          padding: isPrint ? "52px 60px 56px" : "36px 44px 44px",
+          minHeight: isPrint ? "44vh" : 220,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          overflow: "hidden",
+        }}
+      >
+        {/* Subtle geometric accent — large faded circle top-right */}
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%) rotate(-28deg)",
-            transformOrigin: "center",
+            top: -80,
+            right: -80,
+            width: 340,
+            height: 340,
+            borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.10)",
             pointerEvents: "none",
-            zIndex: 0,
-            fontFamily: "var(--font-mono), monospace",
-            fontWeight: 800,
-            fontSize: isPrint ? "8vw" : 96,
-            letterSpacing: "0.25em",
-            whiteSpace: "nowrap",
-            color: watermarkColor,
-            userSelect: "none",
           }}
-        >
-          {watermark}
-        </div>
-      ) : null}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: -30,
+            right: -30,
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.08)",
+            pointerEvents: "none",
+          }}
+        />
 
-      {/*
-        Wrap the visible content in a relatively-positioned div so it sits above the watermark.
-        Using a fragment + z-index would be cleaner, but the section already has position: relative
-        on the parent for the watermark anchor — easier to just lift the content with z-index.
-      */}
-      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1 }}>
-      {/* ── Title row ──────────────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 32,
-          marginBottom: stats?.length || executiveSummary || callout ? 32 : 0,
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Eyebrow */}
-          <p
+        {/* Watermark */}
+        {watermark ? (
+          <div
+            aria-hidden="true"
             style={{
-              margin: "0 0 14px 0",
-              fontFamily: "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, monospace",
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "#9CA3AF",
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%) rotate(-28deg)",
+              pointerEvents: "none",
+              zIndex: 0,
+              fontFamily: mono,
+              fontWeight: 800,
+              fontSize: isPrint ? "7vw" : 72,
+              letterSpacing: "0.25em",
+              whiteSpace: "nowrap",
+              color: `rgba(255,255,255,${watermarkAlpha})`,
+              userSelect: "none",
             }}
           >
-            {eyebrow}
-          </p>
+            {watermark}
+          </div>
+        ) : null}
 
-          {/* Title — DM Serif Display per DESIGN.md */}
+        {/* Content (above watermark) */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          {/* Eyebrow + right slot */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 36,
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontFamily: mono,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.55)",
+              }}
+            >
+              {eyebrow}
+            </p>
+            {rightSlot ? (
+              <div style={{ flexShrink: 0, marginLeft: 24 }}>{rightSlot}</div>
+            ) : null}
+          </div>
+
+          {/* Title */}
           <h1
             style={{
               margin: 0,
-              fontFamily:
-                "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif",
-              fontSize: isPrint ? 44 : 40,
+              fontFamily: serif,
+              fontSize: isPrint ? 54 : 40,
               fontWeight: 400,
               letterSpacing: "-0.025em",
-              lineHeight: 1.1,
-              color: "#0F172A",
+              lineHeight: 1.08,
+              color: "white",
+              maxWidth: "80%",
             }}
           >
             {title}
           </h1>
 
-          {/* Subtitle */}
-          {subtitle ? (
-            <p style={{ margin: "10px 0 0", fontSize: 13, color: "#9CA3AF", overflowWrap: "anywhere" }}>
-              {subtitle}
-            </p>
-          ) : null}
-
-          {/* Meta rows */}
-          {meta && meta.length ? (
-            <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 18 }}>
-              {meta.map((row) => (
-                <span
-                  key={row.label}
+          {/* Subtitle + meta */}
+          {(subtitle || (meta && meta.length)) ? (
+            <div style={{ marginTop: 22 }}>
+              {subtitle ? (
+                <p
                   style={{
-                    fontFamily: "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, monospace",
-                    fontSize: 10,
-                    fontWeight: 500,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "#475569",
+                    margin: "0 0 10px",
+                    fontSize: 14,
+                    lineHeight: 1.5,
+                    color: "rgba(255,255,255,0.60)",
                   }}
                 >
-                  <span style={{ color: "#94A3B8" }}>{row.label}:</span>{" "}
-                  <span style={{ color: "#0F172A", fontWeight: 600 }}>{row.value}</span>
-                </span>
-              ))}
+                  {subtitle}
+                </p>
+              ) : null}
+              {meta && meta.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 24px" }}>
+                  {meta.map((row) => (
+                    <span
+                      key={row.label}
+                      style={{
+                        fontFamily: mono,
+                        fontSize: 10,
+                        fontWeight: 500,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: "rgba(255,255,255,0.50)",
+                      }}
+                    >
+                      {row.label}:{" "}
+                      <span style={{ color: "rgba(255,255,255,0.90)", fontWeight: 600 }}>
+                        {row.value}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
-
-        {/* Right slot */}
-        {rightSlot ? <div style={{ flexShrink: 0 }}>{rightSlot}</div> : null}
       </div>
 
-      {/* ── Stats strip ────────────────────────────────────────────────────── */}
-      {stats && stats.length ? (
-        <div
-          style={{
-            display: "flex",
-            gap: 0,
-            marginBottom: executiveSummary || callout ? 32 : 0,
-            borderRadius: 10,
-            overflow: "hidden",
-            border: "1px solid rgba(0,0,0,0.08)",
-          }}
-        >
-          {stats.map((stat, i) => (
-            <div
-              key={`${stat.label}-${i}`}
-              style={{
-                flex: 1,
-                textAlign: "center",
-                padding: "16px 8px",
-                background: stat.bg ?? "#FAFAF9",
-                borderRight: i < stats.length - 1 ? "1px solid rgba(0,0,0,0.08)" : "none",
-              }}
-            >
-              <div
-                style={{
-                  fontFamily:
-                    "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif",
-                  fontSize: 32,
-                  fontWeight: 400,
-                  color: stat.color ?? "#0F172A",
-                  lineHeight: 1.05,
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                {stat.count}
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, monospace",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "#94A3B8",
-                  marginTop: 6,
-                }}
-              >
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {/* ── Executive summary ──────────────────────────────────────────────── */}
-      {executiveSummary || callout ? (
-        <div style={{ flex: 1, maxWidth: "70ch" }}>
-          {executiveSummary ? (
-            <>
-              <p
-                style={{
-                  margin: "0 0 12px 0",
-                  fontFamily: "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, monospace",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: "#9CA3AF",
-                }}
-              >
-                Executive summary
-              </p>
-              {executiveSummary
-                .split(/\n{2,}/)
-                .map((paragraph) => paragraph.trim())
-                .filter(Boolean)
-                .map((paragraph, idx) => (
-                  <p
-                    key={idx}
-                    style={{
-                      margin: idx === 0 ? 0 : "14px 0 0",
-                      fontSize: 14,
-                      lineHeight: 1.8,
-                      color: "#374151",
-                    }}
-                  >
-                    {paragraph}
-                  </p>
-                ))}
-            </>
-          ) : null}
-
-          {callout && callTone ? (
-            <div
-              style={{
-                margin: executiveSummary ? "22px 0 0" : 0,
-                borderLeft: `3px solid ${callTone.border}`,
-                paddingLeft: 18,
-                fontSize: 14,
-                fontStyle: "italic",
-                color: callTone.text,
-                lineHeight: 1.7,
-                background: callTone.bg,
-              }}
-            >
-              {callout.text}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
+      {/* ── White content section ───────────────────────────────────────────── */}
       <div
         style={{
-          marginTop: "auto",
-          paddingTop: 24,
-          borderTop: "1px solid rgba(0,0,0,0.08)",
+          flex: 1,
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          flexDirection: "column",
+          padding: isPrint ? "36px 60px 40px" : "28px 44px 28px",
+          background: "white",
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={logoUrl}
-          alt="Foundry by Gitwork"
-          style={{ height: 26, objectFit: "contain", display: "block" }}
-        />
-        <span
+        {/* Logo — anchors the brand in the white section */}
+        <div style={{ marginBottom: executiveSummary || stats?.length ? 28 : 0 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoUrl}
+            alt="Foundry by Gitwork"
+            style={{ height: 22, objectFit: "contain", display: "block" }}
+          />
+        </div>
+
+        {/* Executive summary */}
+        {executiveSummary ? (
+          <div style={{ marginBottom: stats?.length ? 28 : 0 }}>
+            <p
+              style={{
+                margin: "0 0 10px",
+                fontFamily: mono,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.10em",
+                textTransform: "uppercase",
+                color: "#9CA3AF",
+              }}
+            >
+              Executive summary
+            </p>
+            {executiveSummary
+              .split(/\n{2,}/)
+              .map((para) => para.trim())
+              .filter(Boolean)
+              .map((para, idx) => (
+                <p
+                  key={idx}
+                  style={{
+                    margin: idx === 0 ? 0 : "12px 0 0",
+                    fontSize: 14,
+                    lineHeight: 1.80,
+                    color: "#374151",
+                    maxWidth: "70ch",
+                  }}
+                >
+                  {para}
+                </p>
+              ))}
+          </div>
+        ) : null}
+
+        {/* Stats strip */}
+        {stats && stats.length ? (
+          <div
+            style={{
+              display: "flex",
+              gap: 0,
+              marginBottom: callout ? 24 : 0,
+              borderRadius: 10,
+              overflow: "hidden",
+              border: "1px solid rgba(0,0,0,0.08)",
+            }}
+          >
+            {stats.map((stat, i) => (
+              <div
+                key={`${stat.label}-${i}`}
+                style={{
+                  flex: 1,
+                  textAlign: "center",
+                  padding: "16px 8px",
+                  background: stat.bg ?? "#FAFAF9",
+                  borderRight: i < stats.length - 1 ? "1px solid rgba(0,0,0,0.08)" : "none",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: serif,
+                    fontSize: 32,
+                    fontWeight: 400,
+                    color: stat.color ?? "#0F172A",
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {stat.count}
+                </div>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#94A3B8",
+                    marginTop: 6,
+                  }}
+                >
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Confidentiality callout */}
+        {callout && callTone ? (
+          <div
+            style={{
+              marginTop: stats?.length ? 20 : 0,
+              borderLeft: `3px solid ${callTone.border}`,
+              paddingLeft: 18,
+              fontSize: 13,
+              fontStyle: "italic",
+              color: callTone.text,
+              lineHeight: 1.7,
+              maxWidth: "70ch",
+            }}
+          >
+            {callout.text}
+          </div>
+        ) : null}
+
+        {/* Footer */}
+        <div
           style={{
-            fontFamily: "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, monospace",
-            fontSize: 11,
-            color: "#94A3B8",
+            marginTop: "auto",
+            paddingTop: 24,
+            borderTop: "1px solid rgba(0,0,0,0.08)",
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
           }}
         >
-          {dated}
-        </span>
-      </div>
+          <span
+            style={{
+              fontFamily: mono,
+              fontSize: 11,
+              color: "#94A3B8",
+            }}
+          >
+            {dated}
+          </span>
+        </div>
       </div>
     </section>
   );
@@ -389,7 +450,7 @@ export function HealthScoreRing({ score }: { score: number }) {
   const label = score >= 90 ? "Excellent" : score >= 75 ? "Good" : score >= 50 ? "Needs work" : "At risk";
   return (
     <svg width="132" height="132" viewBox="0 0 132 132" style={{ display: "block" }}>
-      <circle cx="66" cy="66" r={r} fill="none" stroke="#E5E7EB" strokeWidth="9" />
+      <circle cx="66" cy="66" r={r} fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="9" />
       <circle
         cx="66"
         cy="66"
@@ -408,7 +469,7 @@ export function HealthScoreRing({ score }: { score: number }) {
         fontFamily="var(--font-display), 'DM Serif Display', serif"
         fontWeight="400"
         fontSize="32"
-        fill={color}
+        fill="white"
       >
         {score}
       </text>
@@ -419,7 +480,7 @@ export function HealthScoreRing({ score }: { score: number }) {
         fontFamily="var(--font-mono), 'JetBrains Mono', monospace"
         fontWeight="500"
         fontSize="10"
-        fill="#94A3B8"
+        fill="rgba(255,255,255,0.55)"
         letterSpacing="0.6"
       >
         /100
@@ -441,8 +502,8 @@ export function HealthScoreRing({ score }: { score: number }) {
 }
 
 /**
- * Convenience: Docs-style version chip (used as right-slot on Docs covers). Shows the version
- * number in editorial serif with status caps underneath.
+ * Convenience: Docs-style version chip (used as right-slot on Docs covers).
+ * Renders white text so it sits cleanly on the blue gradient hero.
  */
 export function DocumentVersionChip({
   version,
@@ -471,7 +532,7 @@ export function DocumentVersionChip({
             fontWeight: 600,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
-            color: "#1D4ED8",
+            color: "rgba(147,197,253,1)", // light blue on dark bg
           }}
         >
           {documentNumber}
@@ -484,7 +545,7 @@ export function DocumentVersionChip({
           fontWeight: 400,
           letterSpacing: "-0.02em",
           lineHeight: 1,
-          color: "#0F172A",
+          color: "white",
         }}
       >
         {version}
@@ -496,7 +557,7 @@ export function DocumentVersionChip({
           fontWeight: 600,
           letterSpacing: "0.1em",
           textTransform: "uppercase",
-          color: "#475569",
+          color: "rgba(255,255,255,0.55)",
         }}
       >
         {status}
