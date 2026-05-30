@@ -598,7 +598,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -651,6 +651,14 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
           orderBy: { startDate: "desc" },
         })
       : Promise.resolve([]),
+    manualRecord
+      ? prisma.study.findMany({
+          where: { workspaceClientId: manualRecord.id },
+          include: { sessions: { select: { status: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
   ]);
 
   const contactFields: ClientDetailFields = manualRecord
@@ -701,6 +709,26 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     })),
     supportClient: supportClient ?? null,
     placements: serializedPlacements,
+    studies: (studies as Array<{
+      id: string;
+      title: string;
+      problemStatement: string;
+      status: string;
+      sessionMode: string;
+      selectedPersonaIds: string[];
+      createdAt: Date;
+      sessions: { status: string }[];
+    }>).map((s) => ({
+      id: s.id,
+      title: s.title,
+      problemStatement: s.problemStatement,
+      status: s.status,
+      sessionMode: s.sessionMode,
+      selectedPersonaIds: s.selectedPersonaIds,
+      createdAt: s.createdAt.toISOString(),
+      sessionCount: s.sessions.length,
+      completedSessionCount: s.sessions.filter((sess) => sess.status === "COMPLETED").length,
+    })),
   };
 }
 

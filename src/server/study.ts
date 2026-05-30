@@ -20,6 +20,21 @@ export interface StudyListItem {
   updatedAt: string;
   sessionCount: number;
   completedSessionCount: number;
+  workspaceClientId: string | null;
+  workspaceClientName: string | null;
+  workspaceClientSlug: string | null;
+}
+
+export interface StudyClientSummary {
+  id: string;
+  title: string;
+  problemStatement: string;
+  status: string;
+  sessionMode: string;
+  selectedPersonaIds: string[];
+  createdAt: string;
+  sessionCount: number;
+  completedSessionCount: number;
 }
 
 export interface StudyPlanQuestionRecord {
@@ -62,9 +77,24 @@ export interface StudyRecord {
   plan: StudyPlanRecord | null;
   sessions: StudySessionRecord[];
   report: { payload: unknown } | null;
+  workspaceClientId: string | null;
+  workspaceClientName: string | null;
+  workspaceClientSlug: string | null;
 }
 
-function serializeListItem(s: { id: string; title: string; problemStatement: string; status: string; sessionMode: string; selectedPersonaIds: string[]; createdAt: Date; updatedAt: Date; sessions: { status: string }[] }): StudyListItem {
+function serializeListItem(s: {
+  id: string;
+  title: string;
+  problemStatement: string;
+  status: string;
+  sessionMode: string;
+  selectedPersonaIds: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  workspaceClientId: string | null;
+  workspaceClient: { name: string; slug: string } | null;
+  sessions: { status: string }[];
+}): StudyListItem {
   return {
     id: s.id,
     title: s.title,
@@ -76,6 +106,9 @@ function serializeListItem(s: { id: string; title: string; problemStatement: str
     updatedAt: s.updatedAt.toISOString(),
     sessionCount: s.sessions.length,
     completedSessionCount: s.sessions.filter((sess) => sess.status === "COMPLETED").length,
+    workspaceClientId: s.workspaceClientId,
+    workspaceClientName: s.workspaceClient?.name ?? null,
+    workspaceClientSlug: s.workspaceClient?.slug ?? null,
   };
 }
 
@@ -102,14 +135,39 @@ function resolveAiConfig(workspace: Awaited<ReturnType<typeof getWorkspace>>): A
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function listStudies(): Promise<StudyListItem[]> {
+export async function listStudies(filters?: { workspaceClientId?: string }): Promise<StudyListItem[]> {
   const workspace = await getWorkspace();
   const studies = await prisma.study.findMany({
-    where: { workspaceId: workspace.id },
+    where: {
+      workspaceId: workspace.id,
+      ...(filters?.workspaceClientId !== undefined && { workspaceClientId: filters.workspaceClientId }),
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      sessions: { select: { status: true } },
+      workspaceClient: { select: { name: true, slug: true } },
+    },
+  });
+  return studies.map(serializeListItem);
+}
+
+export async function listStudiesForClient(workspaceClientId: string): Promise<StudyClientSummary[]> {
+  const studies = await prisma.study.findMany({
+    where: { workspaceClientId },
     orderBy: { createdAt: "desc" },
     include: { sessions: { select: { status: true } } },
   });
-  return studies.map(serializeListItem);
+  return studies.map((s) => ({
+    id: s.id,
+    title: s.title,
+    problemStatement: s.problemStatement,
+    status: s.status,
+    sessionMode: s.sessionMode,
+    selectedPersonaIds: s.selectedPersonaIds,
+    createdAt: s.createdAt.toISOString(),
+    sessionCount: s.sessions.length,
+    completedSessionCount: s.sessions.filter((sess) => sess.status === "COMPLETED").length,
+  }));
 }
 
 export async function getStudy(studyId: string): Promise<StudyRecord | null> {
@@ -119,6 +177,7 @@ export async function getStudy(studyId: string): Promise<StudyRecord | null> {
       plan: { include: { questions: { orderBy: { orderIndex: "asc" } } } },
       sessions: { orderBy: { createdAt: "asc" } },
       report: true,
+      workspaceClient: { select: { name: true, slug: true } },
     },
   });
   if (!record) return null;
@@ -132,6 +191,9 @@ export async function getStudy(studyId: string): Promise<StudyRecord | null> {
     selectedPersonaIds: record.selectedPersonaIds,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
+    workspaceClientId: record.workspaceClientId,
+    workspaceClientName: record.workspaceClient?.name ?? null,
+    workspaceClientSlug: record.workspaceClient?.slug ?? null,
     plan: record.plan
       ? {
           id: record.plan.id,
@@ -167,6 +229,7 @@ export async function createStudy(data: {
   researchGoals: string[];
   sessionMode: string;
   selectedPersonaIds: string[];
+  workspaceClientId?: string | null;
 }): Promise<StudyRecord> {
   const workspace = await getWorkspace();
   const study = await prisma.study.create({
@@ -177,6 +240,7 @@ export async function createStudy(data: {
       researchGoals: data.researchGoals,
       sessionMode: data.sessionMode as "ONE_ON_ONE" | "GROUP",
       selectedPersonaIds: data.selectedPersonaIds,
+      workspaceClientId: data.workspaceClientId ?? null,
     },
     include: { plan: { include: { questions: true } }, sessions: true, report: true },
   });
@@ -190,6 +254,7 @@ export async function updateStudy(studyId: string, data: Partial<{
   sessionMode: string;
   selectedPersonaIds: string[];
   status: string;
+  workspaceClientId: string | null;
 }>): Promise<StudyRecord> {
   await prisma.study.update({
     where: { id: studyId },
@@ -200,6 +265,7 @@ export async function updateStudy(studyId: string, data: Partial<{
       ...(data.sessionMode !== undefined && { sessionMode: data.sessionMode as "ONE_ON_ONE" | "GROUP" }),
       ...(data.selectedPersonaIds !== undefined && { selectedPersonaIds: data.selectedPersonaIds }),
       ...(data.status !== undefined && { status: data.status as "DRAFT" | "PLAN_GENERATING" | "PLAN_READY" | "RUNNING" | "COMPLETED" | "FAILED" }),
+      ...(data.workspaceClientId !== undefined && { workspaceClientId: data.workspaceClientId }),
     },
   });
   return getStudy(studyId) as Promise<StudyRecord>;

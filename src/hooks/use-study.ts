@@ -56,7 +56,14 @@ export function useStudyPersonas() {
 export function useCreateStudy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title: string; problemStatement: string; researchGoals: string[]; sessionMode: string; selectedPersonaIds: string[] }) =>
+    mutationFn: (data: {
+      title: string;
+      problemStatement: string;
+      researchGoals: string[];
+      sessionMode: string;
+      selectedPersonaIds: string[];
+      workspaceClientId?: string | null;
+    }) =>
       apiFetch<{ study: StudyRecord }>("/api/study/studies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

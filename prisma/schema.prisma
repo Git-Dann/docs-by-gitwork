@@ -714,6 +714,7 @@ model WorkspaceClient {
   documents            Document[]
   supportClients       SupportClient[]
   placements           Placement[]
+  studies              Study[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -1522,6 +1523,8 @@ model Study {
   id                 String             @id @default(cuid())
   workspaceId        String
   workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceClientId  String?
+  workspaceClient    WorkspaceClient?   @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   title              String
   problemStatement   String
   researchGoals      String[]           @default([])
@@ -1535,6 +1538,7 @@ model Study {
   report             StudyReport?
 
   @@index([workspaceId, createdAt])
+  @@index([workspaceClientId])
 }
 
 model StudyResearchPlan {

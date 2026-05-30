@@ -2,6 +2,7 @@
 
 import {
   ArrowTopRightOnSquareIcon,
+  BeakerIcon,
   CalendarDaysIcon,
   CodeBracketIcon,
   GlobeAltIcon,
@@ -96,7 +97,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements } = data;
+  const { client, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies } = data;
   const isSuggested = client.source === "SUGGESTED";
 
   function openEdit() {
@@ -325,20 +326,21 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 02-05 // STATS ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ── 02-06 // STATS ── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard number="02" label="DOCS" value={proposals.length} />
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
+        <StatCard number="06" label="STUDIES" value={studies.length} />
       </div>
 
-      {/* ── 06 // CONTACT ── */}
+      {/* ── 07 // CONTACT ── */}
       {hasContactInfo && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">06</span>
+              <span className="widget-header__label--number">07</span>
               {" // CONTACT"}
             </span>
           </div>
@@ -410,7 +412,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">07</span>
+            <span className="widget-header__label--number">08</span>
             {" // PLATFORMS"}
           </span>
           {!isSuggested && (
@@ -460,7 +462,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">08</span>
+            <span className="widget-header__label--number">09</span>
             {" // DESIGNS"}
           </span>
           {!isSuggested && (
@@ -506,12 +508,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 09 // NOTES ── */}
+      {/* ── 10 // NOTES ── */}
       {client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">09</span>
+              <span className="widget-header__label--number">10</span>
               {" // NOTES"}
             </span>
           </div>
@@ -530,7 +532,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">10</span>
+              <span className="widget-header__label--number">11</span>
               {" // DOCUMENTS"}
             </span>
             <span className="widget-header__status">
@@ -587,7 +589,7 @@ export function ClientDetail({ slug }: { slug: string }) {
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">11</span>
+                <span className="widget-header__label--number">12</span>
                 {" // PULSE SCANS"}
               </span>
               <span className="widget-header__status">
@@ -651,7 +653,7 @@ export function ClientDetail({ slug }: { slug: string }) {
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">12</span>
+                <span className="widget-header__label--number">13</span>
                 {" // PROOF DOCUMENTS"}
               </span>
             </div>
@@ -695,7 +697,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">13</span>
+              <span className="widget-header__label--number">14</span>
               {" // DEVELOPERS"}
             </span>
             {placements && placements.length > 0 ? (
@@ -720,12 +722,12 @@ export function ClientDetail({ slug }: { slug: string }) {
           />
         </section>
 
-        {/* 14 // CARE */}
+        {/* 15 // CARE */}
         {supportClient && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">14</span>
+                <span className="widget-header__label--number">15</span>
                 {" // CARE"}
               </span>
             </div>
@@ -742,6 +744,90 @@ export function ClientDetail({ slug }: { slug: string }) {
               >
                 Open in Care
               </Link>
+            </div>
+          </section>
+        )}
+
+        {/* 16 // STUDIES */}
+        {studies.length > 0 && (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">16</span>
+                {" // STUDIES"}
+              </span>
+              <span className="widget-header__status">
+                <BeakerIcon className="h-3 w-3" />
+                {studies.length} stud{studies.length !== 1 ? "ies" : "y"}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="app-table min-w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Title</th>
+                    <th className="text-left">Mode</th>
+                    <th className="text-left">Personas</th>
+                    <th className="text-left">Sessions</th>
+                    <th className="text-left">Status</th>
+                    <th className="text-left">Created</th>
+                    <th className="text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studies.map((study) => (
+                    <tr key={study.id}>
+                      <td>
+                        <p className="font-medium text-[var(--text-1)]">{study.title}</p>
+                      </td>
+                      <td>
+                        <span
+                          className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]"
+                        >
+                          {study.sessionMode === "GROUP" ? "GROUP" : "1-ON-1"}
+                        </span>
+                      </td>
+                      <td className="text-[var(--text-3)]">
+                        {study.selectedPersonaIds.length}
+                      </td>
+                      <td className="text-[var(--text-3)]">
+                        {study.completedSessionCount}/{study.sessionCount}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            "inline-flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] " +
+                            (study.status === "COMPLETED"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : study.status === "RUNNING" || study.status === "PLAN_GENERATING"
+                              ? "bg-amber-50 text-amber-700"
+                              : study.status === "FAILED"
+                              ? "bg-red-50 text-red-700"
+                              : "bg-[var(--surface-1)] text-[var(--text-3)]")
+                          }
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          {(study.status === "RUNNING" || study.status === "PLAN_GENERATING") && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          )}
+                          {study.status.toLowerCase().replace("_", " ")}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="widget-timestamp">{formatDate(study.createdAt)}</span>
+                      </td>
+                      <td>
+                        <Link
+                          href={`/app/study/${study.id}`}
+                          className={buttonStyles({ variant: "secondary", size: "xs" })}
+                        >
+                          Open
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
         )}

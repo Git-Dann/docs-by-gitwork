@@ -86,6 +86,18 @@ export interface ClientPlacementRecord {
   updatedAt: string;
 }
 
+export interface ClientStudySummary {
+  id: string;
+  title: string;
+  problemStatement: string;
+  status: string;
+  sessionMode: string;
+  selectedPersonaIds: string[];
+  createdAt: string;
+  sessionCount: number;
+  completedSessionCount: number;
+}
+
 export interface ClientDetailRecord {
   client: ClientListItem & ClientDetailFields;
   platforms: ClientPlatformRecord[];
@@ -95,4 +107,5 @@ export interface ClientDetailRecord {
   pulseScans: ClientPulseScanSummary[];
   supportClient: ClientSupportSummary | null;
   placements: ClientPlacementRecord[];
+  studies: ClientStudySummary[];
 }
