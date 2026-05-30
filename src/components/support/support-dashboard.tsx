@@ -1243,15 +1243,17 @@ function InboxView({ clientId }: { clientId: string }) {
                 <span className="text-[11px] text-[var(--text-4)]">
                   {formatShort(activeConvo.receivedAt)}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleGenerateDraft}
-                  disabled={generateDraft.isPending}
-                  className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
-                >
-                  <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                  {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
-                </button>
+                {activeConvo.source !== "gmail" && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateDraft}
+                    disabled={generateDraft.isPending}
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
+                  >
+                    <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
+                    {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1284,7 +1286,7 @@ function InboxView({ clientId }: { clientId: string }) {
             </div>
 
             {/* AI draft panel */}
-            {draft && (
+            {draft && activeConvo.source !== "gmail" && (
               <div className="border-t border-[var(--mist-border)] bg-[var(--mist)] p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1334,8 +1336,8 @@ function InboxView({ clientId }: { clientId: string }) {
               </div>
             )}
 
-            {/* manual reply box (only when no draft) */}
-            {!draft && (
+            {/* manual reply box (only when no draft, and source supports replies) */}
+            {!draft && activeConvo.source !== "gmail" && (
               <div className="border-t border-[var(--border-2)] p-4">
                 <textarea
                   rows={3}
