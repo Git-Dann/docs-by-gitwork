@@ -275,7 +275,7 @@ function ClientLinker({ study }: { study: StudyRecord }) {
   const [editing, setEditing] = useState(false);
 
   async function save(workspaceClientId: string | null) {
-    await update({ workspaceClientId } as Partial<StudyRecord>);
+    await update({ workspaceClientId });
     setEditing(false);
   }
 

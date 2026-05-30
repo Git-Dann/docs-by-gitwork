@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckIcon, BuildingOffice2Icon } from "@heroicons/react/24/outline";
 import { useCreateStudy, useStudyPersonas } from "@/hooks/use-study";
 import { useClientList } from "@/hooks/use-proposals";
@@ -38,6 +38,7 @@ const STEPS = ["Brief", "Mode", "Personas", "Client", "Review"];
 
 export function StudyWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: personas } = useStudyPersonas();
   const { data: clientsData } = useClientList();
   const { mutateAsync: createStudy, isPending } = useCreateStudy();
@@ -51,6 +52,20 @@ export function StudyWizard() {
   const [sessionMode, setSessionMode] = useState<SessionMode>("ONE_ON_ONE");
   const [selectedPersonaIds, setSelectedPersonaIds] = useState<string[]>([]);
   const [workspaceClientId, setWorkspaceClientId] = useState<string | null>(null);
+
+  // Honour ?clientId=… so "New study" from a Portal client page lands on
+  // the wizard with that client preselected. The validation runs once the
+  // clients query resolves; we don't overwrite a user's manual change.
+  const urlClientId = searchParams.get("clientId");
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current || !urlClientId) return;
+    if (manualClients.length === 0) return;
+    if (manualClients.some((c) => c.id === urlClientId)) {
+      setWorkspaceClientId(urlClientId);
+    }
+    prefilledRef.current = true;
+  }, [urlClientId, manualClients]);
 
   const filledGoals = goals.filter((g) => g.trim());
 
@@ -74,7 +89,7 @@ export function StudyWizard() {
       sessionMode,
       selectedPersonaIds,
       workspaceClientId,
-    } as Parameters<typeof createStudy>[0] & { workspaceClientId: string | null });
+    });
     router.push(`/app/study/${study.id}`);
   }
 

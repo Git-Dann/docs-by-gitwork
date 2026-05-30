@@ -758,18 +758,43 @@ export function ClientDetail({ slug }: { slug: string }) {
         )}
 
         {/* 16 // STUDIES */}
-        {studies.length > 0 && (
+        {!isSuggested && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
                 <span className="widget-header__label--number">16</span>
                 {" // STUDIES"}
               </span>
-              <span className="widget-header__status">
-                <BeakerIcon className="h-3 w-3" />
-                {studies.length} stud{studies.length !== 1 ? "ies" : "y"}
-              </span>
+              <div className="flex items-center gap-2">
+                {studies.length > 0 && (
+                  <span className="widget-header__status">
+                    <BeakerIcon className="h-3 w-3" />
+                    {studies.length} stud{studies.length !== 1 ? "ies" : "y"}
+                  </span>
+                )}
+                <Link
+                  href={`/app/study/new?clientId=${client.id}`}
+                  className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+                  title="New study for this client"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                </Link>
+              </div>
             </div>
+            {studies.length === 0 ? (
+              <div className="p-5">
+                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                  <p className="text-sm text-[var(--text-4)]">
+                    <Link
+                      href={`/app/study/new?clientId=${client.id}`}
+                      className="text-[var(--brand-700)] hover:underline"
+                    >
+                      + Start a research study for this client
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="app-table min-w-full">
                 <thead>
@@ -838,6 +863,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </tbody>
               </table>
             </div>
+            )}
           </section>
         )}
 
