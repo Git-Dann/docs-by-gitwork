@@ -195,25 +195,27 @@ export async function POST(req: NextRequest) {
 
         if (targetIds.length > 0) {
           const eventTime = new Date(body.eventDate).getTime() / 1000;
-          const dayBefore = eventTime - 86400;
-          const dayAfter = eventTime + 86400;
-          const keyword = body.eventTitle.toLowerCase().split(" ")[0];
+          // Search 3 days back → 1 day ahead so recurring stand-ups and prep
+          // threads are captured even when no message mentions the meeting title.
+          const windowStart = eventTime - 3 * 86400;
+          const windowEnd = eventTime + 86400;
 
           const allMessages: string[] = [];
           await Promise.all(
             targetIds.map(async (channelId) => {
               try {
                 const res = await fetch(
-                  `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${dayBefore}&latest=${dayAfter}&limit=30`,
+                  `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${windowStart}&latest=${windowEnd}&limit=50`,
                   { headers: { Authorization: `Bearer ${workspace.slackBotToken}` } },
                 );
                 const data = (await res.json()) as { ok: boolean; messages?: Array<{ text: string; ts: string }> };
                 if (data.ok && data.messages) {
-                  const matches = data.messages
-                    .filter((m) => m.text && m.text.toLowerCase().includes(keyword))
+                  // Include all non-empty messages — AI decides what's relevant
+                  const msgs = data.messages
+                    .filter((m) => m.text && m.text.trim().length > 0)
                     .map((m) => m.text)
-                    .slice(0, 5);
-                  allMessages.push(...matches);
+                    .slice(0, 20);
+                  allMessages.push(...msgs);
                 }
               } catch {
                 // Channel unavailable — skip
@@ -221,7 +223,7 @@ export async function POST(req: NextRequest) {
             }),
           );
 
-          slackContext = allMessages.slice(0, 15).join("\n");
+          slackContext = allMessages.slice(0, 30).join("\n---\n");
         }
       } catch {
         // Slack unavailable — continue without Slack context
