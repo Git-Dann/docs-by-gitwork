@@ -2096,6 +2096,18 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         </div>
       )}
 
+      {/* ── Cron schedule notice ── */}
+      {connections.length > 0 && (
+        <div className="flex items-start gap-2 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-2.5">
+          <ExclamationTriangleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <p className="text-[11px] leading-4 text-amber-700">
+            <span className="font-semibold">Automatic background sync runs once a day, at 08:00 UTC.</span>{" "}
+            The Auto-fetch options above only poll while this page is open in your browser. For an immediate pull, use{" "}
+            <span className="font-medium">Refresh now</span> or a connector&apos;s <span className="font-medium">Sync now</span>.
+          </p>
+        </div>
+      )}
+
       {connections.length > 0 && (
         <div className="app-card overflow-hidden p-0">
           {/* widget header */}
