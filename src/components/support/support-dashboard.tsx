@@ -2151,17 +2151,17 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   return (
                     <div className="flex items-center gap-2">
                       {conn.health === "connected" ? (
-                        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        <span className="flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
                           <CheckCircleIcon className="h-3.5 w-3.5" />
                           Connected
                         </span>
                       ) : conn.health === "error" ? (
-                        <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+                        <span className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
                           <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                           Error
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                        <span className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                           <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                           Needs setup
                         </span>
@@ -2257,7 +2257,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
               return (
                 <div key={log.id} className="flex items-start justify-between gap-3 text-[12px]">
                   <div className="flex items-start gap-2 min-w-0">
-                    <span className="mt-0.5 shrink-0 rounded-full bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)]">
+                    <span className="mt-0.5 shrink-0 rounded-md bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)]">
                       {agentLabel}
                     </span>
                     <span className="text-[var(--text-2)] truncate">{actionLabel}</span>
@@ -2535,7 +2535,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                         <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
                         <span
                           className={cn(
-                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            "rounded-md px-2 py-0.5 text-[10px] font-semibold",
                             conn.health === "connected"
                               ? "bg-emerald-50 text-emerald-700"
                               : conn.health === "error"
@@ -2617,7 +2617,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                   <div className="flex min-w-0 items-start gap-2">
                     <span
                       className={cn(
-                        "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        "mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold",
                         badgeCls,
                       )}
                     >
@@ -2715,7 +2715,7 @@ function SettingsView({ clientId }: { clientId: string }) {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {rule.requiresApproval && (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                    <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                       Requires approval
                     </span>
                   )}
@@ -2771,10 +2771,10 @@ function SettingsView({ clientId }: { clientId: string }) {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="rounded-full border border-[var(--mist-border)] bg-[var(--mist)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)]">
+              <span className="rounded-md border border-[var(--mist-border)] bg-[var(--mist)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)]">
                 Admin
               </span>
-              <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-3)]">
+              <span className="rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-3)]">
                 Owner
               </span>
             </div>
@@ -3015,7 +3015,7 @@ export function SupportDashboard() {
           <div className="flex items-center gap-3 pt-5 pb-0">
             <h2 className="text-base font-semibold text-[var(--text-1)]">{client.name}</h2>
             <span className="text-[var(--text-4)]">·</span>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+            <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               Live
             </span>
           </div>
@@ -3040,7 +3040,7 @@ export function SupportDashboard() {
                   {badge != null && badge > 0 && (
                     <span
                       className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                        "rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
                         activeTab === tab.id
                           ? "bg-[var(--mist)] text-[var(--brand-700)]"
                           : "bg-[var(--surface-1)] text-[var(--text-4)]",
