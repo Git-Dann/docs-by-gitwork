@@ -344,12 +344,52 @@ export function ClientDetail({ slug }: { slug: string }) {
         <StatCard number="06" label="STUDIES" value={studies.length} />
       </div>
 
-      {/* ── 07 // CONTACT ── */}
+      {/* ── 07 // SLACK ACTIVITY ── */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">07</span>
+            {" // SLACK ACTIVITY"}
+          </span>
+          <div className="flex items-center gap-2">
+            {slackActivity.data?.channelName && client.slackChannelId && (
+              <a
+                href={`https://slack.com/app_redirect?channel=${client.slackChannelId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
+                title="Open in Slack"
+              >
+                <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                {slackActivity.data.channelName}
+              </a>
+            )}
+            {slackActivity.data?.configured && (
+              <button
+                type="button"
+                onClick={() => void slackActivity.refetch()}
+                disabled={slackActivity.isFetching}
+                className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+                title="Refresh"
+              >
+                <ArrowPathIcon className={cn("h-3.5 w-3.5", slackActivity.isFetching && "animate-spin")} />
+              </button>
+            )}
+          </div>
+        </div>
+        <SlackActivityBody
+          data={slackActivity.data}
+          isLoading={slackActivity.isPending}
+          onConfigureClick={openEdit}
+        />
+      </section>
+
+      {/* ── 08 // CONTACT ── */}
       {hasContactInfo && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">07</span>
+              <span className="widget-header__label--number">08</span>
               {" // CONTACT"}
             </span>
           </div>
@@ -417,11 +457,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* ── 07 // PLATFORMS ── */}
+      {/* ── 09 // PLATFORMS ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">08</span>
+            <span className="widget-header__label--number">09</span>
             {" // PLATFORMS"}
           </span>
           {!isSuggested && (
@@ -467,11 +507,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 08 // DESIGNS ── */}
+      {/* ── 10 // DESIGNS ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">09</span>
+            <span className="widget-header__label--number">10</span>
             {" // DESIGNS"}
           </span>
           {!isSuggested && (
@@ -517,12 +557,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 10 // NOTES ── */}
+      {/* ── 11 // NOTES ── */}
       {client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">10</span>
+              <span className="widget-header__label--number">11</span>
               {" // NOTES"}
             </span>
           </div>
@@ -537,11 +577,11 @@ export function ClientDetail({ slug }: { slug: string }) {
       {/* ── ACTIVITY ── */}
       <div className="space-y-4">
 
-        {/* 10 // DOCUMENTS */}
+        {/* 12 // DOCUMENTS */}
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">11</span>
+              <span className="widget-header__label--number">12</span>
               {" // DOCUMENTS"}
             </span>
             <span className="widget-header__status">
@@ -593,12 +633,12 @@ export function ClientDetail({ slug }: { slug: string }) {
           </div>
         </section>
 
-        {/* 11 // PULSE SCANS */}
+        {/* 13 // PULSE SCANS */}
         {pulseScans.length > 0 && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">12</span>
+                <span className="widget-header__label--number">13</span>
                 {" // PULSE SCANS"}
               </span>
               <span className="widget-header__status">
@@ -657,12 +697,12 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* 12 // PROOF DOCUMENTS */}
+        {/* 14 // PROOF DOCUMENTS */}
         {proofDocuments.length > 0 && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">13</span>
+                <span className="widget-header__label--number">14</span>
                 {" // PROOF DOCUMENTS"}
               </span>
             </div>
@@ -702,11 +742,11 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* 13 // DEVELOPERS */}
+        {/* 15 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">14</span>
+              <span className="widget-header__label--number">15</span>
               {" // DEVELOPERS"}
             </span>
             {placements && placements.length > 0 ? (
@@ -731,12 +771,12 @@ export function ClientDetail({ slug }: { slug: string }) {
           />
         </section>
 
-        {/* 15 // CARE */}
+        {/* 16 // CARE */}
         {supportClient && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">15</span>
+                <span className="widget-header__label--number">16</span>
                 {" // CARE"}
               </span>
             </div>
@@ -757,12 +797,12 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* 16 // STUDIES */}
+        {/* 17 // STUDIES */}
         {!isSuggested && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">16</span>
+                <span className="widget-header__label--number">17</span>
                 {" // STUDIES"}
               </span>
               <div className="flex items-center gap-2">
@@ -867,39 +907,6 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* 17 // SLACK ACTIVITY */}
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">17</span>
-              {" // SLACK ACTIVITY"}
-            </span>
-            <div className="flex items-center gap-2">
-              {slackActivity.data?.channelName && (
-                <span className="widget-header__status">
-                  <ChatBubbleLeftRightIcon className="h-3 w-3" />
-                  {slackActivity.data.channelName}
-                </span>
-              )}
-              {slackActivity.data?.configured && (
-                <button
-                  type="button"
-                  onClick={() => void slackActivity.refetch()}
-                  disabled={slackActivity.isFetching}
-                  className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-                  title="Refresh activity"
-                >
-                  <ArrowPathIcon className={cn("h-3.5 w-3.5", slackActivity.isFetching && "animate-spin")} />
-                </button>
-              )}
-            </div>
-          </div>
-          <SlackActivityBody
-            data={slackActivity.data}
-            isLoading={slackActivity.isPending}
-            onConfigureClick={openEdit}
-          />
-        </section>
 
       </div>
 
@@ -1210,7 +1217,45 @@ function LinkPreviewArea({
 }
 
 // ---------------------------------------------------------------------------
-// SlackActivityBody — content panel for the 17 // SLACK ACTIVITY widget
+// Slack helpers
+// ---------------------------------------------------------------------------
+
+/** Clean raw Slack message text into something readable. */
+function formatSlackText(text: string): string {
+  return (
+    text
+      // Slack links: <URL|display> → display text
+      .replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, "$2")
+      // Bare Slack links: <https://...> → just the domain
+      .replace(/<(https?:\/\/([^/>]+)[^>]*)>/g, "$2")
+      // User mentions: <@UXXX> → @name (we don't have names here, keep @user)
+      .replace(/<@([A-Z0-9]+)>/g, "@user")
+      // Channel mentions: <!channel> <!here> <!everyone>
+      .replace(/<!channel>/g, "@channel")
+      .replace(/<!here>/g, "@here")
+      .replace(/<!everyone>/g, "@everyone")
+      // HTML entities
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      // Slack bold *text* → keep readable as-is (strip asterisks)
+      .replace(/\*([^*\n]+)\*/g, "$1")
+      // Slack italic _text_
+      .replace(/_([^_\n]+)_/g, "$1")
+      // Slack strikethrough ~text~
+      .replace(/~([^~\n]+)~/g, "$1")
+      // Slack code `text`
+      .replace(/`([^`]+)`/g, "$1")
+      // Collapse excess whitespace
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SlackActivityBody — content panel for the 07 // SLACK ACTIVITY widget
 // ---------------------------------------------------------------------------
 function SlackActivityBody({
   data,
@@ -1343,7 +1388,7 @@ function SlackActivityBody({
                   </span>
                 </div>
                 <p className="mt-0.5 text-sm leading-5 text-[var(--text-2)] line-clamp-3">
-                  {msg.text}
+                  {formatSlackText(msg.text)}
                 </p>
               </div>
             </div>
