@@ -255,6 +255,7 @@ model Workspace {
   slackWebhooks            SlackWebhookSubscription[]
   auditLogs                AuditLog[]
   meetingSummaries         MeetingSummary[]
+  aiResponseCache          AiResponseCache[]
 }
 
 model WorkspaceMember {
@@ -1667,6 +1668,29 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([action])
   @@index([actorId])
+}
+
+// Generic workspace-shared cache for AI responses. Anywhere a Foundry feature calls an
+// AI provider and the output is identical regardless of who's asking, route it through
+// `getCachedAiResponse()` in `src/server/ai-cache.ts`. Saves repeat API spend whenever
+// the same Gitwork teammate (or different ones) trigger the same AI work.
+//
+// `cacheKey` is the namespace + resource id (e.g. "slack-activity:C0123ABCDEF",
+// "proof-analyse:<sha256>"). `inputsHash` invalidates when the actual inputs to the AI
+// call change — so cached entries auto-refresh when the underlying data shifts.
+model AiResponseCache {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  cacheKey    String
+  inputsHash  String
+  response    Json
+  modelUsed   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, cacheKey])
+  @@index([workspaceId, updatedAt])
 }
 
 // Workspace-shared cache for AI-generated meeting summaries.

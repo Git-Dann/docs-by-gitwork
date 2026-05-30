@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -150,14 +151,37 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       });
     }
 
-    // 4. AI summary of the recent updates.
-    const summary = await summarise(messages, channelName ?? client?.name ?? "this project", ws);
+    // 4. AI summary of the recent updates — workspace-cached so every Gitwork teammate
+    //    polling this client's page reuses the same digest until new messages arrive.
+    //    Cache key: per-channel. Invalidation: hash of recent message IDs — when the
+    //    Slack channel ticks forward, the hash changes and we regenerate.
+    const inputsHash = hashInputs({
+      channelId,
+      messageIds: messages.map((m) => m.id),
+      // Include the resolved channel label so a rename forces a refresh too.
+      channelLabel: channelName ?? client?.name ?? "this project",
+    });
+
+    const cacheResult = await cachedOrCompute<{ summary: string | null }>({
+      workspaceId: workspace.id,
+      cacheKey: `slack-activity:${channelId}`,
+      inputsHash,
+      compute: async () => {
+        const summary = await summarise(
+          messages,
+          channelName ?? client?.name ?? "this project",
+          ws,
+        );
+        return { response: { summary }, modelUsed: ws.aiProvider };
+      },
+    });
 
     return apiOk({
       configured: true,
       channelName,
-      summary,
-      generatedAt: new Date().toISOString(),
+      summary: cacheResult.response.summary,
+      generatedAt: cacheResult.cachedAt ?? new Date().toISOString(),
+      cached: cacheResult.cached,
       reason: "ok",
       messages,
     });

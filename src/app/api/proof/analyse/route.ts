@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ensureBaseRecords } from "@/server/bootstrap";
+import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -75,44 +77,50 @@ export async function POST(request: Request) {
   }
 
   const { brief } = parsed.data;
+  const { workspace } = await ensureBaseRecords();
+  const MODEL = "claude-opus-4-6";
 
-  const client = new Anthropic({ apiKey });
+  // Workspace-cached: if any teammate already analysed this exact brief text, return the
+  // cached structured analysis instead of paying for another Opus call. The brief content
+  // itself is the cache key (hashed) — same brief = same analysis.
+  const inputsHash = hashInputs({ brief, model: MODEL, systemPrompt: SYSTEM_PROMPT });
 
-  let rawContent: string;
   try {
-    const message = await client.messages.create({
-      model: "claude-opus-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: brief,
-        },
-      ],
+    const result = await cachedOrCompute<z.infer<typeof briefAnalysisSchema>>({
+      workspaceId: workspace.id,
+      cacheKey: `proof-analyse:${inputsHash}`,
+      inputsHash,
+      compute: async () => {
+        const client = new Anthropic({ apiKey });
+        const message = await client.messages.create({
+          model: MODEL,
+          max_tokens: 2048,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: brief }],
+        });
+        const block = message.content[0];
+        if (!block || block.type !== "text") {
+          throw new Error("Unexpected response format from AI.");
+        }
+        const rawContent = block.text.trim();
+
+        let parsed2: unknown;
+        try {
+          parsed2 = JSON.parse(rawContent);
+        } catch {
+          throw new Error("AI returned invalid JSON. Please try again.");
+        }
+        const validated = briefAnalysisSchema.safeParse(parsed2);
+        if (!validated.success) {
+          throw new Error("AI response did not match expected schema. Please try again.");
+        }
+        return { response: validated.data, modelUsed: MODEL };
+      },
     });
 
-    const block = message.content[0];
-    if (!block || block.type !== "text") {
-      return NextResponse.json({ error: "Unexpected response format from AI." }, { status: 502 });
-    }
-    rawContent = block.text.trim();
+    return NextResponse.json({ analysis: result.response, cached: result.cached });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: `AI request failed: ${message}` }, { status: 502 });
   }
-
-  let parsed2: unknown;
-  try {
-    parsed2 = JSON.parse(rawContent);
-  } catch {
-    return NextResponse.json({ error: "AI returned invalid JSON. Please try again." }, { status: 502 });
-  }
-
-  const analysis = briefAnalysisSchema.safeParse(parsed2);
-  if (!analysis.success) {
-    return NextResponse.json({ error: "AI response did not match expected schema. Please try again." }, { status: 502 });
-  }
-
-  return NextResponse.json({ analysis: analysis.data });
 }
