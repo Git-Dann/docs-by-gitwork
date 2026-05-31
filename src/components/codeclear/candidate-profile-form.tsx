@@ -245,7 +245,7 @@ export function CandidateProfileForm({
             <select
               value={value.currency}
               onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-              className="app-select w-[80px]"
+              className="app-select w-[88px] min-w-[88px] flex-shrink-0"
               aria-label="Currency"
             >
               {COMMON_CURRENCIES.map((code) => (
