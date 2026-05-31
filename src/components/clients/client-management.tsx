@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  ChatBubbleLeftRightIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -170,6 +172,16 @@ function ClientCard({ client }: { client: ClientListItem }) {
                 className="h-3.5 w-3.5 grayscale"
               />
             </a>
+          )}
+          {client.hasCareClient && (
+            <Link
+              href="/app/care"
+              title="Connected to Care"
+              className="opacity-40 hover:opacity-70 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+            </Link>
           )}
         </div>
       </div>

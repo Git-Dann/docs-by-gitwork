@@ -659,12 +659,13 @@ export function ClientDetail({ slug }: { slug: string }) {
             </div>
             {pulseScans.length === 0 ? (
               <div className="p-5">
-                <p className="text-sm text-[var(--text-4)]">
-                  No scans yet.{" "}
-                  <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
-                    Run a Pulse scan →
-                  </Link>
-                </p>
+                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                  <p className="text-sm text-[var(--text-4)]">
+                    <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
+                      + Run a Pulse scan for this client
+                    </Link>
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
