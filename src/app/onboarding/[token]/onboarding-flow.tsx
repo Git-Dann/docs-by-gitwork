@@ -86,6 +86,12 @@ function s(value: string | null | undefined): string {
   return value ?? "";
 }
 
+// Format a UK sort code as the client types: digits only, grouped as XX-XX-XX.
+function formatSortCode(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 6);
+  return digits.replace(/(\d{2})(?=\d)/g, "$1-");
+}
+
 export function OnboardingFlow({
   token,
   initialSession,
@@ -370,7 +376,7 @@ export function OnboardingFlow({
               </li>
               <li className="flex gap-2">
                 <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                Once you submit, Dan or Harry will review and get back to you within a day.
+                Once you submit, our team will review your details and get back to you shortly.
               </li>
             </ul>
             {readOnly ? (
@@ -478,7 +484,7 @@ export function OnboardingFlow({
               <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 {status === "LINKED"
                   ? "This onboarding is linked to your client record. To make changes, contact Gitwork."
-                  : "Submitted — Dan or Harry will review and get back to you."}
+                  : "Submitted — thanks! We've received your details and will be in touch shortly."}
               </div>
             )}
 
@@ -1009,11 +1015,12 @@ function StepBank({
         <Field label="Sort code">
           <TextInput
             value={bankInput.sortCode}
-            onChange={setBank("sortCode")}
+            onChange={(v) => setBank("sortCode")(formatSortCode(v))}
             readOnly={readOnly}
             placeholder="20-00-00"
             autoComplete="off"
             inputMode="numeric"
+            maxLength={8}
           />
         </Field>
         <Field label="Account number">
