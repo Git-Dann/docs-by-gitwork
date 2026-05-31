@@ -86,6 +86,12 @@ function s(value: string | null | undefined): string {
   return value ?? "";
 }
 
+// Format a UK sort code as the client types: digits only, grouped as XX-XX-XX.
+function formatSortCode(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 6);
+  return digits.replace(/(\d{2})(?=\d)/g, "$1-");
+}
+
 export function OnboardingFlow({
   token,
   initialSession,
@@ -302,7 +308,7 @@ export function OnboardingFlow({
     return (
       <div className="flex min-h-screen flex-col bg-[var(--surface-canvas)] md:h-screen md:flex-row md:overflow-hidden">
         {/* Left — full-bleed image / placeholder */}
-        <div className="relative h-72 w-full overflow-hidden md:h-full md:w-1/2 md:flex-shrink-0">
+        <div className="relative h-56 w-full overflow-hidden sm:h-64 md:h-full md:w-1/2 md:flex-shrink-0">
           {/* Swap this gradient for a real hero by dropping an image into
               /public/onboarding-hero.jpg and uncommenting the Image below. */}
           <div
@@ -370,7 +376,7 @@ export function OnboardingFlow({
               </li>
               <li className="flex gap-2">
                 <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                Once you submit, Dan or Harry will review and get back to you within a day.
+                Once you submit, our team will review your details and get back to you shortly.
               </li>
             </ul>
             {readOnly ? (
@@ -478,7 +484,7 @@ export function OnboardingFlow({
               <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 {status === "LINKED"
                   ? "This onboarding is linked to your client record. To make changes, contact Gitwork."
-                  : "Submitted — Dan or Harry will review and get back to you."}
+                  : "Submitted — thanks! We've received your details and will be in touch shortly."}
               </div>
             )}
 
@@ -603,7 +609,9 @@ type TextInputProps = Omit<
 function TextInput({ value, onChange, readOnly, ...rest }: TextInputProps) {
   return (
     <input
-      className="app-input"
+      // text-base (16px) on mobile stops iOS Safari zooming in on focus;
+      // back to 14px from sm: up. Taller min-height = comfortable mobile taps.
+      className="app-input text-base sm:text-sm min-h-[46px] sm:min-h-[36px]"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={readOnly}
@@ -624,7 +632,7 @@ type TextAreaProps = Omit<
 function TextArea({ value, onChange, readOnly, ...rest }: TextAreaProps) {
   return (
     <textarea
-      className="app-textarea"
+      className="app-textarea text-base sm:text-sm"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={readOnly}
@@ -672,6 +680,8 @@ function StepYou({
       <Field label="Email" required>
         <TextInput
           type="email"
+          inputMode="email"
+          autoComplete="email"
           value={s(fields.contactEmail)}
           onChange={setField("contactEmail")}
           readOnly={readOnly}
@@ -680,6 +690,7 @@ function StepYou({
       </Field>
       <Field label="Your role">
         <TextInput
+          autoComplete="organization-title"
           value={s(fields.contactRole)}
           onChange={setField("contactRole")}
           readOnly={readOnly}
@@ -689,6 +700,8 @@ function StepYou({
       <Field label="Phone" hint="Optional. We'll only call if something's urgent.">
         <TextInput
           type="tel"
+          inputMode="tel"
+          autoComplete="tel"
           value={s(fields.contactPhone)}
           onChange={setField("contactPhone")}
           readOnly={readOnly}
@@ -717,6 +730,7 @@ function StepCompany({
       </p>
       <Field label="Company name" required>
         <TextInput
+          autoComplete="organization"
           value={s(fields.companyName)}
           onChange={setField("companyName")}
           readOnly={readOnly}
@@ -758,6 +772,8 @@ function StepCompany({
       >
         <TextInput
           type="email"
+          inputMode="email"
+          autoComplete="email"
           value={s(fields.invoiceEmail)}
           onChange={setField("invoiceEmail")}
           readOnly={readOnly}
@@ -771,6 +787,7 @@ function StepCompany({
       </p>
       <Field label="Address">
         <TextInput
+          autoComplete="address-line1"
           value={s(fields.addressLine1)}
           onChange={setField("addressLine1")}
           readOnly={readOnly}
@@ -779,6 +796,7 @@ function StepCompany({
       </Field>
       <Field label="Address line 2">
         <TextInput
+          autoComplete="address-line2"
           value={s(fields.addressLine2)}
           onChange={setField("addressLine2")}
           readOnly={readOnly}
@@ -787,6 +805,7 @@ function StepCompany({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Town/City">
           <TextInput
+            autoComplete="address-level2"
             value={s(fields.city)}
             onChange={setField("city")}
             readOnly={readOnly}
@@ -795,6 +814,7 @@ function StepCompany({
         </Field>
         <Field label="County">
           <TextInput
+            autoComplete="address-level1"
             value={s(fields.county)}
             onChange={setField("county")}
             readOnly={readOnly}
@@ -803,6 +823,7 @@ function StepCompany({
         </Field>
         <Field label="Postcode">
           <TextInput
+            autoComplete="postal-code"
             value={s(fields.postcode)}
             onChange={setField("postcode")}
             readOnly={readOnly}
@@ -811,6 +832,7 @@ function StepCompany({
         </Field>
         <Field label="Country">
           <TextInput
+            autoComplete="country-name"
             value={s(fields.country) || COUNTRY_DEFAULT}
             onChange={setField("country")}
             readOnly={readOnly}
@@ -1009,11 +1031,12 @@ function StepBank({
         <Field label="Sort code">
           <TextInput
             value={bankInput.sortCode}
-            onChange={setBank("sortCode")}
+            onChange={(v) => setBank("sortCode")(formatSortCode(v))}
             readOnly={readOnly}
             placeholder="20-00-00"
             autoComplete="off"
             inputMode="numeric"
+            maxLength={8}
           />
         </Field>
         <Field label="Account number">

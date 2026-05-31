@@ -33,9 +33,9 @@ import {
   useCreateClientPlatform,
   useDeleteClientDesign,
   useDeleteClientPlatform,
-  useMoveOnboardingToWorkflow,
   useOgPreview,
   useRevealClientBank,
+  useSetClientStatus,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
@@ -220,10 +220,9 @@ export function ClientDetail({ slug }: { slug: string }) {
   return (
     <div className="space-y-5">
 
-      {client.status === "PENDING_REVIEW" && client.onboardingId && (
+      {client.status === "PENDING_REVIEW" && (
         <PendingReviewBanner
           slug={slug}
-          onboardingId={client.onboardingId}
           companyName={client.legalCompanyName ?? client.name}
         />
       )}
@@ -1980,20 +1979,20 @@ function ClientEditModal({
 
 function PendingReviewBanner({
   slug,
-  onboardingId,
   companyName,
 }: {
   slug: string;
-  onboardingId: string;
   companyName: string;
 }) {
-  const moveMutation = useMoveOnboardingToWorkflow();
+  const setStatus = useSetClientStatus(slug);
   const [error, setError] = useState<string | null>(null);
 
   const handleMove = async () => {
     setError(null);
     try {
-      await moveMutation.mutateAsync(onboardingId);
+      // The client already exists (materialised on submit) — moving to workflow
+      // just flips PENDING_REVIEW → ACTIVE, which enables Pulse + full access.
+      await setStatus.mutateAsync("ACTIVE");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Move failed");
     }
@@ -2015,7 +2014,7 @@ function PendingReviewBanner({
           type="button"
           variant="primary"
           size="sm"
-          loading={moveMutation.isPending}
+          loading={setStatus.isPending}
           onClick={() => void handleMove()}
           data-slug={slug}
         >

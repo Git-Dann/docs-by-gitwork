@@ -450,7 +450,8 @@ export function ClientManagement() {
     [onboardingQuery.data?.links],
   );
   const suggestedCount = clients.filter((c) => c.source === "SUGGESTED").length;
-  const pendingCount = pendingQuery.data?.clients.length ?? 0;
+  const pendingClients = pendingQuery.data?.clients ?? [];
+  const pendingCount = pendingClients.length;
   const openOnboardingCount = useMemo(
     () => onboardingLinks.filter((l) => l.status !== "LINKED").length,
     [onboardingLinks],
@@ -481,32 +482,22 @@ export function ClientManagement() {
               <span className="widget-header__label--number">01</span>
               {" // PORTAL"}
             </span>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                onClick={() => setShowNewLink(true)}
-              >
-                <LinkIcon className="h-3.5 w-3.5" />
-                New onboarding link
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="xs"
-                onClick={() => setShowCreate(true)}
-              >
-                <PlusIcon className="h-3.5 w-3.5" />
-                Add client
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="primary"
+              size="xs"
+              onClick={() => setShowCreate(true)}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add client
+            </Button>
           </div>
 
           <div className="widget-body--compact">
             <div className="flex flex-wrap items-center gap-4">
-              {/* Search */}
-              <label className="relative min-w-[200px] flex-1">
+              {/* Search — fixed width so it doesn't shift when the stats
+                  block (active-tab only) appears/disappears between tabs. */}
+              <label className="relative w-full sm:w-80">
                 <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
                 <input
                   value={search}
@@ -564,9 +555,38 @@ export function ClientManagement() {
                 label="Onboarding links"
                 count={openOnboardingCount}
               />
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                className="ml-auto"
+                onClick={() => setShowNewLink(true)}
+              >
+                <LinkIcon className="h-3.5 w-3.5" />
+                Onboarding
+              </Button>
             </div>
           </div>
         </section>
+
+        {/* ── Pending review — surfaced on the Active view whenever there are
+            submitted onboardings awaiting a move to workflow. Only renders when
+            there's at least one. ── */}
+        {tab === "active" && pendingClients.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="widget-data-label">Pending review</span>
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-800">
+                {pendingClients.length}
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {pendingClients.map((client) => (
+                <ClientCard key={client.id} client={client} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ── Content per tab ── */}
         {isPending ? (
@@ -774,23 +794,46 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
                   Link ready
                 </h2>
                 <p className="mt-1 text-sm text-[var(--text-3)]">
-                  Send this to the client. They&apos;ll be able to come back to it any time
-                  before you move them to workflow.
+                  Send this to the client. They can come back to it any time before you
+                  move them to workflow.
                 </p>
-                <div className="mt-5 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-                  <code className="flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
-                    {fullUrl}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="app-button app-button-utility app-button-xs"
-                  >
-                    <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                    {copied ? "Copied" : "Copy"}
-                  </button>
+
+                {link.label ? (
+                  <div className="mt-5">
+                    <span className="widget-data-label">Label</span>
+                    <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
+                      {link.label}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="mt-4">
+                  <span className="widget-data-label">Onboarding link</span>
+                  <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                    <code className="flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
+                      {fullUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="app-button app-button-utility app-button-xs"
+                    >
+                      <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-6 flex justify-end">
+
+                <div className="mt-6 flex items-center justify-between gap-2">
+                  <a
+                    href={fullUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="app-button app-button-tertiary app-button-sm"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                    Preview
+                  </a>
                   <Button type="button" variant="primary" size="md" onClick={onClose}>
                     Done
                   </Button>

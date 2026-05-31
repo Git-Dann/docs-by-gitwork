@@ -153,7 +153,10 @@ export async function listOnboardingLinks(options?: {
   const rows = await onboardings.findMany({
     where: {
       workspaceId: workspace.id,
-      ...(options?.includeLinked ? {} : { NOT: { status: "LINKED" } }),
+      // Once a session has produced a client (on submit) it lives under
+      // "Pending review", not here. The Onboarding-links tab is just links
+      // that are still out / being filled in.
+      ...(options?.includeLinked ? {} : { workspaceClientId: null }),
     },
     include: { bankAccount: true },
     orderBy: { updatedAt: "desc" },
@@ -315,21 +318,103 @@ export async function saveOnboardingBank(
   return getOnboardingByTokenPublic(token);
 }
 
+/**
+ * Materialise a Pending-review WorkspaceClient from a submitted onboarding row.
+ * Creates the client (status = PENDING_REVIEW) from the captured answers and
+ * copies the encrypted bank cipher across to ClientBankAccount. Does NOT mutate
+ * the onboarding row — the caller links it. Returns the new client id + slug.
+ */
+async function materializePendingClient(
+  row: OnboardingRow,
+  workspaceId: string,
+): Promise<{ id: string; slug: string }> {
+  const contactName = [row.contactFirstName, row.contactLastName]
+    .map((p) => p?.trim())
+    .filter(Boolean)
+    .join(" ");
+  const companyName = row.companyName?.trim() || contactName || "New client";
+  const baseSlug = slugifyClientName(companyName);
+  let slug = baseSlug;
+  for (let i = 2; i < 50; i++) {
+    const exists = await workspaceClients.findUnique({
+      where: { workspaceId_slug: { workspaceId, slug } },
+      select: { id: true },
+    });
+    if (!exists) break;
+    slug = `${baseSlug}-${i}`;
+  }
+
+  const client = await workspaceClients.create({
+    data: {
+      workspaceId,
+      name: companyName,
+      slug,
+      website: row.productUrl || null,
+      addressLine1: row.addressLine1,
+      addressLine2: row.addressLine2,
+      city: row.city,
+      county: row.county,
+      postcode: row.postcode,
+      country: row.country,
+      notes: row.projectGoals,
+      primaryContactName: contactName || null,
+      primaryContactEmail: row.contactEmail,
+      primaryContactPhone: row.contactPhone,
+      invoiceEmail: row.invoiceEmail,
+      legalCompanyName: row.legalCompanyName,
+      companyNumber: row.companyNumber,
+      vatNumber: row.vatNumber,
+      // Billing address only when the client said it differs from HQ.
+      ...(row.billingDiffers
+        ? {
+            billingAddressLine1: row.billingAddressLine1,
+            billingAddressLine2: row.billingAddressLine2,
+            billingCity: row.billingCity,
+            billingCounty: row.billingCounty,
+            billingPostcode: row.billingPostcode,
+            billingCountry: row.billingCountry,
+          }
+        : {}),
+      status: "PENDING_REVIEW",
+    },
+  });
+
+  if (row.bankAccount) {
+    await clientBankAccounts.create({
+      data: {
+        clientId: client.id,
+        accountHolderCipher: row.bankAccount.accountHolderCipher,
+        bankNameCipher: row.bankAccount.bankNameCipher,
+        sortCodeCipher: row.bankAccount.sortCodeCipher,
+        accountNumberCipher: row.bankAccount.accountNumberCipher,
+        ibanCipher: row.bankAccount.ibanCipher,
+        swiftBicCipher: row.bankAccount.swiftBicCipher,
+        currency: row.bankAccount.currency,
+        accountNumberLast4: row.bankAccount.accountNumberLast4,
+      },
+    });
+  }
+
+  return { id: client.id, slug };
+}
+
+/**
+ * Final submit. Validates the required answers, then materialises a
+ * PENDING_REVIEW client so the submission lands in Portal immediately (under
+ * "Pending review"). The onboarding row is linked to that client and goes
+ * read-only. Dan/Harry later flip the client PENDING_REVIEW → ACTIVE.
+ */
 export async function submitOnboarding(
   token: string,
 ): Promise<OnboardingPublicPayload | null> {
+  const { workspace } = await ensureBaseRecords();
   const row = await onboardings.findUnique({
     where: { accessToken: token },
-    select: {
-      id: true,
-      status: true,
-      contactFirstName: true,
-      contactEmail: true,
-      companyName: true,
-    },
+    include: { bankAccount: true },
   });
   if (!row) return null;
-  if (row.status === "LINKED") return getOnboardingByTokenPublic(token);
+  // Already materialised — nothing to do.
+  if (row.workspaceClientId) return getOnboardingByTokenPublic(token);
 
   // Minimum required answers — first name, email, company name. The wizard
   // prevents submit when these are blank, but enforce here too.
@@ -339,11 +424,14 @@ export async function submitOnboarding(
     );
   }
 
+  const client = await materializePendingClient(row, workspace.id);
+
   await onboardings.update({
     where: { id: row.id },
     data: {
       status: "SUBMITTED",
       submittedAt: new Date(),
+      workspaceClientId: client.id,
     },
   });
   return getOnboardingByTokenPublic(token);
@@ -366,15 +454,14 @@ export async function moveOnboardingToWorkflow(id: string): Promise<{ slug: stri
     include: { bankAccount: true },
   });
   if (!row) throw new Error("Onboarding session not found.");
-  if (row.status === "LINKED") {
-    if (row.workspaceClientId) {
-      const existing = await workspaceClients.findUnique({
-        where: { id: row.workspaceClientId },
-        select: { slug: true },
-      });
-      if (existing) return { slug: existing.slug };
-    }
-    throw new Error("Onboarding session already linked.");
+  // Idempotent — if this onboarding already produced a client (e.g. via submit),
+  // return that client rather than creating a duplicate.
+  if (row.workspaceClientId) {
+    const existing = await workspaceClients.findUnique({
+      where: { id: row.workspaceClientId },
+      select: { slug: true },
+    });
+    if (existing) return { slug: existing.slug };
   }
 
   const contactName = [row.contactFirstName, row.contactLastName]
