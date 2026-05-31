@@ -62,6 +62,7 @@ const LABEL_BY_TYPE: Record<DocumentType, string> = {
   MSA: "Master Service Agreement",
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
+  DSA: "Data Sharing Agreement",
   OTHER: "Document",
 };
 const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
@@ -71,6 +72,7 @@ const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
   MSA: "Untitled MSA",
   NDA: "Untitled NDA",
   CO: "Untitled Change Order",
+  DSA: "Untitled Data Sharing Agreement",
   OTHER: "Untitled Document",
 };
 const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
@@ -80,6 +82,7 @@ const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
   MSA: "Acme — Master Service Agreement",
   NDA: "Acme — Mutual NDA",
   CO: "Acme — Change Order #1",
+  DSA: "Acme — Data Sharing Agreement",
   OTHER: "Acme — Briefing Note",
 };
 

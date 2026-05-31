@@ -3244,7 +3244,7 @@ interface TemplateRecord {
   name: string;
   slug: string;
   description: string | null;
-  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
+  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";
   isDefault: boolean;
   sections: unknown;
   workspaceId: string | null;
@@ -3260,6 +3260,7 @@ const DOC_TYPE_LABEL: Record<TemplateRecord["documentType"], string> = {
   MSA: "Master Service Agreement",
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
+  DSA: "Data Sharing Agreement",
   OTHER: "Document",
 };
 
@@ -3377,6 +3378,7 @@ export function TemplatesTab() {
     "MSA",
     "NDA",
     "CO",
+    "DSA",
     "OTHER",
   ];
 

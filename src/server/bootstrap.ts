@@ -227,10 +227,17 @@ async function _ensureBaseRecords() {
     },
   });
 
-  // Seed SLA and SOW default templates (Sprint 3). Each is keyed by slug so the upsert is
-  // idempotent on subsequent boots, and `update` refreshes the sections if we evolve the
-  // blueprints in the codebase.
-  for (const type of [DocumentType.SLA, DocumentType.SOW] as const) {
+  // Seed every contract-type default template — SLA / SOW (Sprint 3), MSA / NDA / CO / DSA
+  // (Sprint 8 agency library). Each is keyed by slug so the upsert is idempotent on subsequent
+  // boots, and `update` refreshes the sections if we evolve the blueprints in the codebase.
+  for (const type of [
+    DocumentType.SLA,
+    DocumentType.SOW,
+    DocumentType.MSA,
+    DocumentType.NDA,
+    DocumentType.CO,
+    DocumentType.DSA,
+  ] as const) {
     const blueprints = getTemplateBlueprintsForType(type);
     const slug = TEMPLATE_SLUG_BY_TYPE[type];
     const name = TEMPLATE_NAME_BY_TYPE[type];

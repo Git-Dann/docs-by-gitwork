@@ -26,6 +26,7 @@ const TYPE_PREFIX: Record<DocumentType, string> = {
   MSA: "MSA",
   NDA: "NDA",
   CO: "CO",
+  DSA: "DSA",
   OTHER: "DOC",
 };
 

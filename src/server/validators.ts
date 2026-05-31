@@ -430,7 +430,7 @@ export const proposalCreateSchema = z.object({
   templateId: z.string().optional(),
   // Document type for the new record. Defaults to PROPOSAL at the API layer if omitted, so
   // existing callers (legacy "New document" flow that didn't know about types) still work.
-  documentType: z.enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "OTHER"]).optional(),
+  documentType: z.enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"]).optional(),
 });
 
 export const supportClientCreateSchema = z.object({

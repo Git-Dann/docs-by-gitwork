@@ -33,6 +33,7 @@ const DOC_TYPE_BADGE: Record<RelationDocument["documentType"], string> = {
   MSA: "MSA",
   NDA: "NDA",
   CO: "CO",
+  DSA: "DSA",
   OTHER: "DOC",
 };
 
