@@ -115,8 +115,10 @@ export function TemplateGallery({
 
   return (
     <div className="space-y-3">
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* Filter chips — sticky to the top of the gallery scroll container so the operator can
+          flip doc type while scrolled deep into a long list. -mx-3 -mt-3 px-3 pt-3 backs the
+          chips up to the container's padded edges so the sticky background bleeds correctly. */}
+      <div className="sticky top-0 z-10 -mx-3 -mt-3 flex flex-wrap gap-1.5 bg-[var(--surface-canvas)] px-3 pb-2.5 pt-3">
         {visibleChips.map((chip) => (
           <FilterChip key={chip} active={filter === chip} onClick={() => setFilter(chip)}>
             {CHIP_LABEL[chip]}
