@@ -584,7 +584,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {/* ── ACTIVITY — 2×2 grid ── */}
       {/* Row 1: Documents + Pulse */}
-      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-2 gap-4">
 
         {/* 12 // DOCUMENTS */}
         <section className="widget-card">
@@ -715,7 +715,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       </div>
 
       {/* Row 2: Developers + Studies */}
-      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-2 gap-4">
         {/* 15 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
@@ -901,32 +901,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                   ))}
                 </tbody>
               </table>
-            </div>
-          </section>
-        )}
-
-        {/* 16 // CARE */}
-        {supportClient && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">16</span>
-                {" // CARE"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-5">
-              <div>
-                <p className="widget-data-label mb-1">Support client</p>
-                <p className="text-sm font-medium text-[var(--text-1)]">
-                  {supportClient.name}
-                </p>
-              </div>
-              <Link
-                href="/app/care"
-                className={buttonStyles({ variant: "secondary", size: "sm" })}
-              >
-                Open in Care
-              </Link>
             </div>
           </section>
         )}
