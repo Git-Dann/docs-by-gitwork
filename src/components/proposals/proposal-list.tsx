@@ -138,12 +138,24 @@ export function ProposalList() {
     () => (proofDocumentsQuery.data?.documents ?? []).filter((document) => !document.archivedAt),
     [proofDocumentsQuery.data?.documents],
   );
-  const totalPages = Math.max(1, Math.ceil(proposals.length / rowsPerPage));
+
+  // Doc-type filter chip row. Affects the table only — stat tiles always reflect the full
+  // workspace so the operator sees the big picture even while scoped into a single type.
+  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">("ALL");
+  const docTypeFilteredProposals = useMemo(
+    () =>
+      docTypeFilter === "ALL"
+        ? proposals
+        : proposals.filter((p) => (p.documentType as DocumentType) === docTypeFilter),
+    [proposals, docTypeFilter],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(docTypeFilteredProposals.length / rowsPerPage));
   const currentPage = Math.min(page, totalPages);
   const pagedProposals = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return proposals.slice(start, start + rowsPerPage);
-  }, [currentPage, proposals, rowsPerPage]);
+    return docTypeFilteredProposals.slice(start, start + rowsPerPage);
+  }, [currentPage, docTypeFilteredProposals, rowsPerPage]);
 
   const allOnPageSelected =
     pagedProposals.length > 0 && pagedProposals.every((proposal) => selectedIds.includes(proposal.id));
@@ -195,7 +207,7 @@ export function ProposalList() {
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [search, status, sort, rowsPerPage]);
+  }, [search, status, sort, rowsPerPage, docTypeFilter]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -220,9 +232,21 @@ export function ProposalList() {
 
   const totalCount = proposals.length;
   const activeCount = proposals.filter(
-    (entry) => entry.status !== "ARCHIVED" && entry.status !== "APPROVED",
+    (entry) =>
+      entry.status !== "ARCHIVED" &&
+      entry.status !== "APPROVED" &&
+      entry.status !== "SENT",
   ).length;
+  const sentCount = proposals.filter((entry) => entry.status === "SENT").length;
   const approvedCount = proposals.filter((entry) => entry.status === "APPROVED").length;
+
+  // Doc-type breakdown for the filter row count chips. Always over the full workspace so the
+  // chips don't lie when a filter is already applied.
+  const docTypeCounts = proposals.reduce<Record<string, number>>((acc, p) => {
+    const type = p.documentType ?? "OTHER";
+    acc[type] = (acc[type] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const isWorkspaceEmpty = !isPending && totalCount === 0 && search === "" && status === "ALL";
   const showOnboarding = isWorkspaceEmpty && !onboardingDismissed;
@@ -247,12 +271,12 @@ export function ProposalList() {
               FIRST TIME HERE?
             </p>
             <h2 className="mt-2 font-[family-name:var(--font-display)] text-[32px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
-              Spin up your first proposal in under a minute.
+              Your agency document library, ready to ship.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
-              Docs handles proposals, SLAs, SOWs, MSAs, NDAs, and change orders &mdash; all from one
-              builder. Start from a template, draft the body with AI, then ship a signed PDF or a
-              token-gated share link.
+              Seven Gitwork-grade stock templates ship with the workspace &mdash; proposals, SLAs,
+              SOWs, MSAs, NDAs, change orders, and data sharing agreements. Pick one, drop the
+              client name, and you&rsquo;ve got a doc ready to share or send for signature.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -299,21 +323,43 @@ export function ProposalList() {
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="DOCUMENTS" value={String(totalCount).padStart(2, "0")} hint="IN VIEW" widgetNumber="01" />
-        <StatTile label="IN FLIGHT" value={String(activeCount).padStart(2, "0")} hint="DRAFT · REVIEW" widgetNumber="02" />
-        <StatTile label="APPROVED" value={String(approvedCount).padStart(2, "0")} hint="SHIPPED" widgetNumber="03" tone="success" />
-        <StatTile label="PROOF DRAFTS" value={String(proofDocuments.length).padStart(2, "0")} hint="SAVED" widgetNumber="04" />
+        <StatTile
+          label="DOCUMENTS"
+          value={String(totalCount).padStart(2, "0")}
+          hint="ALL TYPES"
+          widgetNumber="01"
+        />
+        <StatTile
+          label="IN FLIGHT"
+          value={String(activeCount).padStart(2, "0")}
+          hint="DRAFT · REVIEW"
+          widgetNumber="02"
+        />
+        <StatTile
+          label="OUT FOR SIG"
+          value={String(sentCount).padStart(2, "0")}
+          hint="AWAITING SIGNERS"
+          widgetNumber="03"
+        />
+        <StatTile
+          label="SIGNED"
+          value={String(approvedCount).padStart(2, "0")}
+          hint="COMPLETE"
+          widgetNumber="04"
+          tone="success"
+        />
       </section>
 
       <section className="widget-card overflow-hidden">
         <div className="widget-header">
-          <span className="widget-header-label">05 // PROPOSALS</span>
+          <span className="widget-header-label">05 // DOCUMENT LIBRARY</span>
           <span className="widget-header-right">{totalCount} TOTAL · {activeCount} ACTIVE</span>
         </div>
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
           <div>
             <p className="text-sm leading-6 text-[var(--text-3)]">
-              Proposal workstreams, review state, and delivery ownership managed inside Docs.
+              Every proposal, SLA, SOW, MSA, NDA, change order, and data sharing agreement &mdash;
+              search, filter by type, and ship in one place.
             </p>
           </div>
 
@@ -326,6 +372,42 @@ export function ProposalList() {
           >
             New document
           </Button>
+        </div>
+
+        {/* Doc-type filter chip row. Scoped to the table only — stat tiles stay over the
+            whole workspace so the operator can see both views without losing context. */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-2)] px-4 py-3 sm:px-6">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+            FILTER BY TYPE
+          </span>
+          {(["ALL", "PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"] as const).map((type) => {
+            const count = type === "ALL" ? totalCount : docTypeCounts[type] ?? 0;
+            if (type !== "ALL" && count === 0) return null;
+            const active = docTypeFilter === type;
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setDocTypeFilter(type as DocumentType | "ALL")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[6px] border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] transition",
+                  active
+                    ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-white text-[var(--text-4)] hover:border-[var(--border-1)] hover:text-[var(--text-2)]",
+                )}
+              >
+                {type === "ALL" ? "All" : type === "CO" ? "Change Order" : type}
+                <span
+                  className={cn(
+                    "rounded-[3px] px-1 text-[9px]",
+                    active ? "bg-[var(--brand-700)] text-white" : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
@@ -504,6 +586,12 @@ export function ProposalList() {
                       </td>
                       <td>
                         <div className="flex flex-wrap items-baseline gap-x-2">
+                          {/* Doc-type pill — visible at a glance, distinct colour from labels. */}
+                          {proposal.documentType ? (
+                            <span className="inline-flex items-center rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
+                              {proposal.documentType === "CO" ? "CO" : proposal.documentType}
+                            </span>
+                          ) : null}
                           <Link
                             href={`/app/proposals/${proposal.id}`}
                             className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
@@ -786,7 +874,11 @@ export function ProposalList() {
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="app-dialog-panel flex max-h-[88vh] w-full max-w-4xl flex-col p-6">
+            {/* Fixed dimensions so the modal doesn't grow / shrink between renders. Width pinned
+                at max-w-4xl, height pinned at h-[640px] (capped by viewport on small screens).
+                Both columns scroll internally so changing template count doesn't resize the
+                container. */}
+            <div className="app-dialog-panel flex h-[640px] max-h-[calc(100vh-32px)] w-full max-w-4xl flex-col p-6">
               {/* Compact header — eyebrow + title only, subtitle dropped so the form has room. */}
               <div className="flex items-baseline justify-between gap-3">
                 <div>
