@@ -94,9 +94,11 @@ export function CandidateProfileForm({
   }
 
   return (
-    <div className="space-y-5">
+    // Two-column outer grid on wide screens, stacked on narrow.
+    // Sections each pick whether to span 1 column or both via `span`.
+    <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
       {/* Identity */}
-      <Section title="Identity">
+      <Section title="Identity" span="full">
         <Field label="Name">
           <input
             value={value.name}
@@ -134,7 +136,7 @@ export function CandidateProfileForm({
       </Section>
 
       {/* Tech */}
-      <Section title="Tech stack">
+      <Section title="Tech stack" span="half">
         <Field label="Primary stack" span="full">
           <input
             value={value.primaryStack}
@@ -161,7 +163,7 @@ export function CandidateProfileForm({
 
       {/* Clients (create-time only) */}
       {showClientsPicker ? (
-        <Section title="Clients">
+        <Section title="Clients" span="half">
           <div className="col-span-full">
             <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
               Current clients
@@ -180,7 +182,7 @@ export function CandidateProfileForm({
       ) : null}
 
       {/* Profile links */}
-      <Section title="Profile links">
+      <Section title="Profile links" span="half">
         <Field label="LinkedIn URL">
           <input
             value={value.linkedinUrl}
@@ -211,7 +213,7 @@ export function CandidateProfileForm({
       </Section>
 
       {/* Rate & availability */}
-      <Section title="Rate & availability">
+      <Section title="Rate & availability" span="half">
         <Field label="Years of experience">
           <input
             type="number"
@@ -245,7 +247,10 @@ export function CandidateProfileForm({
             <select
               value={value.currency}
               onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-              className="app-select w-[80px]"
+              // `app-select` reserves ~38px on the right for the chevron icon
+              // (calc(100% - 20px) center + 18px wide). Need explicit padding
+              // plus min-width 100px so 3-letter ISO codes never clip.
+              className="app-select min-w-[100px] flex-shrink-0 pr-9"
               aria-label="Currency"
             >
               {COMMON_CURRENCIES.map((code) => (
@@ -275,7 +280,7 @@ export function CandidateProfileForm({
       </Section>
 
       {/* Bio */}
-      <Section title="About">
+      <Section title="About" span="full">
         <Field label="Bio" span="full">
           <textarea
             value={value.bio}
@@ -288,7 +293,7 @@ export function CandidateProfileForm({
       </Section>
 
       {showOriginToggle ? (
-        <Section title="Origin (admin)">
+        <Section title="Origin (admin)" span="full">
           <Field label="Roster" span="full">
             <div className="flex gap-1.5">
               {(["INTERNAL", "EXTERNAL"] as const).map((origin) => (
@@ -314,9 +319,22 @@ export function CandidateProfileForm({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * Section block. `span` decides whether the section occupies one column
+ * of the outer 2-col grid ("half") or both ("full"). On narrow screens
+ * the outer grid collapses to one column, so span is a no-op there.
+ */
+function Section({
+  title,
+  children,
+  span = "full",
+}: {
+  title: string;
+  children: React.ReactNode;
+  span?: "half" | "full";
+}) {
   return (
-    <div>
+    <div className={span === "full" ? "lg:col-span-2" : "lg:col-span-1"}>
       <p className="widget-data-label mb-3">{title}</p>
       <div className="grid grid-cols-2 gap-3">{children}</div>
     </div>

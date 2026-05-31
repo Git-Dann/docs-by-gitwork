@@ -5,7 +5,6 @@ import {
   ArrowTopRightOnSquareIcon,
   BanknotesIcon,
   BeakerIcon,
-  CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   CodeBracketIcon,
@@ -49,7 +48,6 @@ import type {
   ClientDesignRecord,
   ClientPlatformRecord,
 } from "@/types/client";
-import { ScheduleEditor } from "@/components/codeclear/schedule-editor";
 
 type EditFormState = {
   name: string;
@@ -245,6 +243,17 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Suggested
               </span>
             )}
+            {supportClient && (
+              <Link
+                href="/app/care"
+                title="Open in Care"
+                className="flex items-center gap-1 rounded-[4px] border border-[var(--mist-border)] bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)] transition hover:opacity-80"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                Care
+              </Link>
+            )}
             {/* Integration quick-links */}
             {client.googleDriveFolderUrl && (
               <a
@@ -376,7 +385,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
-        <StatCard number="06" label="STUDIES" value={studies.length} />
+        <StatCard number="06" label="DEVS" value={(placements ?? []).filter((p) => !p.endDate).length} />
       </div>
 
       {/* ── 07 // SLACK ACTIVITY ── */}
@@ -684,7 +693,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {/* ── ACTIVITY — 2×2 grid ── */}
       {/* Row 1: Documents + Pulse */}
-      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-2 gap-4">
 
         {/* 12 // DOCUMENTS */}
         <section className="widget-card">
@@ -760,17 +769,20 @@ export function ClientDetail({ slug }: { slug: string }) {
             {pulseScans.length === 0 ? (
               <div className="p-5">
                 {client.status === "PENDING_REVIEW" ? (
-                  <p className="text-sm text-[var(--text-4)]">
-                    Pulse scans run once this client is moved to workflow — keeps us
-                    from scanning a product URL before it&apos;s officially in our pipeline.
-                  </p>
+                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                    <p className="px-6 text-sm text-[var(--text-4)]">
+                      Pulse scans run once this client is moved to workflow — keeps us
+                      from scanning a product URL before it&apos;s officially in our pipeline.
+                    </p>
+                  </div>
                 ) : (
-                  <p className="text-sm text-[var(--text-4)]">
-                    No scans yet.{" "}
-                    <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
-                      Run a Pulse scan →
-                    </Link>
-                  </p>
+                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                    <p className="text-sm text-[var(--text-4)]">
+                      <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
+                        + Run a Pulse scan for this client
+                      </Link>
+                    </p>
+                  </div>
                 )}
               </div>
             ) : (
@@ -822,7 +834,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       </div>
 
       {/* Row 2: Developers + Studies */}
-      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-2 gap-4">
         {/* 15 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
@@ -1012,32 +1024,6 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-        {/* 16 // CARE */}
-        {supportClient && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">16</span>
-                {" // CARE"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-5">
-              <div>
-                <p className="widget-data-label mb-1">Support client</p>
-                <p className="text-sm font-medium text-[var(--text-1)]">
-                  {supportClient.name}
-                </p>
-              </div>
-              <Link
-                href="/app/care"
-                className={buttonStyles({ variant: "secondary", size: "sm" })}
-              >
-                Open in Care
-              </Link>
-            </div>
-          </section>
-        )}
-
       {/* ── Edit client modal ── */}
       {editing && editForm && (
         <ClientEditModal
@@ -1078,174 +1064,85 @@ export function ClientDetail({ slug }: { slug: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// StatCard — individual metric widget
+// ClientDevelopersSection — compact name roster, Portal read-only view
 // ---------------------------------------------------------------------------
-/**
- * DEVELOPERS section on a Portal client page. Shows the dev roster for this
- * client with allocation + dates + status, plus per-row Edit that opens the
- * shared ScheduleEditor scoped to that dev. Writes propagate everywhere
- * (Pipeline, Code profile, iOS) via React Query invalidation in the hooks.
- *
- * The editor is locked to this client so admins can't accidentally reassign
- * a dev to a different client from inside the client's own page.
- */
 function ClientDevelopersSection({
-  clientId,
-  clientName,
   placements,
 }: {
   clientId: string;
   clientName: string;
   placements: import("@/types/client").ClientPlacementRecord[];
 }) {
-  const [editingCandidateId, setEditingCandidateId] = useState<string | null>(null);
-  const editingPlacement = editingCandidateId
-    ? placements.find((p) => p.candidateId === editingCandidateId) ?? null
-    : null;
-
   if (placements.length === 0) {
     return (
-      <div className="p-6">
+      <div className="p-5">
         <p className="text-sm text-[var(--text-4)]">
           No developers assigned yet. Open a developer in{" "}
           <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
             Code
           </Link>{" "}
-          and assign them to <span className="font-medium text-[var(--text-2)]">{clientName}</span>.
+          and assign them here.
         </p>
       </div>
     );
   }
 
-  return (
-    <>
-      <div className="overflow-x-auto">
-        <table className="app-table min-w-full">
-          <thead>
-            <tr>
-              <th className="text-left">Developer</th>
-              <th className="text-left">Project</th>
-              <th className="text-left">Dates</th>
-              <th className="text-left">Allocation</th>
-              <th className="text-left">Status</th>
-              <th className="text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {placements.map((placement) => {
-              // Status from dates: past = endDate set AND endDate < now;
-              // upcoming = startDate > now; active otherwise.
-              const nowMs = Date.now();
-              const startMs = new Date(placement.startDate).getTime();
-              const endMs = placement.endDate ? new Date(placement.endDate).getTime() : null;
-              const isPast = endMs !== null && endMs < nowMs;
-              const isUpcoming = !isPast && startMs > nowMs;
-              return (
-                <tr key={placement.id}>
-                  <td className="font-medium text-[var(--text-1)]">{placement.candidateName}</td>
-                  <td className="text-[var(--text-3)]">{placement.projectName}</td>
-                  <td>
-                    <span className="widget-timestamp">
-                      {formatDate(placement.startDate)}
-                      {placement.endDate ? ` → ${formatDate(placement.endDate)}` : " → present"}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
-                      {placement.allocationPercent}%
-                    </span>
-                  </td>
-                  <td>
-                    {isPast ? (
-                      <span
-                        className="inline-flex items-center rounded-[4px] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
-                        style={{ fontFamily: "var(--font-mono)" }}
-                      >
-                        Past
-                      </span>
-                    ) : isUpcoming ? (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-[4px] bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-amber-700"
-                        style={{ fontFamily: "var(--font-mono)" }}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                        Upcoming
-                      </span>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-[4px] bg-[#dcfce7] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[#16a34a]"
-                        style={{ fontFamily: "var(--font-mono)" }}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
-                        Active
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingCandidateId(placement.candidateId)}
-                        className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border-2)] bg-white px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
-                      >
-                        <CalendarDaysIcon className="h-3 w-3" />
-                        Edit
-                      </button>
-                      <Link
-                        href={`/app/codeclear/candidates/${placement.candidateId}`}
-                        className={buttonStyles({ variant: "secondary", size: "xs" })}
-                      >
-                        Profile
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+  const active = placements.filter((p) => !p.endDate);
+  const past   = placements.filter((p) => p.endDate);
 
-      {editingCandidateId && editingPlacement ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-8">
-          <button
-            type="button"
-            className="app-dialog-backdrop absolute inset-0"
-            aria-label="Close schedule editor"
-            onClick={() => setEditingCandidateId(null)}
-          />
-          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-2xl flex-col">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
-              <div>
-                <p className="widget-data-label">SCHEDULE</p>
-                <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-                  {editingPlacement.candidateName}
-                </h3>
-                <p className="mt-1 text-xs text-[var(--text-4)]">
-                  Editing engagement on {clientName}. Changes sync to Pipeline, Code, and iOS.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCandidateId(null)}
-                aria-label="Close"
-                className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+  function Avatar({ name, muted }: { name: string; muted?: boolean }) {
+    const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+    const colors = ["#1D4ED8","#0F766E","#7C3AED","#B45309","#DC2626","#16A34A"];
+    const bg = muted ? "#94A3B8" : colors[Math.abs(h) % colors.length];
+    return (
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+        style={{ background: bg, fontFamily: "var(--font-mono)" }}
+      >
+        {initials}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 space-y-4">
+      {active.length > 0 && (
+        <div>
+          <p className="widget-data-label mb-3">Active</p>
+          <div className="flex flex-wrap gap-2">
+            {active.map((p) => (
+              <Link
+                key={p.id}
+                href={`/app/codeclear/candidates/${p.candidateId}`}
+                className="flex items-center gap-2 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
               >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <ScheduleEditor candidateId={editingCandidateId} lockClientId={clientId} />
-            </div>
-            <div className="flex justify-end border-t border-[var(--border-2)] px-6 py-4">
-              <Button type="button" variant="secondary" size="sm" onClick={() => setEditingCandidateId(null)}>
-                Done
-              </Button>
-            </div>
+                <Avatar name={p.candidateName} />
+                {p.candidateName}
+              </Link>
+            ))}
           </div>
         </div>
-      ) : null}
-    </>
+      )}
+      {past.length > 0 && (
+        <div>
+          <p className="widget-data-label mb-3">Past</p>
+          <div className="flex flex-wrap gap-2">
+            {past.map((p) => (
+              <Link
+                key={p.id}
+                href={`/app/codeclear/candidates/${p.candidateId}`}
+                className="flex items-center gap-2 rounded-[6px] border border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-3 py-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+              >
+                <Avatar name={p.candidateName} muted />
+                {p.candidateName}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

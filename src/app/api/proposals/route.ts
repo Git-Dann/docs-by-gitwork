@@ -1,6 +1,7 @@
 import { DocumentStatus, DocumentType, Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
+import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
@@ -120,21 +121,53 @@ export async function POST(request: NextRequest) {
       selectedTemplate = template;
     }
 
-    // Build the section + child-row payloads from the blueprint for this doc type. For PROPOSAL,
-    // this matches the legacy behaviour (uses `getDefaultSectionPayload()`); for SLA/SOW it
-    // creates the structured sections defined in src/lib/templates/{sla,sow}.ts.
-    const blueprints = getTemplateBlueprintsForType(documentType);
-    const sectionsCreate =
-      documentType === "PROPOSAL"
-        ? getDefaultSectionPayload()
-        : blueprints.map((blueprint, index) => ({
-            key: blueprint.key,
-            title: blueprint.title,
-            description: blueprint.description,
-            sortOrder: index,
-            isVisible: blueprint.visible ?? true,
-            data: blueprint.data as unknown as Prisma.InputJsonValue,
-          }));
+    // Build the section + child-row payloads. Priority order:
+    //   1. If the picked template has a non-empty `sections` Json (e.g. workspace-owned templates
+    //      edited via Settings → Templates), use those — that's the user's hand-curated content.
+    //   2. Otherwise fall back to the hardcoded blueprint for this doc type. For PROPOSAL that
+    //      means `getDefaultSectionPayload()`; for the contract types it's the blueprint module
+    //      in `src/lib/templates/{type}.ts`.
+    const templateSections =
+      selectedTemplate?.sections && Array.isArray(selectedTemplate.sections)
+        ? (selectedTemplate.sections as Array<{
+            key: string;
+            title: string;
+            description?: string | null;
+            sortOrder?: number;
+            isVisible?: boolean;
+            data: unknown;
+          }>)
+        : null;
+
+    let sectionsCreate: Prisma.DocumentSectionCreateWithoutDocumentInput[];
+
+    if (templateSections && templateSections.length > 0) {
+      sectionsCreate = templateSections.map((section, index) => ({
+        key: section.key,
+        title: section.title,
+        description: section.description ?? null,
+        sortOrder: section.sortOrder ?? index,
+        isVisible: section.isVisible ?? true,
+        data: (section.data ?? {}) as Prisma.InputJsonValue,
+      }));
+    } else if (documentType === "PROPOSAL") {
+      sectionsCreate = getDefaultSectionPayload();
+    } else {
+      const blueprints = getTemplateBlueprintsForType(documentType);
+      sectionsCreate = blueprints.map((blueprint, index) => ({
+        key: blueprint.key,
+        title: blueprint.title,
+        description: blueprint.description,
+        sortOrder: index,
+        isVisible: blueprint.visible ?? true,
+        data: blueprint.data as unknown as Prisma.InputJsonValue,
+      }));
+    }
+
+    // Propagate the client name through every section that references it (cover, parties,
+    // signatures). Without this the operator would have to retype the same name 3-4 times per
+    // clone. No-op when clientName is empty.
+    sectionsCreate = applyClientNameToSections(sectionsCreate, body.clientName) as typeof sectionsCreate;
 
     // Only proposals start with stocked timeline phases / cost line items / CTAs / links / assets.
     // For SLA/SOW the cover + section blueprints carry everything; we leave the child collections

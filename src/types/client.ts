@@ -20,6 +20,7 @@ export interface ClientListItem extends ClientRecord {
   proposalCount: number;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
+  hasCareClient: boolean;
 }
 
 export interface ClientBankSummary {

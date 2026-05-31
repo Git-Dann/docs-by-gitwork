@@ -158,6 +158,10 @@ export function useClientDetail(slug: string) {
     queryKey: ["client", slug],
     queryFn: () => getClientDetail(slug),
     enabled: Boolean(slug),
+    // Refetch on window focus so changes made in Code (dev removals, etc.)
+    // are reflected when switching back to the Portal tab.
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000, // 30 s — fresh enough for active sessions
   });
 }
 

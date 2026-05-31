@@ -15,6 +15,7 @@ enum DocumentType {
   MSA // Master Service Agreement
   NDA // Non-Disclosure Agreement
   CO // Change Order (against a SOW)
+  DSA // Data Sharing Agreement / DPA (GDPR Article 28)
   OTHER // Catch-all for one-offs without a dedicated template yet
 }
 

@@ -31,6 +31,7 @@ const DOC_TYPE_LABEL: Record<string, string> = {
   MSA: "Master Service Agreement",
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
+  DSA: "Data Sharing Agreement",
   OTHER: "Document",
 };
 

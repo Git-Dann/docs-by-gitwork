@@ -333,6 +333,7 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     status: client.status,
     googleDriveFolderUrl: client.googleDriveFolderUrl,
     clickupUrl: client.clickupUrl,
+    hasCareClient: false, // overridden by listDerivedClients which does the care lookup
   };
 }
 
@@ -451,17 +452,28 @@ export async function listDerivedClients(filters?: {
   const search = filters?.search?.trim().toLowerCase() ?? "";
   const statusFilter = filters?.status ?? "ACTIVE";
 
+  // Single query: which portal client IDs have a linked Care client.
+  // SupportClient.workspaceClientId is the FK to WorkspaceClient.id.
+  const careRecords = await prisma.supportClient.findMany({
+    where: { workspaceClientId: { not: null } },
+    select: { workspaceClientId: true },
+  });
+  const careIds = new Set(
+    careRecords.map((r) => r.workspaceClientId).filter(Boolean),
+  );
+
   const clients = mergeClients(manualClients, proposals, hiddenSlugs)
     .filter((client) => {
       if (statusFilter !== "ALL" && client.status !== statusFilter) {
         return false;
       }
-      if (!search) {
-        return true;
-      }
+      if (!search) return true;
       return client.name.toLowerCase().includes(search);
     })
-    .map(toClientListItem);
+    .map((client) => ({
+      ...toClientListItem(client),
+      hasCareClient: careIds.has(client.id),
+    }));
 
   return { clients };
 }

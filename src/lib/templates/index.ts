@@ -16,6 +16,10 @@ import {
   proposalSectionBlueprints,
   type SectionBlueprint,
 } from "@/lib/default-template";
+import { coSectionBlueprints } from "@/lib/templates/co";
+import { dsaSectionBlueprints } from "@/lib/templates/dsa";
+import { msaSectionBlueprints } from "@/lib/templates/msa";
+import { ndaSectionBlueprints } from "@/lib/templates/nda";
 import { slaSectionBlueprints } from "@/lib/templates/sla";
 import { sowSectionBlueprints } from "@/lib/templates/sow";
 
@@ -23,11 +27,10 @@ export const TEMPLATES_BY_TYPE: Record<DocumentType, SectionBlueprint[]> = {
   PROPOSAL: proposalSectionBlueprints,
   SLA: slaSectionBlueprints,
   SOW: sowSectionBlueprints,
-  // Stub out the rest with the proposal blueprint for now — they each get their own template
-  // file when we're ready to invest the legal review time for each.
-  MSA: proposalSectionBlueprints,
-  NDA: proposalSectionBlueprints,
-  CO: proposalSectionBlueprints,
+  MSA: msaSectionBlueprints,
+  NDA: ndaSectionBlueprints,
+  CO: coSectionBlueprints,
+  DSA: dsaSectionBlueprints,
   OTHER: proposalSectionBlueprints,
 };
 
@@ -43,6 +46,7 @@ export const TEMPLATE_SLUG_BY_TYPE: Record<DocumentType, string> = {
   MSA: "default-msa",
   NDA: "default-nda",
   CO: "default-co",
+  DSA: "default-dsa",
   OTHER: "default-other",
 };
 
@@ -53,5 +57,6 @@ export const TEMPLATE_NAME_BY_TYPE: Record<DocumentType, string> = {
   MSA: "MSA — default",
   NDA: "NDA — default",
   CO: "Change Order — default",
+  DSA: "Data Sharing Agreement — default",
   OTHER: "Document — default",
 };

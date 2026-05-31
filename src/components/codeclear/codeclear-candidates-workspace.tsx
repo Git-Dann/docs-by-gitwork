@@ -403,7 +403,7 @@ export function CodeClearCandidatesWorkspace() {
             aria-label="Close add candidate modal"
             onClick={() => setShowCreateModal(false)}
           />
-          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-2xl flex-col">
+          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-4xl flex-col">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
               <div>
                 <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">

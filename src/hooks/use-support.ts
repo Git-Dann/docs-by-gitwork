@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSupportClient,
   createSupportConnection,
+  createSupportReport,
   createSupportWorkflowRule,
   deleteSupportConnection,
+  deleteSupportReport,
   deleteSupportTicket,
   deleteSupportWorkflowRule,
   generateAiDraft,
@@ -17,6 +19,7 @@ import {
   listSupportDraftActions,
   listSupportMembers,
   listSupportMessages,
+  listSupportReports,
   listSupportTickets,
   listSupportWorkflowRules,
   seedSupportDefaultRules,
@@ -26,8 +29,10 @@ import {
   updateSupportConnection,
   updateSupportConversation,
   updateSupportDraftAction,
+  updateSupportReport,
   updateSupportTicket,
 } from "@/lib/api";
+import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
@@ -296,3 +301,54 @@ export function useSeedDefaultRules(clientId: string | null) {
     },
   });
 }
+
+// ─── Monthly Reports ──────────────────────────────────────────────────────────
+
+export function useSupportReports(clientId: string | null) {
+  return useQuery({
+    queryKey: ["support", "reports", clientId],
+    queryFn: () => listSupportReports(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useCreateSupportReport(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { period: string; payload: SupportReportPayload; createdBy?: string }) =>
+      createSupportReport(clientId as string, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "reports", clientId] });
+    },
+  });
+}
+
+export function useUpdateSupportReport(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      reportId,
+      data,
+    }: {
+      reportId: string;
+      data: { period?: string; payload?: SupportReportPayload };
+    }) => updateSupportReport(clientId as string, reportId, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "reports", clientId] });
+    },
+  });
+}
+
+export function useDeleteSupportReport(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reportId: string) => deleteSupportReport(clientId as string, reportId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "reports", clientId] });
+    },
+  });
+}
+
+// Re-export SupportReport type for use in dashboard without extra import
+export type { SupportReport };

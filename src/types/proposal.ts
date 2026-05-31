@@ -7,7 +7,7 @@ export type DocumentStatus =
   | "SENT"
   | "ARCHIVED";
 
-export type DocumentType = "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
+export type DocumentType = "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";
 
 export type SectionKey =
   // ── Shared / proposal-original ─────────────────────────────────────────────

@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { autoAcceptMatchingInvite } from "@/server/team";
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -118,6 +119,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               googleOAuthEmail: user.email,
             },
           });
+        }
+
+        // If this user signed in directly (not via /invite/[token]) but there's a pending
+        // invite labelled with their name, mark it accepted so it doesn't linger in the
+        // Team list. Heuristic match — safe enough for an internal tool. Failures are
+        // swallowed so a stale invite never blocks sign-in.
+        try {
+          await autoAcceptMatchingInvite(dbUser.id, user.name);
+        } catch (err) {
+          console.error("[auth] autoAcceptMatchingInvite failed", err);
         }
       }
 

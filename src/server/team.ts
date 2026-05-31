@@ -10,7 +10,7 @@ const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
 
 export async function listMembers() {
   const workspace = await getWorkspace();
-  return prisma.workspaceMember.findMany({
+  const rows = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: workspace.id,
       user: { email: { not: BOOTSTRAP_USER_EMAIL } },
@@ -18,14 +18,107 @@ export async function listMembers() {
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
+  // Normalise `permissions` (Json column) to a string array for the UI. Prisma returns
+  // unknown JSON; we trust admins to write sane values and silently coerce anything else.
+  return rows.map((row) => ({
+    ...row,
+    permissions: Array.isArray(row.permissions)
+      ? (row.permissions as unknown[]).filter((p): p is string => typeof p === "string")
+      : [],
+  }));
 }
 
 export async function removeMember(memberId: string) {
   return prisma.workspaceMember.delete({ where: { id: memberId } });
 }
 
+export interface UpdateMemberInput {
+  role?: "ADMIN" | "STAFF";
+  permissions?: string[];
+}
+
+/**
+ * Updates a member's role and/or permissions.
+ *
+ * Safety: refuses to demote the *last* admin to avoid lock-out. If a workspace has only
+ * one admin and the caller tries to make them STAFF, throws. The Team UI consults this
+ * before showing the action so the user gets a clear error rather than a silent failure.
+ */
+export async function updateMember(memberId: string, input: UpdateMemberInput) {
+  if (input.role === "STAFF") {
+    const existing = await prisma.workspaceMember.findUnique({
+      where: { id: memberId },
+      select: { workspaceId: true, role: true },
+    });
+    if (existing?.role === "ADMIN") {
+      const remainingAdmins = await prisma.workspaceMember.count({
+        where: {
+          workspaceId: existing.workspaceId,
+          role: "ADMIN",
+          id: { not: memberId },
+          user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+        },
+      });
+      if (remainingAdmins === 0) {
+        throw new Error(
+          "Can't demote the last admin — promote someone else first or this workspace becomes uneditable.",
+        );
+      }
+    }
+  }
+
+  return prisma.workspaceMember.update({
+    where: { id: memberId },
+    data: {
+      ...(input.role !== undefined ? { role: input.role } : {}),
+      ...(input.permissions !== undefined ? { permissions: input.permissions } : {}),
+    },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+}
+
+/**
+ * Best-effort match of a user's display name against pending invite labels. Used when a
+ * user signs in directly (not via the invite URL) so we don't leave the invite hanging
+ * in the Team list forever.
+ *
+ * Match rules: case-insensitive, trim. Either the label contains the user's first name
+ * OR the user's first name contains the label. So an invite labeled "Harry" matches
+ * "Harry Brown", and an invite labeled "Harry Brown" matches "Harry".
+ */
+export async function autoAcceptMatchingInvite(userId: string, userName: string | null | undefined) {
+  const firstName = (userName ?? "").trim().split(/\s+/)[0]?.toLowerCase();
+  if (!firstName || firstName.length < 2) return null;
+
+  const workspace = await getWorkspace();
+  const pending = await prisma.workspaceInvite.findMany({
+    where: { workspaceId: workspace.id, status: "PENDING" },
+    select: { id: true, label: true },
+  });
+
+  const match = pending.find((invite) => {
+    const label = (invite.label ?? "").trim().toLowerCase();
+    if (!label) return false;
+    return label.includes(firstName) || firstName.includes(label.split(/\s+/)[0] ?? "");
+  });
+
+  if (!match) return null;
+
+  return prisma.workspaceInvite.update({
+    where: { id: match.id },
+    data: { status: "ACCEPTED", acceptedById: userId },
+  });
+}
+
 export async function listInvites() {
   const workspace = await getWorkspace();
+
+  // Backfill any orphaned PENDING invites whose label matches a current member's name.
+  // This catches cases where someone joined via direct OAuth (rather than the invite URL)
+  // BEFORE the auto-accept code shipped — so the cleanup never ran for them. Cheap to do
+  // on every list call; only mutates when there's an obvious match.
+  await reconcilePendingInvitesAgainstMembers(workspace.id);
+
   return prisma.workspaceInvite.findMany({
     where: { workspaceId: workspace.id },
     include: {
@@ -34,6 +127,43 @@ export async function listInvites() {
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+async function reconcilePendingInvitesAgainstMembers(workspaceId: string) {
+  const pending = await prisma.workspaceInvite.findMany({
+    where: { workspaceId, status: "PENDING" },
+    select: { id: true, label: true },
+  });
+  if (pending.length === 0) return;
+
+  const members = await prisma.workspaceMember.findMany({
+    where: {
+      workspaceId,
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
+    include: { user: { select: { id: true, name: true } } },
+  });
+
+  for (const invite of pending) {
+    const label = (invite.label ?? "").trim().toLowerCase();
+    if (!label) continue;
+    const labelFirst = label.split(/\s+/)[0] ?? "";
+
+    const match = members.find((m) => {
+      const name = (m.user.name ?? "").trim().toLowerCase();
+      if (!name) return false;
+      const nameFirst = name.split(/\s+/)[0] ?? "";
+      // Same first-name match the JWT callback uses — either direction.
+      return label.includes(nameFirst) || name.includes(labelFirst);
+    });
+
+    if (match) {
+      await prisma.workspaceInvite.update({
+        where: { id: invite.id },
+        data: { status: "ACCEPTED", acceptedById: match.user.id },
+      });
+    }
+  }
 }
 
 export async function createInvite(invitedById: string, label?: string) {
