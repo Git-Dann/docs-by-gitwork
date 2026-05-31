@@ -3,6 +3,8 @@ import type { ProofDocumentRecord } from "@/lib/proof";
 
 export type ClientSource = "SUGGESTED" | "MANUAL";
 
+export type WorkspaceClientStatus = "PENDING_REVIEW" | "ACTIVE" | "ARCHIVED";
+
 export interface ClientRecord {
   id: string;
   name: string;
@@ -11,6 +13,7 @@ export interface ClientRecord {
   createdAt: string;
   updatedAt: string;
   source: ClientSource;
+  status: WorkspaceClientStatus;
 }
 
 export interface ClientListItem extends ClientRecord {
@@ -19,20 +22,55 @@ export interface ClientListItem extends ClientRecord {
   clickupUrl: string | null;
 }
 
+export interface ClientBankSummary {
+  /** True when an encrypted bank record exists for the client. */
+  onFile: boolean;
+  /** ISO 4217 currency code. Plaintext for filtering / display hint. */
+  currency: string | null;
+  /** Last 4 digits of the account / IBAN. Plaintext for "•••• 4321" display. */
+  accountNumberLast4: string | null;
+}
+
+export interface ClientBankReveal {
+  accountHolder: string | null;
+  bankName: string | null;
+  sortCode: string | null;
+  accountNumber: string | null;
+  iban: string | null;
+  swiftBic: string | null;
+  currency: string | null;
+}
+
 export interface ClientDetailFields {
   website: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
+  county: string | null;
   postcode: string | null;
   country: string | null;
   notes: string | null;
   primaryContactName: string | null;
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
+  /** Where invoices are sent — distinct from primaryContactEmail. */
+  invoiceEmail: string | null;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   slackChannelId: string | null;
+  legalCompanyName: string | null;
+  companyNumber: string | null;
+  vatNumber: string | null;
+  /** Billing address — only populated when it differs from the HQ address. */
+  billingAddressLine1: string | null;
+  billingAddressLine2: string | null;
+  billingCity: string | null;
+  billingCounty: string | null;
+  billingPostcode: string | null;
+  billingCountry: string | null;
+  bank: ClientBankSummary | null;
+  /** Original onboarding session id when this client was created via onboarding. */
+  onboardingId: string | null;
 }
 
 export interface ClientPlatformRecord {

@@ -179,6 +179,9 @@ const clientContactFields = {
   googleDriveFolderUrl: z.string().trim().optional(),
   clickupUrl: z.string().trim().optional(),
   slackChannelId: z.string().trim().optional(),
+  legalCompanyName: z.string().trim().optional(),
+  companyNumber: z.string().trim().optional(),
+  vatNumber: z.string().trim().optional(),
 };
 
 export const clientCreateSchema = z.object({
@@ -570,3 +573,83 @@ export const pulseScanCreateSchema = z
     },
     { message: "Input data must match inputType." },
   );
+
+// ─── Client Onboarding ──────────────────────────────────────────────────────
+
+export const workspaceClientStatusSchema = z.enum([
+  "PENDING_REVIEW",
+  "ACTIVE",
+  "ARCHIVED",
+]);
+
+export const onboardingLinkCreateSchema = z.object({
+  label: z.string().trim().max(200).optional(),
+});
+
+// Public autosave — every field optional so the wizard can save a partial step.
+// Each field is also nullable so the client can explicitly clear it.
+const optionalNullableString = z
+  .string()
+  .trim()
+  .max(2000)
+  .nullable()
+  .optional();
+
+export const onboardingAutosaveSchema = z
+  .object({
+    currentStep: z.number().int().min(0).max(20).optional(),
+    contactFirstName: optionalNullableString,
+    contactLastName: optionalNullableString,
+    contactEmail: optionalNullableString,
+    contactRole: optionalNullableString,
+    contactPhone: optionalNullableString,
+    invoiceEmail: optionalNullableString,
+    companyName: optionalNullableString,
+    legalCompanyName: optionalNullableString,
+    companyNumber: optionalNullableString,
+    vatNumber: optionalNullableString,
+    addressLine1: optionalNullableString,
+    addressLine2: optionalNullableString,
+    city: optionalNullableString,
+    county: optionalNullableString,
+    postcode: optionalNullableString,
+    country: optionalNullableString,
+    billingDiffers: z.boolean().optional(),
+    billingAddressLine1: optionalNullableString,
+    billingAddressLine2: optionalNullableString,
+    billingCity: optionalNullableString,
+    billingCounty: optionalNullableString,
+    billingPostcode: optionalNullableString,
+    billingCountry: optionalNullableString,
+    productName: optionalNullableString,
+    productUrl: optionalNullableString,
+    productDescription: z.string().trim().max(5000).nullable().optional(),
+    projectGoals: z.string().trim().max(10000).nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required.",
+  });
+
+export const onboardingBankSchema = z.object({
+  accountHolder: optionalNullableString,
+  bankName: optionalNullableString,
+  sortCode: optionalNullableString,
+  accountNumber: optionalNullableString,
+  iban: optionalNullableString,
+  swiftBic: optionalNullableString,
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .toUpperCase()
+    .nullable()
+    .optional(),
+});
+
+export const onboardingSubmitSchema = z.object({
+  confirm: z.literal(true),
+});
+
+export const clientStatusUpdateSchema = z.object({
+  status: workspaceClientStatusSchema,
+});

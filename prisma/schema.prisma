@@ -242,6 +242,7 @@ model Workspace {
   documentCounters         DocumentCounter[]
   templates                DocumentTemplate[]
   clients                  WorkspaceClient[]
+  clientOnboardings        ClientOnboarding[]
   rateCardPeople           RateCardPerson[]
   proofDocuments           ProofDocument[]
   candidates               Candidate[]
@@ -683,8 +684,17 @@ model ProofDocument {
   @@index([proposalId, lastOpenedAt])
 }
 
+/// Lifecycle status for a client row in Portal. Existing rows backfill to ACTIVE
+/// on migration. PENDING_REVIEW is set when a client submits the onboarding flow
+/// and is waiting for Dan/Harry to approve and move to active workflow.
+enum WorkspaceClientStatus {
+  PENDING_REVIEW
+  ACTIVE
+  ARCHIVED
+}
+
 model WorkspaceClient {
-  id                   String           @id @default(cuid())
+  id                   String                @id @default(cuid())
   workspaceId          String
   name                 String
   slug                 String
@@ -693,22 +703,44 @@ model WorkspaceClient {
   addressLine1         String?
   addressLine2         String?
   city                 String?
+  /// UK address line — county / region (the Typeform's "State/Region/Province").
+  county               String?
   postcode             String?
   country              String?
-  notes                String?          @db.Text
+  notes                String?               @db.Text
   primaryContactName   String?
   primaryContactEmail  String?
   primaryContactPhone  String?
+  /// Where invoices are sent — "which email should we send invoices to?".
+  /// Distinct from primaryContactEmail (the day-to-day contact).
+  invoiceEmail         String?
   googleDriveFolderUrl String?
-  clickupUrl           String?          @db.Text
+  clickupUrl           String?               @db.Text
   /// Slack channel ID (e.g. C0123ABC) the client's project updates live in.
   /// Read-only: the Portal mobile app pulls recent messages via the workspace
   /// Slack bot token. Null when no channel is linked.
   slackChannelId       String?
-  hidden               Boolean          @default(false)
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  hidden               Boolean               @default(false)
+  /// Lifecycle status. New onboarding submissions arrive as PENDING_REVIEW;
+  /// Dan/Harry flip to ACTIVE via Move-to-workflow. Pulse scans are gated to
+  /// ACTIVE clients only.
+  status               WorkspaceClientStatus @default(ACTIVE)
+  /// Registered company name when it differs from the trading name above.
+  legalCompanyName     String?
+  /// Company registration number (Companies House etc.).
+  companyNumber        String?
+  /// VAT registration number.
+  vatNumber            String?
+  /// Billing address — populated only when it differs from the HQ address above.
+  billingAddressLine1  String?
+  billingAddressLine2  String?
+  billingCity          String?
+  billingCounty        String?
+  billingPostcode      String?
+  billingCountry       String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pulseScans           PulseScan[]
   platforms            ClientPlatform[]
   designs              ClientDesign[]
@@ -716,9 +748,12 @@ model WorkspaceClient {
   supportClients       SupportClient[]
   placements           Placement[]
   studies              Study[]
+  bankAccount          ClientBankAccount?
+  onboarding           ClientOnboarding?
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
+  @@index([workspaceId, status])
   @@map("Client")
 }
 
@@ -754,6 +789,109 @@ model ClientDesign {
 
   @@index([clientId])
   @@map("ClientDesign")
+}
+
+/// Self-serve client onboarding session. Created when the team mints an
+/// onboarding link in Portal; the row stores autosaved answers as the client
+/// completes the public /onboarding/[token] flow. Independent of WorkspaceClient
+/// — a Pending client is only materialised when the session is moved to
+/// workflow, so half-finished link clicks never pollute Portal.
+model ClientOnboarding {
+  id                 String                       @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Token used in the public URL (`/onboarding/[accessToken]`). Rotated on revoke.
+  accessToken        String                       @unique
+  /// "IN_PROGRESS" | "SUBMITTED" | "LINKED". Plain string so we can extend without a migration.
+  status             String                       @default("IN_PROGRESS")
+  /// Last step index the client reached. Drives "resume where you left off".
+  currentStep        Int                          @default(0)
+  /// Operator-facing label shown in the Onboarding links tab ("Acme call from Tuesday").
+  label              String?
+  // ── Autosaved answers ──────────────────────────────────────────────
+  // Contact — split first/last to mirror the live Gitwork invoicing Typeform.
+  contactFirstName    String?
+  contactLastName     String?
+  contactEmail        String?
+  contactRole         String?
+  contactPhone        String?
+  // Invoice recipient — "which email should we send invoices to?" (separate from contact email).
+  invoiceEmail        String?
+  companyName         String?
+  legalCompanyName    String?
+  companyNumber       String?
+  vatNumber           String?
+  // HQ / registered address — UK-default labels (Town/City, County, Postcode).
+  addressLine1        String?
+  addressLine2        String?
+  city                String?
+  county              String?
+  postcode            String?
+  country             String?
+  // Billing address — only meaningful when billingDiffers = true.
+  billingDiffers      Boolean                      @default(false)
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingCounty       String?
+  billingPostcode     String?
+  billingCountry      String?
+  productName         String?
+  productUrl          String?
+  productDescription  String?                      @db.Text
+  projectGoals        String?                      @db.Text
+  bankAccount         ClientOnboardingBankAccount?
+  /// Set when Move-to-workflow materialises a WorkspaceClient from this session.
+  workspaceClientId  String?                      @unique
+  workspaceClient    WorkspaceClient?             @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  submittedAt        DateTime?
+  linkedAt           DateTime?
+
+  @@index([workspaceId, status, updatedAt])
+  @@index([accessToken])
+}
+
+/// Encrypted bank details collected during onboarding. Mirrored to
+/// ClientBankAccount when the session is moved to workflow. Every *Cipher column
+/// stores a JSON envelope produced by `encrypt()` in src/lib/encryption.ts:
+/// `{ v: 1, iv, ct, tag }` (AES-256-GCM, base64).
+model ClientOnboardingBankAccount {
+  id                  String           @id @default(cuid())
+  onboardingId        String           @unique
+  onboarding          ClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  accountHolderCipher String?          @db.Text
+  bankNameCipher      String?          @db.Text
+  sortCodeCipher      String?          @db.Text
+  accountNumberCipher String?          @db.Text
+  ibanCipher          String?          @db.Text
+  swiftBicCipher      String?          @db.Text
+  /// ISO 4217 currency code, e.g. GBP / USD / EUR. Plaintext for filtering.
+  currency            String?          @db.VarChar(3)
+  /// Last 4 digits of the account number — plaintext convenience for the Portal UI
+  /// so the operator sees "•••• 4321" without having to decrypt.
+  accountNumberLast4  String?          @db.VarChar(4)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+/// Encrypted bank details for an active client. Same schema as the onboarding
+/// table — moved over (and the onboarding row removed) by moveToWorkflow.
+model ClientBankAccount {
+  id                  String          @id @default(cuid())
+  clientId            String          @unique
+  client              WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  accountHolderCipher String?         @db.Text
+  bankNameCipher      String?         @db.Text
+  sortCodeCipher      String?         @db.Text
+  accountNumberCipher String?         @db.Text
+  ibanCipher          String?         @db.Text
+  swiftBicCipher      String?         @db.Text
+  currency            String?         @db.VarChar(3)
+  accountNumberLast4  String?         @db.VarChar(4)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 }
 
 model Candidate {

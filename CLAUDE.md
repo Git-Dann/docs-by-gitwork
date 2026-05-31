@@ -56,6 +56,11 @@ API_KEY=""             # or NEXT_PUBLIC_API_KEY as fallback
 
 # GitHub — required for Pulse repo scans and fix-agent PR creation
 GITHUB_TOKEN=""        # PAT with repo + metadata read permissions
+
+# Encryption — used by the client onboarding flow to encrypt bank details
+# at rest (AES-256-GCM via src/lib/encryption.ts). Generate with:
+#   openssl rand -base64 32
+ENCRYPTION_KEY=""      # 32-byte base64 secret
 ```
 
 ---
@@ -86,6 +91,7 @@ The sidebar uses different labels from the URL routes — mapping below:
 | `/api-docs` | REST API reference |
 | `/context` | AI context page — this project's structured context for AI assistants |
 | `/report/[token]` | Shareable public Pulse scan report |
+| `/onboarding/[token]` | Public client onboarding flow — tokenised, no auth, autosaves per step |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
 
 ---

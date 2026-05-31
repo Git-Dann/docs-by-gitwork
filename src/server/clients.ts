@@ -1,7 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
+import { decryptNullable } from "@/lib/encryption";
 import type {
+  ClientBankReveal,
+  ClientBankSummary,
   ClientDesignRecord,
   ClientDetailFields,
   ClientDetailRecord,
@@ -9,10 +12,19 @@ import type {
   ClientPlacementRecord,
   ClientPlatformRecord,
   ClientSource,
+  WorkspaceClientStatus,
 } from "@/types/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
+
+const clientBankAccounts = (prisma as unknown as {
+  clientBankAccount: Prisma.ClientBankAccountDelegate;
+}).clientBankAccount;
+
+const onboardings = (prisma as unknown as {
+  clientOnboarding: Prisma.ClientOnboardingDelegate;
+}).clientOnboarding;
 
 const clientProposalInclude = {
   template: {
@@ -48,6 +60,7 @@ type ClientAggregateRecord = {
   updatedAt: string;
   proposalCount: number;
   source: ClientSource;
+  status: WorkspaceClientStatus;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
 };
@@ -61,15 +74,27 @@ type ManualClientRecord = {
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
+  county: string | null;
   postcode: string | null;
   country: string | null;
   notes: string | null;
   primaryContactName: string | null;
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
+  invoiceEmail: string | null;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   slackChannelId: string | null;
+  legalCompanyName: string | null;
+  companyNumber: string | null;
+  vatNumber: string | null;
+  billingAddressLine1: string | null;
+  billingAddressLine2: string | null;
+  billingCity: string | null;
+  billingCounty: string | null;
+  billingPostcode: string | null;
+  billingCountry: string | null;
+  status: WorkspaceClientStatus;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -79,15 +104,26 @@ type ClientContactInput = {
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
+  county?: string;
   postcode?: string;
   country?: string;
   notes?: string;
   primaryContactName?: string;
   primaryContactEmail?: string;
   primaryContactPhone?: string;
+  invoiceEmail?: string;
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
   slackChannelId?: string;
+  legalCompanyName?: string;
+  companyNumber?: string;
+  vatNumber?: string;
+  billingAddressLine1?: string;
+  billingAddressLine2?: string;
+  billingCity?: string;
+  billingCounty?: string;
+  billingPostcode?: string;
+  billingCountry?: string;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -96,33 +132,62 @@ function emptyContactFields(): ClientDetailFields {
     addressLine1: null,
     addressLine2: null,
     city: null,
+    county: null,
     postcode: null,
     country: null,
     notes: null,
     primaryContactName: null,
     primaryContactEmail: null,
     primaryContactPhone: null,
+    invoiceEmail: null,
     googleDriveFolderUrl: null,
     clickupUrl: null,
     slackChannelId: null,
+    legalCompanyName: null,
+    companyNumber: null,
+    vatNumber: null,
+    billingAddressLine1: null,
+    billingAddressLine2: null,
+    billingCity: null,
+    billingCounty: null,
+    billingPostcode: null,
+    billingCountry: null,
+    bank: null,
+    onboardingId: null,
   };
 }
 
-function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields {
+function contactFieldsFromRecord(
+  record: ManualClientRecord,
+  extras: { bank: ClientBankSummary | null; onboardingId: string | null },
+): ClientDetailFields {
   return {
     website: record.website,
     addressLine1: record.addressLine1,
     addressLine2: record.addressLine2,
     city: record.city,
+    county: record.county,
     postcode: record.postcode,
     country: record.country,
     notes: record.notes,
     primaryContactName: record.primaryContactName,
     primaryContactEmail: record.primaryContactEmail,
     primaryContactPhone: record.primaryContactPhone,
+    invoiceEmail: record.invoiceEmail,
     googleDriveFolderUrl: record.googleDriveFolderUrl,
     clickupUrl: record.clickupUrl,
     slackChannelId: record.slackChannelId,
+    legalCompanyName: record.legalCompanyName,
+    companyNumber: record.companyNumber,
+    vatNumber: record.vatNumber,
+    billingAddressLine1: record.billingAddressLine1,
+    billingAddressLine2: record.billingAddressLine2,
+    billingCity: record.billingCity,
+    billingCounty: record.billingCounty,
+    billingPostcode: record.billingPostcode,
+    billingCountry: record.billingCountry,
+    bank: extras.bank,
+    onboardingId: extras.onboardingId,
   };
 }
 
@@ -135,15 +200,26 @@ function buildContactData(input: ClientContactInput) {
   if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
   if (input.addressLine2 !== undefined)        data.addressLine2        = trim(input.addressLine2);
   if (input.city !== undefined)                data.city                = trim(input.city);
+  if (input.county !== undefined)              data.county              = trim(input.county);
   if (input.postcode !== undefined)            data.postcode            = trim(input.postcode);
   if (input.country !== undefined)             data.country             = trim(input.country);
   if (input.notes !== undefined)               data.notes               = trim(input.notes);
   if (input.primaryContactName !== undefined)  data.primaryContactName  = trim(input.primaryContactName);
   if (input.primaryContactEmail !== undefined) data.primaryContactEmail = trim(input.primaryContactEmail);
   if (input.primaryContactPhone !== undefined) data.primaryContactPhone = trim(input.primaryContactPhone);
+  if (input.invoiceEmail !== undefined)        data.invoiceEmail        = trim(input.invoiceEmail);
   if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
   if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
   if (input.slackChannelId !== undefined)      data.slackChannelId      = trim(input.slackChannelId);
+  if (input.legalCompanyName !== undefined)    data.legalCompanyName    = trim(input.legalCompanyName);
+  if (input.companyNumber !== undefined)       data.companyNumber       = trim(input.companyNumber);
+  if (input.vatNumber !== undefined)           data.vatNumber           = trim(input.vatNumber);
+  if (input.billingAddressLine1 !== undefined) data.billingAddressLine1 = trim(input.billingAddressLine1);
+  if (input.billingAddressLine2 !== undefined) data.billingAddressLine2 = trim(input.billingAddressLine2);
+  if (input.billingCity !== undefined)         data.billingCity         = trim(input.billingCity);
+  if (input.billingCounty !== undefined)       data.billingCounty       = trim(input.billingCounty);
+  if (input.billingPostcode !== undefined)     data.billingPostcode     = trim(input.billingPostcode);
+  if (input.billingCountry !== undefined)      data.billingCountry      = trim(input.billingCountry);
   return data;
 }
 
@@ -189,6 +265,7 @@ function summarizeSuggestedClients(
       updatedAt,
       proposalCount: 1,
       source: "SUGGESTED",
+      status: "ACTIVE",
       googleDriveFolderUrl: null,
       clickupUrl: null,
     });
@@ -234,6 +311,7 @@ function mergeClients(
       updatedAt,
       proposalCount: suggested?.proposalCount ?? 0,
       source: "MANUAL",
+      status: manualClient.status,
       googleDriveFolderUrl: manualClient.googleDriveFolderUrl,
       clickupUrl: manualClient.clickupUrl,
     });
@@ -252,6 +330,7 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     updatedAt: client.updatedAt,
     proposalCount: client.proposalCount,
     source: client.source,
+    status: client.status,
     googleDriveFolderUrl: client.googleDriveFolderUrl,
     clickupUrl: client.clickupUrl,
   };
@@ -365,16 +444,21 @@ async function assertClientSlugAvailable(
 
 export async function listDerivedClients(filters?: {
   search?: string;
+  /** Filter by client status. Default: ACTIVE only. Pass "ALL" to include every status. */
+  status?: WorkspaceClientStatus | "ALL";
 }): Promise<{ clients: ClientListItem[] }> {
   const { manualClients, hiddenSlugs, proposals } = await loadClientCollections();
   const search = filters?.search?.trim().toLowerCase() ?? "";
+  const statusFilter = filters?.status ?? "ACTIVE";
 
   const clients = mergeClients(manualClients, proposals, hiddenSlugs)
     .filter((client) => {
+      if (statusFilter !== "ALL" && client.status !== statusFilter) {
+        return false;
+      }
       if (!search) {
         return true;
       }
-
       return client.name.toLowerCase().includes(search);
     })
     .map(toClientListItem);
@@ -416,6 +500,7 @@ export async function createClientRecord(input: {
     updatedAt: client.updatedAt.toISOString(),
     proposalCount,
     source: "MANUAL",
+    status: (client as typeof client & { status?: WorkspaceClientStatus }).status ?? "ACTIVE",
     googleDriveFolderUrl: client.googleDriveFolderUrl,
     clickupUrl: client.clickupUrl,
   });
@@ -495,15 +580,27 @@ export async function updateClientRecord(
             addressLine1: null,
             addressLine2: null,
             city: null,
+            county: null,
             postcode: null,
             country: null,
             notes: null,
             primaryContactName: null,
             primaryContactEmail: null,
             primaryContactPhone: null,
+            invoiceEmail: null,
             googleDriveFolderUrl: persisted.googleDriveFolderUrl,
             clickupUrl: persisted.clickupUrl,
             slackChannelId: persisted.slackChannelId,
+            legalCompanyName: (persisted as typeof persisted & { legalCompanyName: string | null }).legalCompanyName ?? null,
+            companyNumber: (persisted as typeof persisted & { companyNumber: string | null }).companyNumber ?? null,
+            vatNumber: (persisted as typeof persisted & { vatNumber: string | null }).vatNumber ?? null,
+            billingAddressLine1: null,
+            billingAddressLine2: null,
+            billingCity: null,
+            billingCounty: null,
+            billingPostcode: null,
+            billingCountry: null,
+            status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },
@@ -522,6 +619,7 @@ export async function updateClientRecord(
       updatedAt: persisted.updatedAt.toISOString(),
       proposalCount: 0,
       source: "MANUAL",
+      status: (persisted as typeof persisted & { status?: WorkspaceClientStatus }).status ?? "ACTIVE",
       googleDriveFolderUrl: persisted.googleDriveFolderUrl,
       clickupUrl: persisted.clickupUrl,
     },
@@ -602,7 +700,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -663,10 +761,33 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
           take: 20,
         })
       : Promise.resolve([]),
+    manualRecord
+      ? clientBankAccounts.findUnique({
+          where: { clientId: manualRecord.id },
+          select: { currency: true, accountNumberLast4: true },
+        })
+      : Promise.resolve(null),
+    manualRecord
+      ? onboardings.findUnique({
+          where: { workspaceClientId: manualRecord.id },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ]);
 
+  const bankSummary: ClientBankSummary | null = bank
+    ? {
+        onFile: true,
+        currency: bank.currency ?? null,
+        accountNumberLast4: bank.accountNumberLast4 ?? null,
+      }
+    : null;
+
   const contactFields: ClientDetailFields = manualRecord
-    ? contactFieldsFromRecord(manualRecord)
+    ? contactFieldsFromRecord(manualRecord, {
+        bank: bankSummary,
+        onboardingId: onboardingRow?.id ?? null,
+      })
     : emptyContactFields();
 
   const serializedPlacements: ClientPlacementRecord[] = (
@@ -843,4 +964,58 @@ export async function getClientIdBySlug(
   });
 
   return record?.id ?? null;
+}
+
+/**
+ * Flip the lifecycle status on a client. Moving PENDING_REVIEW → ACTIVE is the
+ * "Move to workflow" action; ARCHIVED is the soft-delete that replaces `hidden`
+ * for clients created via onboarding.
+ */
+export async function setClientStatus(
+  slug: string,
+  status: WorkspaceClientStatus,
+): Promise<ClientListItem | null> {
+  const { workspace } = await ensureBaseRecords();
+  const persisted = await workspaceClients.update({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    data: { status },
+  });
+  return toClientListItem({
+    id: persisted.id,
+    name: persisted.name,
+    slug: persisted.slug,
+    logoUrl: persisted.logoUrl ?? undefined,
+    createdAt: persisted.createdAt.toISOString(),
+    updatedAt: persisted.updatedAt.toISOString(),
+    proposalCount: 0,
+    source: "MANUAL",
+    status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status,
+    googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+    clickupUrl: persisted.clickupUrl,
+  });
+}
+
+/**
+ * Decrypt and return the bank account for a client. Caller must be authenticated;
+ * this should be invoked from an API route that gates on session and audit-logs
+ * the read.
+ */
+export async function revealClientBank(slug: string): Promise<ClientBankReveal | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  const bank = await clientBankAccounts.findUnique({ where: { clientId: client.id } });
+  if (!bank) return null;
+  return {
+    accountHolder: decryptNullable(bank.accountHolderCipher),
+    bankName: decryptNullable(bank.bankNameCipher),
+    sortCode: decryptNullable(bank.sortCodeCipher),
+    accountNumber: decryptNullable(bank.accountNumberCipher),
+    iban: decryptNullable(bank.ibanCipher),
+    swiftBic: decryptNullable(bank.swiftBicCipher),
+    currency: bank.currency,
+  };
 }
