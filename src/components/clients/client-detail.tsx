@@ -4,7 +4,6 @@ import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
-  CalendarDaysIcon,
   ChatBubbleLeftRightIcon,
   CodeBracketIcon,
   GlobeAltIcon,
@@ -13,7 +12,6 @@ import {
   SignalIcon,
   SparklesIcon,
   TrashIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useEffect, useState } from "react";

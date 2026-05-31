@@ -1711,7 +1711,7 @@ function ReportBuilder({
   const widgetHeader = (num: string, label: string, right?: React.ReactNode) => (
     <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
       <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-        {num} // {label}
+        {num} {"//"} {label}
       </span>
       {right ?? null}
     </div>
