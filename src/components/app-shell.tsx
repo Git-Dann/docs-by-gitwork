@@ -400,17 +400,9 @@ function ProfileMenu() {
 
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-          <Link
-            href="/app/settings/team"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-3 rounded-[6px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <UserGroupIcon className="h-5 w-5 text-[var(--text-4)]" />
-            <span>+ Add user</span>
-          </Link>
-
-          <div className="my-2 border-t border-[var(--border-2)]" />
-
+          {/* Team management lives in Settings → Team. Profile menu stays minimal —
+              just sign-out. Add other personal actions (Account settings shortcut?) here
+              if/when we need them. */}
           <button
             type="button"
             onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}
