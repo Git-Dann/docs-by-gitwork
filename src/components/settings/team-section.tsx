@@ -10,12 +10,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
+  AdjustmentsHorizontalIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   PencilIcon,
   TrashIcon,
   UserPlusIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/format";
+import {
+  FEATURE_PERMISSIONS,
+  MODULE_PERMISSIONS,
+  PERMISSION_PRESETS,
+  type PermissionPresetId,
+} from "@/types/auth";
 
 interface Invite {
   id: string;
@@ -30,6 +40,7 @@ interface Invite {
 interface Member {
   id: string;
   role: string;
+  permissions: string[];
   createdAt: string;
   user: { id: string; name: string | null; email: string };
 }
@@ -47,6 +58,7 @@ export function TeamSection() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [accessMember, setAccessMember] = useState<Member | null>(null);
 
   const load = useCallback(async () => {
     const [membersRes, invitesRes] = await Promise.all([
@@ -239,6 +251,16 @@ export function TeamSection() {
                 >
                   {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
                 </span>
+                {isAdmin ? (
+                  <button
+                    onClick={() => setAccessMember(m)}
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                    title="Edit access"
+                  >
+                    <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
+                    Access
+                  </button>
+                ) : null}
                 {isAdmin && m.user.email !== session?.user?.email ? (
                   <button
                     onClick={() => removeMember(m.id)}
@@ -294,6 +316,240 @@ export function TeamSection() {
           </div>
         </section>
       ) : null}
+
+      {accessMember ? (
+        <MemberAccessModal
+          member={accessMember}
+          onClose={() => setAccessMember(null)}
+          onSaved={async () => {
+            setAccessMember(null);
+            await load();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ── Member access modal ──────────────────────────────────────────────────────
+// Lets admins change a member's role, toggle module access, and apply permission
+// presets (Admin / Staff / Developer). The save call hits PATCH /api/team/members/[id].
+function MemberAccessModal({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: Member;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [role, setRole] = useState<"ADMIN" | "STAFF">(
+    member.role === "ADMIN" ? "ADMIN" : "STAFF",
+  );
+  const [perms, setPerms] = useState<Set<string>>(new Set(member.permissions ?? []));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(id: string) {
+    setPerms((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function applyPreset(presetId: PermissionPresetId) {
+    const preset = PERMISSION_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setRole(preset.role);
+    setPerms(new Set(preset.permissions));
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/team/members/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, permissions: Array.from(perms) }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? `Save failed (${res.status})`);
+      }
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ADMIN role bypasses all permission checks server-side. We grey out the module/feature
+  // toggles to make that obvious — they have no effect for admins.
+  const adminBypass = role === "ADMIN";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12"
+      onClick={onClose}
+    >
+      <div
+        className="proposal-form-theme w-full max-w-2xl rounded-[14px] bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
+          <div className="min-w-0">
+            <p className="app-eyebrow">Access</p>
+            <h2 className="mt-1 truncate text-lg font-semibold text-[var(--text-1)]">
+              {member.user.name ?? member.user.email}
+            </h2>
+            <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">{member.user.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)]"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-6 px-6 py-5">
+          {/* Presets */}
+          <div>
+            <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Quick presets</p>
+            <div className="flex flex-wrap gap-2">
+              {PERMISSION_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyPreset(preset.id)}
+                  className="rounded-[8px] border border-[var(--border-2)] px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-1)]"
+                  title={preset.description}
+                >
+                  <span className="block font-semibold text-[var(--text-1)]">{preset.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-[var(--text-4)]">
+                    {preset.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Role */}
+          <div>
+            <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Role</p>
+            <div className="flex gap-2">
+              {(["ADMIN", "STAFF"] as const).map((r) => (
+                <label
+                  key={r}
+                  className={cn(
+                    "flex flex-1 cursor-pointer items-start gap-3 rounded-[10px] border px-4 py-3",
+                    role === r
+                      ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
+                      : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    checked={role === r}
+                    onChange={() => setRole(r)}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-[var(--text-1)]">
+                      {r === "ADMIN" ? "Admin" : "Staff"}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-4)]">
+                      {r === "ADMIN"
+                        ? "Full workspace access including this Team section, Developer tools, and all integrations."
+                        : "Module-level access controlled by the toggles below."}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Modules */}
+          <div>
+            <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Modules</p>
+            <p className="mb-2 text-[11px] text-[var(--text-4)]">
+              {adminBypass
+                ? "Admins implicitly have every module — toggles below are ignored."
+                : "Tick the modules this user can navigate to. Other /app/* routes redirect to the dashboard."}
+            </p>
+            <div className={cn("grid gap-2 sm:grid-cols-2", adminBypass && "opacity-50")}>
+              {MODULE_PERMISSIONS.map((mod) => (
+                <label
+                  key={mod.id}
+                  className="flex items-start gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={perms.has(mod.id)}
+                    onChange={() => toggle(mod.id)}
+                    disabled={adminBypass}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-[var(--text-1)]">{mod.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-4)]">
+                      {mod.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Feature flags */}
+          <div>
+            <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Feature access</p>
+            <p className="mb-2 text-[11px] text-[var(--text-4)]">
+              Cross-cutting visibility flags. These will be enforced inside the relevant
+              module UIs as we onboard developer accounts — Portal and Pulse data scoping is
+              live; Code/rate masking ships next.
+            </p>
+            <div className={cn("grid gap-2 sm:grid-cols-2", adminBypass && "opacity-50")}>
+              {FEATURE_PERMISSIONS.map((flag) => (
+                <label
+                  key={flag.id}
+                  className="flex items-start gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={perms.has(flag.id)}
+                    onChange={() => toggle(flag.id)}
+                    disabled={adminBypass}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-[var(--text-1)]">{flag.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-4)]">
+                      {flag.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error ? <p className="text-sm text-[var(--danger-500)]">{error}</p> : null}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={save} loading={saving}>
+            Save changes
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
