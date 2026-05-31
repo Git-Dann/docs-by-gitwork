@@ -112,6 +112,13 @@ export async function autoAcceptMatchingInvite(userId: string, userName: string 
 
 export async function listInvites() {
   const workspace = await getWorkspace();
+
+  // Backfill any orphaned PENDING invites whose label matches a current member's name.
+  // This catches cases where someone joined via direct OAuth (rather than the invite URL)
+  // BEFORE the auto-accept code shipped — so the cleanup never ran for them. Cheap to do
+  // on every list call; only mutates when there's an obvious match.
+  await reconcilePendingInvitesAgainstMembers(workspace.id);
+
   return prisma.workspaceInvite.findMany({
     where: { workspaceId: workspace.id },
     include: {
@@ -120,6 +127,43 @@ export async function listInvites() {
     },
     orderBy: { createdAt: "desc" },
   });
+}
+
+async function reconcilePendingInvitesAgainstMembers(workspaceId: string) {
+  const pending = await prisma.workspaceInvite.findMany({
+    where: { workspaceId, status: "PENDING" },
+    select: { id: true, label: true },
+  });
+  if (pending.length === 0) return;
+
+  const members = await prisma.workspaceMember.findMany({
+    where: {
+      workspaceId,
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
+    include: { user: { select: { id: true, name: true } } },
+  });
+
+  for (const invite of pending) {
+    const label = (invite.label ?? "").trim().toLowerCase();
+    if (!label) continue;
+    const labelFirst = label.split(/\s+/)[0] ?? "";
+
+    const match = members.find((m) => {
+      const name = (m.user.name ?? "").trim().toLowerCase();
+      if (!name) return false;
+      const nameFirst = name.split(/\s+/)[0] ?? "";
+      // Same first-name match the JWT callback uses — either direction.
+      return label.includes(nameFirst) || name.includes(labelFirst);
+    });
+
+    if (match) {
+      await prisma.workspaceInvite.update({
+        where: { id: invite.id },
+        data: { status: "ACCEPTED", acceptedById: match.user.id },
+      });
+    }
+  }
 }
 
 export async function createInvite(invitedById: string, label?: string) {

@@ -231,47 +231,56 @@ export function TeamSection() {
           <p className="text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
           <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
-            {members.map((m) => (
-              <div key={m.id} className="flex items-center gap-4 px-5 py-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
-                  {(m.user.name ?? m.user.email)[0].toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[var(--text-1)]">
-                    {m.user.name ?? m.user.email}
-                  </p>
-                  <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    m.role === "ADMIN"
-                      ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                      : "bg-[var(--surface-2)] text-[var(--text-3)]"
-                  }`}
-                >
-                  {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
-                </span>
-                {isAdmin ? (
-                  <button
-                    onClick={() => setAccessMember(m)}
-                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                    title="Edit access"
+            {members.map((m) => {
+              const isSelf = m.user.email === session?.user?.email;
+              return (
+                <div key={m.id} className="flex items-center gap-4 px-5 py-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
+                    {(m.user.name ?? m.user.email)[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]">
+                      {m.user.name ?? m.user.email}
+                    </p>
+                    <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      m.role === "ADMIN"
+                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                        : "bg-[var(--surface-2)] text-[var(--text-3)]"
+                    }`}
                   >
-                    <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-                    Access
-                  </button>
-                ) : null}
-                {isAdmin && m.user.email !== session?.user?.email ? (
-                  <button
-                    onClick={() => removeMember(m.id)}
-                    className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
-                    title="Remove member"
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
-            ))}
+                    {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
+                  </span>
+                  {isAdmin ? (
+                    <button
+                      onClick={() => setAccessMember(m)}
+                      className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      title="Edit access"
+                    >
+                      <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
+                      Access
+                    </button>
+                  ) : null}
+                  {/* Reserve the trash-icon slot whether or not we actually render it, so
+                      every row aligns. Hidden for the signed-in user (you can't remove yourself). */}
+                  {isAdmin ? (
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+                      {!isSelf ? (
+                        <button
+                          onClick={() => removeMember(m.id)}
+                          className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                          title="Remove member"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
