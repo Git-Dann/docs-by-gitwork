@@ -1,60 +1,32 @@
 import { google } from "googleapis";
-import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { apiOk, fromError } from "@/lib/api-response";
+import { getUserGoogleAuth } from "@/server/google-auth";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/integrations/calendar → upcoming events for the *signed-in user*.
+ *
+ * Uses the current user's stored Google OAuth refresh token, NEVER the workspace-level
+ * token. Each teammate sees only their own calendar. The old workspace path that powered
+ * everyone's widget from one shared token caused cross-user data leakage — removed.
+ */
 export async function GET() {
   try {
-    const { workspace } = await ensureBaseRecords();
-
-    let calendarAuth: Parameters<typeof google.calendar>[0]["auth"];
-
-    if (workspace.googleServiceAccountJson) {
-      // Service account path (enterprise/domain-wide delegation)
-      let credentials: Record<string, unknown>;
-      try {
-        credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
-      } catch {
-        return apiError("Invalid Google service account JSON", 422);
-      }
-
-      const serviceAuth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
-      });
-
-      const authClient = await serviceAuth.getClient();
-      if (workspace.googleSubjectEmail && "subject" in authClient) {
-        (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
-      }
-      calendarAuth = authClient as Parameters<typeof google.calendar>[0]["auth"];
-    } else if (workspace.googleOAuthRefreshToken) {
-      // OAuth path — powered by the user's Google login (AUTH_GOOGLE_ID/SECRET)
-      const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-      const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
-
-      if (!clientId || !clientSecret) {
-        return apiOk({ connected: false, events: [] });
-      }
-
-      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-      oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken });
-      calendarAuth = oauth2Client;
-    } else {
+    const authResult = await getUserGoogleAuth();
+    if (!authResult.ok) {
+      // For UI: any non-ok result renders the "Re-connect via Google" state. We don't
+      // differentiate reasons since they all point to the same fix (sign in again).
       return apiOk({ connected: false, events: [] });
     }
 
-    const calendar = google.calendar({
-      version: "v3",
-      auth: calendarAuth,
-    });
+    const calendar = google.calendar({ version: "v3", auth: authResult.client });
 
     const now = new Date();
     const twoWeeksAhead = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const res = await calendar.events.list({
-      calendarId: workspace.googleCalendarId ?? "primary",
+      calendarId: "primary",
       timeMin: now.toISOString(),
       timeMax: twoWeeksAhead.toISOString(),
       singleEvents: true,
@@ -79,7 +51,7 @@ export async function GET() {
       };
     });
 
-    return apiOk({ connected: true, events });
+    return apiOk({ connected: true, events, connectedAs: authResult.email });
   } catch (error) {
     return fromError(error);
   }

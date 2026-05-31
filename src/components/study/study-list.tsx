@@ -3,27 +3,29 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PlusIcon, BeakerIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, BeakerIcon, BuildingOffice2Icon, TrashIcon } from "@heroicons/react/24/outline";
 import { useStudyList, useStudyPersonas, useDeleteStudy, useLoadStudyDemo } from "@/hooks/use-study";
 import { PERSONA_COLORS } from "@/config/study-personas";
 import { cn, formatDate } from "@/lib/format";
+import { Button, buttonStyles } from "@/components/ui/button";
 import type { StudyListItem } from "@/server/study";
 
 type Filter = "all" | "running" | "draft" | "completed";
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Draft",
-  PLAN_GENERATING: "Generating plan…",
+  PLAN_GENERATING: "Generating plan",
   PLAN_READY: "Plan ready",
   RUNNING: "Running",
   COMPLETED: "Completed",
   FAILED: "Failed",
 };
 
+// DESIGN.md: badges use rounded-[4px], not rounded-full. Status dots are the only full-radius element.
 const STATUS_TONE: Record<string, string> = {
   DRAFT: "bg-[var(--surface-1)] text-[var(--text-3)] border border-[var(--border-2)]",
   PLAN_GENERATING: "bg-amber-50 text-amber-700 border border-amber-200",
-  PLAN_READY: "bg-blue-50 text-blue-700 border border-blue-200",
+  PLAN_READY: "bg-[var(--mist)] text-[var(--brand-700)] border border-[var(--mist-border)]",
   RUNNING: "bg-amber-50 text-amber-700 border border-amber-200",
   COMPLETED: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   FAILED: "bg-red-50 text-red-700 border border-red-200",
@@ -35,7 +37,29 @@ function normalizeFilter(status: string): Filter {
   return "draft";
 }
 
-function PersonaAvatars({ ids, personasById }: { ids: string[]; personasById: Record<string, { initials: string; color: string }> }) {
+function StatusChip({ status }: { status: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[4px] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
+        STATUS_TONE[status] ?? STATUS_TONE.DRAFT,
+      )}
+    >
+      {status === "RUNNING" || status === "PLAN_GENERATING" ? (
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+      ) : null}
+      {STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
+function PersonaAvatars({
+  ids,
+  personasById,
+}: {
+  ids: string[];
+  personasById: Record<string, { initials: string; color: string }>;
+}) {
   const shown = ids.slice(0, 5);
   const rest = ids.length - 5;
   return (
@@ -47,14 +71,21 @@ function PersonaAvatars({ ids, personasById }: { ids: string[]; personasById: Re
           <span
             key={id}
             style={{ marginLeft: i === 0 ? 0 : -6 }}
-            className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white text-[10px] font-semibold", colors.bg, colors.text)}
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white text-[10px] font-semibold",
+              colors.bg,
+              colors.text,
+            )}
           >
             {p?.initials ?? "?"}
           </span>
         );
       })}
       {rest > 0 && (
-        <span style={{ marginLeft: -6 }} className="flex h-6 w-6 items-center justify-center rounded-full border border-white bg-[var(--surface-1)] text-[10px] font-medium text-[var(--text-4)]">
+        <span
+          style={{ marginLeft: -6 }}
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-white bg-[var(--surface-1)] text-[10px] font-medium text-[var(--text-4)]"
+        >
           +{rest}
         </span>
       )}
@@ -62,39 +93,67 @@ function PersonaAvatars({ ids, personasById }: { ids: string[]; personasById: Re
   );
 }
 
-function StudyCard({ study, personasById, onDelete }: { study: StudyListItem; personasById: Record<string, { initials: string; color: string }>; onDelete: (id: string) => void }) {
+function StudyCard({
+  study,
+  index,
+  personasById,
+  onDelete,
+}: {
+  study: StudyListItem;
+  index: number;
+  personasById: Record<string, { initials: string; color: string }>;
+  onDelete: (id: string) => void;
+}) {
+  const numberLabel = String(index + 1).padStart(2, "0");
   return (
-    <div className="app-card group relative flex flex-col gap-3 p-5 transition hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold", STATUS_TONE[study.status] ?? STATUS_TONE.DRAFT)}>
-          {study.status === "RUNNING" && <span className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />}
-          {STATUS_LABEL[study.status] ?? study.status}
+    <article className="widget-card group transition-shadow hover:shadow-[rgba(0,0,0,0.04)_0px_2px_8px]">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{numberLabel}</span>
+          {" // STUDY"}
         </span>
-        <span className="text-[11px] text-[var(--text-4)]">{formatDate(study.createdAt)}</span>
+        <StatusChip status={study.status} />
       </div>
 
-      <Link href={`/app/study/${study.id}`} className="min-w-0">
-        <h3 className="text-[15px] font-semibold text-[var(--text-1)] hover:text-[var(--brand-600)]">{study.title}</h3>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{study.problemStatement}</p>
+      <Link href={`/app/study/${study.id}`} className="block min-w-0 px-5 pt-5">
+        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
+          {study.title}
+        </h3>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{study.problemStatement}</p>
       </Link>
 
-      <div className="flex items-center justify-between border-t border-[var(--border-2)] pt-3">
+      {study.workspaceClientName && (
+        <Link
+          href={`/app/clients/${study.workspaceClientSlug}`}
+          className="mx-5 mt-3 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)] transition hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
+        >
+          <BuildingOffice2Icon className="h-3 w-3" />
+          {study.workspaceClientName}
+        </Link>
+      )}
+
+      <div className="mt-4 flex items-center justify-between border-t border-[var(--border-2)] px-5 py-3">
         <PersonaAvatars ids={study.selectedPersonaIds} personasById={personasById} />
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-[var(--text-4)]">
+          <span className="widget-timestamp">
             {study.sessionMode === "GROUP" ? "Group" : "1-on-1"}
-            {study.sessionCount > 0 && ` · ${study.completedSessionCount}/${study.sessionCount} sessions`}
+            {study.sessionCount > 0 && ` · ${study.completedSessionCount}/${study.sessionCount}`}
           </span>
+          <span className="widget-timestamp">{formatDate(study.createdAt)}</span>
           <button
             type="button"
-            onClick={() => onDelete(study.id)}
-            className="text-[11px] text-[var(--text-4)] opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+            onClick={(e) => {
+              e.preventDefault();
+              if (confirm("Delete this study?")) onDelete(study.id);
+            }}
+            className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+            title="Delete study"
           >
-            Delete
+            <TrashIcon className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -113,88 +172,152 @@ export function StudyList() {
 
   const personasById = Object.fromEntries((personas ?? []).map((p) => [p.id, p]));
 
-  const filtered = (studies ?? []).filter((s) => {
+  const all = studies ?? [];
+  const counts = {
+    all: all.length,
+    running: all.filter((s) => normalizeFilter(s.status) === "running").length,
+    draft: all.filter((s) => normalizeFilter(s.status) === "draft").length,
+    completed: all.filter((s) => normalizeFilter(s.status) === "completed").length,
+  };
+
+  const filtered = all.filter((s) => {
     if (filter === "all") return true;
     return normalizeFilter(s.status) === filter;
   });
 
-  const tabs: { id: Filter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "running", label: "Running" },
-    { id: "draft", label: "Draft" },
-    { id: "completed", label: "Completed" },
+  const tabs: { id: Filter; label: string; count: number }[] = [
+    { id: "all", label: "All", count: counts.all },
+    { id: "running", label: "Running", count: counts.running },
+    { id: "draft", label: "Draft", count: counts.draft },
+    { id: "completed", label: "Completed", count: counts.completed },
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setFilter(tab.id)}
-              className={cn(
-                "rounded-[6px] px-3 py-1.5 text-sm font-medium transition",
-                filter === tab.id
-                  ? "bg-white text-[var(--text-1)] shadow-sm"
-                  : "text-[var(--text-3)] hover:text-[var(--text-2)]",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+    <div className="space-y-5">
+      {/* 01 // STUDIES — control strip */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">01</span>
+            {" // STUDIES"}
+          </span>
+          <span className="widget-header__status">
+            {counts.all} TOTAL
+            {counts.running > 0 && ` · ${counts.running} ACTIVE`}
+          </span>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="flex flex-wrap gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[4px] px-3 py-1.5 text-[13px] font-medium transition",
+                  filter === tab.id
+                    ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm"
+                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                )}
+              >
+                {tab.label}
+                <span
+                  className={cn(
+                    "rounded-[4px] px-1.5 py-0.5 font-mono text-[10px] font-semibold",
+                    filter === tab.id
+                      ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                      : "bg-[var(--surface-2)] text-[var(--text-4)]",
+                  )}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleLoadDemo}
-            disabled={loadingDemo}
-            className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-          >
-            <BeakerIcon className="h-4 w-4" />
-            {loadingDemo ? "Loading…" : "Load demo"}
-          </button>
-          <Link href="/app/study/new">
-            <button type="button" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleLoadDemo}
+              loading={loadingDemo}
+              leadingIcon={!loadingDemo ? <BeakerIcon className="h-4 w-4" /> : null}
+            >
+              {loadingDemo ? "Loading…" : "Load demo"}
+            </Button>
+            <Link
+              href="/app/study/new"
+              className={buttonStyles({ variant: "primary", size: "sm" })}
+            >
               <PlusIcon className="h-4 w-4" />
               New study
-            </button>
-          </Link>
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
 
+      {/* Cards grid */}
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-44 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-52 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center">
-          <BeakerIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
-          <p className="text-sm font-medium text-[var(--text-2)]">{filter === "all" ? "No studies yet" : `No ${filter} studies`}</p>
-          {filter === "all" && (
-            <div className="mt-4 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={handleLoadDemo}
-                disabled={loadingDemo}
-                className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] disabled:opacity-50"
-              >
-                <BeakerIcon className="h-4 w-4" />
-                {loadingDemo ? "Loading…" : "Load demo study"}
-              </button>
-              <Link href="/app/study/new" className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" style={{ color: "white" }}>
-                <PlusIcon className="h-4 w-4" />
-                New study
-              </Link>
-            </div>
-          )}
-        </div>
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">02</span>
+              {" // EMPTY"}
+            </span>
+          </div>
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <BeakerIcon className="mb-4 h-10 w-10 text-[var(--text-4)]" />
+            <h3
+              className="text-3xl leading-none tracking-[-0.03em] text-[var(--text-1)]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {filter === "all" ? "No studies yet" : `No ${filter} studies`}
+            </h3>
+            {filter === "all" && (
+              <>
+                <p className="mt-3 max-w-md text-sm text-[var(--text-3)]">
+                  Start an AI-powered research project. Interview personas, capture insights, synthesise a report.
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    onClick={handleLoadDemo}
+                    loading={loadingDemo}
+                    leadingIcon={!loadingDemo ? <BeakerIcon className="h-4 w-4" /> : null}
+                  >
+                    {loadingDemo ? "Loading…" : "Load demo study"}
+                  </Button>
+                  <Link
+                    href="/app/study/new"
+                    className={buttonStyles({ variant: "primary", size: "md" })}
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    New study
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((s) => (
-            <StudyCard key={s.id} study={s} personasById={personasById} onDelete={(id) => deleteStudy(id)} />
+          {filtered.map((s, i) => (
+            <StudyCard
+              key={s.id}
+              study={s}
+              index={i}
+              personasById={personasById}
+              onDelete={(id) => deleteStudy(id)}
+            />
           ))}
         </div>
       )}

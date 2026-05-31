@@ -233,16 +233,41 @@ export const codeClearListInclude = {
     },
     take: 1,
   },
-  // The "current client" = the candidate's only open-ended (endDate null)
-  // placement. Fetched here so the Code roster can show a per-dev dropdown
-  // without an N+1 round trip.
+  // Placements filter uses an OR so the shape covers both branches at the
+  // type level. The literal here uses `endDate: null` AND `endDate: gte
+  // now` so callers don't need to override it per query — except for the
+  // `now` boundary, which buildCodeClearListInclude() refreshes.
   placements: {
-    where: { endDate: null },
+    where: {
+      OR: [
+        { endDate: null },
+        // A placeholder timestamp so the `satisfies` shape is correct;
+        // overridden per-query in buildCodeClearListInclude().
+        { endDate: { gte: new Date(0) } },
+      ],
+    },
     include: { client: { select: { id: true, name: true, slug: true } } },
     orderBy: { startDate: "desc" },
-    take: 1,
   },
 } satisfies Prisma.CandidateInclude;
+
+/**
+ * Build a fresh CandidateInclude for "list" queries. The placements filter
+ * needs `new Date()` evaluated NOW (not at module load) so we capture
+ * currently-active + upcoming placements (not just open-ended ones).
+ */
+export function buildCodeClearListInclude(): typeof codeClearListInclude {
+  return {
+    ...codeClearListInclude,
+    placements: {
+      where: {
+        OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
+      },
+      include: { client: { select: { id: true, name: true, slug: true } } },
+      orderBy: { startDate: "desc" },
+    },
+  };
+}
 
 export const codeClearDetailInclude = {
   score: true,
@@ -364,16 +389,17 @@ export function serializeCandidateListItem(
     ? serializeScoreDraft(candidate.scoreDraft)
     : null;
 
-  const openPlacement = candidate.placements?.[0];
-  const currentClient = openPlacement?.client
-    ? {
-        id: openPlacement.client.id,
-        name: openPlacement.client.name,
-        slug: openPlacement.client.slug,
-      }
-    : openPlacement
-      ? { id: null, name: openPlacement.clientName, slug: null }
-      : null;
+  const currentClients = (candidate.placements ?? []).map((placement) =>
+    placement.client
+      ? {
+          id: placement.client.id,
+          name: placement.client.name,
+          slug: placement.client.slug,
+        }
+      : { id: null, name: placement.clientName, slug: null },
+  );
+  // Stable alpha order so chips render the same on every re-render.
+  currentClients.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     ...commonCandidateFields(candidate),
@@ -381,7 +407,7 @@ export function serializeCandidateListItem(
     scoreDraft,
     latestGitHubAnalysis,
     analysisState: deriveCandidateAnalysisState(latestGitHubAnalysis, scoreDraft, score),
-    currentClient,
+    currentClients,
   };
 }
 
@@ -397,17 +423,27 @@ export function serializeCandidateDetails(
     ? serializeScoreDraft(candidate.scoreDraft)
     : null;
 
-  // Mirror the list serializer: open-ended (endDate=null) placement → currentClient.
-  const openPlacement = candidate.placements.find((p) => p.endDate === null);
-  const currentClient = openPlacement?.client
-    ? {
-        id: openPlacement.client.id,
-        name: openPlacement.client.name,
-        slug: openPlacement.client.slug,
-      }
-    : openPlacement
-      ? { id: null, name: openPlacement.clientName, slug: null }
-      : null;
+  // Mirror the list serializer — placements that haven't ended yet count
+  // as "current clients". This includes:
+  //   - open-ended placements (endDate null — default from the picker)
+  //   - bounded placements whose endDate is in the future (currently
+  //     active or upcoming)
+  const nowMs = Date.now();
+  const currentClients = candidate.placements
+    .filter((placement) => {
+      if (placement.endDate === null) return true;
+      return placement.endDate.getTime() >= nowMs;
+    })
+    .map((placement) =>
+      placement.client
+        ? {
+            id: placement.client.id,
+            name: placement.client.name,
+            slug: placement.client.slug,
+          }
+        : { id: null, name: placement.clientName, slug: null },
+    );
+  currentClients.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     ...commonCandidateFields(candidate),
@@ -415,7 +451,7 @@ export function serializeCandidateDetails(
     scoreDraft,
     latestGitHubAnalysis,
     githubAnalysisRuns,
-    currentClient,
+    currentClients,
     placements: candidate.placements.map((placement) => ({
       id: placement.id,
       candidateId: placement.candidateId,
@@ -424,7 +460,10 @@ export function serializeCandidateDetails(
       projectName: placement.projectName,
       startDate: placement.startDate.toISOString(),
       endDate: toIsoString(placement.endDate),
+      allocationPercent: placement.allocationPercent,
+      notes: placement.notes ?? null,
       createdAt: placement.createdAt.toISOString(),
+      updatedAt: placement.updatedAt.toISOString(),
     })),
     notes: candidate.notes.map((note) => ({
       ...note,

@@ -16,12 +16,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const rawClientId = typeof body.workspaceClientId === "string" ? body.workspaceClientId.trim() : null;
     const study = await createStudy({
       title: String(body.title ?? "").trim() || "Untitled Study",
       problemStatement: String(body.problemStatement ?? "").trim(),
       researchGoals: Array.isArray(body.researchGoals) ? body.researchGoals.map(String) : [],
       sessionMode: body.sessionMode === "GROUP" ? "GROUP" : "ONE_ON_ONE",
       selectedPersonaIds: Array.isArray(body.selectedPersonaIds) ? body.selectedPersonaIds : [],
+      workspaceClientId: rawClientId || null,
     });
     return apiOk({ study }, { status: 201 });
   } catch (error) {

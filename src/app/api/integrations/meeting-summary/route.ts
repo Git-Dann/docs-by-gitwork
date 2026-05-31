@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { google } from "googleapis";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { getUserGoogleAuth } from "@/server/google-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,7 +19,29 @@ const bodySchema = z.object({
   eventDate: z.string(),
   attendees: z.array(z.string()).default([]),
   channelIds: z.array(z.string()).optional(),
+  // Pass `force: true` to regenerate even when a cached summary exists.
+  force: z.boolean().optional(),
 });
+
+// Hash the inputs that materially affect the generated summary. If any change, the cached
+// summary is treated as stale and we regenerate. We hash the channelIds set (sorted) so the
+// order users pick them in doesn't bust the cache.
+function computeInputsHash(input: {
+  eventTitle: string;
+  eventDate: string;
+  attendees: string[];
+  channelIds: string[];
+  model: string;
+}): string {
+  const payload = JSON.stringify({
+    title: input.eventTitle,
+    date: input.eventDate,
+    attendees: [...input.attendees].sort(),
+    channels: [...input.channelIds].sort(),
+    model: input.model,
+  });
+  return createHash("sha256").update(payload).digest("hex").slice(0, 32);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +53,9 @@ export async function POST(req: NextRequest) {
     let apiKey: string | null;
     let model: string;
     let baseUrl: string | null = null;
+
+    // We need `model` to compute the cache key — resolve it before the cache lookup so a
+    // model switch (e.g. Sonnet → Opus) invalidates entries automatically.
 
     if (provider === "OPENAI") {
       apiKey = process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
@@ -48,12 +77,52 @@ export async function POST(req: NextRequest) {
       return apiError("No AI API key configured. Add one in Settings → Integrations.", 422);
     }
 
+    // ── Cache lookup ──────────────────────────────────────────────────────────
+    // Cache key: (workspaceId, eventId). Inputs hash invalidates entries when meeting
+    // details or channel selection change. Anyone on the same call gets the same cached
+    // summary, paid for by whichever Gitwork teammate clicked Summarise first.
+    const channelIdsForKey = body.channelIds ?? [];
+    const inputsHash = computeInputsHash({
+      eventTitle: body.eventTitle,
+      eventDate: body.eventDate,
+      attendees: body.attendees,
+      channelIds: channelIdsForKey,
+      model,
+    });
+
+    if (!body.force) {
+      const cached = await prisma.meetingSummary.findUnique({
+        where: { workspaceId_eventId: { workspaceId: workspace.id, eventId: body.eventId } },
+        select: {
+          summary: true,
+          inputsHash: true,
+          createdAt: true,
+          updatedAt: true,
+          generatedBy: { select: { name: true, email: true } },
+        },
+      });
+
+      if (cached && cached.inputsHash === inputsHash) {
+        return apiOk({
+          summary: cached.summary,
+          cached: true,
+          cachedAt: cached.updatedAt.toISOString(),
+          generatedBy: cached.generatedBy?.name ?? cached.generatedBy?.email ?? null,
+        });
+      }
+    }
+
     // ── Fetch related Gmail threads ────────────────────────────────────────────
+    // Pull email context from the *signed-in user's* Gmail (or the workspace service account
+    // if one is configured). The previous workspace OAuth path leaked the most-recent
+    // signer's inbox to everyone else — removed. With a workspace-shared cache, the first
+    // caller's email context informs the summary; subsequent callers reuse the cached output.
     let emailContext = "";
     const hasServiceAccount = !!(workspace.googleServiceAccountJson && workspace.googleSubjectEmail);
-    const hasOAuthToken = !!workspace.googleOAuthRefreshToken;
+    const userAuth = hasServiceAccount ? null : await getUserGoogleAuth();
+    const hasUserGoogle = userAuth?.ok === true;
 
-    if (hasServiceAccount || hasOAuthToken) {
+    if (hasServiceAccount || hasUserGoogle) {
       try {
         let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
 
@@ -68,13 +137,12 @@ export async function POST(req: NextRequest) {
             (authClient as { subject?: string }).subject = workspace.googleSubjectEmail!;
           }
           gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+        } else if (userAuth?.ok) {
+          // Per-user Google OAuth — same identity used by Calendar + Gmail widgets.
+          gmailAuth = userAuth.client;
         } else {
-          // OAuth path — user's Google login token
-          const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
-          const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
-          const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-          oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken! });
-          gmailAuth = oauth2Client;
+          // Defensive — shouldn't reach here given the outer guard, but TS needs the narrowing.
+          throw new Error("No Google auth available for meeting summary");
         }
 
         const gmail = google.gmail({ version: "v1", auth: gmailAuth });
@@ -127,25 +195,27 @@ export async function POST(req: NextRequest) {
 
         if (targetIds.length > 0) {
           const eventTime = new Date(body.eventDate).getTime() / 1000;
-          const dayBefore = eventTime - 86400;
-          const dayAfter = eventTime + 86400;
-          const keyword = body.eventTitle.toLowerCase().split(" ")[0];
+          // Search 3 days back → 1 day ahead so recurring stand-ups and prep
+          // threads are captured even when no message mentions the meeting title.
+          const windowStart = eventTime - 3 * 86400;
+          const windowEnd = eventTime + 86400;
 
           const allMessages: string[] = [];
           await Promise.all(
             targetIds.map(async (channelId) => {
               try {
                 const res = await fetch(
-                  `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${dayBefore}&latest=${dayAfter}&limit=30`,
+                  `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${windowStart}&latest=${windowEnd}&limit=50`,
                   { headers: { Authorization: `Bearer ${workspace.slackBotToken}` } },
                 );
                 const data = (await res.json()) as { ok: boolean; messages?: Array<{ text: string; ts: string }> };
                 if (data.ok && data.messages) {
-                  const matches = data.messages
-                    .filter((m) => m.text && m.text.toLowerCase().includes(keyword))
+                  // Include all non-empty messages — AI decides what's relevant
+                  const msgs = data.messages
+                    .filter((m) => m.text && m.text.trim().length > 0)
                     .map((m) => m.text)
-                    .slice(0, 5);
-                  allMessages.push(...matches);
+                    .slice(0, 20);
+                  allMessages.push(...msgs);
                 }
               } catch {
                 // Channel unavailable — skip
@@ -153,7 +223,7 @@ export async function POST(req: NextRequest) {
             }),
           );
 
-          slackContext = allMessages.slice(0, 15).join("\n");
+          slackContext = allMessages.slice(0, 30).join("\n---\n");
         }
       } catch {
         // Slack unavailable — continue without Slack context
@@ -210,7 +280,39 @@ Be concise. British English. No filler.`;
       summary = response.choices[0]?.message?.content ?? "";
     }
 
-    return apiOk({ summary: summary.trim() });
+    const trimmedSummary = summary.trim();
+
+    // Persist the cache entry — fire-and-forget on auth lookup so we don't block the
+    // response. If the user isn't logged in (shouldn't happen for app routes), we still
+    // cache the summary with no actor.
+    const session = await auth().catch(() => null);
+    const actorId = session?.user?.id ?? null;
+    if (trimmedSummary) {
+      await prisma.meetingSummary
+        .upsert({
+          where: { workspaceId_eventId: { workspaceId: workspace.id, eventId: body.eventId } },
+          create: {
+            workspaceId: workspace.id,
+            eventId: body.eventId,
+            summary: trimmedSummary,
+            inputsHash,
+            modelUsed: model,
+            generatedByUserId: actorId,
+          },
+          update: {
+            summary: trimmedSummary,
+            inputsHash,
+            modelUsed: model,
+            generatedByUserId: actorId,
+          },
+        })
+        .catch((err: unknown) => {
+          // Cache write failures shouldn't break the response — log and move on.
+          console.error("[meeting-summary] cache upsert failed", err);
+        });
+    }
+
+    return apiOk({ summary: trimmedSummary, cached: false });
   } catch (error) {
     return fromError(error);
   }

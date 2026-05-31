@@ -23,7 +23,7 @@ import {
   UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useState, useDeferredValue, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -40,24 +40,30 @@ import type {
 import {
   useCreateSupportClient,
   useCreateSupportConnection,
+  useCreateSupportReport,
   useCreateWorkflowRule,
   useDeleteConnection,
+  useDeleteSupportReport,
   useDeleteWorkflowRule,
   useGenerateAiDraft,
   useSeedDefaultRules,
   useSupportClients,
   useSupportConversations,
   useSupportMessages,
+  useSupportReports,
   useUpdateConversation,
   useUpdateConnection,
   useSendMessage,
   useSupportTickets,
+  useUpdateSupportClient,
+  useUpdateSupportReport,
   useUpdateTicket,
   useSupportConnections,
   useSupportWorkflowRules,
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";
+import type { SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -101,14 +107,14 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   stripe: "Stripe",
 };
 
-const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "youtube"];
-const COMING_SOON_SOURCES: SupportSource[] = ["instagram", "clickup", "stripe"];
+const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit"];
+const COMING_SOON_SOURCES: SupportSource[] = ["youtube", "instagram", "clickup", "stripe"];
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
   discord: "Monitor channels on a client's server",
   reddit: "Watch public subreddits for mentions",
-  youtube: "Ingest comments from videos or channel",
+  youtube: "Comments from videos — coming soon",
   instagram: "DMs & comments — coming soon",
   clickup: "Sync tasks and comments",
   stripe: "Disputes & payment events via webhook",
@@ -313,6 +319,121 @@ function sourceAuthMode(s: SupportSource): Connection["authMode"] {
   return "api_key";
 }
 
+// ─── shared connector filter state + UI ────────────────────────────────────────
+
+interface FilterState {
+  keywords: string;
+  excludeKeywords: string;
+  lookbackDays: string;
+  maxItems: string;
+  ignoreBots: boolean;
+}
+
+/** Initialise unified filter state from a saved scraperConfig. */
+function initFilterState(cfg: Connection["scraperConfig"]): FilterState {
+  return {
+    keywords: (cfg?.keywords ?? []).join(", "),
+    excludeKeywords: (cfg?.excludeKeywords ?? []).join(", "),
+    lookbackDays: cfg?.lookbackDays ? String(cfg.lookbackDays) : "",
+    maxItems: cfg?.maxItems ? String(cfg.maxItems) : "",
+    ignoreBots: cfg?.ignoreBots ?? true,
+  };
+}
+
+/** Serialise unified filter state into scraperConfig fields. */
+function buildFilterConfig(source: SupportSource, f: FilterState) {
+  const lookback = Number(f.lookbackDays);
+  const max = Number(f.maxItems);
+  return {
+    keywords: f.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+    excludeKeywords: f.excludeKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+    ...(lookback > 0 ? { lookbackDays: lookback } : {}),
+    ...(max > 0 ? { maxItems: max } : {}),
+    ...(source === "discord" ? { ignoreBots: f.ignoreBots } : {}),
+  };
+}
+
+function ConnectorFilterFields({
+  source,
+  filters,
+  setFilters,
+}: {
+  source: SupportSource;
+  filters: FilterState;
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+}) {
+  const set = <K extends keyof FilterState>(key: K, value: FilterState[K]) =>
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  const lookbackPlaceholder = source === "gmail" ? "30" : "7";
+  const maxPlaceholder = source === "reddit" ? "25" : "50";
+
+  return (
+    <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+      <p className="app-field-label">
+        Filters <span className="font-normal text-[var(--text-4)]">— dial in exactly what gets ingested</span>
+      </p>
+      <label className="block space-y-1">
+        <span className="app-field-label">
+          Include keywords{" "}
+          <span className="font-normal text-[var(--text-4)]">(comma-separated · match any · blank = everything)</span>
+        </span>
+        <input
+          value={filters.keywords}
+          onChange={(e) => set("keywords", e.target.value)}
+          className="app-input w-full"
+          placeholder="e.g. bug, help, broken, refund"
+        />
+      </label>
+      <label className="block space-y-1">
+        <span className="app-field-label">
+          Exclude keywords <span className="font-normal text-[var(--text-4)]">(drop items containing any)</span>
+        </span>
+        <input
+          value={filters.excludeKeywords}
+          onChange={(e) => set("excludeKeywords", e.target.value)}
+          className="app-input w-full"
+          placeholder="e.g. spam, giveaway, promo"
+        />
+      </label>
+      <div className="flex gap-2">
+        <label className="block flex-1 space-y-1">
+          <span className="app-field-label">Lookback (days)</span>
+          <input
+            type="number"
+            min={1}
+            value={filters.lookbackDays}
+            onChange={(e) => set("lookbackDays", e.target.value)}
+            className="app-input w-full"
+            placeholder={lookbackPlaceholder}
+          />
+        </label>
+        <label className="block flex-1 space-y-1">
+          <span className="app-field-label">Max per sync</span>
+          <input
+            type="number"
+            min={1}
+            value={filters.maxItems}
+            onChange={(e) => set("maxItems", e.target.value)}
+            className="app-input w-full"
+            placeholder={maxPlaceholder}
+          />
+        </label>
+      </div>
+      {source === "discord" && (
+        <label className="flex cursor-pointer items-center gap-2.5">
+          <input
+            type="checkbox"
+            checked={filters.ignoreBots}
+            onChange={(e) => set("ignoreBots", e.target.checked)}
+            className="h-3.5 w-3.5 accent-[var(--brand-700)]"
+          />
+          <span className="text-xs text-[var(--text-2)]">Ignore messages from bots</span>
+        </label>
+      )}
+    </div>
+  );
+}
+
 function AddConnectorModal({
   clientId,
   clientSlug,
@@ -334,7 +455,6 @@ function AddConnectorModal({
   const [discordToken, setDiscordToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
   const [discordGuildName, setDiscordGuildName] = useState("");
-  const [discordKeywords, setDiscordKeywords] = useState("");
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [fetchingChannels, setFetchingChannels] = useState(false);
@@ -343,11 +463,9 @@ function AddConnectorModal({
 
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
-  const [redditKeywords, setRedditKeywords] = useState("");
 
-  // YouTube fields
-  const [ytChannelId, setYtChannelId] = useState("");
-  const [ytVideoIds, setYtVideoIds] = useState("");
+  // Shared filters (keywords, exclude, lookback, max, ignore-bots)
+  const [filters, setFilters] = useState<FilterState>(() => initFilterState(undefined));
 
   const createConnection = useCreateSupportConnection(clientId);
 
@@ -386,8 +504,9 @@ function AddConnectorModal({
   }
 
   function buildScraperConfig(): Connection["scraperConfig"] {
+    const f = buildFilterConfig(source, filters);
     if (source === "gmail") {
-      return { query: gmailQuery.trim(), intakeAddress: defaultIntake };
+      return { query: gmailQuery.trim(), intakeAddress: defaultIntake, ...f };
     }
     if (source === "discord") {
       const channels = availableChannels
@@ -398,20 +517,11 @@ function AddConnectorModal({
         guildName: discordGuildName,
         botToken: discordToken.trim(),
         channels,
-        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     if (source === "reddit") {
-      return {
-        subreddit: redditSubreddit.trim(),
-        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-    }
-    if (source === "youtube") {
-      return {
-        youtubeChannelId: ytChannelId.trim() || undefined,
-        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
-      };
+      return { subreddit: redditSubreddit.trim(), ...f };
     }
     return undefined;
   }
@@ -458,7 +568,7 @@ function AddConnectorModal({
                 type="button"
                 onClick={() => setSource(s)}
                 className={cn(
-                  "flex items-start gap-3 rounded-[12px] border p-3.5 text-left transition",
+                  "flex items-start gap-3 rounded-lg border p-3.5 text-left transition",
                   source === s
                     ? "border-[var(--brand-700)] bg-[var(--mist)] shadow-sm"
                     : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
@@ -624,17 +734,6 @@ function AddConnectorModal({
               </div>
             )}
 
-            <label className="block space-y-1">
-              <span className="app-field-label">
-                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
-              </span>
-              <input
-                value={discordKeywords}
-                onChange={(e) => setDiscordKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug, help, issue, broken"
-              />
-            </label>
           </div>
         )}
 
@@ -653,43 +752,12 @@ function AddConnectorModal({
                 placeholder="e.g. acmeapp"
               />
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Keywords (optional, comma-separated)</span>
-              <input
-                value={redditKeywords}
-                onChange={(e) => setRedditKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug report, acme help"
-              />
-            </label>
           </div>
         )}
 
-        {/* YouTube config */}
-        {source === "youtube" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <p className="text-[11px] text-[var(--text-4)]">
-              Uses the Google service account from Settings → Integrations. Enter a channel ID or specific video IDs.
-            </p>
-            <label className="block space-y-1">
-              <span className="app-field-label">YouTube channel ID (optional)</span>
-              <input
-                value={ytChannelId}
-                onChange={(e) => setYtChannelId(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder="UCxxxxxxxxxxxxxxxxxxxx"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Video IDs (comma-separated, optional)</span>
-              <input
-                value={ytVideoIds}
-                onChange={(e) => setYtVideoIds(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder="dQw4w9WgXcQ, abc123"
-              />
-            </label>
-          </div>
+        {/* Shared filters — live sources only */}
+        {LIVE_SOURCES.includes(source) && (
+          <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
         )}
 
         {error && (
@@ -1090,52 +1158,74 @@ function InboxView({ clientId }: { clientId: string }) {
       {/* two-column layout */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
         {/* conversation list */}
-        <div className="space-y-2">
-          <div className="max-h-[calc(100vh-18rem)] space-y-2 overflow-y-auto pr-0.5">
-          {convosLoading && (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
-              ))}
-            </div>
-          )}
-          {!convosLoading && filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
-          )}
-          {paginated.map((c) => (
-            <ConversationCard
-              key={c.id}
-              convo={c}
-              active={c.id === selectedConvId}
-              onClick={() => setSelectedConvId(c.id)}
-            />
-          ))}
+        <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // CONVERSATIONS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {filtered.length}
+            </span>
           </div>
-          {totalPages > 1 && (
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-              >
-                ← Prev
-              </button>
-              <span className="text-xs text-[var(--text-4)]">{page + 1} / {totalPages}</span>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-              >
-                Next →
-              </button>
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-0.5">
+            {convosLoading && (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                ))}
+              </div>
+            )}
+            {!convosLoading && filtered.length === 0 && (
+              <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
+            )}
+            {paginated.map((c) => (
+              <ConversationCard
+                key={c.id}
+                convo={c}
+                active={c.id === selectedConvId}
+                onClick={() => setSelectedConvId(c.id)}
+              />
+            ))}
             </div>
-          )}
+            {totalPages > 1 && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-[var(--text-4)]">{page + 1} / {totalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* detail pane */}
       <div className="app-card flex min-w-0 flex-col overflow-hidden">
+        {/* widget header */}
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            01 // CONVERSATION
+          </span>
+          {activeConvo && (
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
+          )}
+        </div>
         {!activeConvo ? (
           <div className="flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
             Select a conversation
@@ -1159,15 +1249,17 @@ function InboxView({ clientId }: { clientId: string }) {
                 <span className="text-[11px] text-[var(--text-4)]">
                   {formatShort(activeConvo.receivedAt)}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleGenerateDraft}
-                  disabled={generateDraft.isPending}
-                  className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
-                >
-                  <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                  {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
-                </button>
+                {activeConvo.source !== "gmail" && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateDraft}
+                    disabled={generateDraft.isPending}
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
+                  >
+                    <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
+                    {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1200,14 +1292,14 @@ function InboxView({ clientId }: { clientId: string }) {
             </div>
 
             {/* AI draft panel */}
-            {draft && (
+            {draft && activeConvo.source !== "gmail" && (
               <div className="border-t border-[var(--mist-border)] bg-[var(--mist)] p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
                     <span className="text-xs font-semibold text-[var(--brand-700)]">AI draft</span>
                     {draft.status === "approved" && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                         Approved
                       </span>
                     )}
@@ -1250,8 +1342,8 @@ function InboxView({ clientId }: { clientId: string }) {
               </div>
             )}
 
-            {/* manual reply box (only when no draft) */}
-            {!draft && (
+            {/* manual reply box (only when no draft, and source supports replies) */}
+            {!draft && activeConvo.source !== "gmail" && (
               <div className="border-t border-[var(--border-2)] p-4">
                 <textarea
                   rows={3}
@@ -1369,7 +1461,16 @@ function TicketsView({ clientId }: { clientId: string }) {
   function TicketTable({ rows }: { rows: Ticket[] }) {
     return (
       <div className="app-card overflow-hidden p-0">
-        {/* header */}
+        {/* widget header */}
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            01 // TICKETS
+          </span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+            {rows.length}
+          </span>
+        </div>
+        {/* column header */}
         <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
           <span>Title</span>
           <span className="w-20 text-center">Priority</span>
@@ -1402,7 +1503,7 @@ function TicketsView({ clientId }: { clientId: string }) {
                     </span>
                   </div>
                 </div>
-                <span className={cn("inline-flex w-20 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
+                <span className={cn("inline-flex w-20 items-center justify-center rounded-md px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
                   {ticket.priority}
                 </span>
                 <span className="w-24 text-right text-[11px] text-[var(--text-4)]">{formatShort(ticket.updatedAt)}</span>
@@ -1418,7 +1519,7 @@ function TicketsView({ clientId }: { clientId: string }) {
                     value={ticket.status}
                     onChange={(e) => updateTicket.mutate({ ticketId: ticket.id, data: { status: e.target.value as TicketStatus } })}
                     className={cn(
-                      "cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
+                      "cursor-pointer rounded-md border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
                       STATUS_TONE[ticket.status],
                     )}
                   >
@@ -1479,94 +1580,460 @@ function TicketsView({ clientId }: { clientId: string }) {
 
 // ─── reports view ────────────────────────────────────────────────────────────
 
+function emptyPayload(author: string): SupportReportPayload {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    author,
+    periodStart: start.toISOString().slice(0, 10),
+    periodEnd: end.toISOString().slice(0, 10),
+    overviewText: "",
+    totalTickets: 0,
+    catCancellations: 0,
+    catAccountQueries: 0,
+    catRefunds: 0,
+    catTechIssues: 0,
+    catOther: 0,
+    prioUrgent: 0,
+    prioHigh: 0,
+    prioMedium: 0,
+    prioLow: 0,
+    performanceText: "",
+    refundRequests: 0,
+    refundsProcessed: 0,
+    refundTotalValue: 0,
+    refundNotes: "",
+    usageTotalUsers: 0,
+    usageVerifiedUsers: 0,
+    usageActiveSubscriptions: 0,
+    usageSubIosMonthly: 0,
+    usageSubIosYearly: 0,
+    usageSubAndroidMonthly: 0,
+    usageSubAndroidYearly: 0,
+    usageSubStripeMonthly: 0,
+    usageSubStripeYearly: 0,
+    usageEventsTotal: 0,
+    usageEventsRenewals: 0,
+    usageEventsNew: 0,
+    usageIosTotal: 0,
+    usageIosNew: 0,
+    usageAndroidTotal: 0,
+    usageAndroidNew: 0,
+    usageStripeTotal: 0,
+    usageStripeNew: 0,
+    summaryText: "",
+  };
+}
+
+function numInput(
+  label: string,
+  value: number,
+  onChange: (v: number) => void,
+  prefix?: string,
+) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">{label}</p>
+      <div className="flex items-center gap-1">
+        {prefix && <span className="text-sm text-[var(--text-3)]">{prefix}</span>}
+        <input
+          type="number"
+          min={0}
+          value={value || ""}
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+        />
+      </div>
+    </div>
+  );
+}
+
+function textareaInput(
+  label: string,
+  value: string,
+  onChange: (v: string) => void,
+  placeholder: string,
+  rows = 4,
+) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">{label}</p>
+      <textarea
+        rows={rows}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+      />
+    </div>
+  );
+}
+
+function ReportBuilder({
+  clientId,
+  report,
+  onSaved,
+  onCancel,
+}: {
+  clientId: string;
+  report: SupportReport | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const { data: session } = useSession();
+  const authorDefault = session?.user?.name ?? "";
+
+  const [period, setPeriod] = useState(
+    report?.period ?? new Date().toLocaleString("en-GB", { month: "long", year: "numeric" }),
+  );
+  const [p, setP] = useState<SupportReportPayload>(
+    report?.payload ?? emptyPayload(authorDefault),
+  );
+
+  const createReport = useCreateSupportReport(clientId);
+  const updateReport = useUpdateSupportReport(clientId);
+  const saving = createReport.isPending || updateReport.isPending;
+
+  function update<K extends keyof SupportReportPayload>(key: K, val: SupportReportPayload[K]) {
+    setP((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function handleSave() {
+    if (report) {
+      await updateReport.mutateAsync({ reportId: report.id, data: { period, payload: p } });
+    } else {
+      await createReport.mutateAsync({ period, payload: p, createdBy: p.author });
+    }
+    onSaved();
+  }
+
+  const widgetHeader = (num: string, label: string, right?: React.ReactNode) => (
+    <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+      <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+        {num} {"//"} {label}
+      </span>
+      {right ?? null}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* back + save bar */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+        >
+          <ChevronDoubleLeftIcon className="h-4 w-4" />
+          All reports
+        </button>
+        <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
+          {report ? "Save changes" : "Save report"}
+        </Button>
+      </div>
+
+      {/* 01 // PERIOD & AUTHOR */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("01", "PERIOD & AUTHOR")}
+        <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3">
+          <div className="col-span-2 sm:col-span-1">
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period label</p>
+            <input
+              type="text"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              placeholder="April 2026"
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period start</p>
+            <input
+              type="date"
+              value={p.periodStart}
+              onChange={(e) => update("periodStart", e.target.value)}
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period end</p>
+            <input
+              type="date"
+              value={p.periodEnd}
+              onChange={(e) => update("periodEnd", e.target.value)}
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-3">
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Author</p>
+            <input
+              type="text"
+              value={p.author}
+              onChange={(e) => update("author", e.target.value)}
+              placeholder="Name / Customer Support Specialist"
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 02 // OVERVIEW */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("02", "OVERVIEW")}
+        <div className="p-5">
+          {textareaInput("Overview narrative", p.overviewText, (v) => update("overviewText", v),
+            "Write 3–4 bullet points summarising the month's support activity…", 5)}
+        </div>
+      </div>
+
+      {/* 03 // TICKET VOLUME BY CATEGORY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("03", "TICKET VOLUME BY CATEGORY")}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {numInput("Total tickets", p.totalTickets, (v) => update("totalTickets", v))}
+            {numInput("Cancellations", p.catCancellations, (v) => update("catCancellations", v))}
+            {numInput("Account queries", p.catAccountQueries, (v) => update("catAccountQueries", v))}
+            {numInput("Refunds", p.catRefunds, (v) => update("catRefunds", v))}
+            {numInput("Tech issues", p.catTechIssues, (v) => update("catTechIssues", v))}
+            {numInput("Other", p.catOther, (v) => update("catOther", v))}
+          </div>
+        </div>
+      </div>
+
+      {/* 04 // TICKET PRIORITY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("04", "TICKET PRIORITY")}
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {numInput("Urgent", p.prioUrgent, (v) => update("prioUrgent", v))}
+            {numInput("High", p.prioHigh, (v) => update("prioHigh", v))}
+            {numInput("Medium", p.prioMedium, (v) => update("prioMedium", v))}
+            {numInput("Low", p.prioLow, (v) => update("prioLow", v))}
+          </div>
+        </div>
+      </div>
+
+      {/* 05 // SUPPORT PERFORMANCE */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("05", "SUPPORT PERFORMANCE")}
+        <div className="p-5">
+          {textareaInput("Performance notes", p.performanceText, (v) => update("performanceText", v),
+            "Comment on resolution rate, backlog, SLA adherence…", 4)}
+        </div>
+      </div>
+
+      {/* 06 // REFUND REQUESTS */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("06", "REFUND REQUESTS")}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {numInput("Total requests", p.refundRequests, (v) => update("refundRequests", v))}
+            {numInput("Processed", p.refundsProcessed, (v) => update("refundsProcessed", v))}
+            {numInput("Total value (£)", p.refundTotalValue, (v) => update("refundTotalValue", v), "£")}
+          </div>
+          {textareaInput("Breakdown notes", p.refundNotes, (v) => update("refundNotes", v),
+            "e.g. 4 × £6.99 monthly (duplicate sub), 1 × £69.99 yearly…", 3)}
+        </div>
+      </div>
+
+      {/* 07 // USAGE & SUBSCRIPTIONS */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("07", "USAGE & SUBSCRIPTIONS")}
+        <div className="p-5 space-y-5">
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">User base (all-time)</p>
+            <div className="grid grid-cols-2 gap-3">
+              {numInput("Total users", p.usageTotalUsers, (v) => update("usageTotalUsers", v))}
+              {numInput("Verified users", p.usageVerifiedUsers, (v) => update("usageVerifiedUsers", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Active subscriptions</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("Total active", p.usageActiveSubscriptions, (v) => update("usageActiveSubscriptions", v))}
+              {numInput("iOS Monthly", p.usageSubIosMonthly, (v) => update("usageSubIosMonthly", v))}
+              {numInput("iOS Yearly", p.usageSubIosYearly, (v) => update("usageSubIosYearly", v))}
+              {numInput("Android Monthly", p.usageSubAndroidMonthly, (v) => update("usageSubAndroidMonthly", v))}
+              {numInput("Android Yearly", p.usageSubAndroidYearly, (v) => update("usageSubAndroidYearly", v))}
+              {numInput("Stripe Monthly", p.usageSubStripeMonthly, (v) => update("usageSubStripeMonthly", v))}
+              {numInput("Stripe Yearly", p.usageSubStripeYearly, (v) => update("usageSubStripeYearly", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Subscription events this month</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("Total events", p.usageEventsTotal, (v) => update("usageEventsTotal", v))}
+              {numInput("Renewals", p.usageEventsRenewals, (v) => update("usageEventsRenewals", v))}
+              {numInput("New subscriptions", p.usageEventsNew, (v) => update("usageEventsNew", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Platform activity (total / new)</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("iOS total", p.usageIosTotal, (v) => update("usageIosTotal", v))}
+              {numInput("iOS new", p.usageIosNew, (v) => update("usageIosNew", v))}
+              {numInput("Android total", p.usageAndroidTotal, (v) => update("usageAndroidTotal", v))}
+              {numInput("Android new", p.usageAndroidNew, (v) => update("usageAndroidNew", v))}
+              {numInput("Stripe total", p.usageStripeTotal, (v) => update("usageStripeTotal", v))}
+              {numInput("Stripe new", p.usageStripeNew, (v) => update("usageStripeNew", v))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 08 // SUMMARY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("08", "SUMMARY")}
+        <div className="p-5">
+          {textareaInput("Summary narrative", p.summaryText, (v) => update("summaryText", v),
+            "Write the closing summary bullet points for the report…", 5)}
+        </div>
+      </div>
+
+      {/* bottom save */}
+      <div className="flex justify-end pb-4">
+        <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
+          {report ? "Save changes" : "Save report"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ReportsView({ client }: { client: SupportClient }) {
+  const { data: reportsData, isLoading } = useSupportReports(client.id);
+  const deleteReport = useDeleteSupportReport(client.id);
+  const reports = reportsData?.reports ?? [];
+
+  const [editing, setEditing] = useState<SupportReport | null | "new">(null);
+
   const hasAllocation = client.supportDaysPerMonth != null;
   const used = client.supportDaysUsed ?? 0;
   const total = client.supportDaysPerMonth ?? 0;
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
-
-  const [reportText, setReportText] = useState("");
-  const [generating, setGenerating] = useState(false);
-
   const month = new Date().toLocaleString("en-GB", { month: "long", year: "numeric" });
 
-  const handleGenerate = useCallback(async () => {
-    setGenerating(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setReportText(
-      `# Care Report — ${client.name}\n**${month}**\n\n` +
-        `## Summary\n_Add a 2–3 sentence overview of the month's support activity here._\n\n` +
-        (hasAllocation
-          ? `## Support days\n- Allocated: ${total} days\n- Used: ${used} days (${pct}%)\n- Remaining: ${total - used} days\n\n`
-          : "") +
-        `## Conversations & tickets\n- _Total conversations opened: —_\n- _Tickets resolved: —_\n- _Avg. first response time: —_\n\n` +
-        `## Top issues this month\n1. \n2. \n3. \n\n` +
-        `## Actions for next month\n- \n- \n`,
+  if (editing !== null) {
+    return (
+      <ReportBuilder
+        clientId={client.id}
+        report={editing === "new" ? null : editing}
+        onSaved={() => setEditing(null)}
+        onCancel={() => setEditing(null)}
+      />
     );
-    setGenerating(false);
-  }, [client.name, month, hasAllocation, total, used, pct]);
+  }
 
   return (
     <div className="space-y-4">
       {hasAllocation && (
-        <div className="app-card p-5">
-          <p className="text-sm font-medium text-[var(--text-3)]">
-            Support days — {month}
-          </p>
-          <div className="mt-4 flex items-end gap-4">
-            <p className="text-[32px] font-semibold leading-none tracking-[-0.03em] text-[var(--text-1)]">
-              {used}
-              <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // SUPPORT DAYS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {month}
+            </span>
+          </div>
+          <div className="p-5">
+            <div className="mt-1 flex items-end gap-4">
+              <p className="font-display text-[32px] leading-none text-[var(--text-1)]">
+                {used}
+                <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
+              </p>
+              <p className="mb-1 text-sm text-[var(--text-4)]">{pct}% used</p>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-1)]">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]",
+                )}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-[var(--text-4)]">
+              {total - used} days remaining · Report due{" "}
+              {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"}
+              {client.reportingRecipient && ` → ${client.reportingRecipient}`}
             </p>
-            <p className="mb-1 text-sm text-[var(--text-4)]">{pct}% used</p>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-1)]">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all",
-                pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]",
-              )}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <p className="mt-2 text-xs text-[var(--text-4)]">
-            {total - used} days remaining · Report due{" "}
-            {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"}
-            {client.reportingRecipient && ` → ${client.reportingRecipient}`}
-          </p>
         </div>
       )}
 
-      <div className="app-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-medium text-[var(--text-3)]">Monthly report draft</p>
+      <div className="app-card overflow-hidden p-0">
+        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            02 // MONTHLY REPORTS
+          </span>
           <button
             type="button"
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-1.5 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-3 py-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:opacity-80 disabled:opacity-50"
+            onClick={() => setEditing("new")}
+            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
           >
-            {generating ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-            {generating ? "Generating…" : "Generate report"}
+            <PlusIcon className="h-3 w-3" />
+            New report
           </button>
         </div>
-        <textarea
-          rows={12}
-          value={reportText}
-          onChange={(e) => setReportText(e.target.value)}
-          className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
-          placeholder="Write the monthly support report here… or click Generate to scaffold one."
-        />
-        <div className="mt-3 flex items-center justify-between">
-          <p className="text-xs text-[var(--text-4)]">Markdown supported</p>
-          <Button type="button" variant="primary" size="sm">
-            Save draft
-          </Button>
-        </div>
+        {isLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
+        {!isLoading && reports.length === 0 && (
+          <div className="flex flex-col items-center gap-3 px-5 py-10">
+            <DocumentTextIcon className="h-8 w-8 text-[var(--text-4)]" />
+            <p className="text-sm text-[var(--text-4)]">No reports yet</p>
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Build first report
+            </button>
+          </div>
+        )}
+        {reports.map((r, idx) => (
+          <div
+            key={r.id}
+            className={cn("flex items-center justify-between px-5 py-3.5", idx > 0 && "border-t border-[var(--border-2)]")}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-1)]">{r.period}</p>
+              <p className="mt-0.5 text-xs text-[var(--text-4)]">
+                {r.payload.periodStart && r.payload.periodEnd
+                  ? `${r.payload.periodStart} → ${r.payload.periodEnd}`
+                  : `Created ${new Date(r.createdAt).toLocaleDateString("en-GB")}`}
+                {r.payload.author ? ` · ${r.payload.author}` : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {r.payload.totalTickets > 0 && (
+                <span className="rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-3)]">
+                  {r.payload.totalTickets} tickets
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditing(r)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
+                title="Edit report"
+              >
+                <PencilSquareIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteReport.mutate(r.id)}
+                disabled={deleteReport.isPending}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                title="Delete report"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1595,9 +2062,6 @@ function EditConnectorModal({
   const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
   const [discordGuildId, setDiscordGuildId] = useState(conn.scraperConfig?.guildId ?? "");
   const [discordGuildName, setDiscordGuildName] = useState(conn.scraperConfig?.guildName ?? "");
-  const [discordKeywords, setDiscordKeywords] = useState(
-    (conn.scraperConfig?.keywords ?? []).join(", "),
-  );
   const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(
     new Set((conn.scraperConfig?.channels ?? []).map((c) => c.id)),
@@ -1608,15 +2072,9 @@ function EditConnectorModal({
 
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
-  const [redditKeywords, setRedditKeywords] = useState(
-    (conn.scraperConfig?.keywords ?? []).join(", "),
-  );
 
-  // YouTube
-  const [ytChannelId, setYtChannelId] = useState(conn.scraperConfig?.youtubeChannelId ?? "");
-  const [ytVideoIds, setYtVideoIds] = useState(
-    (conn.scraperConfig?.videoIds ?? []).join(", "),
-  );
+  // Shared filters (keywords, exclude, lookback, max, ignore-bots)
+  const [filters, setFilters] = useState<FilterState>(() => initFilterState(conn.scraperConfig));
 
   async function handleFetchChannels() {
     const guildId = discordGuildId.trim();
@@ -1652,8 +2110,9 @@ function EditConnectorModal({
   }
 
   function buildScraperConfig(): Connection["scraperConfig"] {
+    const f = buildFilterConfig(conn.source, filters);
     if (conn.source === "gmail") {
-      return { ...conn.scraperConfig, query: gmailQuery.trim() };
+      return { ...conn.scraperConfig, query: gmailQuery.trim(), ...f };
     }
     if (conn.source === "discord") {
       // Preserve existing channel cursors for channels that were already tracked
@@ -1671,21 +2130,14 @@ function EditConnectorModal({
         guildName: discordGuildName,
         botToken: discordToken.trim(),
         channels,
-        keywords: discordKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     if (conn.source === "reddit") {
       return {
         ...conn.scraperConfig,
         subreddit: redditSubreddit.trim(),
-        keywords: redditKeywords.split(",").map((s) => s.trim()).filter(Boolean),
-      };
-    }
-    if (conn.source === "youtube") {
-      return {
-        ...conn.scraperConfig,
-        youtubeChannelId: ytChannelId.trim() || undefined,
-        videoIds: ytVideoIds.split(",").map((s) => s.trim()).filter(Boolean),
+        ...f,
       };
     }
     return conn.scraperConfig;
@@ -1827,17 +2279,6 @@ function EditConnectorModal({
               </div>
             )}
 
-            <label className="block space-y-1">
-              <span className="app-field-label">
-                Keywords <span className="font-normal text-[var(--text-4)]">(optional — leave blank to ingest all messages)</span>
-              </span>
-              <input
-                value={discordKeywords}
-                onChange={(e) => setDiscordKeywords(e.target.value)}
-                className="app-input w-full"
-                placeholder="e.g. bug, help, issue, broken"
-              />
-            </label>
           </div>
         )}
 
@@ -1848,25 +2289,12 @@ function EditConnectorModal({
               <span className="app-field-label">Subreddit (without r/)</span>
               <input value={redditSubreddit} onChange={(e) => setRedditSubreddit(e.target.value)} className="app-input w-full" placeholder="e.g. acmeapp" />
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Keywords (comma-separated)</span>
-              <input value={redditKeywords} onChange={(e) => setRedditKeywords(e.target.value)} className="app-input w-full" placeholder="e.g. bug, help" />
-            </label>
           </div>
         )}
 
-        {/* YouTube config */}
-        {conn.source === "youtube" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <label className="block space-y-1">
-              <span className="app-field-label">YouTube channel ID</span>
-              <input value={ytChannelId} onChange={(e) => setYtChannelId(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="UCxxxxxxxxxxxxxxxxxxxx" />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">Video IDs (comma-separated)</span>
-              <input value={ytVideoIds} onChange={(e) => setYtVideoIds(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="dQw4w9WgXcQ, abc123" />
-            </label>
-          </div>
+        {/* Shared filters — live sources only */}
+        {LIVE_SOURCES.includes(conn.source) && (
+          <ConnectorFilterFields source={conn.source} filters={filters} setFilters={setFilters} />
         )}
 
         <label className="block space-y-1.5">
@@ -2022,8 +2450,29 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         </div>
       )}
 
+      {/* ── Cron schedule notice ── */}
+      {connections.length > 0 && (
+        <div className="flex items-start gap-2 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-2.5">
+          <ExclamationTriangleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <p className="text-[11px] leading-4 text-amber-700">
+            <span className="font-semibold">Automatic background sync runs once a day, at 08:00 UTC.</span>{" "}
+            The Auto-fetch options above only poll while this page is open in your browser. For an immediate pull, use{" "}
+            <span className="font-medium">Refresh now</span> or a connector&apos;s <span className="font-medium">Sync now</span>.
+          </p>
+        </div>
+      )}
+
       {connections.length > 0 && (
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // CONNECTORS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {connections.length}
+            </span>
+          </div>
           {connections.map((conn, idx) => {
             const sr = syncResults[conn.id];
             return (
@@ -2066,16 +2515,31 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                     {conn.scraperConfig?.subreddit && (
                       <p className="mt-1 text-[11px] text-[var(--text-4)]">
                         r/{conn.scraperConfig.subreddit}
-                        {conn.scraperConfig.keywords?.length ? ` · keywords: ${conn.scraperConfig.keywords.join(", ")}` : ""}
                       </p>
                     )}
+                    {(() => {
+                      const cfg = conn.scraperConfig;
+                      if (!cfg) return null;
+                      const parts: string[] = [];
+                      if (cfg.keywords?.length) parts.push(`incl: ${cfg.keywords.join(", ")}`);
+                      if (cfg.excludeKeywords?.length) parts.push(`excl: ${cfg.excludeKeywords.join(", ")}`);
+                      if (cfg.lookbackDays) parts.push(`${cfg.lookbackDays}d lookback`);
+                      if (cfg.maxItems) parts.push(`max ${cfg.maxItems}`);
+                      if (conn.source === "discord" && cfg.ignoreBots === false) parts.push("includes bots");
+                      if (parts.length === 0) return null;
+                      return (
+                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.4px] text-[var(--text-4)]">
+                          {parts.join("  ·  ")}
+                        </p>
+                      );
+                    })()}
                     {sr && (
                       <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : sr.fetched === 0
-                            ? "Synced — no new emails since last sync"
-                            : `Synced — ${sr.fetched} fetched, ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered by AI`}
+                          : (sr.ingested ?? 0) === 0
+                            ? "Synced — no new items since last sync"
+                            : `Synced — ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered`}
                       </p>
                     )}
                   </div>
@@ -2091,17 +2555,17 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   return (
                     <div className="flex items-center gap-2">
                       {conn.health === "connected" ? (
-                        <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        <span className="flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
                           <CheckCircleIcon className="h-3.5 w-3.5" />
                           Connected
                         </span>
                       ) : conn.health === "error" ? (
-                        <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
+                        <span className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
                           <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                           Error
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                        <span className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                           <ExclamationTriangleIcon className="h-3.5 w-3.5" />
                           Needs setup
                         </span>
@@ -2169,12 +2633,16 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
       </button>
 
       {agentLogs.length > 0 && (
-        <div className="app-card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-            <span className="text-sm font-semibold text-[var(--text-1)]">Agent activity</span>
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // AGENT ACTIVITY
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 p-4">
             {agentLogs.map((log: AuditLog) => {
               const agentName = log.actor.replace("agent:", "");
               const agentLabel =
@@ -2193,7 +2661,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
               return (
                 <div key={log.id} className="flex items-start justify-between gap-3 text-[12px]">
                   <div className="flex items-start gap-2 min-w-0">
-                    <span className="mt-0.5 shrink-0 rounded-full bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)]">
+                    <span className="mt-0.5 shrink-0 rounded-md bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)]">
                       {agentLabel}
                     </span>
                     <span className="text-[var(--text-2)] truncate">{actionLabel}</span>
@@ -2360,12 +2828,20 @@ function AgentsView({ clientId }: { clientId: string }) {
     <div className="space-y-6">
       {/* agent cards */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent pipeline</h3>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="app-card mb-4 overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // AGENT PIPELINE
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+              LIVE
+            </span>
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-3">
           {AGENT_CARDS.map((agent) => {
             const enabled = toggles[agent.key];
             return (
-              <div key={agent.key} className="app-card p-5">
+              <div key={agent.key} className="rounded-lg border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div
                     className={cn(
@@ -2417,14 +2893,23 @@ function AgentsView({ clientId }: { clientId: string }) {
               </div>
             );
           })}
+          </div>
         </div>
       </section>
 
       {/* manual sync */}
       {connections.length > 0 && (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Manual sync</h3>
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                02 // MANUAL SYNC
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+                {connections.length}
+              </span>
+            </div>
             {connections.map((conn, idx) => {
               const pending = syncConn.isPending && syncConn.variables === conn.id;
               const sr = syncResults[conn.id];
@@ -2454,7 +2939,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                         <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
                         <span
                           className={cn(
-                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            "rounded-md px-2 py-0.5 text-[10px] font-semibold",
                             conn.health === "connected"
                               ? "bg-emerald-50 text-emerald-700"
                               : conn.health === "error"
@@ -2504,13 +2989,21 @@ function AgentsView({ clientId }: { clientId: string }) {
 
       {/* agent activity feed */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Agent activity</h3>
         {agentLogs.length === 0 ? (
           <p className="py-6 text-center text-sm text-[var(--text-4)]">
             No agent activity yet — run a sync to get started.
           </p>
         ) : (
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                03 // AGENT ACTIVITY
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
+                LIVE
+              </span>
+            </div>
             {agentLogs.map((log: AuditLog, idx: number) => {
               const agentName = log.actor.replace("agent:", "");
               const badgeCls = AGENT_BADGE[agentName] ?? "bg-[var(--surface-1)] text-[var(--text-3)]";
@@ -2528,7 +3021,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                   <div className="flex min-w-0 items-start gap-2">
                     <span
                       className={cn(
-                        "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        "mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold",
                         badgeCls,
                       )}
                     >
@@ -2569,11 +3062,24 @@ function AgentsView({ clientId }: { clientId: string }) {
 function SettingsView({ clientId }: { clientId: string }) {
   const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
   const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
+  const { data: clientData } = useSupportClients();
   const deleteRule = useDeleteWorkflowRule(clientId);
   const seedRules = useSeedDefaultRules(clientId);
+  const updateClient = useUpdateSupportClient(clientId);
+  const { data: portalClientsData } = useClientList();
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "You";
   const userEmail = session?.user?.email ?? "";
+
+  const thisClient = (clientData?.clients ?? []).find((c) => c.id === clientId);
+  const [linkedPortalId, setLinkedPortalId] = useState(thisClient?.workspaceClientId ?? "");
+
+  // Keep dropdown in sync if client data loads after mount
+  useEffect(() => {
+    setLinkedPortalId(thisClient?.workspaceClientId ?? "");
+  }, [thisClient?.workspaceClientId]);
+
+  const portalClients = portalClientsData?.clients ?? [];
 
   const [showAddRule, setShowAddRule] = useState(false);
 
@@ -2582,10 +3088,61 @@ function SettingsView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* portal link */}
+      <section>
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              00 // PORTAL LINK
+            </span>
+            {thisClient?.workspaceClientId && (
+              <span className="rounded-[4px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                Linked
+              </span>
+            )}
+          </div>
+          <div className="p-5">
+            <p className="mb-3 text-sm text-[var(--text-3)]">
+              Link this Care account to a client record in Portal. This surfaces a Care badge on the Portal client card and lets both views stay in sync.
+            </p>
+            <div className="flex items-center gap-3">
+              <select
+                value={linkedPortalId}
+                onChange={(e) => setLinkedPortalId(e.target.value)}
+                className="flex-1 h-9 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+              >
+                <option value="">— Not linked —</option>
+                {portalClients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                loading={updateClient.isPending}
+                disabled={linkedPortalId === (thisClient?.workspaceClientId ?? "")}
+                onClick={() => updateClient.mutate({ workspaceClientId: (linkedPortalId || null) as string | undefined })}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* workflow rules */}
       <section>
-        <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Workflow rules</h3>
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // WORKFLOW RULES
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {rules.length}
+            </span>
+          </div>
           {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
           {!rulesLoading && rules.length === 0 && (
             <div className="flex items-center justify-between px-5 py-4">
@@ -2618,7 +3175,7 @@ function SettingsView({ clientId }: { clientId: string }) {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {rule.requiresApproval && (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                    <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                       Requires approval
                     </span>
                   )}
@@ -2650,13 +3207,16 @@ function SettingsView({ clientId }: { clientId: string }) {
 
       {/* team */}
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[var(--text-2)]">Team access</h3>
-          <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] text-[var(--text-4)]">
-            Full team management coming with auth
-          </span>
-        </div>
         <div className="app-card overflow-hidden p-0">
+          {/* widget header */}
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              02 // TEAM ACCESS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              AUTH PENDING
+            </span>
+          </div>
           <div className="flex items-center justify-between px-5 py-3.5">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mist)] text-sm font-semibold text-[var(--brand-700)]">
@@ -2671,10 +3231,10 @@ function SettingsView({ clientId }: { clientId: string }) {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="rounded-full border border-[var(--mist-border)] bg-[var(--mist)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)]">
+              <span className="rounded-md border border-[var(--mist-border)] bg-[var(--mist)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)]">
                 Admin
               </span>
-              <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-3)]">
+              <span className="rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-3)]">
                 Owner
               </span>
             </div>
@@ -2685,8 +3245,16 @@ function SettingsView({ clientId }: { clientId: string }) {
       {/* audit log */}
       {(logsLoading || logs.length > 0) && (
         <section>
-          <h3 className="mb-3 text-sm font-semibold text-[var(--text-2)]">Audit log</h3>
           <div className="app-card overflow-hidden p-0">
+            {/* widget header */}
+            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                03 // AUDIT LOG
+              </span>
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+                {logs.length}
+              </span>
+            </div>
             {logsLoading && <div className="h-16 animate-pulse bg-[var(--surface-1)]" />}
             {logs.map((log, idx) => (
               <div
@@ -2892,7 +3460,7 @@ export function SupportDashboard() {
               type="button"
               title="Add client"
               onClick={() => setShowAddClient(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-dashed border-[var(--border-2)] text-[var(--text-4)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
             >
               <PlusIcon className="h-4 w-4" />
             </button>
@@ -2907,7 +3475,7 @@ export function SupportDashboard() {
           <div className="flex items-center gap-3 pt-5 pb-0">
             <h2 className="text-base font-semibold text-[var(--text-1)]">{client.name}</h2>
             <span className="text-[var(--text-4)]">·</span>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+            <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               Live
             </span>
           </div>
@@ -2932,7 +3500,7 @@ export function SupportDashboard() {
                   {badge != null && badge > 0 && (
                     <span
                       className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                        "rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
                         activeTab === tab.id
                           ? "bg-[var(--mist)] text-[var(--brand-700)]"
                           : "bg-[var(--surface-1)] text-[var(--text-4)]",

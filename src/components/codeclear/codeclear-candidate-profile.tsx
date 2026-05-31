@@ -17,9 +17,9 @@ import {
   useCodeClearCandidate,
   useDeleteCodeClearCandidate,
   useRunCodeClearGitHubAnalysis,
-  useSetCandidateCurrentClient,
   useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
+import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
 import { useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import { type CandidateAvailability } from "@/types/codeclear";
@@ -46,7 +46,6 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const router = useRouter();
   const candidateQuery = useCodeClearCandidate(candidateId);
   const clientsQuery = useClientList();
-  const setCurrentClient = useSetCandidateCurrentClient(candidateId);
   const updateCandidate = useUpdateCodeClearCandidate(candidateId);
   const deleteCandidate = useDeleteCodeClearCandidate();
   const addNote = useAddCodeClearCandidateNote(candidateId);
@@ -80,6 +79,9 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       timezone: candidate.timezone ?? "",
       availability: candidate.availability ?? "",
       origin: candidate.origin,
+      // Profile edit doesn't manage clients here — the hero already has the
+      // live current-client picker. Kept empty to satisfy the type.
+      clientIds: [],
     });
   }, [candidate, showEdit]);
 
@@ -105,7 +107,6 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
     );
   }
 
-  const currentClientId = candidate.currentClient?.id ?? "";
   const redFlagsCount = Array.isArray(candidate.latestGitHubAnalysis?.redFlags)
     ? (candidate.latestGitHubAnalysis!.redFlags as string[]).length
     : 0;
@@ -277,31 +278,17 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           />
         </div>
 
-        {/* Current client dropdown */}
+        {/* Current clients (multi-select) */}
         <div className="border-t border-[var(--border-2)] px-6 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="widget-data-label">Current client</span>
-            <select
-              value={currentClientId}
-              disabled={clientsQuery.isLoading || setCurrentClient.isPending}
-              onChange={(event) => {
-                const next = event.target.value || null;
-                if ((next ?? "") !== currentClientId) {
-                  setCurrentClient.mutate(next);
-                }
-              }}
-              className="app-select h-9 min-w-[240px] text-sm"
-            >
-              <option value="">Unassigned</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
-            {setCurrentClient.isPending ? (
-              <ArrowPathIcon className="h-4 w-4 animate-spin text-[var(--text-4)]" />
-            ) : null}
+          <div className="flex flex-wrap items-start gap-3">
+            <span className="widget-data-label mt-1.5">Current clients</span>
+            <CurrentClientPicker
+              candidateId={candidate.id}
+              candidateName={candidate.name}
+              currentClients={candidate.currentClients}
+              clients={clients}
+              clientsLoading={clientsQuery.isLoading}
+            />
           </div>
         </div>
       </section>

@@ -56,10 +56,15 @@ export interface Connection {
     botToken?: string;
     // Reddit
     subreddit?: string;
-    keywords?: string[];
     // YouTube
     youtubeChannelId?: string;
     videoIds?: string[];
+    // ── Shared filters (apply to all sources) ──
+    keywords?: string[];          // include — only ingest items matching at least one
+    excludeKeywords?: string[];   // exclude — drop items matching any
+    lookbackDays?: number;        // how far back to pull on first sync / re-sync
+    maxItems?: number;            // cap items fetched per sync
+    ignoreBots?: boolean;         // Discord only — skip bot-authored messages (default true)
     // Legacy / generic
     intervalHours?: number;
     channelId?: string;
@@ -130,6 +135,64 @@ export interface AuditLog {
   action: string;
   target: string;
   createdAt: string;
+}
+
+export interface SupportReportPayload {
+  author: string;
+  periodStart: string;
+  periodEnd: string;
+  // Overview narrative
+  overviewText: string;
+  // Ticket stats by category
+  totalTickets: number;
+  catCancellations: number;
+  catAccountQueries: number;
+  catRefunds: number;
+  catTechIssues: number;
+  catOther: number;
+  // Priority breakdown
+  prioUrgent: number;
+  prioHigh: number;
+  prioMedium: number;
+  prioLow: number;
+  // Support performance narrative
+  performanceText: string;
+  // Refund section
+  refundRequests: number;
+  refundsProcessed: number;
+  refundTotalValue: number;
+  refundNotes: string;
+  // Usage & subscription (manual from Stripe/App Store)
+  usageTotalUsers: number;
+  usageVerifiedUsers: number;
+  usageActiveSubscriptions: number;
+  usageSubIosMonthly: number;
+  usageSubIosYearly: number;
+  usageSubAndroidMonthly: number;
+  usageSubAndroidYearly: number;
+  usageSubStripeMonthly: number;
+  usageSubStripeYearly: number;
+  usageEventsTotal: number;
+  usageEventsRenewals: number;
+  usageEventsNew: number;
+  usageIosTotal: number;
+  usageIosNew: number;
+  usageAndroidTotal: number;
+  usageAndroidNew: number;
+  usageStripeTotal: number;
+  usageStripeNew: number;
+  // Summary narrative
+  summaryText: string;
+}
+
+export interface SupportReport {
+  id: string;
+  clientId: string;
+  period: string;
+  payload: SupportReportPayload;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SupportData {

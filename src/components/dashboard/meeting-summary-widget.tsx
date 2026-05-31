@@ -46,8 +46,15 @@ function formatTime(iso: string): string {
   }
 }
 
+interface CachedSummary {
+  summary: string;
+  cached: boolean;
+  cachedAt?: string;
+  generatedBy?: string | null;
+}
+
 export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [summaries, setSummaries] = useState<Record<string, CachedSummary>>({});
   const [generating, setGenerating] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
@@ -77,8 +84,10 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
     });
   }
 
-  async function handleSummarise(event: CalendarEvent) {
-    if (summaries[event.id]) {
+  async function handleSummarise(event: CalendarEvent, opts?: { force?: boolean }) {
+    // Re-fetch even when we already have a local copy if `force` is set (user clicked
+    // Regenerate). Otherwise short-circuit when we've already loaded this one.
+    if (!opts?.force && summaries[event.id]) {
       setSelected(event.id);
       return;
     }
@@ -92,12 +101,24 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
         eventDate: event.start,
         attendees: event.attendees,
         channelIds,
+        force: opts?.force,
       });
-      setSummaries((prev) => ({ ...prev, [event.id]: res.summary }));
+      setSummaries((prev) => ({
+        ...prev,
+        [event.id]: {
+          summary: res.summary,
+          cached: res.cached,
+          cachedAt: res.cachedAt,
+          generatedBy: res.generatedBy ?? null,
+        },
+      }));
     } catch {
       setSummaries((prev) => ({
         ...prev,
-        [event.id]: "Failed to generate summary. Check your AI and Google settings.",
+        [event.id]: {
+          summary: "Failed to generate summary. Check your AI and Google settings.",
+          cached: false,
+        },
       }));
     } finally {
       setGenerating(null);
@@ -116,13 +137,13 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
         </div>
         <div>
           <p className="text-xs font-semibold text-[var(--text-1)]">Meeting summaries</p>
-          <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
+          <p className="mt-0.5 text-xs text-[var(--text-3)]">
             Sign out and back in to grant Calendar access
           </p>
         </div>
         <Link
           href="/api/auth/signout"
-          className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+          className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
         >
           Re-connect via Google
         </Link>
@@ -139,11 +160,11 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col gap-0">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
           <VideoCameraIcon className="h-2.5 w-2.5" />
           Meetings
         </span>
-        <span className="text-[11px] text-[var(--text-3)]">AI prep</span>
+        <span className="text-xs text-[var(--text-3)]">AI prep</span>
       </div>
 
       <div className="mt-2 flex flex-1 gap-3 overflow-hidden">
@@ -152,7 +173,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
           className={`flex flex-col gap-1 overflow-y-auto ${selected && size !== "sm" ? "w-52 shrink-0" : "flex-1"}`}
         >
           {events.length === 0 ? (
-            <p className="text-[11px] text-[var(--text-3)]">No upcoming events</p>
+            <p className="text-xs text-[var(--text-3)]">No upcoming events</p>
           ) : (
             events.slice(0, displayCount).map((ev) => (
               <div
@@ -164,8 +185,8 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                 }`}
                 onClick={() => setSelected(ev.id === selected ? null : ev.id)}
               >
-                <p className="truncate text-xs font-medium text-[var(--text-1)]">{ev.summary}</p>
-                <p className="text-[10px] text-[var(--text-3)]">
+                <p className="truncate text-sm font-medium text-[var(--text-1)]">{ev.summary}</p>
+                <p className="text-xs text-[var(--text-3)]">
                   {formatDate(ev.start)} · {formatTime(ev.start)}
                 </p>
                 {!summaries[ev.id] ? (
@@ -174,13 +195,13 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                       e.stopPropagation();
                       setSelected(ev.id); // open panel so channel picker is visible
                     }}
-                    className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-[var(--accent)] hover:underline"
+                    className="mt-1 inline-flex items-center gap-0.5 text-xs font-medium text-[var(--accent)] hover:underline"
                   >
                     <SparklesIcon className="h-2.5 w-2.5" />
                     Summarise
                   </button>
                 ) : (
-                  <span className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600">
+                  <span className="mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600">
                     <SparklesIcon className="h-2.5 w-2.5" />
                     Ready
                   </span>
@@ -192,65 +213,89 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
 
         {/* Summary panel */}
         {selected && activeEvent && size !== "sm" && (
-          <div className="flex flex-1 flex-col gap-2 overflow-hidden rounded-[6px] bg-[var(--surface-1)] p-3">
-            <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-1 flex-col overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-xs)]">
+            {/* Panel header */}
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--border-1)] px-4 py-3">
               <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
-                <p className="text-[10px] text-[var(--text-3)]">
+                <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
+                <p className="mt-0.5 text-xs text-[var(--text-3)]">
                   {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
                 </p>
               </div>
               <button
                 onClick={() => setSelected(null)}
-                className="shrink-0 rounded-[4px] p-0.5 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
+                className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
               >
-                <XMarkIcon className="h-3.5 w-3.5" />
+                <XMarkIcon className="h-4 w-4" />
               </button>
             </div>
 
+            {/* Panel body */}
             {generating === selected ? (
-              <div className="flex flex-1 items-center justify-center gap-2 text-[11px] text-[var(--text-3)]">
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-                Generating summary…
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4">
+                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                <p className="text-xs text-[var(--text-3)]">Generating summary…</p>
               </div>
             ) : activeSummary ? (
-              <div className="flex-1 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-2)]">
-                {activeSummary}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex-1 overflow-y-auto p-4">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
+                    {activeSummary.summary}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-[var(--border-1)] px-4 py-2.5">
+                  <span className="text-xs text-[var(--text-4)]">
+                    {activeSummary.cached
+                      ? `Cached${activeSummary.generatedBy ? ` · ${activeSummary.generatedBy}` : ""}`
+                      : "Just generated"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleSummarise(activeEvent, { force: true })}
+                    className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="h-3 w-3" />
+                    Regenerate
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              <div className="flex flex-1 flex-col gap-4 p-4">
                 {/* Slack channel picker */}
                 {slackChannels.length > 0 && (
-                  <div className="w-full space-y-1.5">
-                    <p className="text-[10px] font-medium text-[var(--text-3)]">Slack channels to include</p>
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Slack channels</p>
                     <div className="flex flex-wrap gap-1.5">
                       {slackChannels.map((ch) => (
                         <button
                           key={ch.id}
                           onClick={() => toggleChannel(ch.id)}
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                          className={`inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors ${
                             selectedChannels.has(ch.id)
-                              ? "border-[var(--accent)] bg-blue-50 text-[var(--accent)]"
-                              : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                              : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                           }`}
                         >
                           #{ch.name}
                         </button>
                       ))}
                     </div>
-                    {selectedChannels.size === 0 && (
-                      <p className="text-[10px] text-[var(--text-4)]">No channels selected — all saved channels will be searched</p>
-                    )}
+                    <p className="mt-1.5 text-xs text-[var(--text-4)]">
+                      {selectedChannels.size === 0 ? "All channels will be searched" : `${selectedChannels.size} selected`}
+                    </p>
                   </div>
                 )}
-                <button
-                  onClick={() => void handleSummarise(activeEvent)}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-                >
-                  <SparklesIcon className="h-3.5 w-3.5" />
-                  Generate Summary
-                </button>
-                <p className="text-[10px] text-[var(--text-3)]">Uses AI + emails + Slack</p>
+
+                <div className="mt-auto">
+                  <button
+                    onClick={() => void handleSummarise(activeEvent)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  >
+                    <SparklesIcon className="h-4 w-4" />
+                    Generate Summary
+                  </button>
+                  <p className="mt-2 text-center text-xs text-[var(--text-4)]">Uses AI · emails · Slack</p>
+                </div>
               </div>
             )}
           </div>

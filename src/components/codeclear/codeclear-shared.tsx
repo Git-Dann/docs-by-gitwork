@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowPathIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentTextIcon,
@@ -13,11 +12,9 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, type ComponentProps } from "react";
+import { type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
-import { useSetCandidateCurrentClient } from "@/hooks/use-codeclear";
 import { cn, formatDate } from "@/lib/format";
-import type { ClientListItem } from "@/types/client";
 import {
   analysisStateLabel,
   CANDIDATE_SIGNAL_SOURCES,
@@ -25,7 +22,6 @@ import {
   tierLabel,
   type CandidateSignalSource,
   type CandidateAnalysisState,
-  type CodeClearCandidateListItem,
   type PipelineStatus,
   type CodeClearTier,
 } from "@/types/codeclear";
@@ -538,179 +534,3 @@ export function RosterScoreChip({ value }: { value: number | null | undefined })
   );
 }
 
-/**
- * A single dev card. Used on /app/code (roster overview) and
- * /app/code/candidates. Optional checkbox + onSelectChange enables
- * multi-select for bulk actions on the candidates page.
- */
-export function RosterCard({
-  candidate,
-  clients,
-  clientsLoading,
-  selectable = false,
-  selected = false,
-  onSelectChange,
-  href,
-}: {
-  candidate: CodeClearCandidateListItem;
-  clients: ClientListItem[];
-  clientsLoading: boolean;
-  selectable?: boolean;
-  selected?: boolean;
-  onSelectChange?: (selected: boolean) => void;
-  /** Where the card title links to. Defaults to candidates list with the candidate query param. */
-  href?: string;
-}) {
-  const setCurrentClient = useSetCandidateCurrentClient(candidate.id);
-  const currentClientId = candidate.currentClient?.id ?? "";
-  const score = candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore;
-  const linkHref = href ?? `/app/codeclear/candidates/${candidate.id}`;
-
-  return (
-    <div
-      className={cn(
-        "group rounded-[10px] border bg-white p-3 transition",
-        selected
-          ? "border-[var(--brand-500)] ring-1 ring-[var(--brand-500)]"
-          : "border-[var(--border-2)] hover:border-[var(--border-1)]",
-      )}
-    >
-      <div className="flex items-start gap-2">
-        {selectable ? (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(event) => onSelectChange?.(event.target.checked)}
-            onClick={(event) => event.stopPropagation()}
-            className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-[var(--border-1)]"
-            aria-label={`Select ${candidate.name}`}
-          />
-        ) : null}
-        <Link href={linkHref} className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
-          <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">{candidate.primaryStack}</p>
-        </Link>
-        <div className="flex shrink-0 items-center gap-1">
-          <RosterTierBadge
-            effectiveTier={candidate.effectiveTier}
-            isOverridden={
-              candidate.tierManualOverride !== null &&
-              candidate.tierManualOverride !== candidate.tier
-            }
-          />
-          <RosterScoreChip value={score} />
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5">
-        <select
-          value={currentClientId}
-          disabled={clientsLoading || setCurrentClient.isPending}
-          onChange={(event) => {
-            const next = event.target.value || null;
-            if ((next ?? "") !== currentClientId) {
-              setCurrentClient.mutate(next);
-            }
-          }}
-          onClick={(event) => event.stopPropagation()}
-          className="app-select h-8 flex-1 text-xs"
-          aria-label={`Assign ${candidate.name} to a client`}
-        >
-          <option value="">Unassigned</option>
-          {clients.map((client) => (
-            <option key={client.id} value={client.id}>
-              {client.name}
-            </option>
-          ))}
-          {candidate.currentClient && !candidate.currentClient.id ? (
-            <option value="" disabled>
-              (legacy: {candidate.currentClient.name})
-            </option>
-          ) : null}
-        </select>
-        {setCurrentClient.isPending ? (
-          <ArrowPathIcon
-            className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-4)]"
-            aria-hidden
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Groups dev cards by current Portal client. Each group renders a small mono
- * eyebrow + a card grid. Sort: assigned clients alphabetical first, then
- * Unassigned at the end. Within a group, devs keep the order they arrived
- * in `candidates` (typically canonical roster order).
- */
-export function RosterGroups({
-  candidates,
-  clients,
-  clientsLoading,
-  selectable = false,
-  selectedIds,
-  onSelectChange,
-}: {
-  candidates: CodeClearCandidateListItem[];
-  clients: ClientListItem[];
-  clientsLoading: boolean;
-  selectable?: boolean;
-  selectedIds?: Set<string>;
-  onSelectChange?: (candidateId: string, selected: boolean) => void;
-}) {
-  const groups = useMemo(() => {
-    const buckets = new Map<
-      string,
-      { key: string; label: string; items: CodeClearCandidateListItem[] }
-    >();
-    for (const candidate of candidates) {
-      const key = candidate.currentClient?.id ?? "__unassigned__";
-      const label = candidate.currentClient?.name ?? "Unassigned";
-      const existing = buckets.get(key);
-      if (existing) {
-        existing.items.push(candidate);
-      } else {
-        buckets.set(key, { key, label, items: [candidate] });
-      }
-    }
-    return [...buckets.values()].sort((a, b) => {
-      if (a.key === "__unassigned__") return 1;
-      if (b.key === "__unassigned__") return -1;
-      return a.label.localeCompare(b.label);
-    });
-  }, [candidates]);
-
-  return (
-    <div className="space-y-5">
-      {groups.map((group) => (
-        <div key={group.key}>
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <p className="widget-data-label">{group.label}</p>
-            <p className="widget-timestamp">
-              {group.items.length} {group.items.length === 1 ? "dev" : "devs"}
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {group.items.map((candidate) => (
-              <RosterCard
-                key={candidate.id}
-                candidate={candidate}
-                clients={clients}
-                clientsLoading={clientsLoading}
-                selectable={selectable}
-                selected={selectedIds?.has(candidate.id) ?? false}
-                onSelectChange={
-                  onSelectChange
-                    ? (value) => onSelectChange(candidate.id, value)
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}

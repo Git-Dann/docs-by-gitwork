@@ -5,6 +5,8 @@ import type {
   DraftAction,
   Message,
   SupportClient,
+  SupportReport,
+  SupportReportPayload,
   Ticket,
   WorkflowRule,
 } from "@/types/support";
@@ -297,6 +299,7 @@ export async function updateClient(
     primaryContactEmail?: string;
     primaryContactPhone?: string;
     googleDriveFolderUrl?: string;
+    clickupUrl?: string;
   },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {
@@ -579,6 +582,20 @@ export function getCodeClearScorecardUrl(id: string) {
   return `/api/codeclear/candidates/${id}/scorecard`;
 }
 
+export interface PlacementResponse {
+  id: string;
+  candidateId: string;
+  clientId: string | null;
+  clientName: string;
+  projectName: string;
+  startDate: string;
+  endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export async function createPlacement(
   candidateId: string,
   input: {
@@ -587,13 +604,109 @@ export async function createPlacement(
     projectName: string;
     startDate: string | Date;
     endDate?: string | Date | null;
+    allocationPercent?: number;
+    notes?: string | null;
   },
-): Promise<{ placement: { id: string; clientId: string | null; clientName: string; projectName: string; startDate: string; endDate: string | null } }> {
+): Promise<{ placement: PlacementResponse }> {
   return apiFetch(`/api/codeclear/candidates/${candidateId}/placements`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function updatePlacement(
+  candidateId: string,
+  placementId: string,
+  input: {
+    clientId?: string | null;
+    clientName?: string;
+    projectName?: string;
+    startDate?: string | Date;
+    endDate?: string | Date | null;
+    allocationPercent?: number;
+    notes?: string | null;
+  },
+): Promise<{ placement: PlacementResponse }> {
+  return apiFetch(
+    `/api/codeclear/candidates/${candidateId}/placements/${placementId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deletePlacement(
+  candidateId: string,
+  placementId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(
+    `/api/codeclear/candidates/${candidateId}/placements/${placementId}`,
+    { method: "DELETE" },
+  );
+}
+
+export interface ScheduleBlockResponse {
+  id: string;
+  candidate: {
+    id: string;
+    name: string;
+    githubHandle: string;
+    primaryStack: string;
+    avatarUrl: string | null;
+    tier: CodeClearTier;
+    effectiveTier: CodeClearTier;
+  };
+  client: { id: string | null; name: string; slug: string | null };
+  projectName: string;
+  startDate: string;
+  endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+}
+
+export interface ScheduleRangeResponse {
+  from: string;
+  to: string;
+  count: number;
+  blocks: ScheduleBlockResponse[];
+}
+
+function withRangeQuery(input?: { from?: string | Date; to?: string | Date }): string {
+  if (!input?.from && !input?.to) return "";
+  const params = new URLSearchParams();
+  if (input.from) {
+    params.set(
+      "from",
+      input.from instanceof Date ? input.from.toISOString() : input.from,
+    );
+  }
+  if (input.to) {
+    params.set("to", input.to instanceof Date ? input.to.toISOString() : input.to);
+  }
+  return `?${params.toString()}`;
+}
+
+export async function getWorkspaceSchedule(input?: {
+  from?: string | Date;
+  to?: string | Date;
+}): Promise<ScheduleRangeResponse> {
+  return apiFetch<ScheduleRangeResponse>(
+    `/api/codeclear/schedule${withRangeQuery(input)}`,
+  );
+}
+
+export async function getClientSchedule(
+  slug: string,
+  input?: { from?: string | Date; to?: string | Date },
+): Promise<
+  ScheduleRangeResponse & {
+    client: { id: string; name: string; slug: string };
+  }
+> {
+  return apiFetch(`/api/clients/${slug}/schedule${withRangeQuery(input)}`);
 }
 
 export async function setCandidateCurrentClient(
@@ -604,6 +717,21 @@ export async function setCandidateCurrentClient(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientId }),
+  });
+}
+
+/**
+ * Multi-client assignment. Replaces the dev's set of open Portal placements
+ * with exactly the ones for clientIds. Empty array = unassigned.
+ */
+export async function setCandidateCurrentClients(
+  candidateId: string,
+  clientIds: string[],
+): Promise<{ clientIds: string[] }> {
+  return apiFetch(`/api/codeclear/candidates/${candidateId}/current-clients`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientIds }),
   });
 }
 
@@ -894,7 +1022,12 @@ export interface IntegrationsResponse {
   googleServiceAccountJsonSet: boolean;
   googleSubjectEmail: string | null;
   googleCalendarId: string | null;
+  /** Whether the *signed-in user* has connected their personal Google. Drives Calendar/Gmail widgets. */
   googleOAuthConnected: boolean;
+  /** Email the current user is connected as (null when not connected). */
+  googleOAuthConnectedAs: string | null;
+  /** Whether the workspace-shared sync Google account is configured (admin-managed, cron only). */
+  workspaceGoogleOAuthConnected: boolean;
   slackBotTokenMasked: string | null;
   slackSummaryChannelId: string | null; // legacy
   slackChannels: SlackChannel[];
@@ -913,6 +1046,21 @@ export interface IntegrationsResponse {
 export interface SlackChannel {
   id: string;
   name: string;
+}
+
+export interface SlackAvailableChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+  memberCount: number;
+}
+
+export async function fetchSlackChannels(): Promise<SlackAvailableChannel[]> {
+  const data = await apiFetch<{ channels: SlackAvailableChannel[] }>(
+    "/api/integrations/slack/channels",
+  );
+  return data.channels;
 }
 
 export interface ModelOption {
@@ -1001,6 +1149,44 @@ export async function updateSupportClient(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportReports(
+  clientId: string,
+): Promise<{ reports: SupportReport[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports`);
+}
+
+export async function createSupportReport(
+  clientId: string,
+  data: { period: string; payload: SupportReportPayload; createdBy?: string },
+): Promise<{ report: SupportReport }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSupportReport(
+  clientId: string,
+  reportId: string,
+  data: { period?: string; payload?: SupportReportPayload },
+): Promise<{ report: SupportReport }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/${reportId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSupportReport(
+  clientId: string,
+  reportId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/${reportId}`, {
+    method: "DELETE",
   });
 }
 
@@ -1275,13 +1461,22 @@ export async function getCalendarEvents(): Promise<{ connected: boolean; events:
   return apiFetch("/api/integrations/calendar");
 }
 
+export interface MeetingSummaryResponse {
+  summary: string;
+  cached: boolean;
+  cachedAt?: string;
+  generatedBy?: string | null;
+}
+
 export async function generateMeetingSummary(data: {
   eventId: string;
   eventTitle: string;
   eventDate: string;
   attendees: string[];
   channelIds?: string[];
-}): Promise<{ summary: string }> {
+  /** Bypass the workspace cache and regenerate. */
+  force?: boolean;
+}): Promise<MeetingSummaryResponse> {
   return apiFetch("/api/integrations/meeting-summary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

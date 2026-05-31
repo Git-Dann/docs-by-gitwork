@@ -1,14 +1,28 @@
-import { apiOk, fromError } from "@/lib/api-response";
+/**
+ * POST /api/integrations/gmail/disconnect → clear the *current user's* Google OAuth tokens.
+ *
+ * Disconnects this user only. Other teammates' connections are unaffected. The workspace
+ * service account / shared cron token is also untouched — that's an admin-managed
+ * separate resource.
+ */
+
+import { auth } from "@/auth";
+import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    await prisma.workspace.updateMany({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
-      data: { googleOAuthRefreshToken: null },
+    const session = await auth();
+    if (!session?.user?.id) return apiError("Not authenticated", 401);
+
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        googleOAuthRefreshToken: null,
+        googleOAuthEmail: null,
+      },
     });
     return apiOk({ disconnected: true });
   } catch (error) {

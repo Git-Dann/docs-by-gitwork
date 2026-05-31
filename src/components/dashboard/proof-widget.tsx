@@ -17,15 +17,15 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
   if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
-        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
           <ClipboardDocumentCheckIcon className="h-2.5 w-2.5" />
           Proof
         </span>
         <div className="flex flex-1 flex-col items-center justify-center">
           <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{docs.length}</p>
-          <p className="text-[11px] text-[var(--text-3)]">documents</p>
+          <p className="text-xs text-[var(--text-3)]">documents</p>
         </div>
-        <p className="text-center text-[11px] text-[var(--text-3)]">
+        <p className="text-center text-xs text-[var(--text-3)]">
           {docs.length === 0 ? "No documents" : "Collaborative drafts"}
         </p>
       </div>
@@ -38,11 +38,11 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
           <ClipboardDocumentCheckIcon className="h-2.5 w-2.5" />
           Proof
         </span>
-        <Link href="/app/proof" className="text-[11px] text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/proof" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
           View all
         </Link>
       </div>
@@ -52,8 +52,8 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
         {docs.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
             <ClipboardDocumentCheckIcon className="h-6 w-6 text-[var(--text-4)]" />
-            <p className="text-[11px] text-[var(--text-3)]">No documents yet</p>
-            <Link href="/app/proof" className="text-[11px] font-medium text-[var(--accent)] hover:underline">
+            <p className="text-xs text-[var(--text-3)]">No documents yet</p>
+            <Link href="/app/proof" className="text-xs font-medium text-[var(--accent)] hover:underline">
               Create document →
             </Link>
           </div>

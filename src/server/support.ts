@@ -13,6 +13,8 @@ import type {
   DraftAction,
   WorkflowRule,
   AuditLog,
+  SupportReport,
+  SupportReportPayload,
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -164,6 +166,7 @@ export function serializeSupportClient(row: {
   supportDaysUsed: number | null;
   reportingRecipient: string | null;
   reportDueDay: number | null;
+  workspaceClientId?: string | null;
 }): SupportClient {
   return {
     id: row.id,
@@ -174,6 +177,7 @@ export function serializeSupportClient(row: {
     supportDaysUsed: row.supportDaysUsed ?? undefined,
     reportingRecipient: row.reportingRecipient ?? undefined,
     reportDueDay: row.reportDueDay ?? undefined,
+    workspaceClientId: row.workspaceClientId ?? undefined,
   };
 }
 
@@ -441,6 +445,7 @@ export async function updateSupportClient(
     supportDaysUsed: number;
     reportingRecipient: string;
     reportDueDay: number;
+    workspaceClientId: string | null;
   }>,
 ): Promise<SupportClient> {
   const row = await prisma.supportClient.update({
@@ -461,6 +466,9 @@ export async function updateSupportClient(
         ? { reportingRecipient: data.reportingRecipient }
         : {}),
       ...(data.reportDueDay !== undefined ? { reportDueDay: data.reportDueDay } : {}),
+      ...("workspaceClientId" in data
+        ? { workspaceClientId: data.workspaceClientId ?? null }
+        : {}),
     },
   });
   return serializeSupportClient(row);
@@ -919,6 +927,71 @@ export async function createAuditLog(
     },
   });
   return serializeAuditLog(row);
+}
+
+// ─── Monthly Reports ──────────────────────────────────────────────────────────
+
+function serializeReport(row: {
+  id: string;
+  clientId: string;
+  period: string;
+  payload: import("@prisma/client").Prisma.JsonValue;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): SupportReport {
+  return {
+    id: row.id,
+    clientId: row.clientId,
+    period: row.period,
+    payload: (row.payload ?? {}) as unknown as SupportReportPayload,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function listReports(clientId: string): Promise<SupportReport[]> {
+  const rows = await prisma.supportReport.findMany({
+    where: { clientId },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(serializeReport);
+}
+
+export async function createReport(
+  clientId: string,
+  data: { period: string; payload: SupportReportPayload; createdBy?: string },
+): Promise<SupportReport> {
+  const row = await prisma.supportReport.create({
+    data: {
+      clientId,
+      period: data.period,
+      payload: data.payload as unknown as import("@prisma/client").Prisma.InputJsonValue,
+      createdBy: data.createdBy ?? null,
+    },
+  });
+  return serializeReport(row);
+}
+
+export async function updateReport(
+  reportId: string,
+  data: { period?: string; payload?: SupportReportPayload },
+): Promise<SupportReport> {
+  const row = await prisma.supportReport.update({
+    where: { id: reportId },
+    data: {
+      ...(data.period !== undefined ? { period: data.period } : {}),
+      ...(data.payload !== undefined
+        ? { payload: data.payload as unknown as import("@prisma/client").Prisma.InputJsonValue }
+        : {}),
+    },
+  });
+  return serializeReport(row);
+}
+
+export async function deleteReport(reportId: string): Promise<void> {
+  await prisma.supportReport.delete({ where: { id: reportId } });
 }
 
 // ─── Workspace Members ────────────────────────────────────────────────────────

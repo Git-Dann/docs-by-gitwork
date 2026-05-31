@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  apiFetch,
   archiveProposal,
   createClient,
   createClientDesign,
@@ -59,13 +60,16 @@ export function useCreateProposal() {
   });
 }
 
+// Clients change rarely — keep the list cached for 5 minutes so navigating
+// between Code pages doesn't trigger a refetch every time. Mutations on
+// clients still invalidate this query.
 export function useClientList(filters?: {
   search?: string;
 }) {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -85,6 +89,10 @@ export function useClientDetail(slug: string) {
     queryKey: ["client", slug],
     queryFn: () => getClientDetail(slug),
     enabled: Boolean(slug),
+    // Refetch on window focus so changes made in Code (dev removals, etc.)
+    // are reflected when switching back to the Portal tab.
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000, // 30 s — fresh enough for active sessions
   });
 }
 
@@ -102,6 +110,8 @@ type ClientUpdatePayload = {
   primaryContactEmail?: string;
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
+  clickupUrl?: string;
+  slackChannelId?: string;
 };
 
 export function useUpdateClient(slug: string) {
@@ -138,6 +148,7 @@ type PlatformInput = {
   repoUrl?: string;
   credentials?: string;
   notes?: string;
+  previewImageUrl?: string;
 };
 
 export function useCreateClientPlatform(slug: string) {
@@ -186,6 +197,7 @@ type DesignInput = {
   name: string;
   url?: string;
   notes?: string;
+  previewImageUrl?: string;
 };
 
 export function useCreateClientDesign(slug: string) {
@@ -340,5 +352,40 @@ export function useExportProposal(id: string) {
       format: "PRINT" | "PDF" | "SHARE_LINK";
       settings?: Record<string, unknown>;
     }) => requestExport(id, payload),
+  });
+}
+
+export function useClientSlackActivity(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-slack-activity", slug],
+    // Use apiFetch so the browser's gitwork_api_session cookie handles auth —
+    // sending an empty `Authorization: Bearer ` header was blocking requests.
+    queryFn: () =>
+      apiFetch<{
+        configured: boolean;
+        channelName: string | null;
+        summary: string | null;
+        generatedAt: string | null;
+        reason: string;
+        messages: Array<{ id: string; author: string; text: string; ts: string }>;
+      }>(`/api/clients/${slug}/slack-activity`),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useOgPreview(url: string | null | undefined) {
+  return useQuery({
+    queryKey: ["og-preview", url],
+    queryFn: async () => {
+      if (!url) return { imageUrl: null, title: null };
+      return apiFetch<{ imageUrl: string | null; title: string | null }>(
+        `/api/og-preview?url=${encodeURIComponent(url)}`,
+      );
+    },
+    enabled: Boolean(url),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }

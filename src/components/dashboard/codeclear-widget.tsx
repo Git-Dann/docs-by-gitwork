@@ -27,22 +27,22 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+          <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
             <CodeBracketIcon className="h-2.5 w-2.5" />
             Code
           </span>
           {stats.recheckDue > 0 && (
-            <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+            <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
               {stats.recheckDue} recheck
             </span>
           )}
         </div>
         <div className="flex flex-1 flex-col items-center justify-center">
           <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{stats.total}</p>
-          <p className="text-[11px] text-[var(--text-3)]">candidates</p>
+          <p className="text-xs text-[var(--text-3)]">candidates</p>
         </div>
         {stats.passRateThis != null && (
-          <p className="text-center text-[11px] text-[var(--text-3)]">
+          <p className="text-center text-xs text-[var(--text-3)]">
             {Math.round(stats.passRateThis * 100)}% pass rate
           </p>
         )}
@@ -56,11 +56,11 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+        <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
           <CodeBracketIcon className="h-2.5 w-2.5" />
           Code
         </span>
-        <Link href="/app/codeclear" className="text-[11px] text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/codeclear" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
           View all
         </Link>
       </div>
@@ -84,7 +84,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
                   }}
                 />
               </div>
-              <span className="text-[10px] text-[var(--text-3)]">
+              <span className="text-xs text-[var(--text-3)]">
                 {stage.label}
               </span>
             </div>
@@ -95,15 +95,15 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
       {/* Footer */}
       <div className="mt-2 flex items-center justify-between border-t border-[var(--border-1)] pt-2">
         {stats.passRateThis != null ? (
-          <span className="text-[11px] text-[var(--text-3)]">
+          <span className="text-xs text-[var(--text-3)]">
             Pass rate:{" "}
             <strong className="text-[var(--text-1)]">{Math.round(stats.passRateThis * 100)}%</strong>
           </span>
         ) : (
-          <span className="text-[11px] text-[var(--text-3)]">{stats.total} total</span>
+          <span className="text-xs text-[var(--text-3)]">{stats.total} total</span>
         )}
         {stats.recheckDue > 0 && (
-          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
             {stats.recheckDue} recheck due
           </span>
         )}

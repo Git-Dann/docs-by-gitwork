@@ -1,8 +1,9 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { authConfig } from "./auth.config";
+import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { autoAcceptMatchingInvite } from "@/server/team";
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -23,9 +24,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             "https://www.googleapis.com/auth/gmail.readonly " +
             "https://www.googleapis.com/auth/calendar.readonly",
           access_type: "offline",
-          // No prompt override — Google shows consent only when needed (new scopes
-          // or first authorisation). Refresh token is stored in the DB permanently
-          // so subsequent logins are frictionless.
+          // Force the consent prompt every sign-in so Google always returns a refresh_token.
+          // Without this, Google only returns refresh_token on the *first* consent — which
+          // meant the workspace held whichever person signed in first, and personal widgets
+          // would cross-pollute as people re-signed in. With per-user tokens, each member
+          // gets their own refresh_token captured on each sign-in, so the dashboard always
+          // shows their own data.
+          prompt: "consent",
         },
       },
     }),
@@ -96,14 +101,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = dbUser.id;
         token.role = membership?.role ?? "STAFF";
         token.permissions = (membership?.permissions as string[]) ?? [];
+        // Stamp this fresh sign-in with the current SESSION_VERSION. The `authorized`
+        // callback rejects tokens with an older value, forcing teammates with stale
+        // sessions to sign in again so their per-user Google refresh token gets captured.
+        token.sessionVersion = SESSION_VERSION;
 
-        // Persist Google OAuth refresh token so dashboard Gmail/Calendar widgets work.
-        // Google only returns refresh_token on the first consent — store it now.
+        // Persist the Google OAuth refresh token on the *current user* so personal dashboard
+        // widgets (Calendar, Gmail, Meeting summary) only ever see the signed-in user's data.
+        // Previously this was written to the workspace row, which meant every new sign-in
+        // overwrote whoever signed in last — so the dashboard widgets cross-polluted between
+        // teammates. Workspace-level token is reserved now for shared org-wide cron sync.
         if (account.refresh_token) {
-          await prisma.workspace.updateMany({
-            where: { slug: DEFAULT_WORKSPACE_SLUG },
-            data: { googleOAuthRefreshToken: account.refresh_token },
+          await prisma.user.update({
+            where: { id: dbUser.id },
+            data: {
+              googleOAuthRefreshToken: account.refresh_token,
+              googleOAuthEmail: user.email,
+            },
           });
+        }
+
+        // If this user signed in directly (not via /invite/[token]) but there's a pending
+        // invite labelled with their name, mark it accepted so it doesn't linger in the
+        // Team list. Heuristic match — safe enough for an internal tool. Failures are
+        // swallowed so a stale invite never blocks sign-in.
+        try {
+          await autoAcceptMatchingInvite(dbUser.id, user.name);
+        } catch (err) {
+          console.error("[auth] autoAcceptMatchingInvite failed", err);
         }
       }
 

@@ -1,6 +1,14 @@
+/**
+ * Gmail OAuth callback — exchanges the auth code for a refresh token and stores it on the
+ * *signed-in user*. Used by an explicit "Connect Gmail" flow (separate from the NextAuth
+ * sign-in flow that also captures a refresh token).
+ *
+ * Per-user storage prevents cross-user data leak in dashboard widgets.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +21,11 @@ export async function GET(request: NextRequest) {
 
   if (error || !code) {
     return NextResponse.redirect(`${settingsUrl}?gmail_error=${encodeURIComponent(error ?? "no_code")}`);
+  }
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.redirect(`${settingsUrl}?gmail_error=not_authenticated`);
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -36,15 +49,18 @@ export async function GET(request: NextRequest) {
       }),
     });
 
-    const tokens = await tokenRes.json() as { refresh_token?: string; error?: string };
+    const tokens = (await tokenRes.json()) as { refresh_token?: string; error?: string };
 
     if (!tokenRes.ok || !tokens.refresh_token) {
       return NextResponse.redirect(`${settingsUrl}?gmail_error=${encodeURIComponent(tokens.error ?? "no_refresh_token")}`);
     }
 
-    await prisma.workspace.updateMany({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
-      data: { googleOAuthRefreshToken: tokens.refresh_token },
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
+        googleOAuthRefreshToken: tokens.refresh_token,
+        googleOAuthEmail: session.user.email ?? null,
+      },
     });
 
     return NextResponse.redirect(`${settingsUrl}?gmail_connected=1`);

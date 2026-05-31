@@ -15,6 +15,8 @@ export interface ClientRecord {
 
 export interface ClientListItem extends ClientRecord {
   proposalCount: number;
+  googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
 }
 
 export interface ClientDetailFields {
@@ -29,6 +31,8 @@ export interface ClientDetailFields {
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
+  slackChannelId: string | null;
 }
 
 export interface ClientPlatformRecord {
@@ -41,6 +45,7 @@ export interface ClientPlatformRecord {
   repoUrl: string | null;
   credentials: string | null;
   notes: string | null;
+  previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +56,7 @@ export interface ClientDesignRecord {
   name: string;
   url: string | null;
   notes: string | null;
+  previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +83,21 @@ export interface ClientPlacementRecord {
   projectName: string;
   startDate: string;
   endDate: string | null;
+  allocationPercent: number;
+  notes: string | null;
+  updatedAt: string;
+}
+
+export interface ClientStudySummary {
+  id: string;
+  title: string;
+  problemStatement: string;
+  status: string;
+  sessionMode: string;
+  selectedPersonaIds: string[];
+  createdAt: string;
+  sessionCount: number;
+  completedSessionCount: number;
 }
 
 export interface ClientDetailRecord {
@@ -88,4 +109,5 @@ export interface ClientDetailRecord {
   pulseScans: ClientPulseScanSummary[];
   supportClient: ClientSupportSummary | null;
   placements: ClientPlacementRecord[];
+  studies: ClientStudySummary[];
 }

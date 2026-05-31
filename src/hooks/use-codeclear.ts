@@ -16,6 +16,9 @@ import {
   listTechStacks,
   runCodeClearGitHubAnalysis,
   setCandidateCurrentClient,
+  setCandidateCurrentClients,
+  updatePlacement,
+  deletePlacement,
   updateCodeClearCandidate,
   type CodeClearRunsResponse,
 } from "@/lib/api";
@@ -179,15 +182,55 @@ export function useApplyCodeClearGitHubRun(id: string | null) {
   });
 }
 
+/**
+ * Invalidate everywhere placements affect: the candidate's own detail,
+ * the candidates list (current-client chips), workspace schedule,
+ * per-client schedule, and the Portal client detail page (which shows
+ * a DEVELOPERS section pulled from placements).
+ */
+function invalidatePlacementSurfaces(
+  queryClient: ReturnType<typeof useQueryClient>,
+  candidateId: string | null,
+) {
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+  queryClient.invalidateQueries({ queryKey: ["codeclear", "schedule"] });
+  queryClient.invalidateQueries({ queryKey: ["client"] });
+  queryClient.invalidateQueries({ queryKey: ["clients"] });
+}
+
 export function useCreatePlacement(candidateId: string | null) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: Parameters<typeof createPlacement>[1]) =>
       createPlacement(candidateId as string, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
-    },
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
+  });
+}
+
+export function useUpdatePlacement(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      placementId,
+      input,
+    }: {
+      placementId: string;
+      input: Parameters<typeof updatePlacement>[2];
+    }) => updatePlacement(candidateId as string, placementId, input),
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
+  });
+}
+
+export function useDeletePlacement(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (placementId: string) =>
+      deletePlacement(candidateId as string, placementId),
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
   });
 }
 
@@ -199,13 +242,29 @@ export function useTechStacks() {
   });
 }
 
-// Used by the Code roster's per-dev "Current client" dropdown.
-// Pass clientId=null to clear the assignment.
+// Single-client setter kept around for backwards-compatible callers; new UI
+// uses the multi-client setter below.
 export function useSetCandidateCurrentClient(candidateId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (clientId: string | null) => setCandidateCurrentClient(candidateId, clientId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "stats"] });
+    },
+  });
+}
+
+// Multi-client setter — set the full list of clients the dev is engaged
+// with right now. Empty array = unassigned.
+export function useSetCandidateCurrentClients(candidateId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (clientIds: string[]) =>
+      setCandidateCurrentClients(candidateId, clientIds),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
       queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });

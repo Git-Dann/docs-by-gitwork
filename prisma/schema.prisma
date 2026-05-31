@@ -165,6 +165,13 @@ model User {
   triggeredPulseScans      PulseScan[]             @relation("PulseScanTriggeredBy")
   notificationPreference   NotificationPreference?
   auditLogEntries          AuditLog[]
+  meetingSummariesGenerated MeetingSummary[]       @relation("MeetingSummaryGenerator")
+  // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
+  // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
+  // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
+  // shared org-wide sync (cron / Care Gmail ingest) — an admin sets that explicitly.
+  googleOAuthRefreshToken  String?
+  googleOAuthEmail         String?
 }
 
 // APNs device registrations. One row per (user, device).
@@ -248,6 +255,8 @@ model Workspace {
   signatureRequests        SignatureRequest[]
   slackWebhooks            SlackWebhookSubscription[]
   auditLogs                AuditLog[]
+  meetingSummaries         MeetingSummary[]
+  aiResponseCache          AiResponseCache[]
 }
 
 model WorkspaceMember {
@@ -692,6 +701,11 @@ model WorkspaceClient {
   primaryContactEmail  String?
   primaryContactPhone  String?
   googleDriveFolderUrl String?
+  clickupUrl           String?          @db.Text
+  /// Slack channel ID (e.g. C0123ABC) the client's project updates live in.
+  /// Read-only: the Portal mobile app pulls recent messages via the workspace
+  /// Slack bot token. Null when no channel is linked.
+  slackChannelId       String?
   hidden               Boolean          @default(false)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
@@ -702,6 +716,7 @@ model WorkspaceClient {
   documents            Document[]
   supportClients       SupportClient[]
   placements           Placement[]
+  studies              Study[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -709,32 +724,34 @@ model WorkspaceClient {
 }
 
 model ClientPlatform {
-  id           String          @id @default(cuid())
-  clientId     String
-  client       WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name         String
-  platformType String?
-  url          String?
-  stagingUrl   String?
-  repoUrl      String?
-  credentials  String?         @db.Text
-  notes        String?         @db.Text
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  clientId        String
+  client          WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name            String
+  platformType    String?
+  url             String?
+  stagingUrl      String?
+  repoUrl         String?
+  credentials     String?         @db.Text
+  notes           String?         @db.Text
+  previewImageUrl String?         @db.Text
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([clientId])
   @@map("ClientPlatform")
 }
 
 model ClientDesign {
-  id        String          @id @default(cuid())
-  clientId  String
-  client    WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name      String
-  url       String?         @db.Text
-  notes     String?         @db.Text
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  clientId        String
+  client          WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name            String
+  url             String?         @db.Text
+  notes           String?         @db.Text
+  previewImageUrl String?         @db.Text
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([clientId])
   @@map("ClientDesign")
@@ -913,10 +930,22 @@ model Placement {
   projectName String
   startDate   DateTime
   endDate     DateTime?
+  /// Daily allocation as a percentage (1–100). 100 = full day on this
+  /// client; 50 = half-day, with the other half free to be allocated to
+  /// another Placement. Driven by the iOS scheduling view. Open-ended
+  /// placements created by the current-client picker default to 100.
+  allocationPercent Int       @default(100)
+  /// Free-text notes attached to this scheduled block (e.g. "Sprint 2
+  /// kickoff", "On-call rotation"). Shown in the iOS schedule detail view.
+  notes       String?
   createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt @default(now())
 
   @@index([candidateId, startDate])
   @@index([clientId])
+  // Range queries for the schedule endpoints filter on (workspace,) startDate,
+  // and endDate. Covered by the existing candidate / client indices.
+  @@index([clientId, startDate])
 }
 
 model Note {
@@ -1498,6 +1527,8 @@ model Study {
   id                 String             @id @default(cuid())
   workspaceId        String
   workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceClientId  String?
+  workspaceClient    WorkspaceClient?   @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   title              String
   problemStatement   String
   researchGoals      String[]           @default([])
@@ -1511,6 +1542,7 @@ model Study {
   report             StudyReport?
 
   @@index([workspaceId, createdAt])
+  @@index([workspaceClientId])
 }
 
 model StudyResearchPlan {
@@ -1639,4 +1671,49 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([action])
   @@index([actorId])
+}
+
+// Generic workspace-shared cache for AI responses. Anywhere a Foundry feature calls an
+// AI provider and the output is identical regardless of who's asking, route it through
+// `getCachedAiResponse()` in `src/server/ai-cache.ts`. Saves repeat API spend whenever
+// the same Gitwork teammate (or different ones) trigger the same AI work.
+//
+// `cacheKey` is the namespace + resource id (e.g. "slack-activity:C0123ABCDEF",
+// "proof-analyse:<sha256>"). `inputsHash` invalidates when the actual inputs to the AI
+// call change — so cached entries auto-refresh when the underlying data shifts.
+model AiResponseCache {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  cacheKey    String
+  inputsHash  String
+  response    Json
+  modelUsed   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, cacheKey])
+  @@index([workspaceId, updatedAt])
+}
+
+// Workspace-shared cache for AI-generated meeting summaries.
+// Keyed by (workspaceId, eventId) — Google Calendar event IDs are stable across all
+// attendees, so anyone on the same call gets the same cached summary instead of paying
+// for another AI call. Cached entries also store `inputsHash` so we know to invalidate
+// when meeting details change (new attendee added, different channels selected, etc.).
+model MeetingSummary {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  eventId           String
+  summary           String   @db.Text
+  inputsHash        String
+  modelUsed         String?
+  generatedByUserId String?
+  generatedBy       User?    @relation("MeetingSummaryGenerator", fields: [generatedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([workspaceId, eventId])
+  @@index([workspaceId, updatedAt])
 }

@@ -48,6 +48,8 @@ type ClientAggregateRecord = {
   updatedAt: string;
   proposalCount: number;
   source: ClientSource;
+  googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
 };
 
 type ManualClientRecord = {
@@ -66,6 +68,8 @@ type ManualClientRecord = {
   primaryContactEmail: string | null;
   primaryContactPhone: string | null;
   googleDriveFolderUrl: string | null;
+  clickupUrl: string | null;
+  slackChannelId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -82,6 +86,8 @@ type ClientContactInput = {
   primaryContactEmail?: string;
   primaryContactPhone?: string;
   googleDriveFolderUrl?: string;
+  clickupUrl?: string;
+  slackChannelId?: string;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -97,6 +103,8 @@ function emptyContactFields(): ClientDetailFields {
     primaryContactEmail: null,
     primaryContactPhone: null,
     googleDriveFolderUrl: null,
+    clickupUrl: null,
+    slackChannelId: null,
   };
 }
 
@@ -113,23 +121,30 @@ function contactFieldsFromRecord(record: ManualClientRecord): ClientDetailFields
     primaryContactEmail: record.primaryContactEmail,
     primaryContactPhone: record.primaryContactPhone,
     googleDriveFolderUrl: record.googleDriveFolderUrl,
+    clickupUrl: record.clickupUrl,
+    slackChannelId: record.slackChannelId,
   };
 }
 
 function buildContactData(input: ClientContactInput) {
-  return {
-    website: input.website?.trim() || null,
-    addressLine1: input.addressLine1?.trim() || null,
-    addressLine2: input.addressLine2?.trim() || null,
-    city: input.city?.trim() || null,
-    postcode: input.postcode?.trim() || null,
-    country: input.country?.trim() || null,
-    notes: input.notes?.trim() || null,
-    primaryContactName: input.primaryContactName?.trim() || null,
-    primaryContactEmail: input.primaryContactEmail?.trim() || null,
-    primaryContactPhone: input.primaryContactPhone?.trim() || null,
-    googleDriveFolderUrl: input.googleDriveFolderUrl?.trim() || null,
-  };
+  // Only include fields that were explicitly provided — omitting a field must
+  // not overwrite an existing DB value with null on a partial PATCH.
+  const data: Partial<Record<keyof ClientContactInput, string | null>> = {};
+  const trim = (v: string) => v.trim() || null;
+  if (input.website !== undefined)             data.website             = trim(input.website);
+  if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
+  if (input.addressLine2 !== undefined)        data.addressLine2        = trim(input.addressLine2);
+  if (input.city !== undefined)                data.city                = trim(input.city);
+  if (input.postcode !== undefined)            data.postcode            = trim(input.postcode);
+  if (input.country !== undefined)             data.country             = trim(input.country);
+  if (input.notes !== undefined)               data.notes               = trim(input.notes);
+  if (input.primaryContactName !== undefined)  data.primaryContactName  = trim(input.primaryContactName);
+  if (input.primaryContactEmail !== undefined) data.primaryContactEmail = trim(input.primaryContactEmail);
+  if (input.primaryContactPhone !== undefined) data.primaryContactPhone = trim(input.primaryContactPhone);
+  if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
+  if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
+  if (input.slackChannelId !== undefined)      data.slackChannelId      = trim(input.slackChannelId);
+  return data;
 }
 
 function summarizeSuggestedClients(
@@ -174,6 +189,8 @@ function summarizeSuggestedClients(
       updatedAt,
       proposalCount: 1,
       source: "SUGGESTED",
+      googleDriveFolderUrl: null,
+      clickupUrl: null,
     });
   }
 
@@ -217,6 +234,8 @@ function mergeClients(
       updatedAt,
       proposalCount: suggested?.proposalCount ?? 0,
       source: "MANUAL",
+      googleDriveFolderUrl: manualClient.googleDriveFolderUrl,
+      clickupUrl: manualClient.clickupUrl,
     });
   }
 
@@ -233,6 +252,8 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     updatedAt: client.updatedAt,
     proposalCount: client.proposalCount,
     source: client.source,
+    googleDriveFolderUrl: client.googleDriveFolderUrl,
+    clickupUrl: client.clickupUrl,
   };
 }
 
@@ -242,6 +263,7 @@ function serializeClientDesign(design: {
   name: string;
   url: string | null;
   notes: string | null;
+  previewImageUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientDesignRecord {
@@ -251,6 +273,7 @@ function serializeClientDesign(design: {
     name: design.name,
     url: design.url,
     notes: design.notes,
+    previewImageUrl: design.previewImageUrl ?? null,
     createdAt: design.createdAt.toISOString(),
     updatedAt: design.updatedAt.toISOString(),
   };
@@ -266,6 +289,7 @@ function serializeClientPlatform(platform: {
   repoUrl: string | null;
   credentials: string | null;
   notes: string | null;
+  previewImageUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -279,6 +303,7 @@ function serializeClientPlatform(platform: {
     repoUrl: platform.repoUrl,
     credentials: platform.credentials,
     notes: platform.notes,
+    previewImageUrl: platform.previewImageUrl ?? null,
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -391,6 +416,8 @@ export async function createClientRecord(input: {
     updatedAt: client.updatedAt.toISOString(),
     proposalCount,
     source: "MANUAL",
+    googleDriveFolderUrl: client.googleDriveFolderUrl,
+    clickupUrl: client.clickupUrl,
   });
 }
 
@@ -452,6 +479,8 @@ export async function updateClientRecord(
                 slug: persisted.slug,
                 logoUrl: persisted.logoUrl,
                 updatedAt: persisted.updatedAt,
+                googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+                clickupUrl: persisted.clickupUrl,
               }
             : client,
         )
@@ -472,7 +501,9 @@ export async function updateClientRecord(
             primaryContactName: null,
             primaryContactEmail: null,
             primaryContactPhone: null,
-            googleDriveFolderUrl: null,
+            googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+            clickupUrl: persisted.clickupUrl,
+            slackChannelId: persisted.slackChannelId,
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
           },
@@ -491,6 +522,8 @@ export async function updateClientRecord(
       updatedAt: persisted.updatedAt.toISOString(),
       proposalCount: 0,
       source: "MANUAL",
+      googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+      clickupUrl: persisted.clickupUrl,
     },
   );
 }
@@ -569,7 +602,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -622,6 +655,14 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
           orderBy: { startDate: "desc" },
         })
       : Promise.resolve([]),
+    manualRecord
+      ? prisma.study.findMany({
+          where: { workspaceClientId: manualRecord.id },
+          include: { sessions: { select: { status: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
   ]);
 
   const contactFields: ClientDetailFields = manualRecord
@@ -636,6 +677,9 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       projectName: string;
       startDate: Date;
       endDate: Date | null;
+      allocationPercent: number;
+      notes: string | null;
+      updatedAt: Date;
       candidate: { id: string; name: string };
     }>
   ).map((p) => ({
@@ -646,6 +690,9 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     projectName: p.projectName,
     startDate: p.startDate.toISOString(),
     endDate: p.endDate?.toISOString() ?? null,
+    allocationPercent: p.allocationPercent,
+    notes: p.notes,
+    updatedAt: p.updatedAt.toISOString(),
   }));
 
   return {
@@ -666,6 +713,26 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     })),
     supportClient: supportClient ?? null,
     placements: serializedPlacements,
+    studies: (studies as Array<{
+      id: string;
+      title: string;
+      problemStatement: string;
+      status: string;
+      sessionMode: string;
+      selectedPersonaIds: string[];
+      createdAt: Date;
+      sessions: { status: string }[];
+    }>).map((s) => ({
+      id: s.id,
+      title: s.title,
+      problemStatement: s.problemStatement,
+      status: s.status,
+      sessionMode: s.sessionMode,
+      selectedPersonaIds: s.selectedPersonaIds,
+      createdAt: s.createdAt.toISOString(),
+      sessionCount: s.sessions.length,
+      completedSessionCount: s.sessions.filter((sess) => sess.status === "COMPLETED").length,
+    })),
   };
 }
 
@@ -707,6 +774,7 @@ export async function updateClientPlatform(
     repoUrl?: string;
     credentials?: string;
     notes?: string;
+    previewImageUrl?: string;
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -719,6 +787,7 @@ export async function updateClientPlatform(
       ...(input.repoUrl !== undefined ? { repoUrl: input.repoUrl.trim() || null } : {}),
       ...(input.credentials !== undefined ? { credentials: input.credentials.trim() || null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+      ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
   });
 
@@ -746,7 +815,7 @@ export async function createClientDesign(
 
 export async function updateClientDesign(
   designId: string,
-  input: { name?: string; url?: string; notes?: string },
+  input: { name?: string; url?: string; notes?: string; previewImageUrl?: string },
 ): Promise<ClientDesignRecord | null> {
   const design = await clientDesigns.update({
     where: { id: designId },
@@ -754,6 +823,7 @@ export async function updateClientDesign(
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+      ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
   });
   return serializeClientDesign(design as Parameters<typeof serializeClientDesign>[0]);

@@ -1,3 +1,4 @@
+import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { fetchNewMessages } from "@/server/discord-sync";
@@ -13,6 +14,39 @@ interface DiscordChannelCursor {
 interface RedditScraperConfig {
   subreddit?: string;
   keywords?: string[];
+  excludeKeywords?: string[];
+  lookbackDays?: number;
+  maxItems?: number;
+}
+
+// ─── Shared filter helpers ──────────────────────────────────────────────────────
+
+function normalizeKeywords(list?: string[]): string[] {
+  return (list ?? []).map((k) => k.toLowerCase().trim()).filter(Boolean);
+}
+
+/**
+ * Returns true if `text` passes the include/exclude keyword filters.
+ * - include: if non-empty, text must contain at least one term
+ * - exclude: if any term is present, the item is rejected
+ */
+function passesKeywordFilters(text: string, include: string[], exclude: string[]): boolean {
+  const lower = text.toLowerCase();
+  if (exclude.length > 0 && exclude.some((kw) => lower.includes(kw))) return false;
+  if (include.length > 0 && !include.some((kw) => lower.includes(kw))) return false;
+  return true;
+}
+
+function lookbackSeconds(lookbackDays: number | undefined, fallbackDays: number): number {
+  const days = lookbackDays && lookbackDays > 0 ? lookbackDays : fallbackDays;
+  return Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+}
+
+/** Convert a Date to a Discord snowflake (used as an `after` cursor). */
+function dateToSnowflake(date: Date): string {
+  const DISCORD_EPOCH = 1420070400000;
+  const ms = Math.max(0, date.getTime() - DISCORD_EPOCH);
+  return String(ms * 4194304); // << 22
 }
 
 // ─── Reddit RSS helpers ───────────────────────────────────────────────────────
@@ -63,9 +97,14 @@ interface DiscordScraperConfig {
   botToken?: string;
   channels?: DiscordChannelCursor[];
   keywords?: string[];
+  excludeKeywords?: string[];
+  lookbackDays?: number;
+  maxItems?: number;
+  ignoreBots?: boolean;
 }
 
 export interface SyncResult {
+  fetched?: number;
   ingested: number;
   filtered: number;
   errors: string[];
@@ -85,6 +124,7 @@ export interface SyncContext {
     id: string;
     googleServiceAccountJson: string | null;
     googleSubjectEmail: string | null;
+    googleOAuthRefreshToken: string | null;
     aiProvider: string;
     anthropicApiKey: string | null;
     anthropicModel: string | null;
@@ -106,6 +146,7 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
       id: true,
       googleServiceAccountJson: true,
       googleSubjectEmail: true,
+      googleOAuthRefreshToken: true,
       aiProvider: true,
       anthropicApiKey: true,
       anthropicModel: true,
@@ -154,10 +195,22 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   const errors: string[] = [];
   const updatedChannels = [...channels];
 
+  // ── Filters ──
+  const include = normalizeKeywords(config.keywords);
+  const exclude = normalizeKeywords(config.excludeKeywords);
+  const ignoreBots = config.ignoreBots ?? true;
+  const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
+  // On first sync (no per-channel cursor), only reach back `lookbackDays` (default 7)
+  const firstSyncAfter = dateToSnowflake(
+    new Date(lookbackSeconds(config.lookbackDays, 7) * 1000),
+  );
+
   for (let i = 0; i < channels.length; i++) {
     const ch = channels[i];
+    if (maxItems && ingested >= maxItems) break;
     try {
-      const messages = await fetchNewMessages(ch.id, botToken, ch.lastMessageId);
+      const afterCursor = ch.lastMessageId ?? firstSyncAfter;
+      const messages = await fetchNewMessages(ch.id, botToken, afterCursor);
       if (messages.length === 0) continue;
 
       // Find or create one conversation per Discord channel
@@ -183,17 +236,20 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
       let lastMessageId = ch.lastMessageId ?? null;
 
-      const keywords = (config.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
-
       for (const msg of messages) {
-        if (msg.author.bot) { filtered++; continue; }
+        // Stop before advancing the cursor when the cap is hit, so capped messages
+        // are picked up on the next sync rather than silently skipped.
+        if (maxItems && ingested >= maxItems) break;
+
+        // Advance the cursor past messages we've seen, even when filtered out,
+        // so filtered noise isn't re-evaluated on every sync.
+        lastMessageId = msg.id;
+
+        if (ignoreBots && msg.author.bot) { filtered++; continue; }
         if (!msg.content.trim()) { filtered++; continue; }
 
-        // Keyword filter — if configured, only ingest messages containing at least one keyword
-        if (keywords.length > 0) {
-          const lower = msg.content.toLowerCase();
-          if (!keywords.some((kw) => lower.includes(kw))) { filtered++; continue; }
-        }
+        // Include / exclude keyword filters
+        if (!passesKeywordFilters(msg.content, include, exclude)) { filtered++; continue; }
 
         // Skip already-ingested messages (guards against partial sync failures)
         const already = await prisma.supportMessage.findFirst({
@@ -214,7 +270,6 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
         });
 
         ingested++;
-        lastMessageId = msg.id;
       }
 
       if (ingested > 0) {
@@ -227,7 +282,18 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
       updatedChannels[i] = { ...ch, lastMessageId };
     } catch (err) {
-      errors.push(`#${ch.name}: ${err instanceof Error ? err.message : String(err)}`);
+      const raw = err instanceof Error ? err.message : String(err);
+      // Discord error code 50001 = Missing Access: the bot is in the server but lacks
+      // permission on THIS channel. Surface an actionable hint rather than the raw payload.
+      if (raw.includes("50001") || raw.includes("Missing Access")) {
+        errors.push(
+          `#${ch.name}: bot lacks access to this channel. In Discord, edit the channel → ` +
+            `Permissions → add the bot (or its role) with "View Channel" + "Read Message History". ` +
+            `Private, announcement, and forum channels need this granted per-channel.`,
+        );
+      } else {
+        errors.push(`#${ch.name}: ${raw}`);
+      }
     }
   }
 
@@ -253,20 +319,23 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
   }
 
-  // Use lastSyncedAt as cursor; on first sync go back 7 days
+  // Use lastSyncedAt as cursor; on first sync go back `lookbackDays` (default 7)
   const lastSyncedAt = ctx.connection.lastSyncedAt;
   const afterUtc = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+    : lookbackSeconds(config?.lookbackDays, 7);
 
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
-  const keywords = (config?.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
+  const include = normalizeKeywords(config?.keywords);
+  const exclude = normalizeKeywords(config?.excludeKeywords);
+  const maxItems = config?.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
+  const limit = Math.min(maxItems ?? 25, 100);
 
   try {
     // Use the RSS/Atom feed — no credentials required
-    const res = await fetch(`https://www.reddit.com/r/${subreddit}/new.rss?limit=25`, {
+    const res = await fetch(`https://www.reddit.com/r/${subreddit}/new.rss?limit=${limit}`, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; FeedReader/1.0)",
         Accept: "application/atom+xml, application/rss+xml, text/xml, */*",
@@ -281,11 +350,10 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     const posts = parseRedditAtom(xml).filter((p) => p.created_utc > afterUtc);
 
     for (const post of posts) {
-      // Keyword filter — if configured, skip posts that don't match
-      if (keywords.length > 0) {
-        const text = `${post.title} ${post.body}`.toLowerCase();
-        if (!keywords.some((kw) => text.includes(kw))) { filtered++; continue; }
-      }
+      if (maxItems && ingested >= maxItems) break;
+
+      // Include / exclude keyword filters on title + body
+      if (!passesKeywordFilters(`${post.title} ${post.body}`, include, exclude)) { filtered++; continue; }
 
       if (!post.title.trim()) { filtered++; continue; }
 
@@ -339,10 +407,260 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   return { ingested, filtered, errors };
 }
 
+// ─── Gmail sync ───────────────────────────────────────────────────────────────
+
+// Gmail API types: `mimeType` is `string | null | undefined`. Widening here so
+// callers can hand us the raw Schema$Message without an intermediate cast.
+function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string | null } | null }): string {
+  const payload = msg.payload;
+  if (!payload) return "";
+
+  function decodeBase64(data: string): string {
+    return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+  }
+
+  function extractFromParts(parts: unknown[]): string {
+    const p = parts as Array<{ mimeType?: string; body?: { data?: string | null }; parts?: unknown[] }>;
+    for (const part of p) {
+      if (part.mimeType === "text/plain" && part.body?.data) return decodeBase64(part.body.data);
+    }
+    for (const part of p) {
+      if (part.mimeType === "text/html" && part.body?.data) {
+        return decodeBase64(part.body.data).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      }
+    }
+    for (const part of p) {
+      if (part.parts) {
+        const found = extractFromParts(part.parts);
+        if (found) return found;
+      }
+    }
+    return "";
+  }
+
+  if (payload.parts) return extractFromParts(payload.parts);
+  if (payload.body?.data) return decodeBase64(payload.body.data);
+  return "";
+}
+
+/**
+ * Resolve the Google OAuth refresh token to use for the shared Care Gmail sync.
+ *
+ * Order of preference:
+ *   1. `workspace.googleOAuthRefreshToken` (legacy shared org token, if still set)
+ *   2. An ADMIN member's `user.googleOAuthRefreshToken` — NextAuth keeps this fresh on
+ *      every sign-in, so it's the reliable source now that sign-in no longer writes the
+ *      workspace row.
+ *
+ * Both are minted by the SAME OAuth client (AUTH_GOOGLE_ID via NextAuth, or the
+ * GOOGLE_CLIENT_ID "Connect Gmail" flow), so refreshing must use matching credentials —
+ * see resolveGoogleOAuthClientCreds().
+ */
+async function resolveGmailRefreshToken(ctx: SyncContext): Promise<string | null> {
+  if (ctx.workspace.googleOAuthRefreshToken) return ctx.workspace.googleOAuthRefreshToken;
+
+  const adminMember = await prisma.workspaceMember.findFirst({
+    where: {
+      workspaceId: ctx.workspace.id,
+      role: "ADMIN",
+      user: { googleOAuthRefreshToken: { not: null } },
+    },
+    orderBy: { user: { updatedAt: "desc" } },
+    select: { user: { select: { googleOAuthRefreshToken: true } } },
+  });
+
+  return adminMember?.user.googleOAuthRefreshToken ?? null;
+}
+
+/**
+ * The Care Gmail refresh token is minted either by NextAuth (AUTH_GOOGLE_ID/SECRET) or the
+ * explicit Connect-Gmail flow (GOOGLE_CLIENT_ID/SECRET). Refreshing a token with a client
+ * that didn't issue it returns `unauthorized_client`, so prefer AUTH_GOOGLE_* and fall back
+ * to GOOGLE_CLIENT_* — matching getUserGoogleAuth() in src/server/google-auth.ts.
+ */
+function resolveGoogleOAuthClientCreds(): { clientId?: string; clientSecret?: string } {
+  return {
+    clientId: process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET,
+  };
+}
+
+async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
+  const { workspace, connection, client } = ctx;
+
+  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+
+  const refreshToken = await resolveGmailRefreshToken(ctx);
+
+  if (refreshToken) {
+    const { clientId, clientSecret } = resolveGoogleOAuthClientCreds();
+    if (!clientId || !clientSecret) {
+      return { fetched: 0, ingested: 0, filtered: 0, errors: ["Google OAuth client not configured — set AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET (or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)"] };
+    }
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2.setCredentials({ refresh_token: refreshToken });
+    gmailAuth = oauth2 as Parameters<typeof google.gmail>[0]["auth"];
+  } else if (workspace.googleServiceAccountJson) {
+    try {
+      const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      });
+      const authClient = await auth.getClient();
+      if (workspace.googleSubjectEmail && "subject" in authClient) {
+        (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
+      }
+      gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
+    } catch (err) {
+      return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
+    }
+  } else {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: ["Gmail not connected — go to Settings → Google Workspace and click Connect Gmail"] };
+  }
+
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
+  const config = (connection.scraperConfig ?? {}) as RedditScraperConfig & {
+    query?: string;
+    intakeAddress?: string;
+  };
+  const queryBase = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
+  const lastSyncedAt = connection.lastSyncedAt;
+  const afterSeconds = lastSyncedAt
+    ? Math.floor(lastSyncedAt.getTime() / 1000)
+    : lookbackSeconds(config.lookbackDays, 30);
+
+  // Push keyword filters into the Gmail query itself (server-side, most efficient).
+  const include = normalizeKeywords(config.keywords);
+  const exclude = normalizeKeywords(config.excludeKeywords);
+  const includeClause = include.length > 0 ? `(${include.map((k) => `"${k}"`).join(" OR ")})` : "";
+  const excludeClause = exclude.map((k) => `-"${k}"`).join(" ");
+  const maxResults = config.maxItems && config.maxItems > 0 ? Math.min(config.maxItems, 100) : 50;
+  const fullQuery = [queryBase, includeClause, excludeClause, `after:${afterSeconds}`]
+    .filter(Boolean)
+    .join(" ");
+
+  let ingested = 0;
+  let filtered = 0;
+  const errors: string[] = [];
+
+  try {
+    const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults });
+    const messageItems = listRes.data.messages ?? [];
+    const fetched = messageItems.length;
+    const threadsSeen = new Set<string>();
+
+    for (const item of messageItems) {
+      if (!item.id || !item.threadId) continue;
+      if (threadsSeen.has(item.threadId)) { filtered++; continue; }
+      threadsSeen.add(item.threadId);
+
+      try {
+        const threadRes = await gmail.users.threads.get({
+          userId: "me",
+          id: item.threadId,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From", "Date"],
+        });
+        const threadMessages = threadRes.data.messages ?? [];
+        if (threadMessages.length === 0) { filtered++; continue; }
+
+        const firstMsg = threadMessages[0];
+        const hdrs = firstMsg.payload?.headers ?? [];
+        const subject = hdrs.find((h) => h.name === "Subject")?.value ?? "(no subject)";
+        const from = hdrs.find((h) => h.name === "From")?.value ?? "unknown";
+        const dateStr = hdrs.find((h) => h.name === "Date")?.value;
+        const receivedAt = dateStr ? new Date(dateStr) : new Date();
+        const customerLabel = from.replace(/<[^>]+>/g, "").trim() || from;
+
+        let conv = await prisma.supportConversation.findFirst({
+          where: { clientId: client.id, source: "GMAIL", externalId: item.threadId },
+        });
+
+        if (!conv) {
+          conv = await prisma.supportConversation.create({
+            data: {
+              clientId: client.id,
+              source: "GMAIL",
+              externalId: item.threadId,
+              customerLabel,
+              subject,
+              preview: subject,
+              receivedAt,
+              unread: true,
+              tags: ["gmail"],
+            },
+          });
+          ingested++;
+        } else {
+          filtered++;
+        }
+
+        for (const msg of threadMessages) {
+          if (!msg.id) continue;
+          const already = await prisma.supportMessage.findFirst({
+            where: { conversationId: conv.id, externalId: msg.id },
+            select: { id: true },
+          });
+          if (already) continue;
+
+          try {
+            const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
+            const body = extractGmailBodyText(msgRes.data);
+            if (!body.trim()) continue;
+
+            const msgHdrs = (msg.payload?.headers ?? []) as Array<{ name?: string | null; value?: string | null }>;
+            const msgFrom = msgHdrs.find((h) => h.name === "From")?.value ?? "";
+            const isOutbound = workspace.googleSubjectEmail ? msgFrom.includes(workspace.googleSubjectEmail) : false;
+
+            await prisma.supportMessage.create({
+              data: {
+                conversationId: conv.id,
+                direction: isOutbound ? "outbound" : "inbound",
+                authorLabel: msgFrom.replace(/<[^>]+>/g, "").trim() || msgFrom,
+                body: body.slice(0, 4000),
+                externalId: msg.id,
+                createdAt: msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt,
+              },
+            });
+          } catch {
+            // skip individual message errors
+          }
+        }
+      } catch (err) {
+        errors.push(`Thread ${item.threadId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    await prisma.accountConnection.update({
+      where: { id: connection.id },
+      data: { lastSyncedAt: new Date() },
+    });
+
+    return { fetched, ingested, filtered, errors };
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (raw.includes("unauthorized_client") || raw.includes("invalid_grant")) {
+      return {
+        fetched: 0,
+        ingested: 0,
+        filtered: 0,
+        errors: [
+          "Gmail sync failed: Google rejected the stored refresh token (unauthorized_client). " +
+            "Reconnect Gmail in Settings → Integrations so a fresh token is issued by the current OAuth client.",
+        ],
+      };
+    }
+    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${raw}`] };
+  }
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
   switch (ctx.connection.source) {
+    case "GMAIL":
+      return syncGmailConnection(ctx);
     case "DISCORD":
       return syncDiscordConnection(ctx);
     case "REDDIT":

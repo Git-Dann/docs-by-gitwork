@@ -12,6 +12,8 @@ import {
   useCodeClearCandidates,
   useCreateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
+import { setCandidateCurrentClients } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
@@ -22,6 +24,7 @@ import {
 } from "@/types/codeclear";
 import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
+import { useClientList } from "@/hooks/use-proposals";
 import {
   CodeClearTabs,
   EmptyState,
@@ -32,6 +35,7 @@ import {
   emptyCandidateProfile,
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
+import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
@@ -66,7 +70,10 @@ export function CodeClearCandidatesWorkspace() {
     identityConfidence: confidenceFilter || undefined,
   });
   const createCandidate = useCreateCodeClearCandidate();
+  const queryClient = useQueryClient();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
+  const clientsQuery = useClientList();
+  const clientOptions = clientsQuery.data?.clients ?? [];
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
 
   // Same canonical sort as the overview: roster order first, then any new
@@ -322,11 +329,25 @@ export function CodeClearCandidatesWorkspace() {
                         </span>
                       </td>
                       <td>
-                        <span className="text-sm text-[var(--text-3)]">
-                          {candidate.currentClient?.name ?? (
-                            <span className="text-[var(--text-4)]">Unassigned</span>
-                          )}
-                        </span>
+                        {candidate.currentClients.length === 0 ? (
+                          <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {candidate.currentClients.map((entry) => {
+                              const logoUrl = entry.id
+                                ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
+                                : null;
+                              return (
+                                <ClientAvatar
+                                  key={entry.id ?? entry.name}
+                                  name={entry.name}
+                                  logoUrl={logoUrl}
+                                  size="md"
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
                       <td className="text-right">
                         <span
@@ -382,7 +403,7 @@ export function CodeClearCandidatesWorkspace() {
             aria-label="Close add candidate modal"
             onClick={() => setShowCreateModal(false)}
           />
-          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-2xl flex-col">
+          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-4xl flex-col">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
               <div>
                 <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
@@ -396,7 +417,11 @@ export function CodeClearCandidatesWorkspace() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <CandidateProfileForm value={createForm} onChange={setCreateForm} />
+              <CandidateProfileForm
+                value={createForm}
+                onChange={setCreateForm}
+                showClientsPicker
+              />
             </div>
 
             <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
@@ -433,10 +458,29 @@ export function CodeClearCandidatesWorkspace() {
                       availability: createForm.availability || null,
                     },
                     {
-                      onSuccess: (result) => {
+                      onSuccess: async (result) => {
+                        // If the user picked any clients in the form, attach
+                        // them now as open-ended placements. Mirrors what the
+                        // CurrentClientPicker does after the dev exists.
+                        if (createForm.clientIds.length > 0) {
+                          try {
+                            await setCandidateCurrentClients(
+                              result.candidate.id,
+                              createForm.clientIds,
+                            );
+                            queryClient.invalidateQueries({
+                              queryKey: ["codeclear", "candidates"],
+                            });
+                            queryClient.invalidateQueries({
+                              queryKey: ["codeclear", "candidate", result.candidate.id],
+                            });
+                          } catch (error) {
+                            console.error("Failed to attach clients on create", error);
+                          }
+                        }
                         setShowCreateModal(false);
                         setCreateForm(emptyCandidateProfile);
-                        updateQuery({ candidate: result.candidate.id });
+                        router.push(`/app/codeclear/candidates/${result.candidate.id}`);
                       },
                     },
                   )

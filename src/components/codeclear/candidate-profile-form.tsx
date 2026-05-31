@@ -1,9 +1,17 @@
 "use client";
 
+import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTechStacks } from "@/hooks/use-codeclear";
+import { useClientList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
-import { TECH_STACK_OPTIONS, type CandidateAvailability, type CandidateOrigin } from "@/types/codeclear";
-import { StackPill } from "@/components/codeclear/codeclear-shared";
+import {
+  TECH_STACK_OPTIONS,
+  type CandidateAvailability,
+  type CandidateOrigin,
+} from "@/types/codeclear";
+import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
 export interface CandidateProfileValue {
   name: string;
@@ -16,12 +24,14 @@ export interface CandidateProfileValue {
   linkedinUrl: string;
   cvUrl: string;
   portfolioUrl: string;
-  yearsExperience: string; // kept as string so the input stays controlled while empty
+  yearsExperience: string;
   hourlyRate: string;
   currency: string;
   timezone: string;
   availability: CandidateAvailability | "";
   origin: CandidateOrigin;
+  /** Pre-create client assignment — Portal client IDs to attach to this dev. */
+  clientIds: string[];
 }
 
 export const emptyCandidateProfile: CandidateProfileValue = {
@@ -37,10 +47,11 @@ export const emptyCandidateProfile: CandidateProfileValue = {
   portfolioUrl: "",
   yearsExperience: "",
   hourlyRate: "",
-  currency: "",
+  currency: "USD",
   timezone: "",
   availability: "",
   origin: "INTERNAL",
+  clientIds: [],
 };
 
 const COMMON_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "CAD", "AUD"] as const;
@@ -52,25 +63,29 @@ const AVAILABILITY_LABELS: Record<CandidateAvailability, string> = {
 };
 
 /**
- * Shared add + edit form for a Candidate. Used by both the Add modal in the
- * candidates workspace and the Drawer's profile section. Strictly a controlled
- * component: hand it `value` + `onChange` and you own state. Stays UI-only —
- * the parent decides what to do with the value (POST / PATCH / dirty-track).
+ * Shared add + edit form for a Candidate. Controlled: hand it `value` +
+ * `onChange` and you own state. Used by both the Add Dev modal in the
+ * candidates workspace and the Edit modal on the profile page.
+ *
+ * The "Clients" section + admin origin toggle are gated by props because
+ * the profile page already has a live current-client picker in the hero
+ * and shouldn't double-up.
  */
 export function CandidateProfileForm({
   value,
   onChange,
   showOriginToggle = false,
+  showClientsPicker = false,
 }: {
   value: CandidateProfileValue;
   onChange: (next: CandidateProfileValue) => void;
   /** Admin-only toggle. Surface in Settings or the Drawer's admin section. */
   showOriginToggle?: boolean;
+  /** Pre-create client assignment. Off by default so the Edit modal doesn't
+   *  duplicate the live picker on the profile hero. */
+  showClientsPicker?: boolean;
 }) {
   const stacksQuery = useTechStacks();
-  // Fall back to the static list so the form still works before the API has
-  // seeded (e.g. on first ever load). Tech stacks added via the API show up
-  // automatically once the cache refreshes.
   const stackOptions =
     stacksQuery.data?.stacks.map((stack) => stack.name) ?? TECH_STACK_OPTIONS;
 
@@ -79,9 +94,11 @@ export function CandidateProfileForm({
   }
 
   return (
-    <div className="space-y-5">
+    // Two-column outer grid on wide screens, stacked on narrow.
+    // Sections each pick whether to span 1 column or both via `span`.
+    <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
       {/* Identity */}
-      <Section title="Identity">
+      <Section title="Identity" span="full">
         <Field label="Name">
           <input
             value={value.name}
@@ -119,7 +136,7 @@ export function CandidateProfileForm({
       </Section>
 
       {/* Tech */}
-      <Section title="Tech stack">
+      <Section title="Tech stack" span="half">
         <Field label="Primary stack" span="full">
           <input
             value={value.primaryStack}
@@ -130,33 +147,42 @@ export function CandidateProfileForm({
           />
         </Field>
         <div className="col-span-full">
-          <p className="text-xs font-medium text-[var(--text-3)]">Additional stacks</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {stackOptions.map((stack) => {
-              const active = value.techStacks.includes(stack);
-              return (
-                <button
-                  key={stack}
-                  type="button"
-                  onClick={() =>
-                    patch(
-                      "techStacks",
-                      active
-                        ? value.techStacks.filter((entry) => entry !== stack)
-                        : [...value.techStacks, stack],
-                    )
-                  }
-                >
-                  <StackPill label={stack} tone="stack" selected={active} />
-                </button>
-              );
-            })}
+          <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
+            Additional stacks
+          </p>
+          <div className="mt-2">
+            <TagChipPicker
+              options={stackOptions}
+              selected={value.techStacks}
+              onChange={(next) => patch("techStacks", next)}
+              placeholder="No additional stacks"
+            />
           </div>
         </div>
       </Section>
 
-      {/* Validation signal sources */}
-      <Section title="Validation links">
+      {/* Clients (create-time only) */}
+      {showClientsPicker ? (
+        <Section title="Clients" span="half">
+          <div className="col-span-full">
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
+              Current clients
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-4)]">
+              Optional. Devs land in these clients&apos; columns in the Pipeline.
+            </p>
+            <div className="mt-2">
+              <ClientChipPicker
+                selectedIds={value.clientIds}
+                onChange={(next) => patch("clientIds", next)}
+              />
+            </div>
+          </div>
+        </Section>
+      ) : null}
+
+      {/* Profile links */}
+      <Section title="Profile links" span="half">
         <Field label="LinkedIn URL">
           <input
             value={value.linkedinUrl}
@@ -175,7 +201,7 @@ export function CandidateProfileForm({
             autoComplete="off"
           />
         </Field>
-        <Field label="Portfolio URL">
+        <Field label="Portfolio URL" span="full">
           <input
             value={value.portfolioUrl}
             onChange={(event) => patch("portfolioUrl", event.target.value)}
@@ -186,8 +212,8 @@ export function CandidateProfileForm({
         </Field>
       </Section>
 
-      {/* Commercials */}
-      <Section title="Commercials">
+      {/* Rate & availability */}
+      <Section title="Rate & availability" span="half">
         <Field label="Years of experience">
           <input
             type="number"
@@ -198,30 +224,6 @@ export function CandidateProfileForm({
             className="app-input"
           />
         </Field>
-        <Field label="Hourly rate">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={value.hourlyRate}
-            onChange={(event) => patch("hourlyRate", event.target.value)}
-            className="app-input"
-          />
-        </Field>
-        <Field label="Currency">
-          <select
-            value={value.currency}
-            onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-            className="app-select"
-          >
-            <option value="">—</option>
-            {COMMON_CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-        </Field>
         <Field label="Timezone">
           <input
             value={value.timezone}
@@ -230,6 +232,34 @@ export function CandidateProfileForm({
             className="app-input"
             autoComplete="off"
           />
+        </Field>
+        <Field label="Hourly rate">
+          <div className="flex gap-1.5">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={value.hourlyRate}
+              onChange={(event) => patch("hourlyRate", event.target.value)}
+              className="app-input flex-1"
+              placeholder="0"
+            />
+            <select
+              value={value.currency}
+              onChange={(event) => patch("currency", event.target.value.toUpperCase())}
+              // `app-select` reserves ~38px on the right for the chevron icon
+              // (calc(100% - 20px) center + 18px wide). Need explicit padding
+              // plus min-width 100px so 3-letter ISO codes never clip.
+              className="app-select min-w-[100px] flex-shrink-0 pr-9"
+              aria-label="Currency"
+            >
+              {COMMON_CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </div>
         </Field>
         <Field label="Availability">
           <select
@@ -250,19 +280,20 @@ export function CandidateProfileForm({
       </Section>
 
       {/* Bio */}
-      <Section title="About">
+      <Section title="About" span="full">
         <Field label="Bio" span="full">
           <textarea
             value={value.bio}
             onChange={(event) => patch("bio", event.target.value)}
             rows={3}
             className="app-input min-h-[88px] resize-y"
+            placeholder="A short note about this dev — strengths, focus areas, anything worth remembering."
           />
         </Field>
       </Section>
 
       {showOriginToggle ? (
-        <Section title="Origin (admin)">
+        <Section title="Origin (admin)" span="full">
           <Field label="Roster" span="full">
             <div className="flex gap-1.5">
               {(["INTERNAL", "EXTERNAL"] as const).map((origin) => (
@@ -288,9 +319,22 @@ export function CandidateProfileForm({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * Section block. `span` decides whether the section occupies one column
+ * of the outer 2-col grid ("half") or both ("full"). On narrow screens
+ * the outer grid collapses to one column, so span is a no-op there.
+ */
+function Section({
+  title,
+  children,
+  span = "full",
+}: {
+  title: string;
+  children: React.ReactNode;
+  span?: "half" | "full";
+}) {
   return (
-    <div>
+    <div className={span === "full" ? "lg:col-span-2" : "lg:col-span-1"}>
       <p className="widget-data-label mb-3">{title}</p>
       <div className="grid grid-cols-2 gap-3">{children}</div>
     </div>
@@ -311,5 +355,344 @@ function Field({
       <span className="text-xs font-medium text-[var(--text-3)]">{label}</span>
       {children}
     </label>
+  );
+}
+
+// ─── Tag chip picker ──────────────────────────────────────────────────────────
+
+/**
+ * Generic chip picker: shows selected tags as chips with × to remove, plus a
+ * "+ Add" button that opens a searchable portal dropdown of the unselected
+ * options. Same UX as CurrentClientPicker but pure-controlled (no mutations).
+ */
+function TagChipPicker({
+  options,
+  selected,
+  onChange,
+  placeholder = "None selected",
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const available = options.filter(
+    (option) =>
+      !selected.includes(option) &&
+      (!search.trim() || option.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      setSearch("");
+      return;
+    }
+    function reposition() {
+      if (!btnRef.current) return;
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 220),
+      });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(event: MouseEvent) {
+      if (!menuRef.current || !btnRef.current) return;
+      const target = event.target as Node;
+      if (menuRef.current.contains(target) || btnRef.current.contains(target)) return;
+      setOpen(false);
+    }
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  function add(option: string) {
+    onChange([...selected, option]);
+    setSearch("");
+  }
+  function remove(option: string) {
+    onChange(selected.filter((entry) => entry !== option));
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {selected.length === 0 ? (
+        <span className="text-xs italic text-[var(--text-4)]">{placeholder}</span>
+      ) : (
+        selected.map((option) => (
+          <span
+            key={option}
+            className="inline-flex items-center gap-1 rounded-[4px] border border-[var(--border-2)] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-2)]"
+          >
+            {option}
+            <button
+              type="button"
+              onClick={() => remove(option)}
+              aria-label={`Remove ${option}`}
+              className="rounded-full text-[var(--text-4)] transition hover:text-rose-500"
+            >
+              <XMarkIcon className="h-3 w-3" />
+            </button>
+          </span>
+        ))
+      )}
+
+      {options.some((o) => !selected.includes(o)) ? (
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="inline-flex items-center gap-0.5 rounded-[4px] border border-dashed border-[var(--border-1)] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)] hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+          aria-expanded={open}
+        >
+          <PlusIcon className="h-3 w-3" />
+          Add
+        </button>
+      ) : null}
+
+      {open && menuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              style={{
+                position: "fixed",
+                top: menuPosition.top,
+                left: menuPosition.left,
+                minWidth: menuPosition.width,
+                zIndex: 9999,
+              }}
+              className="rounded-[8px] border border-[var(--border-2)] bg-white p-1.5 shadow-[var(--shadow-lg)]"
+            >
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search…"
+                className="app-input mb-1 h-8 w-full text-xs"
+                autoFocus
+              />
+              <ul className="max-h-[220px] overflow-y-auto">
+                {available.length === 0 ? (
+                  <li className="px-2.5 py-1.5 text-xs italic text-[var(--text-4)]">
+                    No matches
+                  </li>
+                ) : (
+                  available.map((option) => (
+                    <li key={option}>
+                      <button
+                        type="button"
+                        onClick={() => add(option)}
+                        className="block w-full rounded-[6px] px-2.5 py-1.5 text-left text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        {option}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+// ─── Client chip picker (pure controlled) ─────────────────────────────────────
+
+/**
+ * Multi-select client picker for the Add Dev form. Pure-controlled (just
+ * reads `selectedIds` and emits `onChange`) — different from
+ * CurrentClientPicker which mutates immediately. Renders a logo chip per
+ * selected client with × to remove, plus an "+ Add client" button that opens
+ * a portal dropdown of the remaining clients.
+ */
+function ClientChipPicker({
+  selectedIds,
+  onChange,
+}: {
+  selectedIds: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const clientsQuery = useClientList();
+  const clients = clientsQuery.data?.clients ?? [];
+  const selected = clients.filter((client) => selectedIds.includes(client.id));
+  const available = clients.filter((client) => !selectedIds.includes(client.id));
+
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const filtered = available.filter(
+    (client) =>
+      !search.trim() || client.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      setSearch("");
+      return;
+    }
+    function reposition() {
+      if (!btnRef.current) return;
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 240),
+      });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(event: MouseEvent) {
+      if (!menuRef.current || !btnRef.current) return;
+      const target = event.target as Node;
+      if (menuRef.current.contains(target) || btnRef.current.contains(target)) return;
+      setOpen(false);
+    }
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {selected.length === 0 ? (
+        <span className="text-xs italic text-[var(--text-4)]">
+          {clientsQuery.isLoading ? "Loading clients…" : "No clients yet"}
+        </span>
+      ) : (
+        selected.map((client) => (
+          <span
+            key={client.id}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-1.5 py-0.5 text-xs font-medium text-[var(--text-2)]"
+          >
+            <ClientAvatar name={client.name} logoUrl={client.logoUrl ?? null} size="xs" />
+            {client.name}
+            <button
+              type="button"
+              onClick={() => onChange(selectedIds.filter((id) => id !== client.id))}
+              aria-label={`Remove ${client.name}`}
+              className="rounded-full text-[var(--text-4)] transition hover:text-rose-500"
+            >
+              <XMarkIcon className="h-3 w-3" />
+            </button>
+          </span>
+        ))
+      )}
+
+      {available.length > 0 ? (
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="inline-flex items-center gap-0.5 rounded-[6px] border border-dashed border-[var(--border-1)] bg-white px-1.5 py-0.5 text-xs font-medium text-[var(--text-3)] hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+          aria-expanded={open}
+        >
+          <PlusIcon className="h-3 w-3" />
+          Add client
+        </button>
+      ) : null}
+
+      {open && menuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              style={{
+                position: "fixed",
+                top: menuPosition.top,
+                left: menuPosition.left,
+                minWidth: menuPosition.width,
+                zIndex: 9999,
+              }}
+              className="rounded-[8px] border border-[var(--border-2)] bg-white p-1.5 shadow-[var(--shadow-lg)]"
+            >
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search clients…"
+                className="app-input mb-1 h-8 w-full text-xs"
+                autoFocus
+              />
+              <ul className="max-h-[240px] overflow-y-auto">
+                {filtered.length === 0 ? (
+                  <li className="px-2.5 py-1.5 text-xs italic text-[var(--text-4)]">
+                    No matches
+                  </li>
+                ) : (
+                  filtered.map((client) => (
+                    <li key={client.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange([...selectedIds, client.id]);
+                          setOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        <ClientAvatar name={client.name} logoUrl={client.logoUrl ?? null} size="sm" />
+                        {client.name}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 }
