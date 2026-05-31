@@ -794,23 +794,46 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
                   Link ready
                 </h2>
                 <p className="mt-1 text-sm text-[var(--text-3)]">
-                  Send this to the client. They&apos;ll be able to come back to it any time
-                  before you move them to workflow.
+                  Send this to the client. They can come back to it any time before you
+                  move them to workflow.
                 </p>
-                <div className="mt-5 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-                  <code className="flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
-                    {fullUrl}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="app-button app-button-utility app-button-xs"
-                  >
-                    <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                    {copied ? "Copied" : "Copy"}
-                  </button>
+
+                {link.label ? (
+                  <div className="mt-5">
+                    <span className="widget-data-label">Label</span>
+                    <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
+                      {link.label}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="mt-4">
+                  <span className="widget-data-label">Onboarding link</span>
+                  <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                    <code className="flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
+                      {fullUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="app-button app-button-utility app-button-xs"
+                    >
+                      <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-6 flex justify-end">
+
+                <div className="mt-6 flex items-center justify-between gap-2">
+                  <a
+                    href={fullUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="app-button app-button-tertiary app-button-sm"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                    Preview
+                  </a>
                   <Button type="button" variant="primary" size="md" onClick={onClose}>
                     Done
                   </Button>
