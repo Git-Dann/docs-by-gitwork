@@ -5,6 +5,8 @@ import type {
   DraftAction,
   Message,
   SupportClient,
+  SupportReport,
+  SupportReportPayload,
   Ticket,
   WorkflowRule,
 } from "@/types/support";
@@ -1147,6 +1149,44 @@ export async function updateSupportClient(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export async function listSupportReports(
+  clientId: string,
+): Promise<{ reports: SupportReport[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports`);
+}
+
+export async function createSupportReport(
+  clientId: string,
+  data: { period: string; payload: SupportReportPayload; createdBy?: string },
+): Promise<{ report: SupportReport }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSupportReport(
+  clientId: string,
+  reportId: string,
+  data: { period?: string; payload?: SupportReportPayload },
+): Promise<{ report: SupportReport }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/${reportId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSupportReport(
+  clientId: string,
+  reportId: string,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/${reportId}`, {
+    method: "DELETE",
   });
 }
 

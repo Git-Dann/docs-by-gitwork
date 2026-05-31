@@ -40,24 +40,30 @@ import type {
 import {
   useCreateSupportClient,
   useCreateSupportConnection,
+  useCreateSupportReport,
   useCreateWorkflowRule,
   useDeleteConnection,
+  useDeleteSupportReport,
   useDeleteWorkflowRule,
   useGenerateAiDraft,
   useSeedDefaultRules,
   useSupportClients,
   useSupportConversations,
   useSupportMessages,
+  useSupportReports,
   useUpdateConversation,
   useUpdateConnection,
   useSendMessage,
   useSupportTickets,
+  useUpdateSupportClient,
+  useUpdateSupportReport,
   useUpdateTicket,
   useSupportConnections,
   useSupportWorkflowRules,
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";
+import type { SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1574,32 +1580,352 @@ function TicketsView({ clientId }: { clientId: string }) {
 
 // ─── reports view ────────────────────────────────────────────────────────────
 
+function emptyPayload(author: string): SupportReportPayload {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return {
+    author,
+    periodStart: start.toISOString().slice(0, 10),
+    periodEnd: end.toISOString().slice(0, 10),
+    overviewText: "",
+    totalTickets: 0,
+    catCancellations: 0,
+    catAccountQueries: 0,
+    catRefunds: 0,
+    catTechIssues: 0,
+    catOther: 0,
+    prioUrgent: 0,
+    prioHigh: 0,
+    prioMedium: 0,
+    prioLow: 0,
+    performanceText: "",
+    refundRequests: 0,
+    refundsProcessed: 0,
+    refundTotalValue: 0,
+    refundNotes: "",
+    usageTotalUsers: 0,
+    usageVerifiedUsers: 0,
+    usageActiveSubscriptions: 0,
+    usageSubIosMonthly: 0,
+    usageSubIosYearly: 0,
+    usageSubAndroidMonthly: 0,
+    usageSubAndroidYearly: 0,
+    usageSubStripeMonthly: 0,
+    usageSubStripeYearly: 0,
+    usageEventsTotal: 0,
+    usageEventsRenewals: 0,
+    usageEventsNew: 0,
+    usageIosTotal: 0,
+    usageIosNew: 0,
+    usageAndroidTotal: 0,
+    usageAndroidNew: 0,
+    usageStripeTotal: 0,
+    usageStripeNew: 0,
+    summaryText: "",
+  };
+}
+
+function numInput(
+  label: string,
+  value: number,
+  onChange: (v: number) => void,
+  prefix?: string,
+) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">{label}</p>
+      <div className="flex items-center gap-1">
+        {prefix && <span className="text-sm text-[var(--text-3)]">{prefix}</span>}
+        <input
+          type="number"
+          min={0}
+          value={value || ""}
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+        />
+      </div>
+    </div>
+  );
+}
+
+function textareaInput(
+  label: string,
+  value: string,
+  onChange: (v: string) => void,
+  placeholder: string,
+  rows = 4,
+) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">{label}</p>
+      <textarea
+        rows={rows}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
+      />
+    </div>
+  );
+}
+
+function ReportBuilder({
+  clientId,
+  report,
+  onSaved,
+  onCancel,
+}: {
+  clientId: string;
+  report: SupportReport | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const { data: session } = useSession();
+  const authorDefault = session?.user?.name ?? "";
+
+  const [period, setPeriod] = useState(
+    report?.period ?? new Date().toLocaleString("en-GB", { month: "long", year: "numeric" }),
+  );
+  const [p, setP] = useState<SupportReportPayload>(
+    report?.payload ?? emptyPayload(authorDefault),
+  );
+
+  const createReport = useCreateSupportReport(clientId);
+  const updateReport = useUpdateSupportReport(clientId);
+  const saving = createReport.isPending || updateReport.isPending;
+
+  function update<K extends keyof SupportReportPayload>(key: K, val: SupportReportPayload[K]) {
+    setP((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function handleSave() {
+    if (report) {
+      await updateReport.mutateAsync({ reportId: report.id, data: { period, payload: p } });
+    } else {
+      await createReport.mutateAsync({ period, payload: p, createdBy: p.author });
+    }
+    onSaved();
+  }
+
+  const widgetHeader = (num: string, label: string, right?: React.ReactNode) => (
+    <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+      <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+        {num} // {label}
+      </span>
+      {right ?? null}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* back + save bar */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+        >
+          <ChevronDoubleLeftIcon className="h-4 w-4" />
+          All reports
+        </button>
+        <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
+          {report ? "Save changes" : "Save report"}
+        </Button>
+      </div>
+
+      {/* 01 // PERIOD & AUTHOR */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("01", "PERIOD & AUTHOR")}
+        <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3">
+          <div className="col-span-2 sm:col-span-1">
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period label</p>
+            <input
+              type="text"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              placeholder="April 2026"
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period start</p>
+            <input
+              type="date"
+              value={p.periodStart}
+              onChange={(e) => update("periodStart", e.target.value)}
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period end</p>
+            <input
+              type="date"
+              value={p.periodEnd}
+              onChange={(e) => update("periodEnd", e.target.value)}
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-3">
+            <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Author</p>
+            <input
+              type="text"
+              value={p.author}
+              onChange={(e) => update("author", e.target.value)}
+              placeholder="Name / Customer Support Specialist"
+              className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 02 // OVERVIEW */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("02", "OVERVIEW")}
+        <div className="p-5">
+          {textareaInput("Overview narrative", p.overviewText, (v) => update("overviewText", v),
+            "Write 3–4 bullet points summarising the month's support activity…", 5)}
+        </div>
+      </div>
+
+      {/* 03 // TICKET VOLUME BY CATEGORY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("03", "TICKET VOLUME BY CATEGORY")}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {numInput("Total tickets", p.totalTickets, (v) => update("totalTickets", v))}
+            {numInput("Cancellations", p.catCancellations, (v) => update("catCancellations", v))}
+            {numInput("Account queries", p.catAccountQueries, (v) => update("catAccountQueries", v))}
+            {numInput("Refunds", p.catRefunds, (v) => update("catRefunds", v))}
+            {numInput("Tech issues", p.catTechIssues, (v) => update("catTechIssues", v))}
+            {numInput("Other", p.catOther, (v) => update("catOther", v))}
+          </div>
+        </div>
+      </div>
+
+      {/* 04 // TICKET PRIORITY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("04", "TICKET PRIORITY")}
+        <div className="p-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {numInput("Urgent", p.prioUrgent, (v) => update("prioUrgent", v))}
+            {numInput("High", p.prioHigh, (v) => update("prioHigh", v))}
+            {numInput("Medium", p.prioMedium, (v) => update("prioMedium", v))}
+            {numInput("Low", p.prioLow, (v) => update("prioLow", v))}
+          </div>
+        </div>
+      </div>
+
+      {/* 05 // SUPPORT PERFORMANCE */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("05", "SUPPORT PERFORMANCE")}
+        <div className="p-5">
+          {textareaInput("Performance notes", p.performanceText, (v) => update("performanceText", v),
+            "Comment on resolution rate, backlog, SLA adherence…", 4)}
+        </div>
+      </div>
+
+      {/* 06 // REFUND REQUESTS */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("06", "REFUND REQUESTS")}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {numInput("Total requests", p.refundRequests, (v) => update("refundRequests", v))}
+            {numInput("Processed", p.refundsProcessed, (v) => update("refundsProcessed", v))}
+            {numInput("Total value (£)", p.refundTotalValue, (v) => update("refundTotalValue", v), "£")}
+          </div>
+          {textareaInput("Breakdown notes", p.refundNotes, (v) => update("refundNotes", v),
+            "e.g. 4 × £6.99 monthly (duplicate sub), 1 × £69.99 yearly…", 3)}
+        </div>
+      </div>
+
+      {/* 07 // USAGE & SUBSCRIPTIONS */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("07", "USAGE & SUBSCRIPTIONS")}
+        <div className="p-5 space-y-5">
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">User base (all-time)</p>
+            <div className="grid grid-cols-2 gap-3">
+              {numInput("Total users", p.usageTotalUsers, (v) => update("usageTotalUsers", v))}
+              {numInput("Verified users", p.usageVerifiedUsers, (v) => update("usageVerifiedUsers", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Active subscriptions</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("Total active", p.usageActiveSubscriptions, (v) => update("usageActiveSubscriptions", v))}
+              {numInput("iOS Monthly", p.usageSubIosMonthly, (v) => update("usageSubIosMonthly", v))}
+              {numInput("iOS Yearly", p.usageSubIosYearly, (v) => update("usageSubIosYearly", v))}
+              {numInput("Android Monthly", p.usageSubAndroidMonthly, (v) => update("usageSubAndroidMonthly", v))}
+              {numInput("Android Yearly", p.usageSubAndroidYearly, (v) => update("usageSubAndroidYearly", v))}
+              {numInput("Stripe Monthly", p.usageSubStripeMonthly, (v) => update("usageSubStripeMonthly", v))}
+              {numInput("Stripe Yearly", p.usageSubStripeYearly, (v) => update("usageSubStripeYearly", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Subscription events this month</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("Total events", p.usageEventsTotal, (v) => update("usageEventsTotal", v))}
+              {numInput("Renewals", p.usageEventsRenewals, (v) => update("usageEventsRenewals", v))}
+              {numInput("New subscriptions", p.usageEventsNew, (v) => update("usageEventsNew", v))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Platform activity (total / new)</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {numInput("iOS total", p.usageIosTotal, (v) => update("usageIosTotal", v))}
+              {numInput("iOS new", p.usageIosNew, (v) => update("usageIosNew", v))}
+              {numInput("Android total", p.usageAndroidTotal, (v) => update("usageAndroidTotal", v))}
+              {numInput("Android new", p.usageAndroidNew, (v) => update("usageAndroidNew", v))}
+              {numInput("Stripe total", p.usageStripeTotal, (v) => update("usageStripeTotal", v))}
+              {numInput("Stripe new", p.usageStripeNew, (v) => update("usageStripeNew", v))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 08 // SUMMARY */}
+      <div className="app-card overflow-hidden p-0">
+        {widgetHeader("08", "SUMMARY")}
+        <div className="p-5">
+          {textareaInput("Summary narrative", p.summaryText, (v) => update("summaryText", v),
+            "Write the closing summary bullet points for the report…", 5)}
+        </div>
+      </div>
+
+      {/* bottom save */}
+      <div className="flex justify-end pb-4">
+        <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
+          {report ? "Save changes" : "Save report"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ReportsView({ client }: { client: SupportClient }) {
+  const { data: reportsData, isLoading } = useSupportReports(client.id);
+  const deleteReport = useDeleteSupportReport(client.id);
+  const reports = reportsData?.reports ?? [];
+
+  const [editing, setEditing] = useState<SupportReport | null | "new">(null);
+
   const hasAllocation = client.supportDaysPerMonth != null;
   const used = client.supportDaysUsed ?? 0;
   const total = client.supportDaysPerMonth ?? 0;
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
-
-  const [reportText, setReportText] = useState("");
-  const [generating, setGenerating] = useState(false);
-
   const month = new Date().toLocaleString("en-GB", { month: "long", year: "numeric" });
 
-  const handleGenerate = useCallback(async () => {
-    setGenerating(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setReportText(
-      `# Care Report — ${client.name}\n**${month}**\n\n` +
-        `## Summary\n_Add a 2–3 sentence overview of the month's support activity here._\n\n` +
-        (hasAllocation
-          ? `## Support days\n- Allocated: ${total} days\n- Used: ${used} days (${pct}%)\n- Remaining: ${total - used} days\n\n`
-          : "") +
-        `## Conversations & tickets\n- _Total conversations opened: —_\n- _Tickets resolved: —_\n- _Avg. first response time: —_\n\n` +
-        `## Top issues this month\n1. \n2. \n3. \n\n` +
-        `## Actions for next month\n- \n- \n`,
+  if (editing !== null) {
+    return (
+      <ReportBuilder
+        clientId={client.id}
+        report={editing === "new" ? null : editing}
+        onSaved={() => setEditing(null)}
+        onCancel={() => setEditing(null)}
+      />
     );
-    setGenerating(false);
-  }, [client.name, month, hasAllocation, total, used, pct]);
+  }
 
   return (
     <div className="space-y-4">
@@ -1614,30 +1940,27 @@ function ReportsView({ client }: { client: SupportClient }) {
             </span>
           </div>
           <div className="p-5">
-          <p className="text-sm font-medium text-[var(--text-3)]">
-            Support days — {month}
-          </p>
-          <div className="mt-4 flex items-end gap-4">
-            <p className="font-display text-[32px] leading-none text-[var(--text-1)]">
-              {used}
-              <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
+            <div className="mt-1 flex items-end gap-4">
+              <p className="font-display text-[32px] leading-none text-[var(--text-1)]">
+                {used}
+                <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
+              </p>
+              <p className="mb-1 text-sm text-[var(--text-4)]">{pct}% used</p>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-1)]">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]",
+                )}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-[var(--text-4)]">
+              {total - used} days remaining · Report due{" "}
+              {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"}
+              {client.reportingRecipient && ` → ${client.reportingRecipient}`}
             </p>
-            <p className="mb-1 text-sm text-[var(--text-4)]">{pct}% used</p>
-          </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-1)]">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all",
-                pct > 90 ? "bg-red-400" : pct > 60 ? "bg-amber-400" : "bg-[var(--brand-700)]",
-              )}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <p className="mt-2 text-xs text-[var(--text-4)]">
-            {total - used} days remaining · Report due{" "}
-            {client.reportDueDay ? `day ${client.reportDueDay}` : "monthly"}
-            {client.reportingRecipient && ` → ${client.reportingRecipient}`}
-          </p>
           </div>
         </div>
       )}
@@ -1645,43 +1968,72 @@ function ReportsView({ client }: { client: SupportClient }) {
       <div className="app-card overflow-hidden p-0">
         <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
           <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-            02 // MONTHLY REPORT
+            02 // MONTHLY REPORTS
           </span>
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-            DRAFT
-          </span>
-        </div>
-        <div className="p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-medium text-[var(--text-3)]">Monthly report draft</p>
           <button
             type="button"
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-1.5 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-3 py-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:opacity-80 disabled:opacity-50"
+            onClick={() => setEditing("new")}
+            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
           >
-            {generating ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-            {generating ? "Generating…" : "Generate report"}
+            <PlusIcon className="h-3 w-3" />
+            New report
           </button>
         </div>
-        <textarea
-          rows={12}
-          value={reportText}
-          onChange={(e) => setReportText(e.target.value)}
-          className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
-          placeholder="Write the monthly support report here… or click Generate to scaffold one."
-        />
-        <div className="mt-3 flex items-center justify-between">
-          <p className="text-xs text-[var(--text-4)]">Markdown supported</p>
-          <Button type="button" variant="primary" size="sm">
-            Save draft
-          </Button>
-        </div>
-        </div>
+        {isLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
+        {!isLoading && reports.length === 0 && (
+          <div className="flex flex-col items-center gap-3 px-5 py-10">
+            <DocumentTextIcon className="h-8 w-8 text-[var(--text-4)]" />
+            <p className="text-sm text-[var(--text-4)]">No reports yet</p>
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Build first report
+            </button>
+          </div>
+        )}
+        {reports.map((r, idx) => (
+          <div
+            key={r.id}
+            className={cn("flex items-center justify-between px-5 py-3.5", idx > 0 && "border-t border-[var(--border-2)]")}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-1)]">{r.period}</p>
+              <p className="mt-0.5 text-xs text-[var(--text-4)]">
+                {r.payload.periodStart && r.payload.periodEnd
+                  ? `${r.payload.periodStart} → ${r.payload.periodEnd}`
+                  : `Created ${new Date(r.createdAt).toLocaleDateString("en-GB")}`}
+                {r.payload.author ? ` · ${r.payload.author}` : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {r.payload.totalTickets > 0 && (
+                <span className="rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-3)]">
+                  {r.payload.totalTickets} tickets
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditing(r)}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
+                title="Edit report"
+              >
+                <PencilSquareIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteReport.mutate(r.id)}
+                disabled={deleteReport.isPending}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                title="Delete report"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2710,11 +3062,24 @@ function AgentsView({ clientId }: { clientId: string }) {
 function SettingsView({ clientId }: { clientId: string }) {
   const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
   const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
+  const { data: clientData } = useSupportClients();
   const deleteRule = useDeleteWorkflowRule(clientId);
   const seedRules = useSeedDefaultRules(clientId);
+  const updateClient = useUpdateSupportClient(clientId);
+  const { data: portalClientsData } = useClientList();
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "You";
   const userEmail = session?.user?.email ?? "";
+
+  const thisClient = (clientData?.clients ?? []).find((c) => c.id === clientId);
+  const [linkedPortalId, setLinkedPortalId] = useState(thisClient?.workspaceClientId ?? "");
+
+  // Keep dropdown in sync if client data loads after mount
+  useEffect(() => {
+    setLinkedPortalId(thisClient?.workspaceClientId ?? "");
+  }, [thisClient?.workspaceClientId]);
+
+  const portalClients = portalClientsData?.clients ?? [];
 
   const [showAddRule, setShowAddRule] = useState(false);
 
@@ -2723,6 +3088,49 @@ function SettingsView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* portal link */}
+      <section>
+        <div className="app-card overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              00 // PORTAL LINK
+            </span>
+            {thisClient?.workspaceClientId && (
+              <span className="rounded-[4px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                Linked
+              </span>
+            )}
+          </div>
+          <div className="p-5">
+            <p className="mb-3 text-sm text-[var(--text-3)]">
+              Link this Care account to a client record in Portal. This surfaces a Care badge on the Portal client card and lets both views stay in sync.
+            </p>
+            <div className="flex items-center gap-3">
+              <select
+                value={linkedPortalId}
+                onChange={(e) => setLinkedPortalId(e.target.value)}
+                className="flex-1 h-9 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+              >
+                <option value="">— Not linked —</option>
+                {portalClients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                loading={updateClient.isPending}
+                disabled={linkedPortalId === (thisClient?.workspaceClientId ?? "")}
+                onClick={() => updateClient.mutate({ workspaceClientId: (linkedPortalId || null) as string | undefined })}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* workflow rules */}
       <section>
         <div className="app-card overflow-hidden p-0">

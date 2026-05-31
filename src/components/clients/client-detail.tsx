@@ -224,6 +224,17 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Suggested
               </span>
             )}
+            {supportClient && (
+              <Link
+                href="/app/care"
+                title="Open in Care"
+                className="flex items-center gap-1 rounded-[4px] border border-[var(--mist-border)] bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)] transition hover:opacity-80"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                Care
+              </Link>
+            )}
             {/* Integration quick-links */}
             {client.googleDriveFolderUrl && (
               <a

@@ -137,6 +137,64 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface SupportReportPayload {
+  author: string;
+  periodStart: string;
+  periodEnd: string;
+  // Overview narrative
+  overviewText: string;
+  // Ticket stats by category
+  totalTickets: number;
+  catCancellations: number;
+  catAccountQueries: number;
+  catRefunds: number;
+  catTechIssues: number;
+  catOther: number;
+  // Priority breakdown
+  prioUrgent: number;
+  prioHigh: number;
+  prioMedium: number;
+  prioLow: number;
+  // Support performance narrative
+  performanceText: string;
+  // Refund section
+  refundRequests: number;
+  refundsProcessed: number;
+  refundTotalValue: number;
+  refundNotes: string;
+  // Usage & subscription (manual from Stripe/App Store)
+  usageTotalUsers: number;
+  usageVerifiedUsers: number;
+  usageActiveSubscriptions: number;
+  usageSubIosMonthly: number;
+  usageSubIosYearly: number;
+  usageSubAndroidMonthly: number;
+  usageSubAndroidYearly: number;
+  usageSubStripeMonthly: number;
+  usageSubStripeYearly: number;
+  usageEventsTotal: number;
+  usageEventsRenewals: number;
+  usageEventsNew: number;
+  usageIosTotal: number;
+  usageIosNew: number;
+  usageAndroidTotal: number;
+  usageAndroidNew: number;
+  usageStripeTotal: number;
+  usageStripeNew: number;
+  // Summary narrative
+  summaryText: string;
+}
+
+export interface SupportReport {
+  id: string;
+  clientId: string;
+  period: string;
+  payload: SupportReportPayload;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SupportData {
   clients: SupportClient[];
   users: SupportUser[];
