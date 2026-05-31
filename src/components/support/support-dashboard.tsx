@@ -23,7 +23,7 @@ import {
   UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useState, useDeferredValue, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
