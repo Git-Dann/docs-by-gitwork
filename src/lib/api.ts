@@ -10,7 +10,14 @@ import type {
   Ticket,
   WorkflowRule,
 } from "@/types/support";
-import type { ClientDesignRecord, ClientDetailRecord, ClientListItem, ClientPlatformRecord } from "@/types/client";
+import type {
+  ClientBankReveal,
+  ClientDesignRecord,
+  ClientDetailRecord,
+  ClientListItem,
+  ClientPlatformRecord,
+  WorkspaceClientStatus,
+} from "@/types/client";
 import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
@@ -260,11 +267,80 @@ export async function deleteRateCardPerson(
   });
 }
 
-export async function listClients(params?: { search?: string }): Promise<ClientListResponse> {
+export async function listClients(params?: {
+  search?: string;
+  status?: WorkspaceClientStatus | "ALL";
+}): Promise<ClientListResponse> {
   const query = new URLSearchParams();
   if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
   const qs = query.toString();
   return apiFetch<ClientListResponse>(`/api/clients${qs ? `?${qs}` : ""}`);
+}
+
+// ─── Client onboarding links + bank reveal ──────────────────────────────────
+
+export interface OnboardingLinkRecord {
+  id: string;
+  accessToken: string;
+  label: string | null;
+  status: "IN_PROGRESS" | "SUBMITTED" | "LINKED";
+  currentStep: number;
+  fields: Record<string, string | null>;
+  bank: { onFile: boolean; currency: string | null; accountNumberLast4: string | null };
+  workspaceClientId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt: string | null;
+  linkedAt: string | null;
+}
+
+export async function listOnboardingLinks(): Promise<{ links: OnboardingLinkRecord[] }> {
+  return apiFetch<{ links: OnboardingLinkRecord[] }>("/api/clients/onboarding-links");
+}
+
+export async function createOnboardingLink(
+  input: { label?: string } = {},
+): Promise<{ link: OnboardingLinkRecord }> {
+  return apiFetch<{ link: OnboardingLinkRecord }>("/api/clients/onboarding-links", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteOnboardingLink(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/clients/onboarding-links/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function moveOnboardingToWorkflow(
+  id: string,
+): Promise<{ slug: string }> {
+  return apiFetch<{ slug: string }>(
+    `/api/clients/onboarding-links/${id}/move-to-workflow`,
+    { method: "POST" },
+  );
+}
+
+export async function setClientStatusApi(
+  slug: string,
+  status: WorkspaceClientStatus,
+): Promise<{ client: ClientListItem }> {
+  return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function revealClientBankApi(
+  slug: string,
+): Promise<{ bank: ClientBankReveal }> {
+  return apiFetch<{ bank: ClientBankReveal }>(`/api/clients/${slug}/bank`, {
+    method: "POST",
+  });
 }
 
 export async function createClient(

@@ -3,15 +3,20 @@
 import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  BanknotesIcon,
   BeakerIcon,
   ChatBubbleLeftRightIcon,
+  CheckCircleIcon,
   CodeBracketIcon,
+  EyeIcon,
+  EyeSlashIcon,
   GlobeAltIcon,
   PencilIcon,
   PlusIcon,
   SignalIcon,
   SparklesIcon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -28,14 +33,21 @@ import {
   useCreateClientPlatform,
   useDeleteClientDesign,
   useDeleteClientPlatform,
+  useMoveOnboardingToWorkflow,
   useOgPreview,
+  useRevealClientBank,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import { fetchSlackChannels, type SlackAvailableChannel } from "@/lib/api";
-import type { ClientDesignRecord, ClientPlatformRecord } from "@/types/client";
+import type {
+  ClientBankReveal,
+  ClientBankSummary,
+  ClientDesignRecord,
+  ClientPlatformRecord,
+} from "@/types/client";
 
 type EditFormState = {
   name: string;
@@ -60,6 +72,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
   const [platformModal, setPlatformModal] = useState<{
     open: boolean;
     platform: ClientPlatformRecord | null;
@@ -207,6 +220,14 @@ export function ClientDetail({ slug }: { slug: string }) {
   return (
     <div className="space-y-5">
 
+      {client.status === "PENDING_REVIEW" && client.onboardingId && (
+        <PendingReviewBanner
+          slug={slug}
+          onboardingId={client.onboardingId}
+          companyName={client.legalCompanyName ?? client.name}
+        />
+      )}
+
       {/* ── 01 // CLIENT RECORD ── */}
       <section className="widget-card">
         <div className="widget-header">
@@ -339,6 +360,21 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </div>
               )}
             </div>
+
+            {/* Bank details — only rendered when on file. Opens the reveal
+                modal so it stays out of the way until it's actually needed. */}
+            {client.bank?.onFile && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="self-center"
+                onClick={() => setBankOpen(true)}
+              >
+                <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                Bank details
+              </Button>
+            )}
           </div>
         </div>
       </section>
@@ -463,6 +499,79 @@ export function ClientDetail({ slug }: { slug: string }) {
             </div>
           </div>
         </section>
+      )}
+
+      {/* ── 08b // BILLING ── */}
+      {(client.legalCompanyName ||
+        client.vatNumber ||
+        client.companyNumber ||
+        client.invoiceEmail ||
+        client.billingAddressLine1) && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">08</span>
+              {" // BILLING"}
+            </span>
+          </div>
+          <div className="p-6">
+            <div className="grid gap-6 sm:grid-cols-3">
+              {client.legalCompanyName && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Registered name</p>
+                  <p className="text-sm text-[var(--text-1)]">{client.legalCompanyName}</p>
+                </div>
+              )}
+              {client.companyNumber && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Company number</p>
+                  <p className="font-mono text-sm text-[var(--text-1)]">{client.companyNumber}</p>
+                </div>
+              )}
+              {client.vatNumber && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">VAT number</p>
+                  <p className="font-mono text-sm text-[var(--text-1)]">{client.vatNumber}</p>
+                </div>
+              )}
+              {client.invoiceEmail && (
+                <div className="space-y-1.5">
+                  <p className="widget-data-label mb-2">Invoice email</p>
+                  <p className="text-sm text-[var(--text-1)] [overflow-wrap:anywhere]">
+                    {client.invoiceEmail}
+                  </p>
+                </div>
+              )}
+            </div>
+            {client.billingAddressLine1 && (
+              <div className="mt-6 border-t border-[var(--border-3)] pt-5">
+                <p className="widget-data-label mb-2">Billing address</p>
+                <p className="text-sm leading-relaxed text-[var(--text-1)]">
+                  {[
+                    client.billingAddressLine1,
+                    client.billingAddressLine2,
+                    client.billingCity,
+                    client.billingCounty,
+                    client.billingPostcode,
+                    client.billingCountry,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Bank details now live behind the header button → BankDetailsModal (bottom of file) */}
+      {client.bank?.onFile && (
+        <BankDetailsModal
+          open={bankOpen}
+          onClose={() => setBankOpen(false)}
+          slug={slug}
+          bank={client.bank}
+        />
       )}
 
       {/* ── 09 // PLATFORMS ── */}
@@ -659,13 +768,22 @@ export function ClientDetail({ slug }: { slug: string }) {
             </div>
             {pulseScans.length === 0 ? (
               <div className="p-5">
-                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
-                  <p className="text-sm text-[var(--text-4)]">
-                    <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
-                      + Run a Pulse scan for this client
-                    </Link>
-                  </p>
-                </div>
+                {client.status === "PENDING_REVIEW" ? (
+                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                    <p className="px-6 text-sm text-[var(--text-4)]">
+                      Pulse scans run once this client is moved to workflow — keeps us
+                      from scanning a product URL before it&apos;s officially in our pipeline.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+                    <p className="text-sm text-[var(--text-4)]">
+                      <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
+                        + Run a Pulse scan for this client
+                      </Link>
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1854,6 +1972,202 @@ function ClientEditModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Pending review banner ──────────────────────────────────────────────────
+
+function PendingReviewBanner({
+  slug,
+  onboardingId,
+  companyName,
+}: {
+  slug: string;
+  onboardingId: string;
+  companyName: string;
+}) {
+  const moveMutation = useMoveOnboardingToWorkflow();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleMove = async () => {
+    setError(null);
+    try {
+      await moveMutation.mutateAsync(onboardingId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Move failed");
+    }
+  };
+
+  return (
+    <section className="rounded-[10px] border border-amber-200 bg-amber-50 px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-amber-900">
+            Submitted via onboarding — awaiting review
+          </p>
+          <p className="mt-0.5 text-xs text-amber-800">
+            {companyName} has filled in their onboarding. Review their answers below, then
+            move them to workflow to enable Pulse scans and full Portal access.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={moveMutation.isPending}
+          onClick={() => void handleMove()}
+          data-slug={slug}
+        >
+          <CheckCircleIcon className="h-4 w-4" />
+          Move to workflow
+        </Button>
+      </div>
+      {error && (
+        <p className="mt-2 text-xs text-rose-700">{error}</p>
+      )}
+    </section>
+  );
+}
+
+// ─── Bank details section (Reveal-on-demand) ───────────────────────────────
+
+function BankDetailsModal({
+  open,
+  onClose,
+  slug,
+  bank,
+}: {
+  open: boolean;
+  onClose: () => void;
+  slug: string;
+  bank: ClientBankSummary;
+}) {
+  const [revealed, setRevealed] = useState<ClientBankReveal | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const revealMutation = useRevealClientBank();
+
+  // Re-mask whenever the modal closes so decrypted values never linger in
+  // component state after the operator is done looking.
+  useEffect(() => {
+    if (!open) {
+      setRevealed(null);
+      setError(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleReveal = async () => {
+    setError(null);
+    if (revealed) {
+      setRevealed(null);
+      return;
+    }
+    try {
+      const result = await revealMutation.mutateAsync(slug);
+      setRevealed(result.bank);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reveal failed");
+    }
+  };
+
+  return (
+    <div
+      className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="app-dialog-panel w-full max-w-lg overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <BanknotesIcon className="mr-1 inline h-3.5 w-3.5 text-[var(--brand-700)]" />
+            BANK DETAILS
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] transition-colors"
+            title="Close"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-6">
+          <div className="mb-4 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+            <BanknotesIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+            Encrypted at rest. Reveal is server-side only and not cached.
+          </div>
+          {!revealed ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <BankField label="Account" value={bank.accountNumberLast4 ? `•••• ${bank.accountNumberLast4}` : "On file"} />
+              <BankField label="Currency" value={bank.currency ?? "—"} />
+              <BankField label="Status" value="Encrypted" />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <BankField label="Account holder" value={revealed.accountHolder ?? "—"} mono />
+              <BankField label="Bank name" value={revealed.bankName ?? "—"} />
+              <BankField label="Sort code" value={revealed.sortCode ?? "—"} mono />
+              <BankField label="Account number" value={revealed.accountNumber ?? "—"} mono />
+              {revealed.iban && <BankField label="IBAN" value={revealed.iban} mono />}
+              {revealed.swiftBic && <BankField label="SWIFT / BIC" value={revealed.swiftBic} mono />}
+              <BankField label="Currency" value={revealed.currency ?? "—"} />
+            </div>
+          )}
+          {error && <p className="mt-3 text-xs text-rose-700">{error}</p>}
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => void handleReveal()}
+              disabled={revealMutation.isPending}
+            >
+              {revealed ? (
+                <>
+                  <EyeSlashIcon className="h-4 w-4" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <EyeIcon className="h-4 w-4" />
+                  {revealMutation.isPending ? "Revealing…" : "Reveal"}
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BankField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="widget-data-label">{label}</p>
+      <p
+        className={cn(
+          "text-sm text-[var(--text-1)]",
+          mono && "font-mono",
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }

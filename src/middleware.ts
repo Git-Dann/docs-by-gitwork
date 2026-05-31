@@ -71,6 +71,9 @@ const PUBLIC_API_PATHS = [
   "/api/report",
   "/api/sign",
   "/api/docs",
+  // Public client onboarding flow — the URL token in /api/onboarding/[token]
+  // is its own auth.
+  "/api/onboarding",
   "/api/internal/resolve-host",
 ];
 

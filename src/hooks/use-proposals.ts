@@ -7,26 +7,36 @@ import {
   createClient,
   createClientDesign,
   createClientPlatform,
+  createOnboardingLink,
   createProposal,
   deleteClient,
   deleteClientDesign,
   deleteClientPlatform,
+  deleteOnboardingLink,
   deleteProposal,
   duplicateProposal,
   getClientDetail,
   getProposal,
   listClients,
+  listOnboardingLinks,
   listProposals,
+  moveOnboardingToWorkflow,
   requestExport,
+  revealClientBankApi,
   saveCosting,
   saveEngagement,
   saveTimeline,
+  setClientStatusApi,
   updateClient,
   updateClientDesign,
   updateClientPlatform,
   updateProposal,
 } from "@/lib/api";
-import type { ClientDesignRecord, ClientPlatformRecord } from "@/types/client";
+import type {
+  ClientDesignRecord,
+  ClientPlatformRecord,
+  WorkspaceClientStatus,
+} from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
 
 export function useProposalList(filters: {
@@ -65,11 +75,70 @@ export function useCreateProposal() {
 // clients still invalidate this query.
 export function useClientList(filters?: {
   search?: string;
+  status?: WorkspaceClientStatus | "ALL";
 }) {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useOnboardingLinks() {
+  return useQuery({
+    queryKey: ["onboarding-links"],
+    queryFn: () => listOnboardingLinks(),
+    // Onboarding state changes when the public client edits the form — refresh
+    // when the operator focuses the tab so they see the latest.
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreateOnboardingLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { label?: string } = {}) => createOnboardingLink(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onboarding-links"] });
+    },
+  });
+}
+
+export function useDeleteOnboardingLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteOnboardingLink(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onboarding-links"] });
+    },
+  });
+}
+
+export function useMoveOnboardingToWorkflow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => moveOnboardingToWorkflow(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onboarding-links"] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useSetClientStatus(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (status: WorkspaceClientStatus) => setClientStatusApi(slug, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useRevealClientBank() {
+  return useMutation({
+    mutationFn: (slug: string) => revealClientBankApi(slug),
   });
 }
 

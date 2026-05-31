@@ -2,6 +2,8 @@
 
 import {
   ChatBubbleLeftRightIcon,
+  ClipboardDocumentIcon,
+  LinkIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
@@ -9,12 +11,22 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { useClientList, useCreateClient, useDeleteClient } from "@/hooks/use-proposals";
+import {
+  useClientList,
+  useCreateClient,
+  useCreateOnboardingLink,
+  useDeleteClient,
+  useDeleteOnboardingLink,
+  useOnboardingLinks,
+} from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import type { ClientListItem } from "@/types/client";
+import type { OnboardingLinkRecord } from "@/lib/api";
+
+type Tab = "active" | "pending" | "onboarding";
 
 // ---------------------------------------------------------------------------
 // DeleteButton — floating popover, matches platform-wide pattern
@@ -247,19 +259,202 @@ function ClientCard({ client }: { client: ClientListItem }) {
 }
 
 // ---------------------------------------------------------------------------
+// TabButton — small pill at the top of the management page
+// ---------------------------------------------------------------------------
+function TabButton({
+  label,
+  count,
+  active,
+  highlight,
+  onClick,
+}: {
+  label: string;
+  count: number | null;
+  active: boolean;
+  highlight?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-xs font-semibold transition",
+        active
+          ? "bg-[var(--brand-700)] text-white"
+          : "text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      <span>{label}</span>
+      {count !== null && (
+        <span
+          className={cn(
+            "min-w-[18px] rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+            active
+              ? "bg-white/20 text-white"
+              : highlight
+                ? "bg-[var(--brand-700)] text-white"
+                : "bg-[var(--surface-1)] text-[var(--text-4)]",
+          )}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OnboardingLinksList — shows IN_PROGRESS / SUBMITTED sessions
+// ---------------------------------------------------------------------------
+function OnboardingLinksList({ links }: { links: OnboardingLinkRecord[] }) {
+  if (!links.length) {
+    return (
+      <div className="widget-card">
+        <div className="widget-body py-20 text-center">
+          <p className="text-sm font-medium text-[var(--text-2)]">
+            No active onboarding links
+          </p>
+          <p className="mt-1 text-sm text-[var(--text-4)]">
+            Click &ldquo;New onboarding link&rdquo; above to mint one for a new prospect.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-3">
+      {links.map((link) => (
+        <OnboardingLinkRow key={link.id} link={link} />
+      ))}
+    </div>
+  );
+}
+
+function OnboardingLinkRow({ link }: { link: OnboardingLinkRecord }) {
+  const [copied, setCopied] = useState(false);
+  const deleteMutation = useDeleteOnboardingLink();
+  const fullUrl = useMemo(() => {
+    if (typeof window === "undefined") return `/onboarding/${link.accessToken}`;
+    return `${window.location.origin}/onboarding/${link.accessToken}`;
+  }, [link.accessToken]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // Clipboard write blocked — fall back to selecting the input.
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Revoke this onboarding link? The URL will stop working.")) return;
+    await deleteMutation.mutateAsync(link.id);
+  };
+
+  const company = link.fields.companyName?.trim() || link.label?.trim() || "Unnamed prospect";
+  const contactName = [link.fields.contactFirstName, link.fields.contactLastName]
+    .filter(Boolean)
+    .join(" ");
+  const contact = [contactName, link.fields.contactEmail].filter(Boolean).join(" · ");
+
+  return (
+    <article className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          {link.status === "SUBMITTED"
+            ? "SUBMITTED · AWAITING REVIEW"
+            : link.status === "LINKED"
+              ? "LINKED"
+              : "IN PROGRESS"}
+        </span>
+        <span className="widget-header__status">
+          Step {link.currentStep} · {formatDate(link.updatedAt)}
+        </span>
+      </div>
+      <div className="widget-body--compact space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+              {company}
+            </p>
+            {contact && (
+              <p className="truncate text-xs text-[var(--text-4)]">{contact}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-500"
+            title="Revoke link"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+          <code className="flex-1 truncate font-mono text-[11px] text-[var(--text-3)]">
+            {fullUrl}
+          </code>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="app-button app-button-utility app-button-xs"
+            title="Copy URL"
+          >
+            <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ClientManagement — Portal overview
 // ---------------------------------------------------------------------------
 export function ClientManagement() {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<Tab>("active");
   const [showCreate, setShowCreate] = useState(false);
+  const [showNewLink, setShowNewLink] = useState(false);
   const [clientName, setClientName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const { data, isPending, error } = useClientList({ search });
+  const activeQuery = useClientList({ search, status: "ACTIVE" });
+  const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
+  const onboardingQuery = useOnboardingLinks();
   const createClientMutation = useCreateClient();
 
+  // Drive the right list off the active tab.
+  const isPending =
+    tab === "active"
+      ? activeQuery.isPending
+      : tab === "pending"
+        ? pendingQuery.isPending
+        : onboardingQuery.isPending;
+  const error =
+    tab === "active"
+      ? activeQuery.error
+      : tab === "pending"
+        ? pendingQuery.error
+        : onboardingQuery.error;
+  const data = tab === "active" ? activeQuery.data : pendingQuery.data;
+
   const clients = data?.clients ?? [];
+  const onboardingLinks = useMemo(
+    () => onboardingQuery.data?.links ?? [],
+    [onboardingQuery.data?.links],
+  );
   const suggestedCount = clients.filter((c) => c.source === "SUGGESTED").length;
+  const pendingCount = pendingQuery.data?.clients.length ?? 0;
+  const openOnboardingCount = useMemo(
+    () => onboardingLinks.filter((l) => l.status !== "LINKED").length,
+    [onboardingLinks],
+  );
 
   async function handleCreateClient() {
     const trimmed = clientName.trim();
@@ -286,15 +481,26 @@ export function ClientManagement() {
               <span className="widget-header__label--number">01</span>
               {" // PORTAL"}
             </span>
-            <Button
-              type="button"
-              variant="primary"
-              size="xs"
-              onClick={() => setShowCreate(true)}
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add client
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                onClick={() => setShowNewLink(true)}
+              >
+                <LinkIcon className="h-3.5 w-3.5" />
+                New onboarding link
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="xs"
+                onClick={() => setShowCreate(true)}
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+                Add client
+              </Button>
+            </div>
           </div>
 
           <div className="widget-body--compact">
@@ -307,11 +513,12 @@ export function ClientManagement() {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search clients"
                   className="app-input pl-9"
+                  disabled={tab === "onboarding"}
                 />
               </label>
 
               {/* Stats */}
-              {!isPending && !error && (
+              {!isPending && !error && tab === "active" && (
                 <div className="flex items-center gap-5 ml-auto">
                   <div className="text-center">
                     <p
@@ -335,14 +542,37 @@ export function ClientManagement() {
                 </div>
               )}
             </div>
+
+            {/* Tab strip */}
+            <div className="mt-4 flex items-center gap-1 border-t border-[var(--border-3)] pt-3">
+              <TabButton
+                active={tab === "active"}
+                onClick={() => setTab("active")}
+                label="Active"
+                count={tab === "active" ? clients.length : null}
+              />
+              <TabButton
+                active={tab === "pending"}
+                onClick={() => setTab("pending")}
+                label="Pending review"
+                count={pendingCount}
+                highlight={pendingCount > 0}
+              />
+              <TabButton
+                active={tab === "onboarding"}
+                onClick={() => setTab("onboarding")}
+                label="Onboarding links"
+                count={openOnboardingCount}
+              />
+            </div>
           </div>
         </section>
 
-        {/* ── Client grid ── */}
+        {/* ── Content per tab ── */}
         {isPending ? (
           <div className="widget-card">
             <div className="widget-body py-16 text-center">
-              <p className="widget-data-label animate-pulse">Loading clients…</p>
+              <p className="widget-data-label animate-pulse">Loading…</p>
             </div>
           </div>
         ) : error ? (
@@ -351,6 +581,8 @@ export function ClientManagement() {
               <p className="text-sm text-rose-700">{(error as Error).message}</p>
             </div>
           </div>
+        ) : tab === "onboarding" ? (
+          <OnboardingLinksList links={onboardingLinks} />
         ) : clients.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {clients.map((client) => (
@@ -360,15 +592,23 @@ export function ClientManagement() {
         ) : (
           <div className="widget-card">
             <div className="widget-body py-20 text-center">
-              <p className="text-sm font-medium text-[var(--text-2)]">No clients yet</p>
+              <p className="text-sm font-medium text-[var(--text-2)]">
+                {tab === "pending" ? "Nothing waiting for review" : "No clients yet"}
+              </p>
               <p className="mt-1 text-sm text-[var(--text-4)]">
-                Click &ldquo;Add client&rdquo; above, or add a client name to any document draft and it
-                will appear here automatically.
+                {tab === "pending"
+                  ? "Submitted onboardings will show up here for you and Harry to approve."
+                  : "Click “Add client” above, or send an onboarding link to a new prospect."}
               </p>
             </div>
           </div>
         )}
       </div>
+
+      {/* ── New onboarding link modal ── */}
+      {showNewLink ? (
+        <NewOnboardingLinkModal onClose={() => setShowNewLink(false)} />
+      ) : null}
 
       {/* ── Create client modal ── */}
       {showCreate ? (
@@ -433,5 +673,133 @@ export function ClientManagement() {
         </div>
       ) : null}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewOnboardingLinkModal — mint a link + copy the URL
+// ---------------------------------------------------------------------------
+function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
+  const [label, setLabel] = useState("");
+  const [link, setLink] = useState<OnboardingLinkRecord | null>(null);
+  const [copied, setCopied] = useState(false);
+  const createMutation = useCreateOnboardingLink();
+
+  const fullUrl = useMemo(() => {
+    if (!link) return "";
+    if (typeof window === "undefined") return `/onboarding/${link.accessToken}`;
+    return `${window.location.origin}/onboarding/${link.accessToken}`;
+  }, [link]);
+
+  const handleCreate = async () => {
+    const result = await createMutation.mutateAsync({ label: label.trim() || undefined });
+    setLink(result.link);
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // Clipboard write blocked — user can select the input manually.
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30">
+      <button
+        type="button"
+        aria-label="Close"
+        className="app-dialog-backdrop absolute inset-0"
+        onClick={onClose}
+      />
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="app-dialog-panel w-full max-w-md overflow-hidden">
+          <div className="widget-header">
+            <span className="widget-header__label">NEW ONBOARDING LINK</span>
+          </div>
+          <div className="p-6">
+            {!link ? (
+              <>
+                <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                  Mint an onboarding link
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-3)]">
+                  We&apos;ll generate a private URL you can send to the client. Their answers
+                  will appear here under <em>Pending review</em> when they submit.
+                </p>
+                <div className="mt-5 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      Label <span className="text-[var(--text-4)]">(optional)</span>
+                    </span>
+                    <input
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
+                      className="app-input"
+                      placeholder="Acme — Tuesday call"
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
+                      autoFocus
+                    />
+                    <span className="app-field-hint mt-1">
+                      Only you see this. Helps you remember which link you sent where.
+                    </span>
+                  </label>
+                  {createMutation.error ? (
+                    <p className="text-sm text-rose-700">
+                      {(createMutation.error as Error).message}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mt-6 flex justify-end gap-2">
+                  <Button type="button" variant="secondary" size="md" onClick={onClose}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    loading={createMutation.isPending}
+                    onClick={() => void handleCreate()}
+                  >
+                    Create link
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+                  Link ready
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-3)]">
+                  Send this to the client. They&apos;ll be able to come back to it any time
+                  before you move them to workflow.
+                </p>
+                <div className="mt-5 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                  <code className="flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
+                    {fullUrl}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="app-button app-button-utility app-button-xs"
+                  >
+                    <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button type="button" variant="primary" size="md" onClick={onClose}>
+                    Done
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
