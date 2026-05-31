@@ -124,13 +124,14 @@ export function TemplateGallery({
         ))}
       </div>
 
-      {/* Cards */}
+      {/* Dense list rows — one template per row so the operator can scan many at a glance and
+          the modal doesn't get drowned in big cards. */}
       {loading ? (
         <p className="text-sm text-[var(--text-3)]">Loading templates…</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-[var(--text-3)]">No templates yet for this type.</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <ul className="space-y-1.5">
           {filtered.map((template) => {
             const sections = Array.isArray(template.sections)
               ? (template.sections as Array<{ key?: string; title?: string }>)
@@ -139,58 +140,54 @@ export function TemplateGallery({
             const sourceBadge = template.workspaceId === null ? "FOUNDRY" : "WORKSPACE";
 
             return (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => onPick({ id: template.id, documentType: template.documentType })}
-                className={cn(
-                  "group relative flex flex-col gap-1.5 rounded-[10px] border bg-white p-3.5 text-left transition",
-                  selected
-                    ? "border-[var(--brand-600)] ring-2 ring-[var(--brand-600)]/20"
-                    : "border-[var(--border-2)] hover:border-[var(--border-1)] hover:shadow-[var(--shadow-xs)]",
-                )}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+              <li key={template.id}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPick({ id: template.id, documentType: template.documentType })
+                  }
+                  className={cn(
+                    "group relative flex w-full items-start gap-3 rounded-[8px] border bg-white px-3 py-2.5 text-left transition",
+                    selected
+                      ? "border-[var(--brand-600)] ring-2 ring-[var(--brand-600)]/20"
+                      : "border-[var(--border-2)] hover:border-[var(--border-1)] hover:shadow-[var(--shadow-xs)]",
+                  )}
+                >
+                  <span className="mt-0.5 inline-flex h-5 min-w-[52px] shrink-0 items-center justify-center rounded-[4px] bg-[var(--brand-200)] px-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
                     {template.documentType}
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    {template.isDefault ? (
-                      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                        DEFAULT
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]">
+                        {template.name}
+                      </p>
+                      {template.isDefault ? (
+                        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                          DEFAULT
+                        </span>
+                      ) : null}
+                      <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                        {sourceBadge}
                       </span>
+                    </div>
+                    {template.description ? (
+                      <p className="mt-0.5 truncate text-[11px] leading-[1.4] text-[var(--text-3)]">
+                        {template.description}
+                      </p>
                     ) : null}
-                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                      {sourceBadge}
-                    </span>
-                  </span>
-                </div>
-
-                <p className="font-[family-name:var(--font-display)] text-[17px] leading-[1.2] text-[var(--text-1)]">
-                  {template.name}
-                </p>
-
-                {template.description ? (
-                  <p className="line-clamp-2 text-[12px] leading-[1.5] text-[var(--text-3)]">
-                    {template.description}
-                  </p>
-                ) : null}
-
-                <div className="mt-1 flex items-baseline justify-between text-[11px] text-[var(--text-4)]">
-                  <span>{TYPE_LABEL[template.documentType]}</span>
-                  <span>
-                    {sections.length} section{sections.length === 1 ? "" : "s"}
-                    {template.documentCount > 0 ? ` · ${template.documentCount} used` : ""}
-                  </span>
-                </div>
-
-                {selected ? (
-                  <CheckCircleIcon className="absolute right-3 top-3 h-5 w-5 text-[var(--brand-600)]" />
-                ) : null}
-              </button>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-4)]">
+                      {sections.length} section{sections.length === 1 ? "" : "s"}
+                      {template.documentCount > 0 ? ` · used ${template.documentCount}×` : ""}
+                    </p>
+                  </div>
+                  {selected ? (
+                    <CheckCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-600)]" />
+                  ) : null}
+                </button>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

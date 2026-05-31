@@ -786,93 +786,149 @@ export function ProposalList() {
           />
 
           <div className="absolute inset-0 flex items-center justify-center p-4">
-            <div className="app-dialog-panel flex max-h-[90vh] w-full max-w-3xl flex-col p-6">
-              <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
-              <h2 className="mt-3 font-[family-name:var(--font-display)] text-[32px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
-                Create document
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                Start with a title and optional client.
-              </p>
-
-              <div className="mt-5 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="app-dialog-panel flex max-h-[88vh] w-full max-w-4xl flex-col p-6">
+              {/* Compact header — eyebrow + title only, subtitle dropped so the form has room. */}
+              <div className="flex items-baseline justify-between gap-3">
                 <div>
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                    Pick a template
-                  </span>
-                  <TemplateGallery
-                    selectedTemplateId={form.templateId}
-                    onPick={({ id, documentType }) =>
-                      setForm((previous) => ({ ...previous, templateId: id, documentType }))
-                    }
-                  />
-                </div>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                    {LABEL_BY_TYPE[form.documentType]} title
-                  </span>
-                  <input
-                    value={form.title}
-                    onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))}
-                    className="app-input"
-                    placeholder={PLACEHOLDER_BY_TYPE[form.documentType]}
-                  />
-                </label>
-
-                <div className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                    Client
-                  </span>
-                  {clientsQuery.data?.clients && clientsQuery.data.clients.filter(c => c.source === "MANUAL").length > 0 ? (
-                    <div className="space-y-2">
-                      <select
-                        value={form.clientId ?? ""}
-                        onChange={(event) => {
-                          const selected = clientsQuery.data?.clients.find(c => c.id === event.target.value);
-                          setForm((previous) => ({
-                            ...previous,
-                            clientId: event.target.value || undefined,
-                            clientName: selected?.name ?? previous.clientName,
-                          }));
-                        }}
-                        className="app-select"
-                      >
-                        <option value="">— Select a Portal client —</option>
-                        {clientsQuery.data.clients
-                          .filter(c => c.source === "MANUAL")
-                          .map((client) => (
-                            <option key={client.id} value={client.id}>
-                              {client.name}
-                            </option>
-                          ))}
-                      </select>
-                      {!form.clientId && (
-                        <input
-                          value={form.clientName}
-                          onChange={(event) =>
-                            setForm((previous) => ({ ...previous, clientName: event.target.value }))
-                          }
-                          className="app-input"
-                          placeholder="Or type a custom client name"
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <input
-                      value={form.clientName}
-                      onChange={(event) =>
-                        setForm((previous) => ({ ...previous, clientName: event.target.value }))
-                      }
-                      className="app-input"
-                      placeholder="Acme Health"
-                    />
-                  )}
+                  <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
+                  <h2 className="mt-2 font-[family-name:var(--font-display)] text-[26px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
+                    Create document
+                  </h2>
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end gap-2">
-                <Button type="button" onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null }); }} variant="secondary" size="md">
+              {/* 2-column body. Left = form fields (always visible), right = template gallery
+                  with its own internal scroll so the picker stays focused on the chosen tab. */}
+              <div className="mt-5 grid flex-1 gap-5 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]">
+                {/* Left — form */}
+                <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      {LABEL_BY_TYPE[form.documentType]} title
+                    </span>
+                    <input
+                      value={form.title}
+                      onChange={(event) =>
+                        setForm((previous) => ({ ...previous, title: event.target.value }))
+                      }
+                      className="app-input"
+                      placeholder={PLACEHOLDER_BY_TYPE[form.documentType]}
+                    />
+                  </label>
+
+                  <div className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      Client
+                    </span>
+                    {clientsQuery.data?.clients &&
+                    clientsQuery.data.clients.filter((c) => c.source === "MANUAL").length > 0 ? (
+                      <div className="space-y-2">
+                        <select
+                          value={form.clientId ?? ""}
+                          onChange={(event) => {
+                            const selected = clientsQuery.data?.clients.find(
+                              (c) => c.id === event.target.value,
+                            );
+                            setForm((previous) => ({
+                              ...previous,
+                              clientId: event.target.value || undefined,
+                              clientName: selected?.name ?? previous.clientName,
+                            }));
+                          }}
+                          className="app-select"
+                        >
+                          <option value="">— Select a Portal client —</option>
+                          {clientsQuery.data.clients
+                            .filter((c) => c.source === "MANUAL")
+                            .map((client) => (
+                              <option key={client.id} value={client.id}>
+                                {client.name}
+                              </option>
+                            ))}
+                        </select>
+                        {!form.clientId && (
+                          <input
+                            value={form.clientName}
+                            onChange={(event) =>
+                              setForm((previous) => ({
+                                ...previous,
+                                clientName: event.target.value,
+                              }))
+                            }
+                            className="app-input"
+                            placeholder="Or type a custom client name"
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        value={form.clientName}
+                        onChange={(event) =>
+                          setForm((previous) => ({
+                            ...previous,
+                            clientName: event.target.value,
+                          }))
+                        }
+                        className="app-input"
+                        placeholder="Acme Health"
+                      />
+                    )}
+                  </div>
+
+                  {/* Selected template confirmation — small chip-style summary so the operator
+                      doesn't lose track of which template they picked once they scroll the
+                      right-hand gallery away from the active row. */}
+                  <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                      Template
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
+                      {form.templateId ? LABEL_BY_TYPE[form.documentType] : "Pick a template →"}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
+                      {form.templateId
+                        ? "Selected — Gitwork defaults pre-filled."
+                        : "Browse the gallery on the right."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right — gallery */}
+                <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
+                  <div className="border-b border-[var(--border-2)] bg-white px-3 py-2">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                      Template library
+                    </p>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                    <TemplateGallery
+                      selectedTemplateId={form.templateId}
+                      onPick={({ id, documentType }) =>
+                        setForm((previous) => ({ ...previous, templateId: id, documentType }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer — actions pinned at the bottom of the panel, independent of either
+                  column's scroll. */}
+              <div className="mt-5 flex justify-end gap-2 border-t border-[var(--border-2)] pt-4">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowCreate(false);
+                    setForm({
+                      title: "",
+                      clientName: "",
+                      clientId: undefined,
+                      documentType: "PROPOSAL",
+                      templateId: null,
+                    });
+                  }}
+                  variant="secondary"
+                  size="md"
+                >
                   Cancel
                 </Button>
                 <Button
