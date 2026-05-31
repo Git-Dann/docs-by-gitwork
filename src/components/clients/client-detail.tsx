@@ -74,6 +74,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
   const [platformModal, setPlatformModal] = useState<{
     open: boolean;
     platform: ClientPlatformRecord | null;
@@ -350,6 +351,21 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </div>
               )}
             </div>
+
+            {/* Bank details — only rendered when on file. Opens the reveal
+                modal so it stays out of the way until it's actually needed. */}
+            {client.bank?.onFile && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="self-center"
+                onClick={() => setBankOpen(true)}
+              >
+                <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                Bank details
+              </Button>
+            )}
           </div>
         </div>
       </section>
@@ -539,9 +555,14 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* ── 08c // BANK DETAILS ── */}
+      {/* Bank details now live behind the header button → BankDetailsModal (bottom of file) */}
       {client.bank?.onFile && (
-        <BankDetailsSection slug={slug} bank={client.bank} />
+        <BankDetailsModal
+          open={bankOpen}
+          onClose={() => setBankOpen(false)}
+          slug={slug}
+          bank={client.bank}
+        />
       )}
 
       {/* ── 09 // PLATFORMS ── */}
@@ -2114,16 +2135,31 @@ function PendingReviewBanner({
 
 // ─── Bank details section (Reveal-on-demand) ───────────────────────────────
 
-function BankDetailsSection({
+function BankDetailsModal({
+  open,
+  onClose,
   slug,
   bank,
 }: {
+  open: boolean;
+  onClose: () => void;
   slug: string;
   bank: ClientBankSummary;
 }) {
   const [revealed, setRevealed] = useState<ClientBankReveal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const revealMutation = useRevealClientBank();
+
+  // Re-mask whenever the modal closes so decrypted values never linger in
+  // component state after the operator is done looking.
+  useEffect(() => {
+    if (!open) {
+      setRevealed(null);
+      setError(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
 
   const handleReveal = async () => {
     setError(null);
@@ -2140,58 +2176,78 @@ function BankDetailsSection({
   };
 
   return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">08</span>
-          {" // BANK DETAILS"}
-        </span>
-        <button
-          type="button"
-          onClick={() => void handleReveal()}
-          disabled={revealMutation.isPending}
-          className="app-button app-button-utility app-button-xs"
-        >
-          {revealed ? (
-            <>
-              <EyeSlashIcon className="h-3.5 w-3.5" />
-              Hide
-            </>
-          ) : (
-            <>
-              <EyeIcon className="h-3.5 w-3.5" />
-              {revealMutation.isPending ? "Revealing…" : "Reveal"}
-            </>
-          )}
-        </button>
-      </div>
-      <div className="p-6">
-        <div className="mb-4 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
-          <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-          Encrypted at rest. Reveal is server-side only and not cached.
+    <div
+      className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="app-dialog-panel w-full max-w-lg overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <BanknotesIcon className="mr-1 inline h-3.5 w-3.5 text-[var(--brand-700)]" />
+            BANK DETAILS
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] transition-colors"
+            title="Close"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
         </div>
-        {!revealed ? (
-          <div className="grid gap-4 sm:grid-cols-3">
-            <BankField label="Account" value={bank.accountNumberLast4 ? `•••• ${bank.accountNumberLast4}` : "On file"} />
-            <BankField label="Currency" value={bank.currency ?? "—"} />
-            <BankField label="Status" value="Encrypted" />
+        <div className="p-6">
+          <div className="mb-4 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
+            <BanknotesIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+            Encrypted at rest. Reveal is server-side only and not cached.
           </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <BankField label="Account holder" value={revealed.accountHolder ?? "—"} mono />
-            <BankField label="Bank name" value={revealed.bankName ?? "—"} />
-            <BankField label="Sort code" value={revealed.sortCode ?? "—"} mono />
-            <BankField label="Account number" value={revealed.accountNumber ?? "—"} mono />
-            {revealed.iban && <BankField label="IBAN" value={revealed.iban} mono />}
-            {revealed.swiftBic && <BankField label="SWIFT / BIC" value={revealed.swiftBic} mono />}
-            <BankField label="Currency" value={revealed.currency ?? "—"} />
+          {!revealed ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <BankField label="Account" value={bank.accountNumberLast4 ? `•••• ${bank.accountNumberLast4}` : "On file"} />
+              <BankField label="Currency" value={bank.currency ?? "—"} />
+              <BankField label="Status" value="Encrypted" />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <BankField label="Account holder" value={revealed.accountHolder ?? "—"} mono />
+              <BankField label="Bank name" value={revealed.bankName ?? "—"} />
+              <BankField label="Sort code" value={revealed.sortCode ?? "—"} mono />
+              <BankField label="Account number" value={revealed.accountNumber ?? "—"} mono />
+              {revealed.iban && <BankField label="IBAN" value={revealed.iban} mono />}
+              {revealed.swiftBic && <BankField label="SWIFT / BIC" value={revealed.swiftBic} mono />}
+              <BankField label="Currency" value={revealed.currency ?? "—"} />
+            </div>
+          )}
+          {error && <p className="mt-3 text-xs text-rose-700">{error}</p>}
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => void handleReveal()}
+              disabled={revealMutation.isPending}
+            >
+              {revealed ? (
+                <>
+                  <EyeSlashIcon className="h-4 w-4" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <EyeIcon className="h-4 w-4" />
+                  {revealMutation.isPending ? "Revealing…" : "Reveal"}
+                </>
+              )}
+            </Button>
           </div>
-        )}
-        {error && (
-          <p className="mt-3 text-xs text-rose-700">{error}</p>
-        )}
+        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
