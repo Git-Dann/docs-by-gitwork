@@ -775,7 +775,11 @@ model WorkspaceClient {
   billingCountry       String?
   /// Public Gantt/timeline share. Token minted on first enable; toggling off
   /// keeps the token so the same URL re-activates. Public page checks both.
-  timelineShareToken   String?               @unique
+  /// NOT a DB unique constraint: adding a unique index trips `prisma db push`'s
+  /// data-loss guard, which the Vercel build never force-applies (it would skip
+  /// the whole migration). The token is 144 bits of randomness and lookups use
+  /// findFirst, so a plain index is enough.
+  timelineShareToken   String?
   timelineShareEnabled Boolean               @default(false)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -796,6 +800,7 @@ model WorkspaceClient {
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
   @@index([workspaceId, status])
+  @@index([timelineShareToken])
   @@map("Client")
 }
 
