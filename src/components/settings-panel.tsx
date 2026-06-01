@@ -21,10 +21,8 @@ import {
   createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson,
   getIntegrations, saveIntegrations, fetchProviderModels,
   listTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember, resetTeamMemberPassword,
-  previewDemoCleanup, applyDemoCleanup,
   bulkImportCandidates,
   type IntegrationsResponse, type ModelOption, type TeamMember,
-  type DemoCleanupPreviewResponse, type DemoCleanupApplyResponse,
   type BulkImportCandidateRow, type BulkImportResult,
 } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
@@ -2469,7 +2467,6 @@ export function DeveloperTab({
   return (
     <div className="space-y-6">
       <ExternalApiKeySection />
-      <DemoDataCleanupSection />
       <CandidateBulkImportSection />
       <ApiSection apiKeyConfigured={apiKeyConfigured} />
     </div>
@@ -2576,7 +2573,7 @@ function CandidateBulkImportSection() {
     try {
       const parsed = JSON.parse(text);
       if (!Array.isArray(parsed)) {
-        setParseError("Expected a JSON array of developer rows.");
+        setParseError("Expected a JSON array of candidate rows.");
         return;
       }
       setRows(parsed as BulkImportCandidateRow[]);
@@ -2768,152 +2765,9 @@ function CandidateBulkImportSection() {
   );
 }
 
-function DemoDataCleanupSection() {
-  const [preview, setPreview] = useState<DemoCleanupPreviewResponse | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState<DemoCleanupApplyResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handlePreview() {
-    setError(null);
-    setApplied(null);
-    setPreviewLoading(true);
-    try {
-      const result = await previewDemoCleanup();
-      setPreview(result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load preview");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
-  async function handleApply() {
-    if (!preview || preview.total === 0) return;
-    if (
-      !window.confirm(
-        `Delete ${preview.total} row${preview.total === 1 ? "" : "s"}? This can't be undone.`,
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    setApplying(true);
-    try {
-      const result = await applyDemoCleanup();
-      setApplied(result);
-      setPreview(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Cleanup failed");
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  const totalToDelete = preview?.total ?? 0;
-
-  return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Maintenance</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Demo data cleanup
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Removes the original demo developers (Sindre Sorhus, Dan Abramov, Addy Osmani, Evan You,
-        TJ Holowaychuk, Linus Torvalds) and the legacy rate-card seed entries that aren&apos;t in
-        the current Gitwork roster. It only touches those specific known records — anything
-        you&apos;ve added yourself stays put. Safe to re-run; nothing happens the second time.
-      </p>
-
-      {error ? (
-        <div className="mt-4 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
-
-      {applied ? (
-        <div className="mt-4 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          <p className="font-semibold">Cleanup complete</p>
-          <p className="mt-1">
-            Deleted {applied.deletedCandidates} developer
-            {applied.deletedCandidates === 1 ? "" : "s"} and {applied.deletedRatePeople} rate-card{" "}
-            {applied.deletedRatePeople === 1 ? "person" : "people"}.
-          </p>
-        </div>
-      ) : null}
-
-      {preview ? (
-        <div className="mt-5 space-y-4">
-          {preview.total === 0 ? (
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm text-[var(--text-3)]">
-              Nothing to clean up — the demo records are already gone.
-            </div>
-          ) : (
-            <>
-              {preview.candidates.length > 0 ? (
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text-2)]">
-                    Developers ({preview.candidates.length})
-                  </p>
-                  <ul className="mt-2 divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
-                    {preview.candidates.map((candidate) => (
-                      <li key={candidate.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                        <span className="font-medium text-[var(--text-1)]">{candidate.name}</span>
-                        <span className="font-mono text-xs text-[var(--text-4)]">
-                          @{candidate.githubHandle}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {preview.ratePeople.length > 0 ? (
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text-2)]">
-                    Rate-card people ({preview.ratePeople.length})
-                  </p>
-                  <ul className="mt-2 divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
-                    {preview.ratePeople.map((person) => (
-                      <li key={person.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                        <span className="font-medium text-[var(--text-1)]">{person.name}</span>
-                        <span className="font-mono text-xs text-[var(--text-4)]">
-                          {person.seedIdentifier ?? "—"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : null}
-
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={handlePreview}
-          disabled={previewLoading}
-        >
-          {previewLoading ? "Loading…" : preview ? "Refresh preview" : "Preview cleanup"}
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          onClick={handleApply}
-          disabled={!preview || totalToDelete === 0 || applying}
-        >
-          {applying ? "Deleting…" : `Apply cleanup${totalToDelete > 0 ? ` (${totalToDelete})` : ""}`}
-        </Button>
-      </div>
-    </section>
-  );
-}
+// DemoDataCleanupSection has been removed — the seed demo developers and rate-card
+// people have long since been cleaned up. If we ever need a similar one-shot
+// maintenance tool, restore from git history (commit before this one).
 
 function ExternalApiKeySection() {
   const [integrations, setIntegrations] = useState<IntegrationsResponse | null>(null);
@@ -3018,6 +2872,265 @@ function ExternalApiKeySection() {
   );
 }
 
+// Method-coloured chip used in the endpoint table. Same colour mapping as /api-docs.
+function methodColor(method: string): string {
+  switch (method) {
+    case "GET":
+      return "text-emerald-600";
+    case "POST":
+      return "text-sky-600";
+    case "PATCH":
+      return "text-amber-600";
+    case "PUT":
+      return "text-violet-600";
+    case "DELETE":
+      return "text-rose-600";
+    default:
+      return "text-[var(--text-3)]";
+  }
+}
+
+interface ApiEndpoint {
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+  path: string;
+  label: string;
+}
+
+interface ApiGroup {
+  name: string;
+  description: string;
+  endpoints: ApiEndpoint[];
+}
+
+/**
+ * Endpoint reference for the Developer settings page. Grouped by module so it stays
+ * scannable as Foundry grows. Internal-only routes (cron, dev seed, webhooks) are
+ * deliberately omitted — those aren't part of the external contract.
+ *
+ * Keep in sync with /app/api-docs (the deep reference) and the actual files under
+ * src/app/api/*. When adding a new public endpoint, slot it into the right group.
+ */
+const API_GROUPS: ApiGroup[] = [
+  {
+    name: "Foundation",
+    description: "Health, current user, audit history.",
+    endpoints: [
+      { method: "GET", path: "/api/health", label: "Health check (public)" },
+      { method: "GET", path: "/api/account", label: "Signed-in user profile" },
+      { method: "PATCH", path: "/api/account", label: "Update profile avatar" },
+      { method: "GET", path: "/api/audit-log", label: "Workspace audit history (admin)" },
+    ],
+  },
+  {
+    name: "Workspace",
+    description: "Branding, proposal defaults, AI providers + integrations, settings.",
+    endpoints: [
+      { method: "GET", path: "/api/workspace/branding", label: "Workspace branding" },
+      { method: "PATCH", path: "/api/workspace/branding", label: "Update branding" },
+      { method: "GET", path: "/api/workspace/defaults", label: "Workspace proposal defaults" },
+      { method: "PATCH", path: "/api/workspace/defaults", label: "Update proposal defaults" },
+      { method: "GET", path: "/api/settings/integrations", label: "AI + Google + Slack + email config" },
+      { method: "PUT", path: "/api/settings/integrations", label: "Update integrations config" },
+      { method: "GET", path: "/api/settings/models", label: "List available AI models (?provider=)" },
+      { method: "GET", path: "/api/settings/agents", label: "List configured AI agents" },
+      { method: "PATCH", path: "/api/settings/agents/:agentKey", label: "Update agent override" },
+      { method: "GET", path: "/api/settings/checks", label: "List Pulse check configs" },
+      { method: "PATCH", path: "/api/settings/checks/:checkKey", label: "Update check config" },
+    ],
+  },
+  {
+    name: "Team & access",
+    description: "Invites, members, roles & permissions.",
+    endpoints: [
+      { method: "GET", path: "/api/team/invites", label: "List invites" },
+      { method: "POST", path: "/api/team/invites", label: "Create invite link" },
+      { method: "PATCH", path: "/api/team/invites/:id", label: "Update invite label" },
+      { method: "DELETE", path: "/api/team/invites/:id", label: "Revoke / remove invite" },
+      { method: "GET", path: "/api/team/members", label: "List members" },
+      { method: "PATCH", path: "/api/team/members/:id", label: "Update role / permissions (admin)" },
+      { method: "DELETE", path: "/api/team/members/:id", label: "Remove member (admin)" },
+    ],
+  },
+  {
+    name: "Notifications",
+    description: "Per-user channel preferences, digests, quiet hours.",
+    endpoints: [
+      { method: "GET", path: "/api/notifications/preferences", label: "Current user preferences" },
+      { method: "PATCH", path: "/api/notifications/preferences", label: "Update preferences" },
+    ],
+  },
+  {
+    name: "Docs (Proposals & templates)",
+    description: "Documents, sections, costing, exports, templates.",
+    endpoints: [
+      { method: "GET", path: "/api/proposals", label: "List documents" },
+      { method: "POST", path: "/api/proposals", label: "Create document" },
+      { method: "GET", path: "/api/proposals/:id", label: "Get document" },
+      { method: "PATCH", path: "/api/proposals/:id", label: "Update document" },
+      { method: "POST", path: "/api/proposals/:id/duplicate", label: "Duplicate" },
+      { method: "POST", path: "/api/proposals/:id/archive", label: "Archive" },
+      { method: "DELETE", path: "/api/proposals/:id/delete", label: "Delete" },
+      { method: "POST", path: "/api/proposals/:id/costing", label: "Save costing" },
+      { method: "POST", path: "/api/proposals/:id/timeline", label: "Save timeline" },
+      { method: "POST", path: "/api/proposals/:id/engagement", label: "Save CTAs + links" },
+      { method: "POST", path: "/api/proposals/:id/export", label: "Request export" },
+      { method: "GET", path: "/api/proposals/:id/relations", label: "Linked clients / scans / studies" },
+      { method: "POST", path: "/api/proposals/bulk", label: "Bulk-create from JSON" },
+      { method: "GET", path: "/api/documents/:id/comments", label: "Comments on a document" },
+      { method: "POST", path: "/api/documents/:id/comments", label: "Add comment" },
+      { method: "GET", path: "/api/documents/:id/versions", label: "Version history" },
+      { method: "POST", path: "/api/documents/:id/snapshot", label: "Create version snapshot" },
+      { method: "POST", path: "/api/documents/:id/share", label: "Generate public share token" },
+      { method: "POST", path: "/api/documents/:id/ai/chat", label: "AI chat on document" },
+      { method: "POST", path: "/api/documents/:id/ai/section", label: "Generate one section" },
+      { method: "POST", path: "/api/documents/:id/ai/draft", label: "Draft entire document" },
+      { method: "POST", path: "/api/documents/:id/ai/apply", label: "Apply AI diff" },
+      { method: "POST", path: "/api/documents/:id/signature-requests", label: "Create signature request" },
+      { method: "GET", path: "/api/templates", label: "List document templates" },
+      { method: "GET", path: "/api/templates/:id", label: "Get template" },
+      { method: "PATCH", path: "/api/templates/:id", label: "Update template (sections / default)" },
+      { method: "POST", path: "/api/templates/:id/duplicate", label: "Duplicate template" },
+      { method: "POST", path: "/api/templates/from-document/:id", label: "Promote document to template" },
+    ],
+  },
+  {
+    name: "Portal (Clients)",
+    description: "Workspace clients + their platforms, designs, schedule.",
+    endpoints: [
+      { method: "GET", path: "/api/clients", label: "List clients" },
+      { method: "POST", path: "/api/clients", label: "Create client" },
+      { method: "GET", path: "/api/clients/:slug", label: "Get client with proposals, designs, etc." },
+      { method: "PATCH", path: "/api/clients/:slug", label: "Update client" },
+      { method: "GET", path: "/api/clients/:slug/platforms", label: "Client integrations / platforms" },
+      { method: "POST", path: "/api/clients/:slug/platforms", label: "Add platform link" },
+      { method: "PATCH", path: "/api/clients/:slug/platforms/:platformId", label: "Update platform" },
+      { method: "DELETE", path: "/api/clients/:slug/platforms/:platformId", label: "Remove platform" },
+      { method: "GET", path: "/api/clients/:slug/designs", label: "Client design refs" },
+      { method: "POST", path: "/api/clients/:slug/designs", label: "Add design ref" },
+      { method: "GET", path: "/api/clients/:slug/schedule", label: "Engagement schedule" },
+      { method: "GET", path: "/api/clients/:slug/slack-activity", label: "Slack channel digest + recent messages" },
+    ],
+  },
+  {
+    name: "Code (CodeClear)",
+    description: "Developer roster, scoring, GitHub analysis, placements.",
+    endpoints: [
+      { method: "GET", path: "/api/codeclear/stats", label: "Code overview stats" },
+      { method: "GET", path: "/api/codeclear/candidates", label: "List developers" },
+      { method: "POST", path: "/api/codeclear/candidates", label: "Create developer" },
+      { method: "PATCH", path: "/api/codeclear/candidates", label: "Bulk stage / re-check update" },
+      { method: "GET", path: "/api/codeclear/candidates/:id", label: "Get developer" },
+      { method: "PATCH", path: "/api/codeclear/candidates/:id", label: "Update developer" },
+      { method: "DELETE", path: "/api/codeclear/candidates/:id", label: "Delete developer" },
+      { method: "POST", path: "/api/codeclear/candidates/:id/notes", label: "Add timeline note" },
+      { method: "PUT", path: "/api/codeclear/candidates/:id/score", label: "Finalise scorecard" },
+      { method: "GET", path: "/api/codeclear/candidates/:id/github-analysis/runs", label: "List GitHub analysis runs" },
+      { method: "POST", path: "/api/codeclear/candidates/:id/github-analysis/runs", label: "Run GitHub analysis" },
+      { method: "POST", path: "/api/codeclear/candidates/:id/github-analysis/runs/:runId/apply", label: "Apply analysis draft" },
+      { method: "GET", path: "/api/codeclear/candidates/:id/scorecard", label: "Export scorecard" },
+      { method: "PATCH", path: "/api/codeclear/candidates/:id/current-clients", label: "Set assigned clients" },
+      { method: "GET", path: "/api/codeclear/candidates/:id/placements", label: "List placements" },
+      { method: "POST", path: "/api/codeclear/candidates/:id/placements", label: "Create placement" },
+      { method: "PATCH", path: "/api/codeclear/candidates/:id/placements/:placementId", label: "Update placement dates" },
+      { method: "DELETE", path: "/api/codeclear/candidates/:id/placements/:placementId", label: "End placement" },
+      { method: "GET", path: "/api/codeclear/schedule", label: "Cross-team allocation view" },
+      { method: "GET", path: "/api/codeclear/tech-stacks", label: "Workspace tech-stack taxonomy" },
+    ],
+  },
+  {
+    name: "Pulse",
+    description: "Project health scans, monitors, alerts.",
+    endpoints: [
+      { method: "GET", path: "/api/pulse/stats", label: "Workspace Pulse stats" },
+      { method: "GET", path: "/api/pulse/scans", label: "List scans" },
+      { method: "POST", path: "/api/pulse/scans", label: "Trigger new scan" },
+      { method: "GET", path: "/api/pulse/monitors", label: "List monitors" },
+      { method: "POST", path: "/api/pulse/monitors", label: "Create monitor" },
+      { method: "PATCH", path: "/api/pulse/monitors/:monitorId", label: "Update monitor" },
+      { method: "DELETE", path: "/api/pulse/monitors/:monitorId", label: "Remove monitor" },
+    ],
+  },
+  {
+    name: "Study",
+    description: "AI-powered user research studies.",
+    endpoints: [
+      { method: "GET", path: "/api/study/studies", label: "List studies" },
+      { method: "POST", path: "/api/study/studies", label: "Create study" },
+      { method: "GET", path: "/api/study/studies/:studyId", label: "Get study" },
+      { method: "PATCH", path: "/api/study/studies/:studyId", label: "Update study" },
+      { method: "POST", path: "/api/study/studies/:studyId/plan", label: "Generate research plan" },
+      { method: "POST", path: "/api/study/studies/:studyId/run", label: "Run study" },
+      { method: "GET", path: "/api/study/studies/:studyId/stream", label: "Stream live run (SSE)" },
+      { method: "GET", path: "/api/study/personas", label: "Available personas" },
+    ],
+  },
+  {
+    name: "Care (Support)",
+    description: "Client support clients, conversations, tickets, workflow rules.",
+    endpoints: [
+      { method: "GET", path: "/api/support/clients", label: "List support clients" },
+      { method: "POST", path: "/api/support/clients", label: "Create support client" },
+      { method: "GET", path: "/api/support/clients/:clientId", label: "Get support client" },
+      { method: "GET", path: "/api/support/clients/:clientId/conversations", label: "List conversations" },
+      { method: "POST", path: "/api/support/clients/:clientId/conversations/:convId/ai-draft", label: "AI draft reply" },
+      { method: "GET", path: "/api/support/clients/:clientId/tickets", label: "List tickets" },
+      { method: "POST", path: "/api/support/clients/:clientId/tickets", label: "Create ticket" },
+      { method: "GET", path: "/api/support/clients/:clientId/connections", label: "Inbound connectors (Gmail, Discord, Reddit)" },
+      { method: "POST", path: "/api/support/clients/:clientId/connections/:connId/sync", label: "Manual sync now" },
+      { method: "GET", path: "/api/support/clients/:clientId/workflow-rules", label: "List workflow rules" },
+      { method: "POST", path: "/api/support/clients/:clientId/seed-rules", label: "Seed default workflow rules" },
+      { method: "GET", path: "/api/support/clients/:clientId/reports", label: "List monthly reports" },
+      { method: "POST", path: "/api/support/clients/:clientId/reports", label: "Generate monthly report" },
+      { method: "GET", path: "/api/support/dashboard", label: "Care overview (cross-client)" },
+      { method: "GET", path: "/api/support/discord/channels", label: "Discord channel picker" },
+    ],
+  },
+  {
+    name: "Integrations",
+    description: "User-scoped Google + Slack + meeting summary.",
+    endpoints: [
+      { method: "GET", path: "/api/integrations/calendar", label: "Upcoming calendar events (current user)" },
+      { method: "GET", path: "/api/integrations/gmail", label: "Recent inbox (current user)" },
+      { method: "GET", path: "/api/integrations/gmail/connect", label: "Start Gmail OAuth" },
+      { method: "POST", path: "/api/integrations/gmail/disconnect", label: "Disconnect current user's Gmail" },
+      { method: "POST", path: "/api/integrations/meeting-summary", label: "Summarise calendar meeting (cached)" },
+      { method: "GET", path: "/api/integrations/slack/channels", label: "List bot-visible Slack channels" },
+    ],
+  },
+  {
+    name: "Proof",
+    description: "Brief intake + signed-off documents.",
+    endpoints: [
+      { method: "POST", path: "/api/proof/analyse", label: "Parse a brief into structured fields (cached)" },
+      { method: "GET", path: "/api/proof/documents", label: "List proof documents" },
+      { method: "POST", path: "/api/proof/documents", label: "Create proof document" },
+      { method: "GET", path: "/api/proof/documents/:id", label: "Get proof document" },
+      { method: "PATCH", path: "/api/proof/documents/:id", label: "Update proof document" },
+      { method: "GET", path: "/api/proof/health", label: "Proof workspace health" },
+    ],
+  },
+  {
+    name: "Rate card",
+    description: "Workspace people and their day rates (used in proposal costing).",
+    endpoints: [
+      { method: "GET", path: "/api/rate-card/people", label: "List people + rates" },
+      { method: "POST", path: "/api/rate-card/people", label: "Create rate-card person" },
+      { method: "GET", path: "/api/rate-card/people/:id", label: "Get rate-card person" },
+      { method: "PATCH", path: "/api/rate-card/people/:id", label: "Update rate-card person" },
+      { method: "DELETE", path: "/api/rate-card/people/:id", label: "Archive rate-card person" },
+    ],
+  },
+  {
+    name: "Mobile + devices",
+    description: "iOS authentication and push device registration.",
+    endpoints: [
+      { method: "POST", path: "/api/auth/mobile-callback", label: "Issue mobile JWT from Google id_token" },
+      { method: "POST", path: "/api/devices/register", label: "Register an APNs device token" },
+      { method: "GET", path: "/api/devices/me", label: "List current user's devices" },
+    ],
+  },
+];
+
 function ApiSection({
   apiKeyConfigured,
 }: {
@@ -3029,6 +3142,7 @@ function ApiSection({
       : "https://foundry.gitwork.co";
 
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [filter, setFilter] = useState("");
 
   function copy(text: string, setCopied: (value: boolean) => void) {
     void navigator.clipboard.writeText(text).then(() => {
@@ -3036,6 +3150,20 @@ function ApiSection({
       setTimeout(() => setCopied(false), 2000);
     });
   }
+
+  const needle = filter.trim().toLowerCase();
+  const filteredGroups = needle
+    ? API_GROUPS.map((group) => ({
+        ...group,
+        endpoints: group.endpoints.filter(
+          (e) =>
+            e.path.toLowerCase().includes(needle) ||
+            e.label.toLowerCase().includes(needle) ||
+            e.method.toLowerCase().includes(needle),
+        ),
+      })).filter((g) => g.endpoints.length > 0)
+    : API_GROUPS;
+  const totalEndpoints = filteredGroups.reduce((sum, g) => sum + g.endpoints.length, 0);
 
   return (
     <section className="app-card p-6">
@@ -3046,11 +3174,11 @@ function ApiSection({
             API access
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-            Use these endpoints to connect Foundry Docs, Foundry Code, and external clients to
-            Foundry by Gitwork. The web app uses a secure server-set session cookie, while external clients
-            authenticate with{" "}
-            <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
-              Authorization: Bearer &lt;key&gt;
+            Use these endpoints to connect Foundry to external clients (the iOS app, automation
+            scripts, partner integrations). The web app authenticates via a server-set session
+            cookie; external clients send{" "}
+            <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-2)]">
+              Authorization: Bearer &lt;API_KEY&gt;
             </code>
             .
           </p>
@@ -3062,105 +3190,108 @@ function ApiSection({
           rel="noopener noreferrer"
           className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2 text-sm font-semibold text-[var(--text-1)] shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]"
         >
-          View API docs
+          View full API docs
           <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
         </Link>
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <FieldLabel>Base URL</FieldLabel>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
-                {baseUrl}
-              </code>
-              <CopyButton copied={copiedUrl} onClick={() => copy(baseUrl, setCopiedUrl)} />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <FieldLabel>API authentication</FieldLabel>
-            {apiKeyConfigured ? (
-              <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 text-sm text-[var(--text-2)]">
-                Server key configured. Manage the bearer token from Vercel project settings instead
-                of exposing it in the browser.
-              </p>
-            ) : (
-              <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
-                No API key configured. Set <code className="font-mono">API_KEY</code> in your
-                environment variables. For backward compatibility, the app will also read{" "}
-                <code className="font-mono">NEXT_PUBLIC_API_KEY</code> until you migrate.
-              </p>
-            )}
+      {/* Base URL + Authentication — stacked vertically so the endpoint list below has full
+          width. The previous side-by-side layout cramped both halves. */}
+      <div className="mt-6 space-y-4">
+        <div className="space-y-1.5">
+          <FieldLabel>Base URL</FieldLabel>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-1)]">
+              {baseUrl}
+            </code>
+            <CopyButton copied={copiedUrl} onClick={() => copy(baseUrl, setCopiedUrl)} />
           </div>
         </div>
 
-        <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-            Endpoints
+        <div className="space-y-1.5">
+          <FieldLabel>API authentication</FieldLabel>
+          {apiKeyConfigured ? (
+            <p className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 text-sm text-[var(--text-2)]">
+              Server key configured. Manage the bearer token from Vercel project settings — never
+              expose it in the browser.
+            </p>
+          ) : (
+            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
+              No API key configured. Set <code className="font-mono">API_KEY</code> in your
+              environment variables.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Endpoints — full-width below the auth info, grouped by module. */}
+      <div className="mt-8 space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <FieldLabel>Endpoints</FieldLabel>
+          <input
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Filter by method, path, or label…"
+            className="w-full max-w-xs rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-sm"
+          />
+        </div>
+
+        {filteredGroups.length === 0 ? (
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-sm text-[var(--text-4)]">
+            Nothing matches &ldquo;{filter}&rdquo;.
           </p>
-          <div className="mt-3 space-y-1.5 font-mono text-xs text-[var(--text-3)]">
-            {([
-              ["GET", "/api/health", "Health check"],
-              ["GET", "/api/proposals", "List proposals"],
-              ["POST", "/api/proposals", "Create proposal"],
-              ["GET", "/api/proposals/:id", "Get proposal"],
-              ["PATCH", "/api/proposals/:id", "Update proposal"],
-              ["POST", "/api/proposals/:id/duplicate", "Duplicate"],
-              ["POST", "/api/proposals/:id/archive", "Archive"],
-              ["DELETE", "/api/proposals/:id/delete", "Delete"],
-              ["POST", "/api/proposals/:id/costing", "Save costing"],
-              ["POST", "/api/proposals/:id/timeline", "Save timeline"],
-              ["POST", "/api/proposals/:id/engagement", "Save engagement"],
-              ["POST", "/api/proposals/:id/export", "Request export"],
-              ["GET", "/api/clients", "List clients"],
-              ["POST", "/api/clients", "Create client"],
-              ["GET", "/api/clients/:slug", "Get client"],
-              ["PATCH", "/api/clients/:slug", "Update client"],
-              ["GET", "/api/rate-card/people", "List people and rates"],
-              ["POST", "/api/rate-card/people", "Create rate-card person"],
-              ["GET", "/api/rate-card/people/:id", "Get rate-card person"],
-              ["PATCH", "/api/rate-card/people/:id", "Update rate-card person"],
-              ["DELETE", "/api/rate-card/people/:id", "Archive rate-card person"],
-              ["GET", "/api/codeclear/stats", "Code overview stats"],
-              ["GET", "/api/codeclear/candidates", "List developers"],
-              ["POST", "/api/codeclear/candidates", "Create developer"],
-              ["PATCH", "/api/codeclear/candidates", "Bulk stage or re-check update"],
-              ["GET", "/api/codeclear/candidates/:id", "Get developer"],
-              ["PATCH", "/api/codeclear/candidates/:id", "Update developer"],
-              ["DELETE", "/api/codeclear/candidates/:id", "Delete developer"],
-              ["POST", "/api/codeclear/candidates/:id/notes", "Add note to developer timeline"],
-              ["PUT", "/api/codeclear/candidates/:id/score", "Finalize developer score"],
-              ["GET", "/api/codeclear/candidates/:id/github-analysis/runs", "List analysis runs"],
-              ["POST", "/api/codeclear/candidates/:id/github-analysis/runs", "Run GitHub analysis"],
-              ["POST", "/api/codeclear/candidates/:id/github-analysis/runs/:runId/apply", "Apply analysis draft"],
-              ["GET", "/api/codeclear/candidates/:id/scorecard", "Export developer scorecard"],
-              ["GET", "/api/templates", "List templates"],
-            ] as const).map(([method, path, label]) => (
-              <div key={`${method}-${path}`} className="flex items-baseline gap-2">
-                <span
+        ) : (
+          <>
+            <p className="text-[11px] text-[var(--text-4)]">
+              {totalEndpoints} endpoint{totalEndpoints === 1 ? "" : "s"} across {filteredGroups.length} module
+              {filteredGroups.length === 1 ? "" : "s"}. Each requires{" "}
+              <code className="font-mono">Authorization: Bearer &lt;API_KEY&gt;</code> unless
+              marked public.
+            </p>
+            <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+              {filteredGroups.map((group, gIdx) => (
+                <div
+                  key={group.name}
                   className={cn(
-                    "w-12 shrink-0 font-semibold",
-                    method === "GET"
-                      ? "text-emerald-600"
-                      : method === "DELETE"
-                        ? "text-rose-600"
-                        : method === "PUT"
-                          ? "text-violet-600"
-                        : method === "PATCH"
-                          ? "text-amber-600"
-                          : "text-sky-600",
+                    "bg-white",
+                    gIdx > 0 && "border-t border-[var(--border-2)]",
                   )}
                 >
-                  {method}
-                </span>
-                <span className="text-[var(--text-2)]">{path}</span>
-                <span className="text-[var(--text-4)]">— {label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+                  <div className="border-b border-[var(--border-3)] bg-[var(--surface-1)] px-4 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
+                      {group.name}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-4)]">{group.description}</p>
+                  </div>
+                  <ul className="divide-y divide-[var(--border-3)]">
+                    {group.endpoints.map((endpoint) => (
+                      <li
+                        key={`${endpoint.method}-${endpoint.path}`}
+                        className="grid grid-cols-[60px_minmax(0,1fr)] items-baseline gap-3 px-4 py-2 text-xs sm:grid-cols-[60px_minmax(0,420px)_minmax(0,1fr)]"
+                      >
+                        <span
+                          className={cn(
+                            "shrink-0 font-mono font-semibold",
+                            methodColor(endpoint.method),
+                          )}
+                        >
+                          {endpoint.method}
+                        </span>
+                        <code className="truncate font-mono text-[var(--text-1)]">
+                          {endpoint.path}
+                        </code>
+                        <span className="hidden text-[var(--text-3)] sm:block sm:truncate">
+                          {endpoint.label}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -3320,7 +3451,7 @@ interface TemplateRecord {
   name: string;
   slug: string;
   description: string | null;
-  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";
+  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
   isDefault: boolean;
   sections: unknown;
   workspaceId: string | null;
@@ -3336,7 +3467,6 @@ const DOC_TYPE_LABEL: Record<TemplateRecord["documentType"], string> = {
   MSA: "Master Service Agreement",
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
-  DSA: "Data Sharing Agreement",
   OTHER: "Document",
 };
 
@@ -3454,7 +3584,6 @@ export function TemplatesTab() {
     "MSA",
     "NDA",
     "CO",
-    "DSA",
     "OTHER",
   ];
 

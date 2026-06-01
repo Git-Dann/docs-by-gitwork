@@ -858,28 +858,9 @@ export async function listTechStacks(): Promise<{ stacks: TechStackOption[] }> {
   return apiFetch<{ stacks: TechStackOption[] }>("/api/codeclear/tech-stacks");
 }
 
-export interface DemoCleanupPreviewResponse {
-  candidates: Array<{ id: string; name: string; githubHandle: string }>;
-  ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
-  total: number;
-}
-
-export interface DemoCleanupApplyResponse {
-  deletedCandidates: number;
-  deletedRatePeople: number;
-  candidates: Array<{ id: string; name: string; githubHandle: string }>;
-  ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
-}
-
-export async function previewDemoCleanup(): Promise<DemoCleanupPreviewResponse> {
-  return apiFetch<DemoCleanupPreviewResponse>("/api/codeclear/admin/cleanup-demo");
-}
-
-export async function applyDemoCleanup(): Promise<DemoCleanupApplyResponse> {
-  return apiFetch<DemoCleanupApplyResponse>("/api/codeclear/admin/cleanup-demo", {
-    method: "POST",
-  });
-}
+// Demo-data cleanup helpers were here; UI for that has been retired. The backend route
+// at /api/codeclear/admin/cleanup-demo still exists if we ever need to wire a one-shot
+// admin tool to it again.
 
 export interface BulkImportCandidateRow {
   name: string;
