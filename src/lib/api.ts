@@ -1746,3 +1746,140 @@ export function getBackstageCalendar(year: number, month: number): Promise<Calen
   return apiFetch(`/api/backstage/calendar?year=${year}&month=${month}`);
 }
 
+// ─── Tasks (Portal task tracker + standups) ────────────────────────────────
+import type {
+  TaskDTO,
+  TaskDetailDTO,
+  TaskCommentDTO,
+  TaskStatus,
+  TaskPriority,
+  ClientTaskSummary,
+  MyDayDTO,
+  DailyUpdateDTO,
+  RollupRosterDTO,
+  ClientAssignmentDTO,
+} from "@/types/tasks";
+
+export function listTasks(opts: {
+  clientId?: string;
+  status?: TaskStatus;
+  assigneeId?: string;
+} = {}): Promise<TaskDTO[]> {
+  const q = new URLSearchParams();
+  if (opts.clientId) q.set("clientId", opts.clientId);
+  if (opts.status) q.set("status", opts.status);
+  if (opts.assigneeId) q.set("assigneeId", opts.assigneeId);
+  const qs = q.toString();
+  return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
+}
+
+export function getTask(id: string): Promise<TaskDetailDTO> {
+  return apiFetch(`/api/tasks/${id}`);
+}
+
+export function createTask(input: {
+  clientId: string;
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigneeId?: string | null;
+  dueDate?: string | null;
+}): Promise<TaskDTO> {
+  return apiFetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTask(
+  id: string,
+  input: {
+    title?: string;
+    description?: string | null;
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    assigneeId?: string | null;
+    dueDate?: string | null;
+  },
+): Promise<TaskDTO> {
+  return apiFetch(`/api/tasks/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function moveTask(
+  id: string,
+  input: { status: TaskStatus; orderKey: number },
+): Promise<TaskDTO> {
+  return apiFetch(`/api/tasks/${id}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteTask(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
+}
+
+export function listTaskComments(id: string): Promise<TaskCommentDTO[]> {
+  return apiFetch(`/api/tasks/${id}/comments`);
+}
+
+export function addTaskComment(id: string, body: string): Promise<TaskCommentDTO> {
+  return apiFetch(`/api/tasks/${id}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function getClientTaskSummary(clientId: string): Promise<ClientTaskSummary> {
+  return apiFetch(`/api/tasks/summary?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function getMyDay(date?: string): Promise<MyDayDTO> {
+  return apiFetch(`/api/tasks/standup${date ? `?date=${encodeURIComponent(date)}` : ""}`);
+}
+
+export function pushDailyUpdate(input: {
+  phase: "AM" | "PM";
+  weekPlan?: string;
+  note?: string;
+}): Promise<DailyUpdateDTO> {
+  return apiFetch("/api/tasks/standup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function getRollupRoster(): Promise<RollupRosterDTO> {
+  return apiFetch("/api/tasks/rollup");
+}
+
+export function publishRollup(
+  override = false,
+): Promise<{ ok: boolean; channel: string | null; clientCount: number; taskCount: number }> {
+  return apiFetch(`/api/tasks/rollup${override ? "?override=true" : ""}`, { method: "POST" });
+}
+
+export function listMemberClients(memberId: string): Promise<ClientAssignmentDTO[]> {
+  return apiFetch(`/api/team/members/${memberId}/clients`);
+}
+
+export function setMemberClients(
+  memberId: string,
+  clientIds: string[],
+): Promise<ClientAssignmentDTO[]> {
+  return apiFetch(`/api/team/members/${memberId}/clients`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientIds }),
+  });
+}
+

@@ -764,3 +764,65 @@ export const memberAnnualLeaveSchema = z.object({
 export const backstagePermissionSchema = z.object({
   canApprove: z.boolean(),
 });
+
+// ── Tasks (Portal task tracker + daily standups) ─────────────────────────
+
+export const taskStatusSchema = z.enum([
+  "BACKLOG",
+  "TODO",
+  "DOING",
+  "IN_REVIEW",
+  "DONE",
+]);
+
+export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+
+export const taskInputSchema = z.object({
+  clientId: z.string().cuid(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  status: taskStatusSchema.optional().default("BACKLOG"),
+  priority: taskPrioritySchema.optional().default("MEDIUM"),
+  assigneeId: z.string().cuid().nullable().optional(),
+  dueDate: isoDateString.nullable().optional(),
+});
+
+export const taskUpdateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).nullable().optional(),
+  status: taskStatusSchema.optional(),
+  priority: taskPrioritySchema.optional(),
+  assigneeId: z.string().cuid().nullable().optional(),
+  dueDate: isoDateString.nullable().optional(),
+});
+
+/**
+ * Drag move. The client computes the new fractional `orderKey` as the midpoint
+ * between the drop target's neighbours (it already holds the full board), so the
+ * server just persists status + key.
+ */
+export const taskMoveSchema = z.object({
+  status: taskStatusSchema,
+  orderKey: z.number().finite(),
+});
+
+export const taskCommentSchema = z.object({
+  body: z.string().min(1).max(5000),
+});
+
+export const taskListQuerySchema = z.object({
+  clientId: z.string().cuid().optional(),
+  status: taskStatusSchema.optional(),
+  // "me" resolves to the caller server-side; a cuid filters to that assignee.
+  assigneeId: z.string().optional(),
+});
+
+export const dailyUpdatePushSchema = z.object({
+  phase: z.enum(["AM", "PM"]),
+  weekPlan: z.string().max(5000).optional(),
+  note: z.string().max(2000).optional(),
+});
+
+export const clientAssignmentSchema = z.object({
+  clientIds: z.array(z.string().cuid()),
+});

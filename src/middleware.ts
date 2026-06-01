@@ -96,28 +96,36 @@ const CORS_HEADERS = {
   "Access-Control-Max-Age": "86400",
 };
 
-// Maps module IDs to their /app/* path prefixes
-const MODULE_PATHS: Record<string, string> = {
-  pulse: "/app/pulse",
-  codeclear: "/app/codeclear",
-  proposals: "/app/proposals",
-  clients: "/app/clients",
-  support: "/app/support",
-  study: "/app/study",
-  backstage: "/app/backstage",
-};
+// Maps /app/* path prefixes to the module permission that gates them. Listed as
+// pairs (not a module→path map) so a module can expose both its canonical route
+// and its legacy alias — e.g. clients lives at /app/portal today and /app/clients
+// historically; both resolve to the same `clients` permission.
+const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
+  { prefix: "/app/pulse", module: "pulse" },
+  { prefix: "/app/code", module: "codeclear" }, // canonical
+  { prefix: "/app/codeclear", module: "codeclear" }, // legacy
+  { prefix: "/app/docs", module: "proposals" }, // canonical
+  { prefix: "/app/proposals", module: "proposals" }, // legacy
+  { prefix: "/app/portal", module: "clients" }, // canonical
+  { prefix: "/app/clients", module: "clients" }, // legacy
+  { prefix: "/app/care", module: "support" }, // canonical
+  { prefix: "/app/support", module: "support" }, // legacy
+  { prefix: "/app/study", module: "study" },
+  { prefix: "/app/backstage", module: "backstage" },
+];
 
 function configuredApiKey() {
   return process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? null;
 }
 
 function hasModuleAccess(pathname: string, permissions: string[]): boolean {
-  for (const [module, prefix] of Object.entries(MODULE_PATHS)) {
+  for (const { prefix, module } of MODULE_PATHS) {
     if (pathname.startsWith(prefix)) {
       return permissions.includes(module);
     }
   }
-  // /app and /app/settings are always accessible to logged-in staff
+  // /app, /app/settings, /app/team, /app/account-settings are always accessible
+  // to any logged-in member.
   return true;
 }
 

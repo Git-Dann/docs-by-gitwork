@@ -1,13 +1,16 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
-import { ClientManagement } from "@/components/clients/client-management";
+import { PortalWorkspace } from "@/components/clients/portal-workspace";
 
 export default function PortalPage() {
   return (
     <AppShell
       title="Portal"
-      subtitle="Manage client records and jump straight into the proposals attached to them."
+      subtitle="Manage client records and the work in flight across them."
     >
-      <ClientManagement />
+      <Suspense fallback={null}>
+        <PortalWorkspace />
+      </Suspense>
     </AppShell>
   );
 }

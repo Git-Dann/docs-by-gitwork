@@ -26,6 +26,7 @@ import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
+import { TasksSummaryCard } from "@/components/tasks/tasks-summary-card";
 import {
   useClientDetail,
   useClientSlackActivity,
@@ -976,6 +977,9 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 
       </div>
+
+      {/* ── 16 // TASKS ── */}
+      <TasksSummaryCard clientId={client.id} number="16" />
 
       {/* Full-width optionals */}
         {/* 14 // PROOF DOCUMENTS */}

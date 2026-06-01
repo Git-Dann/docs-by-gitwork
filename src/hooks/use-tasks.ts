@@ -1,0 +1,174 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listTasks,
+  getTask,
+  createTask,
+  updateTask,
+  moveTask,
+  deleteTask,
+  addTaskComment,
+  getClientTaskSummary,
+  getMyDay,
+  pushDailyUpdate,
+  getRollupRoster,
+  publishRollup,
+  listMemberClients,
+  setMemberClients,
+} from "@/lib/api";
+import type { TaskStatus } from "@/types/tasks";
+
+type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string };
+
+const QK = {
+  tasks: (f: TaskFilter) =>
+    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null] as const,
+  task: (id: string) => ["tasks", "detail", id] as const,
+  summary: (clientId: string) => ["tasks", "summary", clientId] as const,
+  myDay: (date?: string) => ["tasks", "myday", date ?? "today"] as const,
+  roster: ["tasks", "rollup"] as const,
+  memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
+};
+
+/** Invalidate every task-derived query after a write. */
+function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["tasks"] });
+}
+
+// ─── Board / list ────────────────────────────────────────────────────────────
+
+export function useTasks(filter: TaskFilter = {}) {
+  return useQuery({
+    queryKey: QK.tasks(filter),
+    queryFn: () => listTasks(filter),
+    staleTime: 15_000,
+  });
+}
+
+export function useTask(id: string | null) {
+  return useQuery({
+    queryKey: QK.task(id ?? ""),
+    queryFn: () => getTask(id as string),
+    enabled: Boolean(id),
+    staleTime: 15_000,
+  });
+}
+
+export function useClientTaskSummary(clientId: string | null) {
+  return useQuery({
+    queryKey: QK.summary(clientId ?? ""),
+    queryFn: () => getClientTaskSummary(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 30_000,
+  });
+}
+
+// ─── Mutations ───────────────────────────────────────────────────────────────
+
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createTask>[0]) => createTask(input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useUpdateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateTask>[1] }) =>
+      updateTask(id, input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useMoveTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, orderKey }: { id: string; status: TaskStatus; orderKey: number }) =>
+      moveTask(id, { status, orderKey }),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTask(id),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useAddTaskComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) => addTaskComment(id, body),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: QK.task(vars.id) });
+      void qc.invalidateQueries({ queryKey: ["tasks", "list"] });
+    },
+  });
+}
+
+// ─── Standup ─────────────────────────────────────────────────────────────────
+
+export function useMyDay(date?: string) {
+  return useQuery({
+    queryKey: QK.myDay(date),
+    queryFn: () => getMyDay(date),
+    staleTime: 15_000,
+  });
+}
+
+export function usePushDailyUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof pushDailyUpdate>[0]) => pushDailyUpdate(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["tasks", "myday"] });
+      void qc.invalidateQueries({ queryKey: QK.roster });
+    },
+  });
+}
+
+// ─── DevOps roll-up ──────────────────────────────────────────────────────────
+
+export function useRollupRoster(enabled = true) {
+  return useQuery({
+    queryKey: QK.roster,
+    queryFn: () => getRollupRoster(),
+    enabled,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function usePublishRollup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (override: boolean = false) => publishRollup(override),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
+  });
+}
+
+// ─── Team client assignments ─────────────────────────────────────────────────
+
+export function useMemberClients(memberId: string | null) {
+  return useQuery({
+    queryKey: QK.memberClients(memberId ?? ""),
+    queryFn: () => listMemberClients(memberId as string),
+    enabled: Boolean(memberId),
+    staleTime: 30_000,
+  });
+}
+
+export function useSetMemberClients() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ memberId, clientIds }: { memberId: string; clientIds: string[] }) =>
+      setMemberClients(memberId, clientIds),
+    onSuccess: (_data, vars) =>
+      void qc.invalidateQueries({ queryKey: QK.memberClients(vars.memberId) }),
+  });
+}

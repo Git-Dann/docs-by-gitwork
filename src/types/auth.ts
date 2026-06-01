@@ -67,6 +67,13 @@ export const FEATURE_PERMISSIONS = [
       "See and submit the Backstage Expenses tab. Off by default — switch on per person (e.g. HR, finance) without making them an Admin. Devs don't get this.",
     defaultOn: false,
   },
+  {
+    id: "tasks.publish",
+    label: "Publish task roll-up",
+    description:
+      "Publish the consolidated end-of-day task roll-up across all clients (the DevOps lead). Sees who has pushed their standup.",
+    defaultOn: false,
+  },
 ] as const;
 
 export type FeatureId = (typeof FEATURE_PERMISSIONS)[number]["id"];
