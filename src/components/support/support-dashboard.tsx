@@ -449,7 +449,7 @@ function AddConnectorModal({
 
   // Gmail fields
   const defaultIntake = `support+${clientSlug}@gitwork.co.uk`;
-  const [gmailQuery, setGmailQuery] = useState(`deliveredto:${defaultIntake}`);
+  const [gmailQuery, setGmailQuery] = useState("");
 
   // Discord fields
   const [discordToken, setDiscordToken] = useState("");
@@ -630,24 +630,31 @@ function AddConnectorModal({
             {/* Gmail config */}
             {source === "gmail" && (
               <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-[var(--text-2)]">Client intake address</p>
-                  <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)]">
-                    {defaultIntake}
-                  </p>
-                  <p className="text-[11px] text-[var(--text-4)]">
-                    Ask your client to add a forward rule to this address. Emails received here appear as conversations in Care.
-                  </p>
-                </div>
+                <p className="text-[11px] text-[var(--text-4)]">
+                  Pulls all mail from the connected Google account. Leave the query blank to ingest everything, or add a Gmail search query to narrow it down (e.g. <span className="font-mono">label:support</span> or <span className="font-mono">from:client.com</span>).
+                </p>
                 <label className="block space-y-1">
-                  <span className="app-field-label">Gmail query (optional)</span>
+                  <span className="app-field-label">Gmail query (optional — blank = all mail)</span>
                   <input
                     value={gmailQuery}
                     onChange={(e) => setGmailQuery(e.target.value)}
                     className="app-input w-full font-mono text-xs"
-                    placeholder={`deliveredto:${defaultIntake}`}
+                    placeholder={`e.g. deliveredto:${defaultIntake} or label:inbox`}
                   />
                 </label>
+                <details className="group">
+                  <summary className="cursor-pointer text-[11px] font-medium text-[var(--text-3)] hover:text-[var(--text-2)]">
+                    Forwarding intake address (optional)
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)]">
+                      {defaultIntake}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-4)]">
+                      Ask the client to forward their support inbox to this address, then set the query above to <span className="font-mono">deliveredto:{defaultIntake}</span> to scope the sync to their emails only.
+                    </p>
+                  </div>
+                </details>
               </div>
             )}
 
@@ -2177,12 +2184,12 @@ function EditConnectorModal({
         {/* Gmail config */}
         {conn.source === "gmail" && (
           <label className="block space-y-1.5">
-            <span className="app-field-label">Gmail query</span>
+            <span className="app-field-label">Gmail query (optional — blank = all mail)</span>
             <input
               value={gmailQuery}
               onChange={(e) => setGmailQuery(e.target.value)}
               className="app-input w-full font-mono text-xs"
-              placeholder="deliveredto:support@..."
+              placeholder="e.g. label:support or deliveredto:support+client@gitwork.co.uk"
             />
           </label>
         )}

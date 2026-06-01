@@ -200,16 +200,20 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   const exclude = normalizeKeywords(config.excludeKeywords);
   const ignoreBots = config.ignoreBots ?? true;
   const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
-  // On first sync (no per-channel cursor), only reach back `lookbackDays` (default 7)
+  // firstSyncAfter: used both for first-time syncs AND when lastSyncedAt has been cleared
+  // (i.e. the user hit "Re-sync history"). We reach back `lookbackDays` (default 30).
   const firstSyncAfter = dateToSnowflake(
-    new Date(lookbackSeconds(config.lookbackDays, 7) * 1000),
+    new Date(lookbackSeconds(config.lookbackDays, 30) * 1000),
   );
+  // Treat lastSyncedAt === null as "start fresh" — covers both first sync and manual re-sync.
+  // This ensures re-sync actually goes back to the lookback window instead of being a no-op.
+  const isFirstOrResync = !ctx.connection.lastSyncedAt;
 
   for (let i = 0; i < channels.length; i++) {
     const ch = channels[i];
     if (maxItems && ingested >= maxItems) break;
     try {
-      const afterCursor = ch.lastMessageId ?? firstSyncAfter;
+      const afterCursor = (!isFirstOrResync && ch.lastMessageId) ? ch.lastMessageId : firstSyncAfter;
       const messages = await fetchNewMessages(ch.id, botToken, afterCursor);
       if (messages.length === 0) continue;
 
@@ -524,7 +528,10 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
     query?: string;
     intakeAddress?: string;
   };
-  const queryBase = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
+  // Query is fully optional — leave blank to pull all mail since last sync.
+  // No restrictive fallback: if the client hasn't set up forwarding the `to:` filter
+  // would return zero results, silently appearing to "not work".
+  const queryBase = config.query?.trim() ?? "";
   const lastSyncedAt = connection.lastSyncedAt;
   const afterSeconds = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
