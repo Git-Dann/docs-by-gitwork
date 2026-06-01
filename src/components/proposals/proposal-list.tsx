@@ -22,7 +22,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { cn, formatDate, statusLabel } from "@/lib/format";
-import { useProofDocuments } from "@/hooks/use-proof";
 import {
   useArchiveProposal,
   useClientList,
@@ -131,13 +130,8 @@ export function ProposalList() {
   const duplicateMutation = useDuplicateProposal();
   const archiveMutation = useArchiveProposal();
   const deleteMutation = useDeleteProposal();
-  const proofDocumentsQuery = useProofDocuments();
 
   const proposals = useMemo(() => data?.proposals ?? [], [data?.proposals]);
-  const proofDocuments = useMemo(
-    () => (proofDocumentsQuery.data?.documents ?? []).filter((document) => !document.archivedAt),
-    [proofDocumentsQuery.data?.documents],
-  );
 
   // Doc-type filter chip row. Affects the table only — stat tiles always reflect the full
   // workspace so the operator sees the big picture even while scoped into a single type.
@@ -795,74 +789,9 @@ export function ProposalList() {
         </div>
       </section>
 
-      <section className="widget-card overflow-hidden">
-        <div className="widget-header">
-          <span className="widget-header-label">06 // PROOF DRAFTS</span>
-          <span className="widget-header-right">{proofDocuments.length} SAVED</span>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
-          <div>
-            <p className="text-sm leading-6 text-[var(--text-3)]">
-              Working drafts saved from Proof now sit inside Docs so they can be attached to proposals later.
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="app-table proposals-table min-w-full">
-            <thead>
-              <tr>
-                <th className="text-left">DRAFT</th>
-                <th className="text-left">LINKED PROPOSAL</th>
-                <th className="text-left">UPDATED</th>
-                <th className="text-right">ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proofDocumentsQuery.isPending ? (
-                <tr>
-                  <td colSpan={4} className="text-sm text-[var(--text-4)]">
-                    Loading Proof drafts...
-                  </td>
-                </tr>
-              ) : proofDocuments.length ? (
-                proofDocuments.slice(0, 8).map((document) => (
-                  <tr key={document.id}>
-                    <td>
-                      <p className="font-medium text-[var(--text-1)]">{document.title}</p>
-                      <p className="mt-0.5 text-sm text-[var(--text-3)]">
-                        {document.markdown ? "Saved content available" : "Draft shell only"}
-                      </p>
-                    </td>
-                    <td className="text-sm text-[var(--text-3)]">
-                      {document.proposalTitle ?? "Not linked yet"}
-                    </td>
-                    <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(document.updatedAt)}</td>
-                    <td>
-                      <div className="flex items-center justify-end gap-2">
-                        <a
-                          href={document.tokenUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={buttonStyles({ variant: "secondary", size: "sm" })}
-                        >
-                          Open Proof
-                        </a>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="text-sm text-[var(--text-4)]">
-                    No Proof drafts saved into Docs yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* Proof drafts widget removed — the surface lived here while Proof was a separate
+          product, but it cluttered the docs dashboard once the agency template library landed.
+          Proof drafts still exist server-side; reachable from /app/proof if/when it returns. */}
 
       {showCreate ? (
         <div className="fixed inset-0 z-30">
@@ -985,14 +914,16 @@ export function ProposalList() {
                   </div>
                 </div>
 
-                {/* Right — gallery */}
+                {/* Right — gallery. No padding on the scroll container; the gallery handles its
+                    own padding so the sticky chip row can flush against the scroll viewport's
+                    top edge instead of leaving a 12px gap. */}
                 <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                   <div className="border-b border-[var(--border-2)] bg-white px-3 py-2">
                     <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                       Template library
                     </p>
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     <TemplateGallery
                       selectedTemplateId={form.templateId}
                       onPick={({ id, documentType }) =>
