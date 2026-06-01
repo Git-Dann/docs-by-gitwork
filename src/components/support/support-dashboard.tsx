@@ -2210,15 +2210,48 @@ function EditConnectorModal({
 
         {/* Gmail config */}
         {conn.source === "gmail" && (
-          <label className="block space-y-1.5">
-            <span className="app-field-label">Gmail query (optional — blank = all mail)</span>
-            <input
-              value={gmailQuery}
-              onChange={(e) => setGmailQuery(e.target.value)}
-              className="app-input w-full font-mono text-xs"
-              placeholder="e.g. label:support or deliveredto:support+client@gitwork.co.uk"
-            />
-          </label>
+          <div className="space-y-3">
+            {/* Connected account status */}
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">Connected Gmail account</p>
+              {conn.connectedEmail ? (
+                <div className="mt-1.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
+                    <p className="text-sm font-medium text-[var(--text-1)]">{conn.connectedEmail}</p>
+                  </div>
+                  <a
+                    href={`/api/support/auth/gmail?connId=${conn.id}`}
+                    className="text-[11px] font-medium text-[var(--brand-700)] hover:underline"
+                  >
+                    Switch account
+                  </a>
+                </div>
+              ) : (
+                <div className="mt-1.5 flex items-center justify-between gap-3">
+                  <p className="text-sm text-[var(--text-4)]">No Gmail account connected — using shared workspace token</p>
+                  <a
+                    href={`/api/support/auth/gmail?connId=${conn.id}`}
+                    className="shrink-0 rounded-[6px] border border-[var(--brand-700)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+                  >
+                    Connect Gmail account
+                  </a>
+                </div>
+              )}
+              <p className="mt-2 text-[11px] text-[var(--text-4)]">
+                Connect the Gmail inbox that receives your forwarded support emails. This lets Care sync from that specific account.
+              </p>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="app-field-label">Gmail query (optional — blank = all mail)</span>
+              <input
+                value={gmailQuery}
+                onChange={(e) => setGmailQuery(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder="e.g. deliveredto:support+client@gitwork.co.uk"
+              />
+            </label>
+          </div>
         )}
 
         {/* Discord config */}
@@ -2532,6 +2565,13 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
                     </div>
                     <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
+                    {conn.source === "gmail" && (
+                      <p className={cn("mt-1 text-[11px]", conn.connectedEmail ? "text-emerald-600" : "text-amber-600")}>
+                        {conn.connectedEmail
+                          ? `✓ ${conn.connectedEmail}`
+                          : "No Gmail account connected — click Edit to connect one"}
+                      </p>
+                    )}
                     {conn.scraperConfig?.intakeAddress && (
                       <p className="mt-1 select-all font-mono text-[11px] text-[var(--brand-700)]">
                         {conn.scraperConfig.intakeAddress}

@@ -191,7 +191,15 @@ export function serializeConnection(row: {
   secretRef: string | null;
   nextStep: string | null;
   scraperConfig: unknown;
+  channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
+  const connectedEmail = (() => {
+    const token = row.channelTokens?.[0];
+    if (!token) return undefined;
+    const td = token.tokenData as Record<string, unknown>;
+    return typeof td?.email === "string" ? td.email : undefined;
+  })();
+
   return {
     id: row.id,
     clientId: row.clientId,
@@ -201,6 +209,7 @@ export function serializeConnection(row: {
     health: mapHealth(row.health),
     secretRef: row.secretRef ?? undefined,
     nextStep: row.nextStep ?? undefined,
+    connectedEmail,
     scraperConfig: row.scraperConfig
       ? (row.scraperConfig as Connection["scraperConfig"])
       : undefined,
@@ -669,6 +678,7 @@ export async function listConnections(clientId: string): Promise<Connection[]> {
   const rows = await prisma.accountConnection.findMany({
     where: { clientId },
     orderBy: { createdAt: "asc" },
+    include: { channelTokens: { select: { tokenData: true } } },
   });
   return rows.map(serializeConnection);
 }

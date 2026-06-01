@@ -461,6 +461,14 @@ function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { dat
  * see resolveGoogleOAuthClientCreds().
  */
 async function resolveGmailRefreshToken(ctx: SyncContext): Promise<string | null> {
+  // Per-connection token takes priority — set by the connector-specific Gmail OAuth flow.
+  // This lets each connector authenticate as the inbox that actually receives the emails.
+  const channelTokens = ctx.connection.channelTokens as Array<{ tokenData: unknown }>;
+  for (const ct of channelTokens) {
+    const td = ct.tokenData as Record<string, unknown>;
+    if (typeof td?.refreshToken === "string") return td.refreshToken;
+  }
+
   if (ctx.workspace.googleOAuthRefreshToken) return ctx.workspace.googleOAuthRefreshToken;
 
   const adminMember = await prisma.workspaceMember.findFirst({

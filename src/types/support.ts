@@ -44,6 +44,7 @@ export interface Connection {
   health: ConnectionHealth;
   secretRef?: string;
   nextStep?: string;
+  connectedEmail?: string;
   scraperConfig?: {
     // Gmail
     query?: string;
