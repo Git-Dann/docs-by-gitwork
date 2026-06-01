@@ -31,6 +31,11 @@ const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"
 const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap" });
 
 export const metadata: Metadata = {
+  // Resolves relative OpenGraph/Twitter image URLs (incl. generated og-images)
+  // to absolute ones so link previews work when shared off-site.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://foundry.gitwork.co.uk",
+  ),
   title: "Foundry by Gitwork",
   description:
     "Gitwork’s prompt-to-production delivery platform for projects, signals, documents, reviews, and support.",
