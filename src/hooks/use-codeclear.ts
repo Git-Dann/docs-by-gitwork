@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addCodeClearCandidateNote,
   applyCodeClearGitHubRun,
@@ -38,6 +38,13 @@ export function useCodeClearCandidates(filters: Partial<CandidateListParams> = {
     queryKey: ["codeclear", "candidates", filters],
     queryFn: () => listCodeClearCandidates(filters),
     staleTime: 1000 * 10,
+    // Keep the previous result visible while a new filter combination
+    // is fetching. Without this React Query treats every filter change
+    // as a fresh query (data → undefined → loading), so the table
+    // flickers/unmounts every time you tweak a select. Now the rows
+    // stay put and you get an `isPlaceholderData` flag to dim/animate
+    // them if desired.
+    placeholderData: keepPreviousData,
     // Poll every 4 s while any candidate has an analysis in flight
     refetchInterval: (query) => {
       const items = query.state.data?.items;

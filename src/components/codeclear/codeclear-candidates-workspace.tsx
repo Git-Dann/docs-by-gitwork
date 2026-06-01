@@ -254,7 +254,16 @@ export function CodeClearCandidatesWorkspace() {
         ) : null}
 
         {candidates.length ? (
-          <div className="mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+          <div
+            className={cn(
+              "mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)] transition-opacity",
+              // While a new filter combo is fetching, React Query keeps
+              // the previous rows in `data` (placeholderData: keep). We
+              // dim them lightly so the user sees feedback without the
+              // table unmounting and the page jumping.
+              candidatesQuery.isPlaceholderData ? "opacity-60" : "opacity-100",
+            )}
+          >
             <table className="app-table">
               <thead>
                 <tr>
@@ -384,6 +393,18 @@ export function CodeClearCandidatesWorkspace() {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : candidatesQuery.isLoading ? (
+          // Initial load only — once we have *any* result, placeholderData
+          // keeps the previous rows on subsequent filter changes so this
+          // branch isn't hit again.
+          <div className="mt-5 space-y-2">
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-12 animate-pulse rounded-[8px] bg-[var(--surface-1)]"
+              />
+            ))}
           </div>
         ) : (
           <div className="mt-5">
