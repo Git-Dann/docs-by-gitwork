@@ -84,7 +84,8 @@ function DeleteButton({ clientSlug }: { clientSlug: string }) {
           "rounded-[6px] p-1.5 transition-all",
           open
             ? "bg-red-100 text-red-600"
-            : "text-[var(--text-4)] hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100",
+            // Visible on touch devices; hover-reveal on desktop (sm+).
+            : "text-[var(--text-4)] hover:bg-red-50 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
         )}
         title="Delete client"
       >
@@ -147,16 +148,8 @@ function ClientCard({ client }: { client: ClientListItem }) {
               <SparklesIcon className="h-3 w-3 text-[var(--brand-700)]" />
               SUGGESTED
             </span>
-          ) : client.status === "PENDING_REVIEW" ? (
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
-              PENDING
-            </span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              ACTIVE
-            </span>
+            "CLIENT"
           )}
         </span>
         {/* Drive + ClickUp quick-links — right-aligned, no trash here */}
@@ -593,11 +586,21 @@ export function ClientManagement() {
         ) : tab === "onboarding" ? (
           <OnboardingLinksList links={onboardingLinks} />
         ) : clients.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {clients.map((client) => (
-              <ClientCard key={client.id} client={client} />
-            ))}
-          </div>
+          <section className="space-y-3">
+            {tab === "active" && (
+              <div className="flex items-center gap-2">
+                <span className="widget-data-label">Active</span>
+                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--surface-2)] px-1.5 text-[11px] font-semibold text-[var(--text-3)]">
+                  {clients.length}
+                </span>
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {clients.map((client) => (
+                <ClientCard key={client.id} client={client} />
+              ))}
+            </div>
+          </section>
         ) : (
           <div className="widget-card">
             <div className="widget-body py-20 text-center">
