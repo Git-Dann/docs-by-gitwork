@@ -161,23 +161,20 @@ export function CandidateProfileForm({
         </div>
       </Section>
 
-      {/* Clients (create-time only) */}
+      {/* Clients (create-time only) — multi-select dropdown.
+          One control to pick all the clients this dev is engaged with
+          right now. They land in those clients' columns in the Pipeline. */}
       {showClientsPicker ? (
         <Section title="Clients" span="half">
-          <div className="col-span-full">
-            <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
-              Current clients
-            </p>
-            <p className="mt-1 text-xs text-[var(--text-4)]">
+          <Field label="Current clients" span="full">
+            <ClientMultiSelect
+              selectedIds={value.clientIds}
+              onChange={(next) => patch("clientIds", next)}
+            />
+            <span className="mt-1 block text-[11px] text-[var(--text-4)]">
               Optional. Devs land in these clients&apos; columns in the Pipeline.
-            </p>
-            <div className="mt-2">
-              <ClientChipPicker
-                selectedIds={value.clientIds}
-                onChange={(next) => patch("clientIds", next)}
-              />
-            </div>
-          </div>
+            </span>
+          </Field>
         </Section>
       ) : null}
 
@@ -233,27 +230,19 @@ export function CandidateProfileForm({
             autoComplete="off"
           />
         </Field>
-        {/* Hourly rate + currency share a full row inside this half-section.
-            Half a column wasn't enough room for both the rate input and the
-            ISO-currency dropdown without the input collapsing to a thin slit. */}
+        {/* Hourly rate: explicit grid track for the currency (110px) + 1fr
+            for the number input. `flex-1` on the input wasn't winning
+            against the `app-input` class's intrinsic sizing — using a CSS
+            grid with a fixed first track is unambiguous. USD sits on the
+            left, the number on the right. */}
         <Field label="Hourly rate" span="full">
-          <div className="flex gap-1.5">
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={value.hourlyRate}
-              onChange={(event) => patch("hourlyRate", event.target.value)}
-              className="app-input flex-1"
-              placeholder="0"
-            />
+          <div className="grid grid-cols-[110px_1fr] gap-1.5">
             <select
               value={value.currency}
               onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-              // `app-select` reserves ~38px on the right for the chevron icon
-              // (calc(100% - 20px) center + 18px wide). Need explicit padding
-              // plus min-width 100px so 3-letter ISO codes never clip.
-              className="app-select min-w-[100px] flex-shrink-0 pr-9"
+              // `app-select` reserves ~38px on the right for the chevron icon;
+              // explicit `pr-9` keeps the 3-letter ISO code clear of it.
+              className="app-select pr-9"
               aria-label="Currency"
             >
               {COMMON_CURRENCIES.map((code) => (
@@ -262,6 +251,15 @@ export function CandidateProfileForm({
                 </option>
               ))}
             </select>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={value.hourlyRate}
+              onChange={(event) => patch("hourlyRate", event.target.value)}
+              className="app-input w-full"
+              placeholder="0"
+            />
           </div>
         </Field>
         {/* Full-width so "Auto (from placements)" never truncates behind the
@@ -532,16 +530,15 @@ function TagChipPicker({
   );
 }
 
-// ─── Client chip picker (pure controlled) ─────────────────────────────────────
+// ─── Client multi-select dropdown (pure controlled) ──────────────────────────
 
 /**
- * Multi-select client picker for the Add Dev form. Pure-controlled (just
- * reads `selectedIds` and emits `onChange`) — different from
- * CurrentClientPicker which mutates immediately. Renders a logo chip per
- * selected client with × to remove, plus an "+ Add client" button that opens
- * a portal dropdown of the remaining clients.
+ * Multi-select dropdown for clients. Looks like a single `app-select`
+ * control — clicking opens a portal-positioned panel with a search input
+ * and a checkbox per client. Toggling a row updates selection without
+ * closing the panel (true multi-select). Pure-controlled.
  */
-function ClientChipPicker({
+function ClientMultiSelect({
   selectedIds,
   onChange,
 }: {
@@ -551,7 +548,6 @@ function ClientChipPicker({
   const clientsQuery = useClientList();
   const clients = clientsQuery.data?.clients ?? [];
   const selected = clients.filter((client) => selectedIds.includes(client.id));
-  const available = clients.filter((client) => !selectedIds.includes(client.id));
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -560,10 +556,10 @@ function ClientChipPicker({
     left: number;
     width: number;
   } | null>(null);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const filtered = available.filter(
+  const filtered = clients.filter(
     (client) =>
       !search.trim() || client.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -575,12 +571,12 @@ function ClientChipPicker({
       return;
     }
     function reposition() {
-      if (!btnRef.current) return;
-      const rect = btnRef.current.getBoundingClientRect();
+      if (!triggerRef.current) return;
+      const rect = triggerRef.current.getBoundingClientRect();
       setMenuPosition({
         top: rect.bottom + 4,
         left: rect.left,
-        width: Math.max(rect.width, 240),
+        width: rect.width,
       });
     }
     reposition();
@@ -595,9 +591,9 @@ function ClientChipPicker({
   useEffect(() => {
     if (!open) return;
     function handleClick(event: MouseEvent) {
-      if (!menuRef.current || !btnRef.current) return;
+      if (!menuRef.current || !triggerRef.current) return;
       const target = event.target as Node;
-      if (menuRef.current.contains(target) || btnRef.current.contains(target)) return;
+      if (menuRef.current.contains(target) || triggerRef.current.contains(target)) return;
       setOpen(false);
     }
     function handleKey(event: KeyboardEvent) {
@@ -611,44 +607,48 @@ function ClientChipPicker({
     };
   }, [open]);
 
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {selected.length === 0 ? (
-        <span className="text-xs italic text-[var(--text-4)]">
-          {clientsQuery.isLoading ? "Loading clients…" : "No clients yet"}
-        </span>
-      ) : (
-        selected.map((client) => (
-          <span
-            key={client.id}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-1.5 py-0.5 text-xs font-medium text-[var(--text-2)]"
-          >
-            <ClientAvatar name={client.name} logoUrl={client.logoUrl ?? null} size="xs" />
-            {client.name}
-            <button
-              type="button"
-              onClick={() => onChange(selectedIds.filter((id) => id !== client.id))}
-              aria-label={`Remove ${client.name}`}
-              className="rounded-full text-[var(--text-4)] transition hover:text-rose-500"
-            >
-              <XMarkIcon className="h-3 w-3" />
-            </button>
-          </span>
-        ))
-      )}
+  function toggle(id: string) {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((existing) => existing !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  }
 
-      {available.length > 0 ? (
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex items-center gap-0.5 rounded-[6px] border border-dashed border-[var(--border-1)] bg-white px-1.5 py-0.5 text-xs font-medium text-[var(--text-3)] hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
-          aria-expanded={open}
+  // Summary text for the trigger:
+  //   0 selected   → placeholder
+  //   1-2 selected → comma-joined names
+  //   3+ selected  → "N clients selected"
+  const summary =
+    selected.length === 0
+      ? clientsQuery.isLoading
+        ? "Loading clients…"
+        : "Select clients"
+      : selected.length <= 2
+        ? selected.map((c) => c.name).join(", ")
+        : `${selected.length} clients selected`;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        // Matches the `app-select` chrome so this reads as a dropdown field.
+        // Left-aligned summary, pr-9 keeps the chevron clear of text.
+        className="app-select flex w-full items-center pr-9 text-left text-xs"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span
+          className={cn(
+            "truncate",
+            selected.length === 0 ? "text-[var(--text-4)]" : "text-[var(--text-1)]",
+          )}
         >
-          <PlusIcon className="h-3 w-3" />
-          Add client
-        </button>
-      ) : null}
+          {summary}
+        </span>
+      </button>
 
       {open && menuPosition && typeof document !== "undefined"
         ? createPortal(
@@ -658,10 +658,12 @@ function ClientChipPicker({
                 position: "fixed",
                 top: menuPosition.top,
                 left: menuPosition.left,
-                minWidth: menuPosition.width,
+                width: menuPosition.width,
                 zIndex: 9999,
               }}
               className="rounded-[8px] border border-[var(--border-2)] bg-white p-1.5 shadow-[var(--shadow-lg)]"
+              role="listbox"
+              aria-multiselectable
             >
               <input
                 type="text"
@@ -674,30 +676,56 @@ function ClientChipPicker({
               <ul className="max-h-[240px] overflow-y-auto">
                 {filtered.length === 0 ? (
                   <li className="px-2.5 py-1.5 text-xs italic text-[var(--text-4)]">
-                    No matches
+                    {clients.length === 0 ? "No clients in workspace" : "No matches"}
                   </li>
                 ) : (
-                  filtered.map((client) => (
-                    <li key={client.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onChange([...selectedIds, client.id]);
-                          setOpen(false);
-                        }}
-                        className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                      >
-                        <ClientAvatar name={client.name} logoUrl={client.logoUrl ?? null} size="sm" />
-                        {client.name}
-                      </button>
-                    </li>
-                  ))
+                  filtered.map((client) => {
+                    const checked = selectedIds.includes(client.id);
+                    return (
+                      <li key={client.id}>
+                        <button
+                          type="button"
+                          onClick={() => toggle(client.id)}
+                          role="option"
+                          aria-selected={checked}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-xs font-medium transition hover:bg-[var(--surface-1)]",
+                            checked ? "text-[var(--text-1)]" : "text-[var(--text-2)]",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            readOnly
+                            tabIndex={-1}
+                            className="h-3.5 w-3.5 rounded-[3px] border-[var(--border-2)]"
+                          />
+                          <ClientAvatar name={client.name} logoUrl={client.logoUrl ?? null} size="sm" />
+                          <span className="truncate">{client.name}</span>
+                        </button>
+                      </li>
+                    );
+                  })
                 )}
               </ul>
+              {selected.length > 0 ? (
+                <div className="mt-1 flex items-center justify-between border-t border-[var(--border-3)] px-2 pt-1.5">
+                  <span className="text-[11px] text-[var(--text-4)]">
+                    {selected.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onChange([])}
+                    className="text-[11px] font-medium text-[var(--text-3)] transition hover:text-rose-500"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              ) : null}
             </div>,
             document.body,
           )
         : null}
-    </div>
+    </>
   );
 }
