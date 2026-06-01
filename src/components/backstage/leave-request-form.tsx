@@ -7,7 +7,8 @@ import {
   useUpdateLeaveRequest,
 } from "@/hooks/use-backstage";
 import { useBackstageAccess } from "@/components/backstage/access";
-import { BackstagePanel } from "@/components/backstage/panel";
+import { BackstageModal } from "@/components/backstage/modal";
+import { Button } from "@/components/ui/button";
 import type { LeaveRequestDTO, LeaveType } from "@/types/backstage";
 
 const LEAVE_TYPES: Array<{ value: LeaveType; label: string }> = [
@@ -81,9 +82,13 @@ export function LeaveRequestForm({
   }
 
   return (
-    <BackstagePanel title={isEdit ? "EDIT LEAVE" : "NEW LEAVE REQUEST"}>
+    <BackstageModal
+      eyebrow="Backstage"
+      title={isEdit ? "Edit leave" : "New leave request"}
+      onClose={onCancel}
+    >
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
           {showMemberPicker ? (
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium text-[var(--text-2)]">For</span>
@@ -174,27 +179,19 @@ export function LeaveRequestForm({
               placeholder="Family commitment, conference, etc."
             />
           </label>
+
+          {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
         </div>
 
-        {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-
-        <div className="mt-5 flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-[6px] bg-[var(--brand-600)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
-          >
-            {pending ? "Saving…" : isEdit ? "Save changes" : "Submit request"}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-[6px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={pending}>
             Cancel
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" loading={pending}>
+            {isEdit ? "Save changes" : "Submit request"}
+          </Button>
         </div>
       </form>
-    </BackstagePanel>
+    </BackstageModal>
   );
 }
