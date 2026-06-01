@@ -1283,6 +1283,10 @@ export async function deleteSupportReport(
   });
 }
 
+export async function getSupportReport(reportId: string): Promise<{ report: SupportReport }> {
+  return apiFetch(`/api/support/reports/${reportId}`);
+}
+
 export async function listSupportConversations(
   clientId: string,
 ): Promise<{ conversations: Conversation[] }> {

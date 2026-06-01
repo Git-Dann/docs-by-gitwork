@@ -994,6 +994,12 @@ export async function deleteReport(reportId: string): Promise<void> {
   await prisma.supportReport.delete({ where: { id: reportId } });
 }
 
+export async function getReport(reportId: string): Promise<SupportReport | null> {
+  const row = await prisma.supportReport.findUnique({ where: { id: reportId } });
+  if (!row) return null;
+  return serializeReport(row);
+}
+
 // ─── Workspace Members ────────────────────────────────────────────────────────
 
 export async function listWorkspaceMembers(): Promise<

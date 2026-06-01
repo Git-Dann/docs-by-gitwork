@@ -12,6 +12,7 @@ import {
   DocumentTextIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
+  EyeIcon,
   FunnelIcon,
   InboxIcon,
   KeyIcon,
@@ -23,6 +24,7 @@ import {
   UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
@@ -2017,6 +2019,13 @@ function ReportsView({ client }: { client: SupportClient }) {
                   {r.payload.totalTickets} tickets
                 </span>
               )}
+              <Link
+                href={`/app/support/reports/${r.id}`}
+                className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
+                title="Preview report"
+              >
+                <EyeIcon className="h-3.5 w-3.5" />
+              </Link>
               <button
                 type="button"
                 onClick={() => setEditing(r)}

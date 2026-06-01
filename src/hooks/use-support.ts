@@ -12,6 +12,7 @@ import {
   deleteSupportWorkflowRule,
   generateAiDraft,
   getSupportClient,
+  getSupportReport,
   listSupportAuditLogs,
   listSupportClients,
   listSupportConnections,
@@ -303,6 +304,15 @@ export function useSeedDefaultRules(clientId: string | null) {
 }
 
 // ─── Monthly Reports ──────────────────────────────────────────────────────────
+
+export function useReport(reportId: string) {
+  return useQuery({
+    queryKey: ["support", "report", reportId],
+    queryFn: () => getSupportReport(reportId),
+    enabled: Boolean(reportId),
+    staleTime: 1000 * 60,
+  });
+}
 
 export function useSupportReports(clientId: string | null) {
   return useQuery({
