@@ -158,7 +158,7 @@ function CareModal({
   title: string;
   onClose: () => void;
   children: React.ReactNode;
-  wide?: boolean;
+  wide?: "xl" | "2xl" | boolean;
 }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
@@ -166,7 +166,7 @@ function CareModal({
       <div
         className={cn(
           "app-dialog-panel relative z-10 w-full p-6",
-          wide ? "max-w-xl" : "max-w-md",
+          wide === "2xl" ? "max-w-2xl" : wide ? "max-w-xl" : "max-w-md",
         )}
       >
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -557,18 +557,19 @@ function AddConnectorModal({
   }
 
   return (
-    <CareModal title="Connect a channel" onClose={onClose} wide>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* live source tiles */}
-        <div>
-          <div className="grid grid-cols-2 gap-2.5">
+    <CareModal title="Connect a channel" onClose={onClose} wide="2xl">
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-[200px_1fr] gap-6">
+
+          {/* ── Left: source picker ── */}
+          <div className="space-y-1">
             {LIVE_SOURCES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setSource(s)}
                 className={cn(
-                  "flex items-start gap-3 rounded-lg border p-3.5 text-left transition",
+                  "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition",
                   source === s
                     ? "border-[var(--brand-700)] bg-[var(--mist)] shadow-sm"
                     : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
@@ -576,11 +577,11 @@ function AddConnectorModal({
               >
                 <div
                   className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]",
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]",
                     source === s ? "bg-white text-[var(--brand-700)]" : "bg-[var(--surface-1)] text-[var(--text-3)]",
                   )}
                 >
-                  <SourceIcon source={s} className="h-5 w-5" />
+                  <SourceIcon source={s} className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
                   <p className={cn("text-sm font-semibold", source === s ? "text-[var(--brand-700)]" : "text-[var(--text-1)]")}>
@@ -590,195 +591,200 @@ function AddConnectorModal({
                 </div>
               </button>
             ))}
-          </div>
 
-          {/* coming soon */}
-          <p className="mt-4 mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
-            <span className="h-px flex-1 bg-[var(--border-2)]" />
-            Coming soon
-            <span className="h-px flex-1 bg-[var(--border-2)]" />
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {COMING_SOON_SOURCES.map((s) => (
-              <div
-                key={s}
-                className="flex flex-col items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-3 opacity-50"
-              >
-                <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-white text-[var(--text-4)]">
-                  <SourceIcon source={s} className="h-4 w-4" />
-                </div>
-                <p className="text-xs font-medium text-[var(--text-3)]">{SOURCE_LABEL[s]}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* label */}
-        <label className="block space-y-1.5">
-          <span className="app-field-label">Label</span>
-          <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            className="app-input w-full"
-            placeholder={`e.g. ${SOURCE_LABEL[source]} — support`}
-          />
-        </label>
-
-        {/* Gmail config */}
-        {source === "gmail" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-[var(--text-2)]">Client intake address</p>
-              <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)]">
-                {defaultIntake}
-              </p>
-              <p className="text-[11px] text-[var(--text-4)]">
-                Ask your client to add a forward rule to this address. Emails received here appear as conversations in Care.
-              </p>
-            </div>
-            <label className="block space-y-1">
-              <span className="app-field-label">Gmail query (optional)</span>
-              <input
-                value={gmailQuery}
-                onChange={(e) => setGmailQuery(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder={`deliveredto:${defaultIntake}`}
-              />
-            </label>
-          </div>
-        )}
-
-        {/* Discord config */}
-        {source === "discord" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <p className="text-[11px] text-[var(--text-4)]">
-              Invite <span className="font-medium text-[var(--text-2)]">gitwork_support_bot</span> to the client&apos;s server with Read Messages and Send Messages permissions, then enter the bot token and Server ID below.
+            {/* coming soon */}
+            <p className="!mt-4 mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+              <span className="h-px flex-1 bg-[var(--border-2)]" />
+              Coming soon
+              <span className="h-px flex-1 bg-[var(--border-2)]" />
             </p>
-
-            <label className="block space-y-1">
-              <span className="app-field-label">Bot token</span>
-              <input
-                type="password"
-                value={discordToken}
-                onChange={(e) => { setDiscordToken(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
-                className="app-input w-full font-mono text-xs"
-                placeholder="Discord bot token (Developer Portal → Bot → Token)"
-                autoComplete="off"
-              />
-            </label>
-
-            <div className="flex gap-2">
-              <label className="block flex-1 space-y-1">
-                <span className="app-field-label">Server (guild) ID</span>
-                <input
-                  value={discordGuildId}
-                  onChange={(e) => { setDiscordGuildId(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
-                  className="app-input w-full"
-                  placeholder="Right-click server → Copy Server ID"
-                />
-              </label>
-              <div className="flex flex-col justify-end">
-                <button
-                  type="button"
-                  onClick={() => void handleFetchChannels()}
-                  disabled={!discordGuildId.trim() || !discordToken.trim() || fetchingChannels}
-                  className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+            <div className="grid grid-cols-2 gap-1.5">
+              {COMING_SOON_SOURCES.map((s) => (
+                <div
+                  key={s}
+                  className="flex flex-col items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-2.5 opacity-50"
                 >
-                  {fetchingChannels ? (
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
-                  ) : tokenChecked ? (
-                    <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
-                  ) : (
-                    <ArrowPathIcon className="h-3.5 w-3.5" />
-                  )}
-                  {fetchingChannels ? "Checking…" : tokenChecked ? "Re-fetch" : "Check token"}
-                </button>
-              </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-white text-[var(--text-4)]">
+                    <SourceIcon source={s} className="h-3.5 w-3.5" />
+                  </div>
+                  <p className="text-[11px] font-medium text-[var(--text-3)]">{SOURCE_LABEL[s]}</p>
+                </div>
+              ))}
             </div>
-
-            {channelFetchError && (
-              <p className="rounded-[8px] bg-[var(--danger-50)] px-2.5 py-2 text-[11px] text-[var(--danger-500)]">
-                {channelFetchError}
-              </p>
-            )}
-
-            {availableChannels.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="app-field-label">
-                    Channels to monitor
-                    {discordGuildName && <span className="ml-1.5 font-normal text-[var(--text-4)]">in {discordGuildName}</span>}
-                  </span>
-                  {selectedChannelIds.size > 0 && (
-                    <span className="text-[11px] font-semibold text-[var(--brand-700)]">
-                      {selectedChannelIds.size} selected
-                    </span>
-                  )}
-                </div>
-                <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
-                  {availableChannels.map((ch) => (
-                    <label
-                      key={ch.id}
-                      className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedChannelIds.has(ch.id)}
-                        onChange={() => toggleChannel(ch.id)}
-                        className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
-                      />
-                      <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
           </div>
-        )}
 
-        {/* Reddit config */}
-        {source === "reddit" && (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <p className="text-[11px] text-[var(--text-4)]">
-              Polls the subreddit RSS feed for new posts. No credentials required.
-            </p>
-            <label className="block space-y-1">
-              <span className="app-field-label">Subreddit (without r/)</span>
+          {/* ── Right: config ── */}
+          <div className="flex flex-col gap-4">
+
+            {/* label */}
+            <label className="block space-y-1.5">
+              <span className="app-field-label">Label</span>
               <input
-                value={redditSubreddit}
-                onChange={(e) => setRedditSubreddit(e.target.value)}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
                 className="app-input w-full"
-                placeholder="e.g. acmeapp"
+                placeholder={`e.g. ${SOURCE_LABEL[source]} — support`}
               />
             </label>
+
+            {/* Gmail config */}
+            {source === "gmail" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-[var(--text-2)]">Client intake address</p>
+                  <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)]">
+                    {defaultIntake}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-4)]">
+                    Ask your client to add a forward rule to this address. Emails received here appear as conversations in Care.
+                  </p>
+                </div>
+                <label className="block space-y-1">
+                  <span className="app-field-label">Gmail query (optional)</span>
+                  <input
+                    value={gmailQuery}
+                    onChange={(e) => setGmailQuery(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder={`deliveredto:${defaultIntake}`}
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Discord config */}
+            {source === "discord" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="text-[11px] text-[var(--text-4)]">
+                  Invite <span className="font-medium text-[var(--text-2)]">gitwork_support_bot</span> to the client&apos;s server with Read Messages and Send Messages permissions, then enter the bot token and Server ID below.
+                </p>
+
+                <label className="block space-y-1">
+                  <span className="app-field-label">Bot token</span>
+                  <input
+                    type="password"
+                    value={discordToken}
+                    onChange={(e) => { setDiscordToken(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder="Discord bot token (Developer Portal → Bot → Token)"
+                    autoComplete="off"
+                  />
+                </label>
+
+                <div className="flex gap-2">
+                  <label className="block flex-1 space-y-1">
+                    <span className="app-field-label">Server (guild) ID</span>
+                    <input
+                      value={discordGuildId}
+                      onChange={(e) => { setDiscordGuildId(e.target.value); setAvailableChannels([]); setSelectedChannelIds(new Set()); setTokenChecked(false); }}
+                      className="app-input w-full"
+                      placeholder="Right-click server → Copy Server ID"
+                    />
+                  </label>
+                  <div className="flex flex-col justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchChannels()}
+                      disabled={!discordGuildId.trim() || !discordToken.trim() || fetchingChannels}
+                      className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    >
+                      {fetchingChannels ? (
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                      ) : tokenChecked ? (
+                        <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
+                      ) : (
+                        <ArrowPathIcon className="h-3.5 w-3.5" />
+                      )}
+                      {fetchingChannels ? "Checking…" : tokenChecked ? "Re-fetch" : "Check token"}
+                    </button>
+                  </div>
+                </div>
+
+                {channelFetchError && (
+                  <p className="rounded-[8px] bg-[var(--danger-50)] px-2.5 py-2 text-[11px] text-[var(--danger-500)]">
+                    {channelFetchError}
+                  </p>
+                )}
+
+                {availableChannels.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="app-field-label">
+                        Channels to monitor
+                        {discordGuildName && <span className="ml-1.5 font-normal text-[var(--text-4)]">in {discordGuildName}</span>}
+                      </span>
+                      {selectedChannelIds.size > 0 && (
+                        <span className="text-[11px] font-semibold text-[var(--brand-700)]">
+                          {selectedChannelIds.size} selected
+                        </span>
+                      )}
+                    </div>
+                    <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
+                      {availableChannels.map((ch) => (
+                        <label
+                          key={ch.id}
+                          className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedChannelIds.has(ch.id)}
+                            onChange={() => toggleChannel(ch.id)}
+                            className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
+                          />
+                          <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Reddit config */}
+            {source === "reddit" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="text-[11px] text-[var(--text-4)]">
+                  Polls the subreddit RSS feed for new posts. No credentials required.
+                </p>
+                <label className="block space-y-1">
+                  <span className="app-field-label">Subreddit (without r/)</span>
+                  <input
+                    value={redditSubreddit}
+                    onChange={(e) => setRedditSubreddit(e.target.value)}
+                    className="app-input w-full"
+                    placeholder="e.g. acmeapp"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Shared filters */}
+            {LIVE_SOURCES.includes(source) && (
+              <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
+            )}
+
+            <div className="mt-auto space-y-3">
+              {error && (
+                <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+                  {error}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  disabled={isSubmitDisabled()}
+                  loading={createConnection.isPending}
+                >
+                  {createConnection.isPending ? "Saving…" : "Add connector"}
+                </Button>
+              </div>
+            </div>
           </div>
-        )}
 
-        {/* Shared filters — live sources only */}
-        {LIVE_SOURCES.includes(source) && (
-          <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
-        )}
-
-        {error && (
-          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
-            {error}
-          </p>
-        )}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            size="sm"
-            disabled={isSubmitDisabled()}
-            loading={createConnection.isPending}
-          >
-            {createConnection.isPending ? "Saving…" : "Add connector"}
-          </Button>
         </div>
       </form>
     </CareModal>
