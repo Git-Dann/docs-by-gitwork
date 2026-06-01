@@ -1776,6 +1776,8 @@ import type {
   DailyUpdateDTO,
   RollupRosterDTO,
   ClientAssignmentDTO,
+  FeatureBlockDTO,
+  TimelineShareDTO,
 } from "@/types/tasks";
 
 export function listTasks(opts: {
@@ -1802,6 +1804,7 @@ export function createTask(input: {
   status?: TaskStatus;
   priority?: TaskPriority;
   assigneeId?: string | null;
+  featureBlockId?: string | null;
   dueDate?: string | null;
 }): Promise<TaskDTO> {
   return apiFetch("/api/tasks", {
@@ -1819,6 +1822,7 @@ export function updateTask(
     status?: TaskStatus;
     priority?: TaskPriority;
     assigneeId?: string | null;
+    featureBlockId?: string | null;
     dueDate?: string | null;
   },
 ): Promise<TaskDTO> {
@@ -1898,6 +1902,61 @@ export function setMemberClients(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientIds }),
+  });
+}
+
+// ─── Feature blocks ("lists") + timeline share ─────────────────────────────
+
+export function listFeatureBlocks(clientId: string): Promise<FeatureBlockDTO[]> {
+  return apiFetch(`/api/feature-blocks?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function createFeatureBlock(input: {
+  clientId: string;
+  name: string;
+  description?: string;
+  startDate: string;
+  endDate: string;
+  color?: string;
+}): Promise<FeatureBlockDTO> {
+  return apiFetch("/api/feature-blocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateFeatureBlock(
+  id: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    startDate?: string;
+    endDate?: string;
+    color?: string | null;
+    orderKey?: number;
+  },
+): Promise<FeatureBlockDTO> {
+  return apiFetch(`/api/feature-blocks/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteFeatureBlock(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/feature-blocks/${id}`, { method: "DELETE" });
+}
+
+export function getTimelineShare(slug: string): Promise<TimelineShareDTO> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/timeline-share`);
+}
+
+export function setTimelineShare(slug: string, enabled: boolean): Promise<TimelineShareDTO> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/timeline-share`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
   });
 }
 

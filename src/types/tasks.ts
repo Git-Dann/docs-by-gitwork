@@ -34,12 +34,15 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
 export type TaskUserRef = { id: string; name: string; avatarUrl: string | null };
 export type TaskClientRef = { id: string; name: string; slug: string };
 
+export type TaskBlockRef = { id: string; name: string };
+
 export type TaskDTO = {
   id: string;
   workspaceId: string;
   client: TaskClientRef;
   assignee: TaskUserRef | null;
   createdBy: TaskUserRef | null;
+  featureBlock: TaskBlockRef | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -117,4 +120,71 @@ export type ClientAssignmentDTO = {
   clientId: string;
   clientName: string;
   clientSlug: string;
+};
+
+// ─── Feature blocks ("lists") + Gantt timeline ───────────────────────────────
+
+/** Named accent keys for Gantt bars (resolved to colours in the component). */
+export const FEATURE_BLOCK_COLORS = [
+  "blue",
+  "violet",
+  "emerald",
+  "amber",
+  "rose",
+  "slate",
+] as const;
+export type FeatureBlockColor = (typeof FEATURE_BLOCK_COLORS)[number];
+
+export type FeatureBlockDTO = {
+  id: string;
+  clientId: string;
+  name: string;
+  description: string | null;
+  startDate: string;
+  endDate: string;
+  orderKey: number;
+  color: string | null;
+  /** Total tasks in the block. */
+  taskCount: number;
+  /** Tasks in DONE. */
+  doneCount: number;
+  /** 0–100, rounded. */
+  progress: number;
+};
+
+/** Gantt zoom levels. */
+export type GanttScale = "month" | "quarter" | "half" | "year";
+
+export const GANTT_SCALE_LABELS: Record<GanttScale, string> = {
+  month: "Month",
+  quarter: "Quarter",
+  half: "6 months",
+  year: "Year",
+};
+
+/** Per-client share status for the public timeline. */
+export type TimelineShareDTO = {
+  enabled: boolean;
+  /** Null until first enabled. */
+  token: string | null;
+  /** Absolute public URL, or null when never shared. */
+  url: string | null;
+};
+
+/** Read-only public timeline (client-facing): blocks + task names, no internals. */
+export type PublicTimelineBlock = {
+  id: string;
+  name: string;
+  description: string | null;
+  startDate: string;
+  endDate: string;
+  color: string | null;
+  progress: number;
+  tasks: { title: string; done: boolean }[];
+};
+
+export type PublicTimelineDTO = {
+  clientName: string;
+  generatedAt: string;
+  blocks: PublicTimelineBlock[];
 };

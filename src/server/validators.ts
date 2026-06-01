@@ -784,6 +784,7 @@ export const taskInputSchema = z.object({
   status: taskStatusSchema.optional().default("BACKLOG"),
   priority: taskPrioritySchema.optional().default("MEDIUM"),
   assigneeId: z.string().cuid().nullable().optional(),
+  featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
 });
 
@@ -793,6 +794,7 @@ export const taskUpdateSchema = z.object({
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
   assigneeId: z.string().cuid().nullable().optional(),
+  featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
 });
 
@@ -825,4 +827,33 @@ export const dailyUpdatePushSchema = z.object({
 
 export const clientAssignmentSchema = z.object({
   clientIds: z.array(z.string().cuid()),
+});
+
+// ── Feature blocks ("lists") + timeline share ───────────────────────────
+
+export const featureBlockInputSchema = z
+  .object({
+    clientId: z.string().cuid(),
+    name: z.string().min(1).max(160),
+    description: z.string().max(2000).optional(),
+    startDate: isoDateString,
+    endDate: isoDateString,
+    color: z.string().max(20).optional(),
+  })
+  .refine((v) => new Date(v.endDate) >= new Date(v.startDate), {
+    message: "endDate must be on or after startDate",
+    path: ["endDate"],
+  });
+
+export const featureBlockUpdateSchema = z.object({
+  name: z.string().min(1).max(160).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  startDate: isoDateString.optional(),
+  endDate: isoDateString.optional(),
+  color: z.string().max(20).nullable().optional(),
+  orderKey: z.number().finite().optional(),
+});
+
+export const timelineShareSchema = z.object({
+  enabled: z.boolean(),
 });

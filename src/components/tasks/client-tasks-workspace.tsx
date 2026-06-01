@@ -1,0 +1,240 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowLeftIcon,
+  PlusIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
+  CalendarDaysIcon,
+  ShareIcon,
+  CheckIcon,
+  ClipboardDocumentIcon,
+} from "@heroicons/react/24/outline";
+import { cn } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { useClientDetail } from "@/hooks/use-proposals";
+import {
+  useTasks,
+  useFeatureBlocks,
+  useTimelineShare,
+  useSetTimelineShare,
+} from "@/hooks/use-tasks";
+import type { FeatureBlockDTO } from "@/types/tasks";
+import { TaskBoard } from "@/components/tasks/task-board";
+import { TaskList } from "@/components/tasks/task-list";
+import { GanttChart, type GanttBlock } from "@/components/tasks/gantt-chart";
+import { TaskFormModal } from "@/components/tasks/task-form";
+import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
+import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
+
+type View = "board" | "list" | "gantt";
+
+export function ClientTasksWorkspace({ slug }: { slug: string }) {
+  const { data, isPending: clientLoading } = useClientDetail(slug);
+  const client = data?.client;
+  const clientId = client?.id ?? null;
+
+  const [view, setView] = useState<View>("board");
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [blockModal, setBlockModal] = useState<{ open: boolean; block: FeatureBlockDTO | null }>({
+    open: false,
+    block: null,
+  });
+
+  const { data: tasks = [], isPending: tasksLoading } = useTasks({ clientId: clientId ?? undefined });
+  const { data: blocks = [] } = useFeatureBlocks(clientId);
+
+  const ganttBlocks: GanttBlock[] = useMemo(
+    () =>
+      blocks.map((b) => ({
+        id: b.id,
+        name: b.name,
+        startDate: b.startDate,
+        endDate: b.endDate,
+        color: b.color,
+        progress: b.progress,
+        tasks: tasks
+          .filter((t) => t.featureBlock?.id === b.id)
+          .map((t) => ({ title: t.title, done: t.status === "DONE" })),
+      })),
+    [blocks, tasks],
+  );
+
+  if (clientLoading || !client) {
+    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href={`/app/portal/${slug}`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          {client.name}
+        </Link>
+        <span className="text-[var(--text-4)]">/</span>
+        <span className="text-sm font-semibold text-[var(--text-1)]">Tasks</span>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <TimelineShareControl slug={slug} />
+          {view === "gantt" ? (
+            <Button
+              type="button"
+              variant="secondary"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setBlockModal({ open: true, block: null })}
+            >
+              New block
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="primary"
+            leadingIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() => setCreatingTask(true)}
+          >
+            New task
+          </Button>
+        </div>
+      </div>
+
+      {/* View toggle */}
+      <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
+        <ViewTab active={view === "board"} onClick={() => setView("board")} icon={<Squares2X2Icon className="h-4 w-4" />}>
+          Board
+        </ViewTab>
+        <ViewTab active={view === "list"} onClick={() => setView("list")} icon={<ListBulletIcon className="h-4 w-4" />} borderLeft>
+          List
+        </ViewTab>
+        <ViewTab active={view === "gantt"} onClick={() => setView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
+          Gantt
+        </ViewTab>
+      </div>
+
+      {/* Content */}
+      {tasksLoading && view !== "gantt" ? (
+        <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+      ) : view === "board" ? (
+        <TaskBoard tasks={tasks} showClient={false} onCardClick={setOpenTaskId} />
+      ) : view === "list" ? (
+        <TaskList tasks={tasks} showClient={false} onRowClick={setOpenTaskId} />
+      ) : (
+        <GanttChart blocks={ganttBlocks} onBlockClick={(id) => {
+          const block = blocks.find((b) => b.id === id) ?? null;
+          setBlockModal({ open: true, block });
+        }} />
+      )}
+
+      {creatingTask ? (
+        <TaskFormModal defaultClientId={clientId ?? undefined} lockClient onClose={() => setCreatingTask(false)} />
+      ) : null}
+      {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={() => setOpenTaskId(null)} /> : null}
+      {blockModal.open && clientId ? (
+        <FeatureBlockFormModal
+          block={blockModal.block}
+          clientId={clientId}
+          onClose={() => setBlockModal({ open: false, block: null })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ViewTab({
+  active,
+  borderLeft,
+  icon,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  borderLeft?: boolean;
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition",
+        borderLeft && "border-l border-[var(--border-2)]",
+        active ? "bg-[var(--surface-brand)] text-[var(--brand-800)]" : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function TimelineShareControl({ slug }: { slug: string }) {
+  const { data: share } = useTimelineShare(slug);
+  const setShare = useSetTimelineShare(slug);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const fullUrl = share?.url ? `${origin}${share.url}` : "";
+  const enabled = share?.enabled ?? false;
+
+  return (
+    <div className="relative">
+      <Button
+        type="button"
+        variant="secondary"
+        leadingIcon={<ShareIcon className="h-4 w-4" />}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Share timeline
+        {enabled ? <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> : null}
+      </Button>
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+          <p className="text-sm font-semibold text-[var(--text-1)]">Public timeline</p>
+          <p className="mt-0.5 text-xs text-[var(--text-4)]">
+            A read-only Gantt for the client — feature blocks, task names, and progress. No
+            assignees or internal notes.
+          </p>
+          <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] px-3 py-2">
+            <span className="text-sm font-medium text-[var(--text-2)]">
+              {enabled ? "Link is live" : "Sharing off"}
+            </span>
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={setShare.isPending}
+              onChange={(e) => setShare.mutate(e.target.checked)}
+            />
+          </label>
+          {enabled && fullUrl ? (
+            <div className="mt-2 flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                {fullUrl}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(fullUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+              >
+                {copied ? <CheckIcon className="h-3 w-3 text-emerald-600" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}

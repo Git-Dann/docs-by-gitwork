@@ -138,6 +138,10 @@ export function TaskDetailDrawer({
                   <p className="widget-data-label mb-1">Created by</p>
                   <p className="text-sm text-[var(--text-2)]">{task.createdBy?.name ?? "—"}</p>
                 </div>
+                <div>
+                  <p className="widget-data-label mb-1">Block</p>
+                  <p className="text-sm text-[var(--text-2)]">{task.featureBlock?.name ?? "—"}</p>
+                </div>
               </div>
 
               {/* Description */}

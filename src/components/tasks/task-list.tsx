@@ -34,6 +34,7 @@ export function TaskList({
           <tr>
             <th>Task</th>
             {showClient ? <th>Client</th> : null}
+            <th>Block</th>
             <th>Assignee</th>
             <th>Status</th>
             <th>Due</th>
@@ -55,6 +56,7 @@ export function TaskList({
               {showClient ? (
                 <td className="text-[var(--text-3)]">{task.client.name}</td>
               ) : null}
+              <td className="text-[var(--text-3)]">{task.featureBlock?.name ?? "—"}</td>
               <td>
                 <div className="flex items-center gap-2">
                   <TaskAvatar user={task.assignee} size={20} />

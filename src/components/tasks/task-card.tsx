@@ -51,6 +51,11 @@ export function TaskCard({
             {task.client.name}
           </span>
         ) : null}
+        {task.featureBlock ? (
+          <span className="inline-flex max-w-[140px] items-center truncate rounded-[4px] bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
+            {task.featureBlock.name}
+          </span>
+        ) : null}
         {task.dueDate ? (
           <span
             className={cn(
