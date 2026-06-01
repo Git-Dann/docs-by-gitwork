@@ -28,6 +28,8 @@ type NavItem = {
   description?: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   disabled?: boolean;
+  /** Module permission gating this item. Omit = always visible (e.g. HQ). */
+  module?: string;
 };
 
 export function AppShell({
@@ -46,14 +48,16 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const account = useAccount();
+  const isAdmin = account.data?.role === "ADMIN";
 
   // Close drawer on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  const primaryNav = useMemo<NavItem[]>(
-    () => [
+  const primaryNav = useMemo<NavItem[]>(() => {
+    const all: NavItem[] = [
       {
         href: "/app",
         label: "Foundry HQ",
@@ -64,46 +68,57 @@ export function AppShell({
         label: "Pulse",
         description: "Health and delivery tracking",
         icon: SignalIcon,
+        module: "pulse",
       },
       {
         href: "/app/code",
         label: "Code",
         description: "Dev review and validation",
         icon: CodeBracketIcon,
+        module: "codeclear",
       },
       {
         href: "/app/docs",
         label: "Docs",
         description: "Proposals, SLAs, SOWs and other documents",
         icon: DocumentTextIcon,
+        module: "proposals",
       },
       {
         href: "/app/portal",
         label: "Portal",
         description: "Client management",
         icon: UserGroupIcon,
+        module: "clients",
       },
       {
         href: "/app/care",
         label: "Care",
         description: "Support and aftercare",
         icon: LifebuoyIcon,
+        module: "support",
       },
       {
         href: "/app/study",
         label: "Study",
         description: "AI-powered user research",
         icon: AcademicCapIcon,
+        module: "study",
       },
       {
         href: "/app/backstage",
         label: "Backstage",
         description: "Internal team ops — leave, expenses, availability",
         icon: WrenchScrewdriverIcon,
+        module: "backstage",
       },
-    ],
-    [],
-  );
+    ];
+    // Admins (and the pre-load state) see everything; restricted staff/developers
+    // only see modules they hold. Mirrors the middleware's hasModuleAccess gate.
+    const permissions = account.data?.permissions ?? [];
+    if (isAdmin || account.isPending) return all;
+    return all.filter((item) => !item.module || permissions.includes(item.module));
+  }, [isAdmin, account.isPending, account.data]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [

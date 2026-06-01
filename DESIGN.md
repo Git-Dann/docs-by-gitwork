@@ -314,6 +314,48 @@ Every Backstage tab (Calendar, Leave, Expenses, Approvals) is a full module surf
 
 ---
 
+## Task Board (Portal)
+
+The Portal task tracker reuses the existing widget grammar — no new tokens or hues.
+
+**`task-board`** — Kanban canvas. Horizontally-scrolling columns, one per status, in
+fixed order: Backlog · To Do · Doing · In Review · Done.
+- Each **column header** is a numbered monospace widget header — `01 // BACKLOG` in
+  `{typography.widget-header}` (JetBrains Mono) — with a count chip on the right. Columns
+  number `01`–`05` left to right.
+- Column body: `{colors.surface}` panel, `{rounded.lg}`, `{colors.hairline}` border. The
+  active drop target highlights with `{colors.surface-blue}` + `{colors.primary}` border.
+
+**`task-card`** — The unit dragged between columns and listed in the table view.
+- `{colors.surface-raised}`, `{rounded.md}` (8px), `{colors.hairline}` border, no shadow at
+  rest; a subtle Elevation-1 shadow + slight rotate while dragging.
+- Anatomy: priority dot (left) · title (`{typography.body-sm-medium}`) · assignee avatar
+  (right) · then a meta row — optional status badge, client chip, due date in
+  `{typography.timestamp}` (mono; red when overdue), and a comment count.
+
+**Task status → badge/dot.** Uses the semantic + blue families only, matching the app-wide
+`StatusBadge` (rounded border + `status-dot` + label):
+- Backlog → neutral (`{colors.steel}` text, `{colors.muted}` dot)
+- To Do → blue (`sky`)
+- Doing → amber (`{colors.warning}` — the "in-progress" tone)
+- In Review → blue (`{colors.primary}` family)
+- Done → green (`{colors.success}`)
+
+**Task priority** — a 6px `status-dot` only: High = `{colors.danger}`, Medium =
+`{colors.warning}`, Low = `{colors.muted}`. Label shown on hover / in the detail drawer.
+
+**`task-detail-drawer`** — Right-anchored slide-over (≤560px) at Elevation-3. Status
+quick-select chips, a meta grid (assignee, priority, due, creator), description, and an
+append-only **notes thread** (avatar + author + mono timestamp per note).
+
+**`my-day`** — The developer standup surface (also the centre of the developer dashboard).
+A single `widget-card` (`01 // MY DAY`) with Doing / Up next / Done-today groups, a Monday
+"This week" textarea (pre-filled from tasks due this ISO week), and **Push morning / Push end
+of day** actions that show the pushed time in mono. The DevOps roll-up (`02 // DAILY ROLL-UP`)
+lists each dev's AM/PM push state as labelled `status-dot`s with a single Publish action.
+
+---
+
 ## Do's and Don'ts
 
 ### Do

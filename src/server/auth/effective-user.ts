@@ -107,3 +107,23 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
 export function canManageExpenses(user: EffectiveUser): boolean {
   return user.role === "ADMIN" || user.permissions.includes("backstage.expenses");
 }
+
+/** DevOps lead: may publish the consolidated end-of-day task roll-up. Admins bypass. */
+export function canPublishTaskRollup(user: EffectiveUser): boolean {
+  return user.role === "ADMIN" || user.permissions.includes("tasks.publish");
+}
+
+export function assertCanPublishTaskRollup(user: EffectiveUser): void {
+  if (!canPublishTaskRollup(user)) {
+    throw new ForbiddenError("Task roll-up publish permission required");
+  }
+}
+
+/**
+ * Does this user see every client, or only the ones they're explicitly assigned?
+ * Admins and anyone holding the `seeAllClients` feature flag see all; restricted
+ * developers (preset has the flag off) are scoped to their ClientAssignment rows.
+ */
+export function canSeeAllClients(user: EffectiveUser): boolean {
+  return user.role === "ADMIN" || user.permissions.includes("seeAllClients");
+}

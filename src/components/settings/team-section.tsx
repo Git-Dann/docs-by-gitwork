@@ -19,6 +19,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { useClientList } from "@/hooks/use-proposals";
+import { listMemberClients, setMemberClients } from "@/lib/api";
 import {
   FEATURE_PERMISSIONS,
   MODULE_PERMISSIONS,
@@ -341,6 +343,40 @@ function MemberAccessModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Client assignments — only relevant when "See all clients" is off. Loaded
+  // lazily so the modal opens instantly.
+  const clientsQuery = useClientList();
+  const workspaceClients = clientsQuery.data?.clients ?? [];
+  const [clientIds, setClientIds] = useState<Set<string>>(new Set());
+  const [clientsLoaded, setClientsLoaded] = useState(false);
+  const restrictedToClients = !perms.has("seeAllClients") && role !== "ADMIN";
+
+  useEffect(() => {
+    let cancelled = false;
+    listMemberClients(member.id)
+      .then((rows) => {
+        if (!cancelled) {
+          setClientIds(new Set(rows.map((r) => r.clientId)));
+          setClientsLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setClientsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [member.id]);
+
+  function toggleClient(id: string) {
+    setClientIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   // Two-step delete: first click reveals the confirm strip, second click does it.
   // Prevents accidental removal in the middle of editing permissions.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -375,6 +411,10 @@ function MemberAccessModal({
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? `Save failed (${res.status})`);
+      }
+      // Persist client assignments when this member is scoped to specific clients.
+      if (restrictedToClients) {
+        await setMemberClients(member.id, Array.from(clientIds));
       }
       await onSaved();
     } catch (err) {
@@ -619,6 +659,38 @@ function MemberAccessModal({
             )}
           </div>
         </div>
+
+        {/* Assigned clients — shown when scoped to specific clients (See all clients off). */}
+        {restrictedToClients ? (
+          <div className="border-t border-[var(--border-2)] px-6 py-5">
+            <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Assigned clients</p>
+            <p className="mb-2 text-[11px] text-[var(--text-4)]">
+              With “See all clients” off, this member only sees these clients across Portal and the
+              task board.
+            </p>
+            {clientsQuery.isPending || !clientsLoaded ? (
+              <p className="text-xs text-[var(--text-4)]">Loading clients…</p>
+            ) : workspaceClients.length === 0 ? (
+              <p className="text-xs text-[var(--text-4)]">No clients in the workspace yet.</p>
+            ) : (
+              <div className="grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                {workspaceClients.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex items-center gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={clientIds.has(c.id)}
+                      onChange={() => toggleClient(c.id)}
+                    />
+                    <span className="min-w-0 truncate text-[var(--text-1)]">{c.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {error ? (
           <p className="border-t border-[var(--border-2)] px-6 py-3 text-sm text-[var(--danger-500)]">

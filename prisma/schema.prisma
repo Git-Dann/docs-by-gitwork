@@ -180,6 +180,11 @@ model User {
   leaveRequestsApproved     LeaveRequest[]          @relation("LeaveApprover")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
   expensesReviewed          Expense[]               @relation("ExpenseReviewer")
+  clientAssignments         ClientAssignment[]
+  tasksAssigned             Task[]                  @relation("TaskAssignee")
+  tasksCreated              Task[]                  @relation("TaskCreator")
+  taskComments              TaskComment[]
+  dailyUpdates              DailyUpdate[]
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -281,6 +286,9 @@ model Workspace {
   aiResponseCache          AiResponseCache[]
   leaveRequests            LeaveRequest[]
   expenses                 Expense[]
+  clientAssignments        ClientAssignment[]
+  tasks                    Task[]
+  dailyUpdates             DailyUpdate[]
 }
 
 model WorkspaceMember {
@@ -776,6 +784,8 @@ model WorkspaceClient {
   studies              Study[]
   bankAccount          ClientBankAccount?
   onboarding           ClientOnboarding?
+  assignments          ClientAssignment[]
+  tasks                Task[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -1986,4 +1996,113 @@ model Expense {
   @@index([workspaceId, userId])
   @@index([workspaceId, status])
   @@index([occurredOn])
+}
+
+// ── Tasks (Portal task tracker + daily Slack standups) ─────────────────────
+
+/// Status workflow for the Portal task board. Columns render in this order.
+enum TaskStatus {
+  BACKLOG
+  TODO
+  DOING
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Links a team member to a specific client. Backs the `seeAllClients=off`
+/// feature flag: a developer with this flag off only sees clients they're
+/// assigned to here (Portal, task board, standups). Admins / `seeAllClients`
+/// holders bypass and see every workspace client.
+model ClientAssignment {
+  id          String          @id @default(cuid())
+  workspaceId String
+  clientId    String
+  userId      String
+  createdAt   DateTime        @default(now())
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, userId])
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  workspaceId String
+  clientId    String
+  assigneeId  String?
+  createdById String?
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(BACKLOG)
+  priority    TaskPriority @default(MEDIUM)
+  /// Fractional sort key for drag-ordering within a status column. New cards
+  /// get (max+1); a card dropped between two others gets the midpoint.
+  orderKey    Float        @default(0)
+  dueDate     DateTime?
+  /// Stamped the first time the task enters DOING; drives "started" displays.
+  startedAt   DateTime?
+  /// Stamped when the task enters DONE (cleared if moved back out). Drives the
+  /// standup "Done today" section — a task counts as done-today when
+  /// completedAt falls on the dev's workDate.
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignee  User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  comments  TaskComment[]
+
+  @@index([workspaceId, clientId, status])
+  @@index([assigneeId, status])
+  @@index([clientId, status, orderKey])
+}
+
+/// Free-text notes on a task. A simple append-only thread (mirrors how Care
+/// keeps SupportMessage rows). Author is nullable so notes survive member removal.
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String?
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+}
+
+/// One row per (dev, work day). A thin push-log: the Doing/Done content of the
+/// Slack standup is derived from live Task state at push time, this just records
+/// WHEN each phase was pushed plus the editable Monday "This week" plan + an
+/// optional free note. DevOps reads pmPushedAt across devs to gate the roll-up.
+model DailyUpdate {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  /// UTC midnight of the work day this update covers.
+  workDate    DateTime
+  amPushedAt  DateTime?
+  pmPushedAt  DateTime?
+  /// Monday "This week" section — prefilled from tasks due this ISO week, edited by the dev.
+  weekPlan    String?   @db.Text
+  note        String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workDate])
+  @@index([workspaceId, workDate])
 }
