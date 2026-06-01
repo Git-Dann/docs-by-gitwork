@@ -233,7 +233,10 @@ export function CandidateProfileForm({
             autoComplete="off"
           />
         </Field>
-        <Field label="Hourly rate">
+        {/* Hourly rate + currency share a full row inside this half-section.
+            Half a column wasn't enough room for both the rate input and the
+            ISO-currency dropdown without the input collapsing to a thin slit. */}
+        <Field label="Hourly rate" span="full">
           <div className="flex gap-1.5">
             <input
               type="number"
@@ -261,13 +264,15 @@ export function CandidateProfileForm({
             </select>
           </div>
         </Field>
-        <Field label="Availability">
+        {/* Full-width so "Auto (from placements)" never truncates behind the
+            chevron — the placeholder was getting clipped to "Auto (from placem…". */}
+        <Field label="Availability" span="full">
           <select
             value={value.availability}
             onChange={(event) =>
               patch("availability", event.target.value as CandidateAvailability | "")
             }
-            className="app-select"
+            className="app-select pr-9"
           >
             <option value="">Auto (from placements)</option>
             {(Object.keys(AVAILABILITY_LABELS) as CandidateAvailability[]).map((entry) => (
