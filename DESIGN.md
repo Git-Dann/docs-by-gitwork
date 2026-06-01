@@ -289,6 +289,31 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 
 ---
 
+## Backstage — Team Calendar
+
+Every Backstage tab (Calendar, Leave, Expenses, Approvals) is a full module surface, so each section wears the widget signature like the rest of the platform — **never** bare cards floating on the canvas. All four use one shared shell, `BackstagePanel` (`src/components/backstage/panel.tsx`), which renders a `widget-card` + `widget-header` with the `NN // SECTION NAME` strip. Sections are **numbered per view** (each tab restarts at `01`): Calendar → `01 // TEAM CALENDAR`; Leave → `01 // ALLOWANCE`, `02 // MY LEAVE`; Expenses → `01 // MY EXPENSES`; Approvals → `01 // LEAVE REQUESTS`, `02 // EXPENSES`.
+
+**`team-calendar` (widget shell)**
+- A `BackstagePanel` (`widget-card`: `{colors.surface-raised}` face, `{rounded.lg}` 10px, `1px solid {colors.hairline}` border, `overflow-hidden`, no shadow) headed `01 // TEAM CALENDAR` in `{typography.widget-header}`. Month navigation (`‹ Today ›`) and the **Holidays** toggle live in the header strip as compact `button-secondary` controls.
+- Body padding `{spacing.md}` (16px). The month label is `{typography.heading-5}`; the leave/holiday legend sits inline beside it.
+
+**Stat tiles (Leave allowance)** — Allocated / Used / Pending / Remaining render as editorial stats: figure in DM Serif Display (`{typography.stat-display}`-style, ~32px) over a JetBrains Mono `{typography.data-label}` caption. Remaining uses the `{colors.surface-blue}` accent tile. This serif-figure + mono-label pairing is the platform's data signature — never plain bold sans.
+
+**`calendar-grid`**
+- The weekday header row and the 6×7 day grid render as **one joined card** — a single `{rounded.lg}` bordered container with the weekday strip and grid divided by a hairline, never separated by a gap. (A `space-y` gap between them is a bug — they must read as one instrument face.)
+- Day cells: `min-h-[100px]`, `{colors.surface-raised}` face; out-of-month and weekend cells drop to `{colors.canvas}`. Today's date number sits in a `{colors.primary}` filled circle (one of the few sanctioned `{rounded.full}` uses, alongside status dots).
+
+**Leave pills & holiday chips**
+- Leave bars are colour-coded by type — Annual (`{colors.primary}` family), Sick (`{colors.warning}`), Unpaid (`{colors.steel}`), Other (violet). Half-days render as half-opacity pills. Cap at 3 per cell, then `+N more`.
+- Public/religious holidays show as a small sky-tinted chip with a globe glyph + the country code (e.g. `PK`), titled with the full holiday name.
+
+**Holidays model & toggle**
+- Holiday countries are **workspace-wide** (`Workspace.holidayCountries`, ISO-3166-1 alpha-2; defaults to UK + Pakistan) — everyone sees the same set regardless of where they're based, so PK public + religious days (e.g. Eid) act as client-comms prompts for the whole team.
+- The header **Holidays** dropdown lets each viewer show/hide individual countries (persisted client-side). Country labels come from `Intl.DisplayNames` so new countries need no code — just extend `holidayCountries`.
+- **Timezone rule (gotcha):** `date-holidays` returns dates in each country's *local* timezone. Always derive the calendar date from the library's local date string — never `new Date(h.start).toISOString()`, which rolls the day backwards for any country ahead of UTC (Pakistan +5, UK in BST +1) and renders every holiday one day early.
+
+---
+
 ## Do's and Don'ts
 
 ### Do

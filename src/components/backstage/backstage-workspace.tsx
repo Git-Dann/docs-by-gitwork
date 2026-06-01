@@ -30,22 +30,24 @@ export function BackstageWorkspace() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-1 border-b border-[var(--border-2)]">
-        {tabs.filter((t) => t.visible).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              "px-4 py-2 -mb-px border-b-2 text-sm font-medium transition",
-              tab === t.key
-                ? "border-[var(--brand-600)] text-[var(--brand-800)]"
-                : "border-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="border-b border-[var(--border-2)]">
+        <nav className="-mb-px flex flex-wrap gap-0">
+          {tabs.filter((t) => t.visible).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={cn(
+                "px-4 pb-3 pt-1 text-sm font-semibold transition",
+                tab === t.key
+                  ? "border-b-2 border-[var(--brand-600)] text-[var(--brand-700)]"
+                  : "border-b-2 border-transparent text-[var(--text-3)] hover:text-[var(--text-2)]",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
       <div className="min-h-0">
