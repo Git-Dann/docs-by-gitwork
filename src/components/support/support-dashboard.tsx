@@ -38,12 +38,14 @@ import type {
   Ticket,
   TicketPriority,
   TicketStatus,
+  WorkflowRule,
 } from "@/types/support";
 import {
   useCreateSupportClient,
   useCreateSupportConnection,
   useCreateSupportReport,
   useCreateWorkflowRule,
+  useUpdateWorkflowRule,
   useDeleteConnection,
   useDeleteSupportReport,
   useDeleteWorkflowRule,
@@ -800,40 +802,52 @@ function AddConnectorModal({
   );
 }
 
-// ─── add rule modal ───────────────────────────────────────────────────────────
+// ─── add / edit rule modal ────────────────────────────────────────────────────
 
-function AddRuleModal({
+function RuleModal({
   clientId,
+  rule,
   onClose,
 }: {
   clientId: string;
+  rule?: WorkflowRule | null;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [when, setWhen] = useState("");
-  const [then, setThen] = useState("");
-  const [requiresApproval, setRequiresApproval] = useState(false);
+  const isEdit = Boolean(rule);
+  const [name, setName] = useState(rule?.name ?? "");
+  const [when, setWhen] = useState(rule?.when ?? "");
+  const [then, setThen] = useState(rule?.then ?? "");
+  const [requiresApproval, setRequiresApproval] = useState(rule?.requiresApproval ?? false);
   const [error, setError] = useState<string | null>(null);
   const createRule = useCreateWorkflowRule(clientId);
+  const updateRule = useUpdateWorkflowRule(clientId);
+  const isPending = createRule.isPending || updateRule.isPending;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    createRule.mutate(
-      { name: name.trim(), when: when.trim(), then: then.trim(), requiresApproval },
-      {
+    const data = { name: name.trim(), when: when.trim(), then: then.trim(), requiresApproval };
+    if (isEdit && rule) {
+      updateRule.mutate(
+        { ruleId: rule.id, data },
+        {
+          onSuccess: () => onClose(),
+          onError: (err) => setError(err instanceof Error ? err.message : "Failed to update rule"),
+        },
+      );
+    } else {
+      createRule.mutate(data, {
         onSuccess: () => onClose(),
         onError: (err) => setError(err instanceof Error ? err.message : "Failed to create rule"),
-      },
-    );
+      });
+    }
   }
 
   return (
-    <CareModal title="Add workflow rule" onClose={onClose} wide>
+    <CareModal title={isEdit ? "Edit workflow rule" : "Add workflow rule"} onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-[var(--text-3)]">
-          Rules describe conditions and actions in plain language. The AI reads these when processing
-          inbound messages and applies them automatically.
+          Rules are read by the AI when processing inbound messages. Write conditions and actions in plain language.
         </p>
 
         <label className="block space-y-1.5">
@@ -881,7 +895,7 @@ function AddRuleModal({
           <div>
             <p className="text-sm font-medium text-[var(--text-1)]">Require approval before executing</p>
             <p className="text-xs text-[var(--text-4)]">
-              The AI will draft the action but wait for a team member to approve it.
+              The AI will draft the action but wait for a team member to approve it before it runs.
             </p>
           </div>
         </label>
@@ -900,15 +914,19 @@ function AddRuleModal({
             type="submit"
             variant="primary"
             size="sm"
-            disabled={createRule.isPending || !name.trim() || !when.trim() || !then.trim()}
-            loading={createRule.isPending}
+            disabled={isPending || !name.trim() || !when.trim() || !then.trim()}
+            loading={isPending}
           >
-            {createRule.isPending ? "Saving…" : "Save rule"}
+            {isPending ? "Saving…" : isEdit ? "Update rule" : "Save rule"}
           </Button>
         </div>
       </form>
     </CareModal>
   );
+}
+
+function AddRuleModal({ clientId, onClose }: { clientId: string; onClose: () => void }) {
+  return <RuleModal clientId={clientId} onClose={onClose} />;
 }
 
 // ─── inbox view ──────────────────────────────────────────────────────────────
@@ -2546,12 +2564,16 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       );
                     })()}
                     {sr && (
-                      <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : "text-emerald-600")}>
+                      <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : (sr.ingested ?? 0) > 0 ? "text-emerald-600" : "text-[var(--text-4)]")}>
                         {sr.errors.length > 0
                           ? `Error: ${sr.errors[0]}`
-                          : (sr.ingested ?? 0) === 0
-                            ? "Synced — no new items since last sync"
-                            : `Synced — ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered`}
+                          : (sr.ingested ?? 0) > 0
+                            ? `Synced — ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered`
+                            : sr.fetched !== undefined
+                              ? sr.fetched === 0
+                                ? "0 messages found — check your query or Re-sync history"
+                                : `${sr.fetched} found, 0 new conversations`
+                              : "No new items since last sync"}
                       </p>
                     )}
                   </div>
@@ -3073,15 +3095,11 @@ function AgentsView({ clientId }: { clientId: string }) {
 
 function SettingsView({ clientId }: { clientId: string }) {
   const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
-  const { data: logsData, isLoading: logsLoading } = useSupportAuditLogs(clientId);
   const { data: clientData } = useSupportClients();
   const deleteRule = useDeleteWorkflowRule(clientId);
   const seedRules = useSeedDefaultRules(clientId);
   const updateClient = useUpdateSupportClient(clientId);
   const { data: portalClientsData } = useClientList();
-  const { data: session } = useSession();
-  const userName = session?.user?.name ?? "You";
-  const userEmail = session?.user?.email ?? "";
 
   const thisClient = (clientData?.clients ?? []).find((c) => c.id === clientId);
   const [linkedPortalId, setLinkedPortalId] = useState(thisClient?.workspaceClientId ?? "");
@@ -3094,9 +3112,9 @@ function SettingsView({ clientId }: { clientId: string }) {
   const portalClients = portalClientsData?.clients ?? [];
 
   const [showAddRule, setShowAddRule] = useState(false);
+  const [editingRule, setEditingRule] = useState<WorkflowRule | null>(null);
 
   const rules = rulesData?.rules ?? [];
-  const logs = logsData?.logs ?? [];
 
   return (
     <div className="space-y-6">
@@ -3121,7 +3139,7 @@ function SettingsView({ clientId }: { clientId: string }) {
               <select
                 value={linkedPortalId}
                 onChange={(e) => setLinkedPortalId(e.target.value)}
-                className="flex-1 h-9 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+                className="app-select flex-1"
               >
                 <option value="">— Not linked —</option>
                 {portalClients.map((c) => (
@@ -3146,14 +3164,18 @@ function SettingsView({ clientId }: { clientId: string }) {
       {/* workflow rules */}
       <section>
         <div className="app-card overflow-hidden p-0">
-          {/* widget header */}
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
               01 // WORKFLOW RULES
             </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-              {rules.length}
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowAddRule(true)}
+              className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+            >
+              <PlusIcon className="h-3 w-3" />
+              Add rule
+            </button>
           </div>
           {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
           {!rulesLoading && rules.length === 0 && (
@@ -3184,18 +3206,27 @@ function SettingsView({ clientId }: { clientId: string }) {
                   <p className="mt-0.5 text-xs text-[var(--text-3)]">
                     <span className="font-medium">Then:</span> {rule.then}
                   </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
                   {rule.requiresApproval && (
-                    <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                    <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-amber-600">
                       Requires approval
-                    </span>
+                    </p>
                   )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingRule(rule)}
+                    className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
+                    title="Edit rule"
+                  >
+                    <PencilSquareIcon className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => deleteRule.mutate(rule.id)}
                     disabled={deleteRule.isPending}
                     className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                    title="Delete rule"
                   >
                     <TrashIcon className="h-3.5 w-3.5" />
                   </button>
@@ -3204,89 +3235,13 @@ function SettingsView({ clientId }: { clientId: string }) {
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddRule(true)}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
-        >
-          <PlusIcon className="h-4 w-4" />
-          Add rule
-        </button>
         {showAddRule && (
-          <AddRuleModal clientId={clientId} onClose={() => setShowAddRule(false)} />
+          <RuleModal clientId={clientId} onClose={() => setShowAddRule(false)} />
+        )}
+        {editingRule && (
+          <RuleModal clientId={clientId} rule={editingRule} onClose={() => setEditingRule(null)} />
         )}
       </section>
-
-      {/* team */}
-      <section>
-        <div className="app-card overflow-hidden p-0">
-          {/* widget header */}
-          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-              02 // TEAM ACCESS
-            </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-              AUTH PENDING
-            </span>
-          </div>
-          <div className="flex items-center justify-between px-5 py-3.5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mist)] text-sm font-semibold text-[var(--brand-700)]">
-                {userName.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-[var(--text-1)]">
-                  {userName}
-                  <span className="ml-1.5 text-[11px] text-[var(--text-4)]">(you)</span>
-                </p>
-                <p className="text-xs text-[var(--text-4)]">{userEmail}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="rounded-md border border-[var(--mist-border)] bg-[var(--mist)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)]">
-                Admin
-              </span>
-              <span className="rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-3)]">
-                Owner
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* audit log */}
-      {(logsLoading || logs.length > 0) && (
-        <section>
-          <div className="app-card overflow-hidden p-0">
-            {/* widget header */}
-            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-                03 // AUDIT LOG
-              </span>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-                {logs.length}
-              </span>
-            </div>
-            {logsLoading && <div className="h-16 animate-pulse bg-[var(--surface-1)]" />}
-            {logs.map((log, idx) => (
-              <div
-                key={log.id}
-                className={cn("px-5 py-3.5", idx > 0 && "border-t border-[var(--border-2)]")}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm text-[var(--text-2)]">
-                    <span className="font-medium">{log.actor}</span> {log.action}
-                  </p>
-                  <span className="shrink-0 text-[11px] text-[var(--text-4)]">
-                    {formatShort(log.createdAt)}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs text-[var(--text-4)]">{log.target}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

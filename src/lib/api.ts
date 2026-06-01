@@ -1450,6 +1450,17 @@ export async function createSupportWorkflowRule(
   });
 }
 
+export async function updateSupportWorkflowRule(
+  clientId: string,
+  ruleId: string,
+  data: Partial<WorkflowRule>,
+): Promise<{ rule: WorkflowRule }> {
+  return apiFetch(`/api/support/clients/${clientId}/workflow-rules/${ruleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteSupportWorkflowRule(
   clientId: string,
   ruleId: string,

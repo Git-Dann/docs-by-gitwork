@@ -6,6 +6,7 @@ import {
   createSupportConnection,
   createSupportReport,
   createSupportWorkflowRule,
+  updateSupportWorkflowRule,
   deleteSupportConnection,
   deleteSupportReport,
   deleteSupportTicket,
@@ -265,6 +266,17 @@ export function useDeleteWorkflowRule(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ruleId: string) => deleteSupportWorkflowRule(clientId as string, ruleId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "rules", clientId] });
+    },
+  });
+}
+
+export function useUpdateWorkflowRule(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ruleId, data }: { ruleId: string; data: Partial<WorkflowRule> }) =>
+      updateSupportWorkflowRule(clientId as string, ruleId, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "rules", clientId] });
     },
