@@ -60,6 +60,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? { allocationPercent: body.allocationPercent }
           : {}),
         ...(body.notes !== undefined ? { notes: body.notes } : {}),
+        ...(body.clientPlatformId !== undefined
+          ? { clientPlatformId: body.clientPlatformId }
+          : {}),
+        ...(body.repoPaths !== undefined ? { repoPaths: body.repoPaths } : {}),
+        ...(body.repoBranch !== undefined ? { repoBranch: body.repoBranch ?? null } : {}),
       },
     });
 

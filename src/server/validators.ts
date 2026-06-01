@@ -451,6 +451,18 @@ export const supportClientCreateSchema = z.object({
   workspaceClientId: z.string().cuid().optional(),
 });
 
+// Optional repo-scope inputs shared by create + update. When the placement is
+// linked to a ClientPlatform, these define what part of that platform's repo
+// the dev is responsible for, for the scoped GitHub validation scan.
+const placementRepoScopeFields = {
+  clientPlatformId: z.string().cuid().nullable().optional(),
+  repoPaths: z.array(z.string().trim().min(1)).max(20).optional(),
+  repoBranch: z
+    .union([z.string().trim().min(1), z.literal(""), z.null()])
+    .optional()
+    .transform((value) => (value === "" || value === undefined ? undefined : value)),
+};
+
 export const placementCreateSchema = z.object({
   clientId: z.string().cuid().optional(),
   clientName: requiredTrimmedString,
@@ -460,6 +472,7 @@ export const placementCreateSchema = z.object({
   // Daily allocation. Defaults to 100 (= full day). 50 = half-day.
   allocationPercent: z.coerce.number().int().min(1).max(100).optional(),
   notes: optionalTrimmedString,
+  ...placementRepoScopeFields,
 });
 
 // Update an existing placement. Superset of fields — iOS "schedule off"
@@ -474,6 +487,7 @@ export const placementUpdateSchema = z
     endDate: z.coerce.date().nullable().optional(),
     allocationPercent: z.coerce.number().int().min(1).max(100).optional(),
     notes: optionalTrimmedString,
+    ...placementRepoScopeFields,
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one placement field is required.",

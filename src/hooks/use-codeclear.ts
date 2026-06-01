@@ -15,6 +15,7 @@ import {
   listCodeClearGitHubRuns,
   listTechStacks,
   runCodeClearGitHubAnalysis,
+  runPlacementValidation,
   setCandidateCurrentClient,
   setCandidateCurrentClients,
   updatePlacement,
@@ -230,6 +231,21 @@ export function useDeletePlacement(candidateId: string | null) {
   return useMutation({
     mutationFn: (placementId: string) =>
       deletePlacement(candidateId as string, placementId),
+    onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
+  });
+}
+
+/**
+ * Trigger the per-engagement scoped GitHub validation scan. Same
+ * invalidation surface as other placement mutations so the new run +
+ * checks light up on the profile/portal pages immediately.
+ */
+export function useRunPlacementValidation(candidateId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (placementId: string) =>
+      runPlacementValidation(candidateId as string, placementId),
     onSuccess: () => invalidatePlacementSurfaces(queryClient, candidateId),
   });
 }

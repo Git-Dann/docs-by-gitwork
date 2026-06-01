@@ -189,6 +189,11 @@ export function normalizeGitHubAnalysisRun(run: {
   candidateId: string;
   status: GitHubAnalysisRunRecord["status"];
   triggerSource: GitHubAnalysisRunRecord["triggerSource"];
+  scope?: GitHubAnalysisRunRecord["scope"];
+  placementId?: string | null;
+  scopedRepoUrl?: string | null;
+  scopedRepoPaths?: string[];
+  scopedRepoBranch?: string | null;
   analysisVersion: string;
   startedAt: Date | string;
   completedAt: Date | string | null;
@@ -207,6 +212,11 @@ export function normalizeGitHubAnalysisRun(run: {
 }): GitHubAnalysisRunRecord {
   return {
     ...run,
+    scope: run.scope ?? "PROFILE",
+    placementId: run.placementId ?? null,
+    scopedRepoUrl: run.scopedRepoUrl ?? null,
+    scopedRepoPaths: run.scopedRepoPaths ?? [],
+    scopedRepoBranch: run.scopedRepoBranch ?? null,
     startedAt: toIsoString(run.startedAt)!,
     completedAt: toIsoString(run.completedAt),
     profileSnapshot: isRecord(run.profileSnapshot)
@@ -273,7 +283,10 @@ export const codeClearDetailInclude = {
   score: true,
   scoreDraft: true,
   placements: {
-    include: { client: { select: { id: true, name: true, slug: true } } },
+    include: {
+      client: { select: { id: true, name: true, slug: true } },
+      clientPlatform: { select: { id: true, name: true, repoUrl: true } },
+    },
     orderBy: {
       startDate: "desc",
     },
@@ -462,6 +475,13 @@ export function serializeCandidateDetails(
       endDate: toIsoString(placement.endDate),
       allocationPercent: placement.allocationPercent,
       notes: placement.notes ?? null,
+      clientPlatformId: placement.clientPlatformId ?? null,
+      clientPlatformName: placement.clientPlatform?.name ?? null,
+      clientPlatformRepoUrl: placement.clientPlatform?.repoUrl ?? null,
+      repoPaths: placement.repoPaths,
+      repoBranch: placement.repoBranch ?? null,
+      lastScopedScanAt: toIsoString(placement.lastScopedScanAt),
+      lastScopedScanRunId: placement.lastScopedScanRunId ?? null,
       createdAt: placement.createdAt.toISOString(),
       updatedAt: placement.updatedAt.toISOString(),
     })),

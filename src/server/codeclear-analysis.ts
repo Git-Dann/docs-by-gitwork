@@ -553,3 +553,287 @@ export function buildChecksFromAnalysis(args: {
 
   return checks;
 }
+
+// ─── Scoped repo analysis ─────────────────────────────────────────────────────
+
+/**
+ * Parse a GitHub repo URL into { owner, repo }. Accepts:
+ *   - https://github.com/owner/repo
+ *   - https://github.com/owner/repo.git
+ *   - git@github.com:owner/repo.git
+ *   - owner/repo (already an identifier)
+ */
+export function parseGitHubRepo(input: string): { owner: string; repo: string } | null {
+  if (!input) return null;
+  const trimmed = input.trim().replace(/\.git$/, "");
+
+  // owner/repo shorthand
+  if (/^[a-zA-Z0-9][\w.-]*\/[a-zA-Z0-9][\w.-]*$/.test(trimmed)) {
+    const [owner, repo] = trimmed.split("/");
+    return { owner, repo };
+  }
+
+  // SSH form
+  const sshMatch = trimmed.match(/^git@github\.com:([^/]+)\/(.+)$/);
+  if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
+
+  // HTTPS form
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname.endsWith("github.com")) {
+      const parts = url.pathname.replace(/^\//, "").split("/");
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return { owner: parts[0], repo: parts[1] };
+      }
+    }
+  } catch {
+    // not a URL, fall through
+  }
+
+  return null;
+}
+
+interface ScopedCommitFile {
+  filename: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+}
+
+interface ScopedCommitResponse {
+  sha: string;
+  commit: {
+    author: { name: string; email: string; date: string } | null;
+    message: string;
+  };
+  author: { login: string } | null;
+  files?: ScopedCommitFile[];
+}
+
+export interface ScopedRepoAnalysis {
+  /** Repo we scanned. */
+  owner: string;
+  repo: string;
+  /** Paths the dev was responsible for. Empty array = whole repo. */
+  paths: string[];
+  branch: string | null;
+  /** Total commits authored by this user touching the scoped paths in the
+   *  last RECENT_ACTIVITY_WINDOW_DAYS. */
+  commitCount: number;
+  /** Commits with at least one file in the scoped paths (after filtering). */
+  scopedCommitCount: number;
+  /** Unique files touched in the scoped paths. */
+  uniqueFiles: number;
+  /** Total lines added / removed across the sampled commits. */
+  additions: number;
+  deletions: number;
+  /** ISO timestamp of the most recent matching commit. */
+  lastCommitAt: string | null;
+  /** Sample (most recent N) of the commits we evaluated, for the audit trail. */
+  sample: Array<{ sha: string; date: string; message: string; filesTouched: number }>;
+}
+
+const SAMPLE_LIMIT = 30;
+
+function matchesPath(filename: string, paths: string[]): boolean {
+  if (paths.length === 0) return true;
+  return paths.some((entry) => {
+    const cleaned = entry.replace(/^\.\//, "").replace(/^\/+/, "");
+    if (!cleaned) return true;
+    // Prefix match: "apps/web" matches "apps/web/anything"
+    // Also handle a trailing slash in the path or a trailing /** glob
+    const normalised = cleaned.replace(/\/\*\*?$/, "").replace(/\/$/, "");
+    return filename === normalised || filename.startsWith(`${normalised}/`);
+  });
+}
+
+/**
+ * Scan a specific repo for commits authored by `handle`, optionally filtered
+ * to a set of paths and a branch. Used by the per-engagement validation
+ * scan triggered from a Placement.
+ *
+ * This is a real GitHub API call — uses GITHUB_TOKEN if set. Without a
+ * token the API rate-limits at 60 req/h, so private repos will fail and
+ * busy workspaces will hit limits. The endpoint surfaces a clear error
+ * in that case so the UI can prompt for a token.
+ */
+export async function analyzeGitHubRepoScope(args: {
+  handle: string;
+  repoUrl: string;
+  paths: string[];
+  branch?: string | null;
+}): Promise<ScopedRepoAnalysis> {
+  const parsed = parseGitHubRepo(args.repoUrl);
+  if (!parsed) {
+    throw new GitHubAnalysisError(
+      "GITHUB_BAD_REPO_URL",
+      `Could not parse GitHub repo URL: ${args.repoUrl}`,
+    );
+  }
+  const { owner, repo } = parsed;
+  const paths = args.paths.filter((p) => p.trim().length > 0);
+  const branch = args.branch?.trim() || null;
+
+  // GitHub's /commits endpoint supports ?author=<login>&path=<single path>.
+  // For multiple paths we'd need multiple requests; for simplicity we ask
+  // for everything authored by this user and filter client-side. Capped to
+  // SAMPLE_LIMIT to keep the request small.
+  const params = new URLSearchParams({ author: args.handle, per_page: String(SAMPLE_LIMIT) });
+  if (branch) params.set("sha", branch);
+  // If exactly one path is provided, narrow server-side too.
+  if (paths.length === 1) params.set("path", paths[0]);
+
+  const commits = await githubRequest<ScopedCommitResponse[]>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?${params.toString()}`,
+  );
+
+  // For each commit, fetch the file list and filter against paths.
+  // We avoid fetching commit details if no path filter is needed.
+  let scopedCommitCount = 0;
+  const uniqueFiles = new Set<string>();
+  let additions = 0;
+  let deletions = 0;
+  let lastCommitAt: string | null = null;
+  const sample: ScopedRepoAnalysis["sample"] = [];
+
+  for (const commit of commits) {
+    const date = commit.commit.author?.date ?? null;
+    if (date && (!lastCommitAt || new Date(date) > new Date(lastCommitAt))) {
+      lastCommitAt = date;
+    }
+
+    // If no path filter, every commit counts.
+    if (paths.length === 0) {
+      scopedCommitCount += 1;
+      sample.push({
+        sha: commit.sha,
+        date: date ?? "",
+        message: commit.commit.message.split("\n")[0],
+        filesTouched: 0,
+      });
+      continue;
+    }
+
+    // Fetch commit detail for the file list. Errors here are non-fatal —
+    // we just skip the commit if we can't read its files.
+    try {
+      const detail = await githubRequest<ScopedCommitResponse>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${commit.sha}`,
+      );
+      const files = detail.files ?? [];
+      const matchingFiles = files.filter((file) => matchesPath(file.filename, paths));
+      if (matchingFiles.length === 0) continue;
+      scopedCommitCount += 1;
+      for (const file of matchingFiles) {
+        uniqueFiles.add(file.filename);
+        additions += file.additions ?? 0;
+        deletions += file.deletions ?? 0;
+      }
+      sample.push({
+        sha: commit.sha,
+        date: date ?? "",
+        message: commit.commit.message.split("\n")[0],
+        filesTouched: matchingFiles.length,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    owner,
+    repo,
+    paths,
+    branch,
+    commitCount: commits.length,
+    scopedCommitCount,
+    uniqueFiles: uniqueFiles.size,
+    additions,
+    deletions,
+    lastCommitAt,
+    sample,
+  };
+}
+
+/**
+ * Translate a ScopedRepoAnalysis into CodeClearCheck rows for the per-placement
+ * validation pane. Keeps the same PASS/WARN/FAIL semantics as the profile-scoped
+ * checks but with engagement-specific categories.
+ */
+export function buildChecksFromScopedAnalysis(
+  analysis: ScopedRepoAnalysis,
+): Array<{
+  category: string;
+  checkKey: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+  detail: string | null;
+  weight: number;
+  sortOrder: number;
+}> {
+  const band = (
+    value: number,
+    pass: number,
+    warn: number,
+  ): "PASS" | "WARN" | "FAIL" => (value >= pass ? "PASS" : value >= warn ? "WARN" : "FAIL");
+
+  const daysSinceLast = analysis.lastCommitAt
+    ? Math.floor(
+        (Date.now() - new Date(analysis.lastCommitAt).getTime()) / (1000 * 60 * 60 * 24),
+      )
+    : null;
+
+  const scopeLabel =
+    analysis.paths.length === 0
+      ? "whole repo"
+      : `${analysis.paths.length} path${analysis.paths.length === 1 ? "" : "s"}`;
+
+  return [
+    {
+      category: "Engagement Activity",
+      checkKey: "scoped_commit_count",
+      label: "Commits in scope",
+      status: band(analysis.scopedCommitCount, 5, 1),
+      detail: `${analysis.scopedCommitCount} commits in ${scopeLabel} (sample of ${analysis.commitCount} recent commits).`,
+      weight: 2,
+      sortOrder: 10,
+    },
+    {
+      category: "Engagement Activity",
+      checkKey: "scoped_recency",
+      label: "Recent activity",
+      status:
+        daysSinceLast === null
+          ? "FAIL"
+          : daysSinceLast <= 14
+            ? "PASS"
+            : daysSinceLast <= 60
+              ? "WARN"
+              : "FAIL",
+      detail:
+        daysSinceLast === null
+          ? "No matching commits found."
+          : `Last in-scope commit was ${daysSinceLast} day${daysSinceLast === 1 ? "" : "s"} ago.`,
+      weight: 1,
+      sortOrder: 11,
+    },
+    {
+      category: "Engagement Activity",
+      checkKey: "scoped_file_breadth",
+      label: "Files touched",
+      status: band(analysis.uniqueFiles, 8, 2),
+      detail: `${analysis.uniqueFiles} unique files modified in scope.`,
+      weight: 1,
+      sortOrder: 12,
+    },
+    {
+      category: "Engagement Activity",
+      checkKey: "scoped_volume",
+      label: "Change volume",
+      status: band(analysis.additions + analysis.deletions, 200, 30),
+      detail: `+${analysis.additions} / -${analysis.deletions} lines in scope.`,
+      weight: 1,
+      sortOrder: 13,
+    },
+  ];
+}

@@ -18,7 +18,9 @@ export type IdentityConfidence = "HIGH" | "MEDIUM" | "LOW" | "PENDING";
 
 export type GitHubAnalysisStatus = "RUNNING" | "COMPLETED" | "FAILED";
 
-export type GitHubAnalysisTriggerSource = "MANUAL";
+export type GitHubAnalysisTriggerSource = "MANUAL" | "PLACEMENT";
+
+export type GitHubAnalysisScope = "PROFILE" | "REPO";
 
 export type CandidateSignalSource =
   | "GITHUB"
@@ -211,6 +213,15 @@ export interface GitHubAnalysisRunRecord {
   candidateId: string;
   status: GitHubAnalysisStatus;
   triggerSource: GitHubAnalysisTriggerSource;
+  scope: GitHubAnalysisScope;
+  /** When scope=REPO, the placement this scan was scoped to. */
+  placementId: string | null;
+  /** Snapshot of the repo URL that was scanned (audit-safe even if the client
+   *  later changes their platform.repoUrl). */
+  scopedRepoUrl: string | null;
+  /** Snapshot of the paths filter at scan time. Empty array = whole repo. */
+  scopedRepoPaths: string[];
+  scopedRepoBranch: string | null;
   analysisVersion: string;
   startedAt: string;
   completedAt: string | null;
@@ -239,6 +250,17 @@ export interface CodeClearPlacementRecord {
   /** Daily allocation 1–100. 100 = full day. */
   allocationPercent: number;
   notes: string | null;
+  /** When set, the platform (web/iOS/etc.) this dev is working on. The
+   *  platform's repoUrl is what the scoped GitHub scan targets. */
+  clientPlatformId: string | null;
+  clientPlatformName: string | null;
+  clientPlatformRepoUrl: string | null;
+  /** Directory ownership inside the platform repo. Empty = whole repo. */
+  repoPaths: string[];
+  repoBranch: string | null;
+  /** Last time a scoped scan completed for this placement. */
+  lastScopedScanAt: string | null;
+  lastScopedScanRunId: string | null;
   createdAt: string;
   updatedAt: string;
 }
