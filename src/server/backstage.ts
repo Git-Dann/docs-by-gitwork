@@ -19,6 +19,9 @@ import type {
   StaffingAlert,
   StaffingAlertsResponse,
   BackstageMember,
+  CalendarMonth,
+  CalendarDay,
+  CalendarLeaveBar,
   LeaveType,
   LeaveStatus,
   ExpenseStatus,
@@ -957,4 +960,161 @@ export async function setBackstageApprover(
     where: { id: member.id },
     data: { permissions: next },
   });
+}
+
+// ─── Calendar (Timetastic-style month grid) ──────────────────────────────
+
+// Returns a fully-baked 6×7 grid for the given month, with approved-leave
+// bars per cell and a deduplicated holiday list per cell (resolved from each
+// workspace member's countryCode). One round-trip per month view — same
+// payload will power a future iOS month widget.
+export async function getCalendarMonth(
+  user: EffectiveUser,
+  year: number,
+  month: number, // 1–12
+): Promise<CalendarMonth> {
+  await ensureBaseRecords();
+
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new Error("year out of range");
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    throw new Error("month out of range");
+  }
+
+  // Build a Monday-first 6-week grid (42 days) fully containing the target month.
+  const firstOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const dayOfWeek = firstOfMonth.getUTCDay(); // 0=Sun … 6=Sat
+  const mondayOffset = (dayOfWeek + 6) % 7; // Mon=0, Tue=1, …, Sun=6
+  const gridStart = new Date(firstOfMonth);
+  gridStart.setUTCDate(firstOfMonth.getUTCDate() - mondayOffset);
+
+  const gridEnd = new Date(gridStart);
+  gridEnd.setUTCDate(gridStart.getUTCDate() + 6 * 7 - 1); // 42 days inclusive
+  gridEnd.setUTCHours(23, 59, 59, 999);
+
+  const now = new Date();
+  const todayIso = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  const [members, leave] = await Promise.all([
+    prisma.workspaceMember.findMany({
+      where: { workspaceId: user.workspaceId },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+      orderBy: { user: { name: "asc" } },
+    }),
+    prisma.leaveRequest.findMany({
+      where: {
+        workspaceId: user.workspaceId,
+        status: "APPROVED",
+        startDate: { lte: gridEnd },
+        endDate: { gte: gridStart },
+      },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    }),
+  ]);
+
+  // Holidays: compute once per country present in the workspace, index by ISO date.
+  const countries = Array.from(new Set(members.map((m) => m.countryCode)));
+  const holidayByDate = new Map<string, ReturnType<typeof getHolidaysForCountry>>();
+  for (const cc of countries) {
+    const hols = getHolidaysForCountry(cc, gridStart, gridEnd);
+    for (const h of hols) {
+      const list = holidayByDate.get(h.date) ?? [];
+      if (!list.some((x) => x.country === h.country && x.name === h.name)) {
+        list.push(h);
+      }
+      holidayByDate.set(h.date, list);
+    }
+  }
+
+  // Build cells.
+  const weeks: CalendarDay[][] = [];
+  for (let w = 0; w < 6; w++) {
+    const row: CalendarDay[] = [];
+    for (let d = 0; d < 7; d++) {
+      const cellDate = new Date(gridStart);
+      cellDate.setUTCDate(gridStart.getUTCDate() + w * 7 + d);
+      const iso = cellDate.toISOString().slice(0, 10);
+
+      const cellLeave: CalendarLeaveBar[] = [];
+      for (const lr of leave) {
+        const lrStart = new Date(
+          Date.UTC(
+            lr.startDate.getUTCFullYear(),
+            lr.startDate.getUTCMonth(),
+            lr.startDate.getUTCDate(),
+          ),
+        );
+        const lrEnd = new Date(
+          Date.UTC(
+            lr.endDate.getUTCFullYear(),
+            lr.endDate.getUTCMonth(),
+            lr.endDate.getUTCDate(),
+          ),
+        );
+        if (cellDate < lrStart || cellDate > lrEnd) continue;
+
+        const isStartOfLeave = cellDate.getTime() === lrStart.getTime();
+        const isEndOfLeave = cellDate.getTime() === lrEnd.getTime();
+        const isHalfDayHere =
+          (isStartOfLeave && lr.halfDayStart) || (isEndOfLeave && lr.halfDayEnd);
+
+        cellLeave.push({
+          leaveRequestId: lr.id,
+          userId: lr.user.id,
+          userName: lr.user.name?.trim() ? lr.user.name : lr.user.email,
+          type: lr.type as LeaveType,
+          halfDayStart: lr.halfDayStart,
+          halfDayEnd: lr.halfDayEnd,
+          isStartOfLeave,
+          isEndOfLeave,
+          isHalfDayHere,
+        });
+      }
+      cellLeave.sort((a, b) => a.userName.localeCompare(b.userName));
+
+      const dow = cellDate.getUTCDay();
+      row.push({
+        date: iso,
+        isCurrentMonth: cellDate.getUTCMonth() === month - 1,
+        isToday: iso === todayIso,
+        isWeekend: dow === 0 || dow === 6,
+        holidays: holidayByDate.get(iso) ?? [],
+        leave: cellLeave,
+      });
+    }
+    weeks.push(row);
+  }
+
+  // Legend members: anyone with a leave bar this month. Fall back to ALL
+  // workspace members when the month is empty so the legend isn't blank.
+  const idsInMonth = new Set<string>();
+  weeks
+    .flat()
+    .forEach((day) => day.leave.forEach((lb) => idsInMonth.add(lb.userId)));
+  const legendSource =
+    idsInMonth.size === 0
+      ? members
+      : members.filter((m) => idsInMonth.has(m.user.id));
+  const legendMembers: BackstageMember[] = legendSource.map((m) => ({
+    id: m.user.id,
+    name: m.user.name?.trim() ? m.user.name : m.user.email,
+    email: m.user.email,
+    avatarUrl: m.user.avatarUrl,
+    role: m.role,
+    countryCode: m.countryCode,
+  }));
+
+  return {
+    year,
+    month,
+    weeks,
+    members: legendMembers,
+  };
 }

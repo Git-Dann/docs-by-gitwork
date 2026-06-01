@@ -1581,6 +1581,7 @@ export async function generateMeetingSummary(data: {
 
 import type {
   BackstageMember,
+  CalendarMonth,
   ExpenseDTO,
   LeaveAllowanceDTO,
   LeaveRequestDTO,
@@ -1724,5 +1725,9 @@ export async function setBackstageMemberPermission(
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? `Request failed: ${res.status}`);
   }
+}
+
+export function getBackstageCalendar(year: number, month: number): Promise<CalendarMonth> {
+  return apiFetch(`/api/backstage/calendar?year=${year}&month=${month}`);
 }
 

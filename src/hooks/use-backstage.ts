@@ -8,6 +8,7 @@ import {
   createBackstageLeave,
   getBackstageAlerts,
   getBackstageAllowance,
+  getBackstageCalendar,
   listBackstageExpenses,
   listBackstageLeave,
   listBackstageTeam,
@@ -27,6 +28,8 @@ const QK = {
   allowance: (userId?: string) => ["backstage", "allowance", userId ?? "me"] as const,
   alerts: ["backstage", "alerts"] as const,
   team: ["backstage", "team"] as const,
+  calendar: (year: number, month: number) =>
+    ["backstage", "calendar", year, month] as const,
 };
 
 // ─── Leave ─────────────────────────────────────────────────────────────────
@@ -174,5 +177,13 @@ export function useSetMemberPermission() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["backstage", "team"] });
     },
+  });
+}
+
+export function useBackstageCalendar(year: number, month: number) {
+  return useQuery({
+    queryKey: QK.calendar(year, month),
+    queryFn: () => getBackstageCalendar(year, month),
+    staleTime: 60_000,
   });
 }
