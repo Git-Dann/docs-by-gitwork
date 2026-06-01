@@ -9,12 +9,10 @@ import {
   ExclamationTriangleIcon,
   PencilSquareIcon,
   PlayCircleIcon,
-  PlusIcon,
   SparklesIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
 import { cn, formatDate } from "@/lib/format";
 import { statusLabel } from "@/types/codeclear";
@@ -114,20 +112,8 @@ export function CodeClearOverview() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <CodeClearTabs />
-        <div className="flex items-center gap-2">
-          <Link href="/app/codeclear/pipeline">
-            <Button type="button" variant="secondary" size="sm" trailingIcon={<ArrowRightIcon className="h-3.5 w-3.5" />}>
-              Open pipeline
-            </Button>
-          </Link>
-          <Link href="/app/codeclear/candidates">
-            <Button type="button" variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
-              Add candidate
-            </Button>
-          </Link>
-        </div>
       </div>
 
       {/* Alerts (kept above the bento — operational signal) */}
@@ -140,7 +126,7 @@ export function CodeClearOverview() {
             >
               <BeakerIcon className="h-4 w-4 shrink-0 text-amber-600" />
               <p className="text-sm font-semibold text-amber-700">
-                {neverScanned} candidate{neverScanned > 1 ? "s" : ""} still need source validation
+                {neverScanned} developer{neverScanned > 1 ? "s" : ""} still need source validation
                 <span className="ml-1.5 font-normal text-amber-600">— go to pipeline to request more signal</span>
               </p>
               <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-amber-500" />
@@ -168,7 +154,7 @@ export function CodeClearOverview() {
           number="01"
           name="ROSTER"
           value={String(stats?.total ?? 0)}
-          unit="CANDIDATES"
+          unit="DEVELOPERS"
           caption="Across all pipeline stages"
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
