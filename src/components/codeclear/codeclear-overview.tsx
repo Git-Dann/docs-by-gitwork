@@ -1,90 +1,19 @@
 "use client";
 
 import {
-  ArrowPathIcon,
   ArrowRightIcon,
   BeakerIcon,
-  CheckCircleIcon,
   ClockIcon,
-  ExclamationTriangleIcon,
-  PencilSquareIcon,
-  PlayCircleIcon,
-  SparklesIcon,
-  UserPlusIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
-import { cn, formatDate } from "@/lib/format";
+import { cn } from "@/lib/format";
 import { statusLabel } from "@/types/codeclear";
 import {
   CodeClearStatusBadge,
   CodeClearTabs,
   WidgetCard,
 } from "@/components/codeclear/codeclear-shared";
-
-// Human-readable labels for activity event types
-const EVENT_META: Record<string, { label: string; icon: typeof SparklesIcon; tone: string }> = {
-  SOURCED: {
-    label: "Developer added to pipeline",
-    icon: UserPlusIcon,
-    tone: "text-sky-600 bg-sky-50 border-sky-200",
-  },
-  STATUS_CHANGE: {
-    label: "Pipeline stage updated",
-    icon: ArrowPathIcon,
-    tone: "text-slate-600 bg-slate-50 border-slate-200",
-  },
-  RECHECK_FLAGGED: {
-    label: "Flagged for re-check",
-    icon: ClockIcon,
-    tone: "text-amber-600 bg-amber-50 border-amber-200",
-  },
-  GITHUB_ANALYSIS_STARTED: {
-    label: "GitHub scan started",
-    icon: PlayCircleIcon,
-    tone: "text-sky-600 bg-sky-50 border-sky-200",
-  },
-  GITHUB_ANALYSIS_COMPLETED: {
-    label: "GitHub scan completed",
-    icon: CheckCircleIcon,
-    tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
-  },
-  GITHUB_ANALYSIS_FAILED: {
-    label: "GitHub scan failed",
-    icon: ExclamationTriangleIcon,
-    tone: "text-rose-600 bg-rose-50 border-rose-200",
-  },
-  ANALYSIS_APPLIED: {
-    label: "Analysis applied to score draft",
-    icon: SparklesIcon,
-    tone: "text-violet-600 bg-violet-50 border-violet-200",
-  },
-  SCORE_FINALIZED: {
-    label: "Score finalized",
-    icon: CheckCircleIcon,
-    tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
-  },
-  NOTE_ADDED: {
-    label: "Note added",
-    icon: PencilSquareIcon,
-    tone: "text-slate-600 bg-slate-50 border-slate-200",
-  },
-  PLACED: {
-    label: "Placed with client",
-    icon: CheckCircleIcon,
-    tone: "text-violet-600 bg-violet-50 border-violet-200",
-  },
-};
-
-function getEventMeta(eventType: string) {
-  return (
-    EVENT_META[eventType] ?? {
-      label: eventType.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase()),
-      icon: ArrowPathIcon,
-      tone: "text-slate-600 bg-slate-50 border-slate-200",
-    }
-  );
-}
 
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
@@ -207,7 +136,7 @@ export function CodeClearOverview() {
           </div>
         </WidgetCard>
 
-        {/* Stage distribution */}
+        {/* Stage distribution — pairs with Queue Status above on the same row. */}
         <WidgetCard
           number="06"
           name="STAGE DISTRIBUTION"
@@ -240,47 +169,6 @@ export function CodeClearOverview() {
                 No developers yet.
               </div>
             ) : null}
-          </div>
-        </WidgetCard>
-
-        {/* Activity */}
-        <WidgetCard
-          number="07"
-          name="RECENT ACTIVITY"
-          className="col-span-12 xl:col-span-4"
-        >
-          <div className="space-y-2">
-            {(stats?.recentActivity ?? []).length ? (
-              stats?.recentActivity.map((entry) => {
-                const meta = getEventMeta(entry.eventType);
-                const Icon = meta.icon;
-
-                return (
-                  <div
-                    key={entry.id}
-                    className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
-                  >
-                    <div
-                      className={cn(
-                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
-                        meta.tone,
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-[var(--text-1)]">
-                        {entry.candidate?.name ?? "Developer"}
-                      </p>
-                      <p className="mt-0.5 text-sm text-[var(--text-3)]">{meta.label}</p>
-                      <p className="widget-timestamp mt-1.5">{formatDate(entry.createdAt)}</p>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="py-4 text-center text-sm text-[var(--text-4)]">No activity yet.</p>
-            )}
           </div>
         </WidgetCard>
 
