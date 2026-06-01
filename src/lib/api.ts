@@ -724,6 +724,42 @@ export async function deletePlacement(
   );
 }
 
+export interface PlacementValidationResponse {
+  run: GitHubAnalysisRunRecord;
+  analysis?: {
+    commitCount: number;
+    scopedCommitCount: number;
+    uniqueFiles: number;
+    additions: number;
+    deletions: number;
+    lastCommitAt: string | null;
+  };
+  checks?: Array<{
+    category: string;
+    checkKey: string;
+    label: string;
+    status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+    detail: string | null;
+    weight: number;
+    sortOrder: number;
+  }>;
+}
+
+/**
+ * Trigger a scoped GitHub validation for a single placement. Server resolves
+ * the placement's linked ClientPlatform.repoUrl and scans the dev's commits
+ * within the placement's repoPaths (and optional repoBranch).
+ */
+export async function runPlacementValidation(
+  candidateId: string,
+  placementId: string,
+): Promise<PlacementValidationResponse> {
+  return apiFetch<PlacementValidationResponse>(
+    `/api/codeclear/candidates/${candidateId}/placements/${placementId}/run-validation`,
+    { method: "POST" },
+  );
+}
+
 export interface ScheduleBlockResponse {
   id: string;
   candidate: {

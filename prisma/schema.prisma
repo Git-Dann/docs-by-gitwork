@@ -145,33 +145,43 @@ enum GitHubAnalysisStatus {
 
 enum GitHubAnalysisTriggerSource {
   MANUAL
+  PLACEMENT
+}
+
+/// PROFILE = scan a dev's whole GitHub profile (the default validation).
+/// REPO    = scan a specific repo for this dev's contributions, optionally
+///           filtered to paths they own. Used when a dev is engaged with a
+///           client whose platform has a repoUrl.
+enum GitHubAnalysisScope {
+  PROFILE
+  REPO
 }
 
 model User {
-  id                       String                  @id @default(cuid())
-  email                    String                  @unique
-  name                     String?
-  avatarUrl                String?
-  passwordHash             String?
-  createdAt                DateTime                @default(now())
-  updatedAt                DateTime                @updatedAt
-  memberships              WorkspaceMember[]
-  documents                Document[]              @relation("DocumentOwner")
-  invitesSent              WorkspaceInvite[]       @relation("InvitesSent")
-  invitesAccepted          WorkspaceInvite[]       @relation("InvitesAccepted")
-  proofDocuments           ProofDocument[]
-  signatureRequestsCreated SignatureRequest[]      @relation("SignatureRequestCreator")
-  deviceTokens             DeviceToken[]
-  triggeredPulseScans      PulseScan[]             @relation("PulseScanTriggeredBy")
-  notificationPreference   NotificationPreference?
-  auditLogEntries          AuditLog[]
-  meetingSummariesGenerated MeetingSummary[]       @relation("MeetingSummaryGenerator")
+  id                        String                  @id @default(cuid())
+  email                     String                  @unique
+  name                      String?
+  avatarUrl                 String?
+  passwordHash              String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  memberships               WorkspaceMember[]
+  documents                 Document[]              @relation("DocumentOwner")
+  invitesSent               WorkspaceInvite[]       @relation("InvitesSent")
+  invitesAccepted           WorkspaceInvite[]       @relation("InvitesAccepted")
+  proofDocuments            ProofDocument[]
+  signatureRequestsCreated  SignatureRequest[]      @relation("SignatureRequestCreator")
+  deviceTokens              DeviceToken[]
+  triggeredPulseScans       PulseScan[]             @relation("PulseScanTriggeredBy")
+  notificationPreference    NotificationPreference?
+  auditLogEntries           AuditLog[]
+  meetingSummariesGenerated MeetingSummary[]        @relation("MeetingSummaryGenerator")
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
   // shared org-wide sync (cron / Care Gmail ingest) — an admin sets that explicitly.
-  googleOAuthRefreshToken  String?
-  googleOAuthEmail         String?
+  googleOAuthRefreshToken   String?
+  googleOAuthEmail          String?
 }
 
 // APNs device registrations. One row per (user, device).
@@ -456,17 +466,16 @@ model EditorPresence {
  * reloads the editor, the chat panel hydrates from this row so the conversation history is not
  * lost. The `messages` JSON is an array of `{ id, role: "user" | "assistant", content, proposals?}`
  * objects that mirror the in-memory shape used by the AiChatPanel component.
- *
  * We don't store full proposal diffs in `messages` — accepted proposals are already applied to
  * the document; rejected proposals fade away on the client. Only the prose turn-by-turn record
  * is preserved so future turns can keep context.
  */
 model DocumentAiSession {
-  id          String   @id @default(cuid())
-  documentId  String   @unique
-  messages    Json     // Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>
-  updatedAt   DateTime @default(now()) @updatedAt
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  messages   Json // Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>
+  updatedAt  DateTime @default(now()) @updatedAt
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 /**
@@ -770,6 +779,8 @@ model ClientPlatform {
   credentials     String?         @db.Text
   notes           String?         @db.Text
   previewImageUrl String?         @db.Text
+  /// Placements engaged on this platform — drives the scoped GitHub scan.
+  placements      Placement[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -798,17 +809,17 @@ model ClientDesign {
 /// — a Pending client is only materialised when the session is moved to
 /// workflow, so half-finished link clicks never pollute Portal.
 model ClientOnboarding {
-  id                 String                       @id @default(cuid())
-  workspaceId        String
-  workspace          Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                  String                       @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   /// Token used in the public URL (`/onboarding/[accessToken]`). Rotated on revoke.
-  accessToken        String                       @unique
+  accessToken         String                       @unique
   /// "IN_PROGRESS" | "SUBMITTED" | "LINKED". Plain string so we can extend without a migration.
-  status             String                       @default("IN_PROGRESS")
+  status              String                       @default("IN_PROGRESS")
   /// Last step index the client reached. Drives "resume where you left off".
-  currentStep        Int                          @default(0)
+  currentStep         Int                          @default(0)
   /// Operator-facing label shown in the Onboarding links tab ("Acme call from Tuesday").
-  label              String?
+  label               String?
   // ── Autosaved answers ──────────────────────────────────────────────
   // Contact — split first/last to mirror the live Gitwork invoicing Typeform.
   contactFirstName    String?
@@ -843,12 +854,12 @@ model ClientOnboarding {
   projectGoals        String?                      @db.Text
   bankAccount         ClientOnboardingBankAccount?
   /// Set when Move-to-workflow materialises a WorkspaceClient from this session.
-  workspaceClientId  String?                      @unique
-  workspaceClient    WorkspaceClient?             @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  submittedAt        DateTime?
-  linkedAt           DateTime?
+  workspaceClientId   String?                      @unique
+  workspaceClient     WorkspaceClient?             @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  submittedAt         DateTime?
+  linkedAt            DateTime?
 
   @@index([workspaceId, status, updatedAt])
   @@index([accessToken])
@@ -961,6 +972,10 @@ model CodeClearCheck {
   candidate   Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   runId       String?
   run         GitHubAnalysisRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  /// When set, this check came from a scoped (per-placement) scan and
+  /// should only show in that placement's validation pane.
+  placementId String?
+  placement   Placement?           @relation("PlacementChecks", fields: [placementId], references: [id], onDelete: SetNull)
   category    String
   checkKey    String
   label       String
@@ -973,6 +988,7 @@ model CodeClearCheck {
 
   @@index([candidateId, category])
   @@index([candidateId, sortOrder])
+  @@index([placementId, sortOrder])
   @@index([runId])
 }
 
@@ -1036,6 +1052,21 @@ model GitHubAnalysisRun {
   candidate                    Candidate                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   drafts                       CodeClearScoreDraft[]       @relation("GitHubAnalysisRunDraftSource")
   checks                       CodeClearCheck[]
+  /// PROFILE = scan the dev's whole GitHub profile (legacy default).
+  /// REPO    = scan a specific repo for this dev's contributions.
+  scope                        GitHubAnalysisScope         @default(PROFILE)
+  /// When `scope = REPO`, the placement this scan was scoped to. The
+  /// dev "validated" the engagement, not just their profile.
+  placementId                  String?
+  placement                    Placement?                  @relation("PlacementScans", fields: [placementId], references: [id], onDelete: SetNull)
+  placementLastScans           Placement[]                 @relation("PlacementLastScan")
+  /// Snapshot of the repo URL that was scanned. Stored explicitly so
+  /// audit history survives even if the ClientPlatform.repoUrl is later
+  /// changed.
+  scopedRepoUrl                String?
+  /// Snapshot of the paths filter at scan time. Same audit reason.
+  scopedRepoPaths              String[]                    @default([])
+  scopedRepoBranch             String?
   status                       GitHubAnalysisStatus        @default(RUNNING)
   triggerSource                GitHubAnalysisTriggerSource @default(MANUAL)
   analysisVersion              String
@@ -1056,31 +1087,53 @@ model GitHubAnalysisRun {
 
   @@index([candidateId, createdAt])
   @@index([candidateId, status])
+  @@index([placementId, createdAt])
 }
 
 model Placement {
-  id          String           @id @default(cuid())
-  candidateId String
-  candidate   Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  clientId    String?
-  client      WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  clientName  String
-  projectName String
-  startDate   DateTime
-  endDate     DateTime?
+  id                  String              @id @default(cuid())
+  candidateId         String
+  candidate           Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  clientId            String?
+  client              WorkspaceClient?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName          String
+  projectName         String
+  startDate           DateTime
+  endDate             DateTime?
   /// Daily allocation as a percentage (1–100). 100 = full day on this
   /// client; 50 = half-day, with the other half free to be allocated to
   /// another Placement. Driven by the iOS scheduling view. Open-ended
   /// placements created by the current-client picker default to 100.
-  allocationPercent Int       @default(100)
+  allocationPercent   Int                 @default(100)
   /// Free-text notes attached to this scheduled block (e.g. "Sprint 2
   /// kickoff", "On-call rotation"). Shown in the iOS schedule detail view.
-  notes       String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt @default(now())
+  notes               String?
+  /// Optional link to the specific ClientPlatform (the client's web app, iOS
+  /// app, etc.) this dev is engaged on. When set, the scoped-validation
+  /// scan uses this platform's repoUrl as the target repo.
+  clientPlatformId    String?
+  clientPlatform      ClientPlatform?     @relation(fields: [clientPlatformId], references: [id], onDelete: SetNull)
+  /// Directory paths inside the platform's repo that the dev is responsible
+  /// for. Empty array = whole repo. Used to filter GitHub commits during
+  /// the per-engagement scan ("did Shahab actually touch apps/web?"). Each
+  /// entry is a literal directory prefix or a simple glob like "apps/web/**".
+  repoPaths           String[]            @default([])
+  /// Optional branch the dev works on (e.g. "feature/auth-rewrite"). Falls
+  /// back to the repo's default branch on the scan side when null.
+  repoBranch          String?
+  /// Latest scoped scan summary. Lets Pipeline / Portal show a quick
+  /// "scanned 3d ago: 6/10 checks pass" badge without an extra query.
+  lastScopedScanAt    DateTime?
+  lastScopedScanRunId String?
+  lastScopedScanRun   GitHubAnalysisRun?  @relation("PlacementLastScan", fields: [lastScopedScanRunId], references: [id], onDelete: SetNull)
+  scopedScanRuns      GitHubAnalysisRun[] @relation("PlacementScans")
+  scopedChecks        CodeClearCheck[]    @relation("PlacementChecks")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @default(now()) @updatedAt
 
   @@index([candidateId, startDate])
   @@index([clientId])
+  @@index([clientPlatformId])
   // Range queries for the schedule endpoints filter on (workspace,) startDate,
   // and endDate. Covered by the existing candidate / client indices.
   @@index([clientId, startDate])
@@ -1840,17 +1893,17 @@ model AiResponseCache {
 // for another AI call. Cached entries also store `inputsHash` so we know to invalidate
 // when meeting details change (new attendee added, different channels selected, etc.).
 model MeetingSummary {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   workspaceId       String
   workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   eventId           String
-  summary           String   @db.Text
+  summary           String    @db.Text
   inputsHash        String
   modelUsed         String?
   generatedByUserId String?
-  generatedBy       User?    @relation("MeetingSummaryGenerator", fields: [generatedByUserId], references: [id], onDelete: SetNull)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  generatedBy       User?     @relation("MeetingSummaryGenerator", fields: [generatedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([workspaceId, eventId])
   @@index([workspaceId, updatedAt])

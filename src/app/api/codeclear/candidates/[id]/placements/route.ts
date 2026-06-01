@@ -36,6 +36,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         endDate: body.endDate ?? null,
         allocationPercent: body.allocationPercent ?? 100,
         notes: body.notes ?? null,
+        clientPlatformId: body.clientPlatformId ?? null,
+        repoPaths: body.repoPaths ?? [],
+        repoBranch: body.repoBranch ?? null,
       },
     });
 
