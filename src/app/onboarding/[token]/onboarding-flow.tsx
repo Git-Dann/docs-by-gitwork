@@ -324,50 +324,27 @@ export function OnboardingFlow({
   if (step === 0) {
     return (
       <div className="flex min-h-screen flex-col bg-[var(--surface-canvas)] md:h-screen md:flex-row md:overflow-hidden">
-        {/* Left — full-bleed image / placeholder */}
-        <div className="relative h-56 w-full overflow-hidden sm:h-64 md:h-full md:w-1/2 md:flex-shrink-0">
-          {/* Swap this gradient for a real hero by dropping an image into
-              /public/onboarding-hero.jpg and uncommenting the Image below. */}
+        {/* Left — DocumentCover-style hero (aligns with Docs proposals/reports) */}
+        <div className="relative h-60 w-full overflow-hidden sm:h-72 md:h-full md:w-1/2 md:flex-shrink-0">
           <div
             aria-hidden
             className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(135deg, var(--brand-400) 0%, var(--brand-700) 46%, var(--brand-900) 100%)",
-            }}
+            style={{ background: "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)" }}
           />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/onboarding-hero.jpg"
-            alt=""
-            aria-hidden
-            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300"
-            onLoad={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "1";
-            }}
-            onError={(e) => {
-              // Hero asset hasn't been provided yet — fall back to the
-              // gradient layer beneath. Don't surface the error to the user.
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-          <div className="absolute inset-0 bg-black/20" aria-hidden />
+          {/* Faded concentric rings, top-right — same accent as DocumentCover */}
+          <div aria-hidden className="pointer-events-none absolute -right-20 -top-20 h-[340px] w-[340px] rounded-full border border-white/10" />
+          <div aria-hidden className="pointer-events-none absolute -right-8 -top-8 h-[200px] w-[200px] rounded-full border border-white/[0.08]" />
           <div className="relative z-10 flex h-full flex-col justify-between p-8 text-white md:p-12">
-            <div className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-[0.18em] uppercase">
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-white/90" />
-              Gitwork
-            </div>
-            <div>
-              <p className="font-mono text-[11px] font-semibold tracking-[0.18em] uppercase opacity-80">
-                Welcome
-              </p>
-              <h1
-                className="mt-3 font-display text-3xl leading-tight md:text-5xl"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                Let&apos;s get to know your project.
-              </h1>
-            </div>
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+              Gitwork // Onboarding
+            </p>
+            <h1
+              className="font-display text-3xl leading-[1.08] tracking-[-0.025em] md:text-5xl"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Let&apos;s get your project set up.
+            </h1>
+            <p className="font-mono text-[11px] text-white/45">gitwork.co.uk</p>
           </div>
         </div>
 
