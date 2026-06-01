@@ -194,6 +194,10 @@ export function serializeConnection(row: {
   channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
   const connectedEmail = (() => {
+    // DWD: impersonateEmail in scraperConfig is the primary source
+    const cfg = row.scraperConfig as Record<string, unknown> | null;
+    if (typeof cfg?.impersonateEmail === "string") return cfg.impersonateEmail;
+    // Legacy: per-connection OAuth token
     const token = row.channelTokens?.[0];
     if (!token) return undefined;
     const td = token.tokenData as Record<string, unknown>;

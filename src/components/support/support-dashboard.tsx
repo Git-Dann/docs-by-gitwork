@@ -2095,6 +2095,7 @@ function EditConnectorModal({
 
   // Gmail
   const [gmailQuery, setGmailQuery] = useState(conn.scraperConfig?.query ?? "");
+  const [gmailImpersonateEmail, setGmailImpersonateEmail] = useState(conn.scraperConfig?.impersonateEmail ?? "");
 
   // Discord
   const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
@@ -2150,7 +2151,12 @@ function EditConnectorModal({
   function buildScraperConfig(): Connection["scraperConfig"] {
     const f = buildFilterConfig(conn.source, filters);
     if (conn.source === "gmail") {
-      return { ...conn.scraperConfig, query: gmailQuery.trim(), ...f };
+      return {
+        ...conn.scraperConfig,
+        query: gmailQuery.trim(),
+        ...(gmailImpersonateEmail.trim() ? { impersonateEmail: gmailImpersonateEmail.trim() } : {}),
+        ...f,
+      };
     }
     if (conn.source === "discord") {
       // Preserve existing channel cursors for channels that were already tracked
@@ -2219,44 +2225,26 @@ function EditConnectorModal({
         {/* Gmail config */}
         {conn.source === "gmail" && (
           <div className="space-y-3">
-            {/* Connected account status */}
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">Connected Gmail account</p>
-              {conn.connectedEmail ? (
-                <div className="mt-1.5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
-                    <p className="text-sm font-medium text-[var(--text-1)]">{conn.connectedEmail}</p>
-                  </div>
-                  <a
-                    href={`/api/support/auth/gmail?connId=${conn.id}`}
-                    className="text-[11px] font-medium text-[var(--brand-700)] hover:underline"
-                  >
-                    Switch account
-                  </a>
-                </div>
-              ) : (
-                <div className="mt-1.5 flex items-center justify-between gap-3">
-                  <p className="text-sm text-[var(--text-4)]">No Gmail account connected — using shared workspace token</p>
-                  <a
-                    href={`/api/support/auth/gmail?connId=${conn.id}`}
-                    className="shrink-0 rounded-[6px] border border-[var(--brand-700)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
-                  >
-                    Connect Gmail account
-                  </a>
-                </div>
-              )}
-              <p className="mt-2 text-[11px] text-[var(--text-4)]">
-                Connect the Gmail inbox that receives your forwarded support emails. This lets Care sync from that specific account.
+            <label className="block space-y-1.5">
+              <span className="app-field-label">Inbox to read</span>
+              <input
+                type="email"
+                value={gmailImpersonateEmail}
+                onChange={(e) => setGmailImpersonateEmail(e.target.value)}
+                className="app-input w-full"
+                placeholder="support@gitwork.co.uk"
+              />
+              <p className="text-[11px] text-[var(--text-4)]">
+                The Gmail inbox the service account will read via domain-wide delegation. Must be a gitwork.co.uk address.
               </p>
-            </div>
+            </label>
             <label className="block space-y-1.5">
               <span className="app-field-label">Gmail query (optional — blank = all mail)</span>
               <input
                 value={gmailQuery}
                 onChange={(e) => setGmailQuery(e.target.value)}
                 className="app-input w-full font-mono text-xs"
-                placeholder="e.g. deliveredto:support+client@gitwork.co.uk"
+                placeholder="e.g. label:fellas-loaded"
               />
             </label>
           </div>

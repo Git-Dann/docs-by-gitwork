@@ -6,42 +6,33 @@ import type { AgentContext } from "@/server/care-agents/types";
 interface GmailScraperConfig {
   query?: string;
   intakeAddress?: string;
+  impersonateEmail?: string;
 }
 
 // Pure fetcher — returns raw items, does NOT write to DB
 export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
   const { connection, workspace } = ctx;
 
-  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
-
-  if (workspace.googleOAuthRefreshToken) {
-    // OAuth path — user connected via "Sign in with Google"
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new Error("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET env vars not configured");
-    }
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-    oauth2Client.setCredentials({ refresh_token: workspace.googleOAuthRefreshToken });
-    gmailAuth = oauth2Client as Parameters<typeof google.gmail>[0]["auth"];
-  } else if (workspace.googleServiceAccountJson) {
-    // Service account fallback — domain-wide delegation
-    const credentials = JSON.parse(workspace.googleServiceAccountJson);
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-    });
-    const authClient = await auth.getClient();
-    if (workspace.googleSubjectEmail && "subject" in authClient) {
-      (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
-    }
-    gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
-  } else {
-    throw new Error("Gmail not connected — go to Settings → Google Workspace and click Connect Gmail");
+  if (!workspace.googleServiceAccountJson) {
+    throw new Error("Google service account not configured — paste the JSON in Settings → Google Workspace");
   }
 
-  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
   const config = (connection.scraperConfig ?? {}) as GmailScraperConfig;
+  // impersonateEmail: per-connection setting takes priority, fall back to workspace-level subject
+  const impersonateEmail = config.impersonateEmail ?? workspace.googleSubjectEmail ?? null;
+  if (!impersonateEmail) {
+    throw new Error("No inbox to read — set 'Inbox to read' on this Gmail connector");
+  }
+
+  const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+    clientOptions: { subject: impersonateEmail },
+  });
+  const gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
+
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
   const query = config.query ?? (config.intakeAddress ? `to:${config.intakeAddress}` : "");
 
   const lastSyncedAt = connection.lastSyncedAt;
@@ -96,8 +87,8 @@ export async function fetchGmail(ctx: AgentContext): Promise<RawIngestItem[]> {
           const body = extractGmailBody(msgRes.data);
           const msgHeaders = msg.payload?.headers ?? [];
           const msgFrom = msgHeaders.find((h) => h.name === "From")?.value ?? "";
-          const isOutbound = workspace.googleSubjectEmail
-            ? msgFrom.includes(workspace.googleSubjectEmail)
+          const isOutbound = impersonateEmail
+            ? msgFrom.includes(impersonateEmail)
             : false;
 
           threadItems.push({

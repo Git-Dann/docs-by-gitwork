@@ -1243,6 +1243,9 @@ export function IntegrationsTab() {
         )}
       </section>
 
+      {/* ── Google Workspace — service account ────────────────────── */}
+      <GoogleServiceAccountSection config={config} onSaved={setConfig} />
+
       {/* ── Slack ─────────────────────────────────────────────────── */}
       <SlackSection config={config} onSaved={setConfig} />
 
@@ -1827,6 +1830,128 @@ function TeamModal({
         {children}
       </div>
     </div>
+  );
+}
+
+function GoogleServiceAccountSection({
+  config,
+  onSaved,
+}: {
+  config: IntegrationsResponse | null;
+  onSaved: (updated: IntegrationsResponse) => void;
+}) {
+  const [json, setJson] = useState("");
+  const [subjectEmail, setSubjectEmail] = useState(config?.googleSubjectEmail ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // Keep subject email in sync if config loads after mount
+  useEffect(() => {
+    if (config?.googleSubjectEmail) setSubjectEmail(config.googleSubjectEmail);
+  }, [config?.googleSubjectEmail]);
+
+  async function handleSave() {
+    setError(null);
+    setSaved(false);
+
+    // Validate JSON if provided
+    if (json.trim()) {
+      try {
+        const parsed = JSON.parse(json) as Record<string, unknown>;
+        if (parsed.type !== "service_account") {
+          setError("This doesn't look like a service account JSON — check the 'type' field.");
+          return;
+        }
+      } catch {
+        setError("Invalid JSON — paste the full file contents from Google Cloud Console.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      if (json.trim()) await saveIntegrations({ googleServiceAccountJson: json.trim() });
+      if (subjectEmail.trim()) await saveIntegrations({ googleSubjectEmail: subjectEmail.trim() });
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setJson("");
+      setSaved(true);
+    } catch {
+      setError("Failed to save — try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isConfigured = config?.googleServiceAccountJsonSet ?? false;
+
+  return (
+    <section className="app-card p-6">
+      <p className="app-eyebrow">Google Workspace</p>
+      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+        Service Account
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+        Paste the service account JSON from Google Cloud Console. Care uses this with domain-wide delegation
+        to read Gmail inboxes configured per-connector — no per-user OAuth required.
+      </p>
+
+      <div className="mt-5 space-y-4">
+        {/* Status */}
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${isConfigured ? "bg-emerald-500" : "bg-amber-400"}`} />
+          <span className="text-xs font-medium text-[var(--text-2)]">
+            {isConfigured ? "Service account configured" : "Not configured"}
+          </span>
+        </div>
+
+        {/* JSON textarea */}
+        <label className="block space-y-1.5">
+          <span className="app-field-label">{isConfigured ? "Replace JSON (leave blank to keep existing)" : "Service account JSON"}</span>
+          <textarea
+            value={json}
+            onChange={(e) => setJson(e.target.value)}
+            rows={5}
+            className="app-input w-full font-mono text-[11px] leading-5"
+            placeholder={'{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}'}
+            spellCheck={false}
+          />
+        </label>
+
+        {/* Subject email */}
+        <label className="block space-y-1.5">
+          <span className="app-field-label">Default inbox to read (workspace-level fallback)</span>
+          <input
+            type="email"
+            value={subjectEmail}
+            onChange={(e) => setSubjectEmail(e.target.value)}
+            className="app-input w-full"
+            placeholder="support@gitwork.co.uk"
+          />
+          <p className="text-[11px] text-[var(--text-4)]">
+            Used when a Gmail connector doesn&apos;t specify its own inbox. Each connector can override this.
+          </p>
+        </label>
+
+        {error && (
+          <p className="rounded-[6px] bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+        )}
+        {saved && (
+          <p className="rounded-[6px] bg-emerald-50 px-3 py-2 text-xs text-emerald-700">Saved.</p>
+        )}
+
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={saving}
+          onClick={() => void handleSave()}
+        >
+          Save
+        </Button>
+      </div>
+    </section>
   );
 }
 

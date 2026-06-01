@@ -49,6 +49,7 @@ export interface Connection {
     // Gmail
     query?: string;
     intakeAddress?: string;
+    impersonateEmail?: string;
     // Discord
     guildId?: string;
     guildName?: string;
