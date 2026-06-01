@@ -2576,7 +2576,7 @@ function CandidateBulkImportSection() {
     try {
       const parsed = JSON.parse(text);
       if (!Array.isArray(parsed)) {
-        setParseError("Expected a JSON array of candidate rows.");
+        setParseError("Expected a JSON array of developer rows.");
         return;
       }
       setRows(parsed as BulkImportCandidateRow[]);
@@ -2820,7 +2820,7 @@ function DemoDataCleanupSection() {
         Demo data cleanup
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Removes the original demo candidates (Sindre Sorhus, Dan Abramov, Addy Osmani, Evan You,
+        Removes the original demo developers (Sindre Sorhus, Dan Abramov, Addy Osmani, Evan You,
         TJ Holowaychuk, Linus Torvalds) and the legacy rate-card seed entries that aren&apos;t in
         the current Gitwork roster. It only touches those specific known records — anything
         you&apos;ve added yourself stays put. Safe to re-run; nothing happens the second time.
@@ -2836,7 +2836,7 @@ function DemoDataCleanupSection() {
         <div className="mt-4 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           <p className="font-semibold">Cleanup complete</p>
           <p className="mt-1">
-            Deleted {applied.deletedCandidates} candidate
+            Deleted {applied.deletedCandidates} developer
             {applied.deletedCandidates === 1 ? "" : "s"} and {applied.deletedRatePeople} rate-card{" "}
             {applied.deletedRatePeople === 1 ? "person" : "people"}.
           </p>
@@ -2854,7 +2854,7 @@ function DemoDataCleanupSection() {
               {preview.candidates.length > 0 ? (
                 <div>
                   <p className="text-sm font-semibold text-[var(--text-2)]">
-                    Candidates ({preview.candidates.length})
+                    Developers ({preview.candidates.length})
                   </p>
                   <ul className="mt-2 divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
                     {preview.candidates.map((candidate) => (
@@ -3123,19 +3123,19 @@ function ApiSection({
               ["GET", "/api/rate-card/people/:id", "Get rate-card person"],
               ["PATCH", "/api/rate-card/people/:id", "Update rate-card person"],
               ["DELETE", "/api/rate-card/people/:id", "Archive rate-card person"],
-              ["GET", "/api/codeclear/stats", "CodeClear overview stats"],
-              ["GET", "/api/codeclear/candidates", "List CodeClear candidates"],
-              ["POST", "/api/codeclear/candidates", "Create CodeClear candidate"],
+              ["GET", "/api/codeclear/stats", "Code overview stats"],
+              ["GET", "/api/codeclear/candidates", "List developers"],
+              ["POST", "/api/codeclear/candidates", "Create developer"],
               ["PATCH", "/api/codeclear/candidates", "Bulk stage or re-check update"],
-              ["GET", "/api/codeclear/candidates/:id", "Get CodeClear candidate"],
-              ["PATCH", "/api/codeclear/candidates/:id", "Update CodeClear candidate"],
-              ["DELETE", "/api/codeclear/candidates/:id", "Delete CodeClear candidate"],
-              ["POST", "/api/codeclear/candidates/:id/notes", "Add CodeClear note"],
-              ["PUT", "/api/codeclear/candidates/:id/score", "Finalize CodeClear score"],
+              ["GET", "/api/codeclear/candidates/:id", "Get developer"],
+              ["PATCH", "/api/codeclear/candidates/:id", "Update developer"],
+              ["DELETE", "/api/codeclear/candidates/:id", "Delete developer"],
+              ["POST", "/api/codeclear/candidates/:id/notes", "Add note to developer timeline"],
+              ["PUT", "/api/codeclear/candidates/:id/score", "Finalize developer score"],
               ["GET", "/api/codeclear/candidates/:id/github-analysis/runs", "List analysis runs"],
               ["POST", "/api/codeclear/candidates/:id/github-analysis/runs", "Run GitHub analysis"],
               ["POST", "/api/codeclear/candidates/:id/github-analysis/runs/:runId/apply", "Apply analysis draft"],
-              ["GET", "/api/codeclear/candidates/:id/scorecard", "Export CodeClear scorecard"],
+              ["GET", "/api/codeclear/candidates/:id/scorecard", "Export developer scorecard"],
               ["GET", "/api/templates", "List templates"],
             ] as const).map(([method, path, label]) => (
               <div key={`${method}-${path}`} className="flex items-baseline gap-2">

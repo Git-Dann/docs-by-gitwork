@@ -20,7 +20,7 @@ const story = [
   },
   {
     title: "What we're building",
-    copy: "Alongside the agency, we're building Docs, Proof, and CodeClear — platform tools that reduce delivery friction for the clients we work with and eventually for teams beyond Gitwork.",
+    copy: "Alongside the agency, we're building Docs, Proof, and Code — platform tools that reduce delivery friction for the clients we work with and eventually for teams beyond Gitwork.",
   },
 ];
 
@@ -149,7 +149,7 @@ export default function CompanyPage() {
                 We use our own tools to run better engagements.
               </h2>
               <p className="mt-5 text-pretty text-[18px] leading-[1.7] text-white/56">
-                Docs, Proof, and CodeClear are Gitwork products built around real delivery friction.
+                Docs, Proof, and Code are Gitwork products built around real delivery friction.
                 They work for our clients and eventually for teams beyond Gitwork.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -162,7 +162,7 @@ export default function CompanyPage() {
               {[
                 { name: "Docs", desc: "Structured briefs and proposal generation.", href: "/products/docs" },
                 { name: "Proof", desc: "Source analysis and delivery framing.", href: "/products/proof" },
-                { name: "CodeClear", desc: "Hiring signal and developer matching.", href: "/products/codeclear" },
+                { name: "Code", desc: "Hiring signal and developer matching.", href: "/products/codeclear" },
               ].map((p) => (
                 <a
                   key={p.name}

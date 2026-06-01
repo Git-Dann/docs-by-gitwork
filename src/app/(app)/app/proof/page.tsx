@@ -14,7 +14,7 @@ export default async function ProofPage({
       title="Proof"
       subtitle={
         initialBrief
-          ? "Your brief has been pre-filled from the CodeClear match — review it and run the analysis."
+          ? "Your brief has been pre-filled from the Code match — review it and run the analysis."
           : "Parse a client brief and extract key information — summarised clearly for your team."
       }
     >

@@ -321,7 +321,7 @@ export function ProofWorkspace({
               <div className="flex items-start gap-2.5 rounded-[10px] border border-[var(--brand-200)] bg-[var(--surface-brand)] px-4 py-3">
                 <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
                 <p className="text-sm text-[var(--brand-700)]">
-                  Brief pre-filled from your CodeClear match. Review it below and run the analysis to continue.
+                  Brief pre-filled from your Code match. Review it below and run the analysis to continue.
                 </p>
               </div>
             ) : null}

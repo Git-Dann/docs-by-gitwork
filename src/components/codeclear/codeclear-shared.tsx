@@ -69,7 +69,7 @@ const analysisTone: Record<
 
 const tabItems = [
   { href: "/app/codeclear", label: "Overview" },
-  { href: "/app/codeclear/candidates", label: "Candidates" },
+  { href: "/app/codeclear/candidates", label: "Developers" },
   { href: "/app/codeclear/pipeline", label: "Pipeline" },
 ] as const;
 

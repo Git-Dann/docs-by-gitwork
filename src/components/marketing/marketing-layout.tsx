@@ -32,7 +32,7 @@ const footerColumns = [
     links: [
       { label: "Docs", href: "/products/docs", external: false },
       { label: "Proof", href: "/products/proof", external: false },
-      { label: "CodeClear", href: "/products/codeclear", external: false },
+      { label: "Code", href: "/products/codeclear", external: false },
       { label: "Open Platform", href: "/app/proposals", external: false },
     ],
   },

@@ -161,7 +161,7 @@ function MarketingChrome({ children, currentPath }: MarketingChromeProps) {
           </div>
 
           <div className="mt-12 border-t border-white/8 pt-8 text-sm text-white/42">
-            © 2026 Gitwork. Docs, Proof, and CodeClear are part of the Gitwork platform.
+            © 2026 Gitwork. Docs, Proof, and Code are part of the Gitwork platform.
           </div>
         </div>
       </footer>
@@ -450,7 +450,7 @@ function HomeHero() {
             <div className="rounded-[10px] border border-white/10 bg-[#0d1119] p-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/38">Delivery Layers</p>
               <div className="mt-4 space-y-3">
-                {["Embedded Developers", "Project Delivery", "Docs + Proof", "CodeClear"].map((item) => (
+                {["Embedded Developers", "Project Delivery", "Docs + Proof", "Code"].map((item) => (
                   <div key={item} className="flex items-center justify-between rounded-[10px] border border-white/8 bg-white/[0.03] px-4 py-3">
                     <span className="text-sm text-white/80">{item}</span>
                     <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-300)]">Ready</span>
@@ -603,7 +603,7 @@ export function MarketingHomePage() {
           <SectionIntro
             eyebrow="FAQ"
             title="Questions teams usually ask before we start."
-            copy="A quick overview of how Gitwork works as an agency and how Docs, Proof, and CodeClear fit into that picture."
+            copy="A quick overview of how Gitwork works as an agency and how Docs, Proof, and Code fit into that picture."
             centered
           />
           <div className="mt-14">
@@ -630,7 +630,7 @@ export function MarketingProductsPage() {
           <SectionIntro
             eyebrow="Products"
             title="Gitwork products are built around real delivery friction."
-            copy="Docs structures the brief, Proof sharpens the proposal, and CodeClear improves hiring signal. They work independently, but they are stronger together."
+            copy="Docs structures the brief, Proof sharpens the proposal, and Code improves hiring signal. They work independently, but they are stronger together."
           />
         </div>
       </section>
@@ -681,7 +681,7 @@ export function MarketingProductsPage() {
               },
               {
                 title: "Improve match quality",
-                copy: "Use CodeClear when hiring teams need signal before the shortlist call.",
+                copy: "Use Code when hiring teams need signal before the shortlist call.",
               },
             ].map((item) => (
               <article key={item.title} className="bg-[#090909] px-6 py-8">

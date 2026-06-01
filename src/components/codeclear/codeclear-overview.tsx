@@ -27,7 +27,7 @@ import {
 // Human-readable labels for activity event types
 const EVENT_META: Record<string, { label: string; icon: typeof SparklesIcon; tone: string }> = {
   SOURCED: {
-    label: "Candidate added to pipeline",
+    label: "Developer added to pipeline",
     icon: UserPlusIcon,
     tone: "text-sky-600 bg-sky-50 border-sky-200",
   },
@@ -154,7 +154,7 @@ export function CodeClearOverview() {
               <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />
               <p className="text-sm font-semibold text-rose-700">
                 {stats!.recheckDue} re-check{stats!.recheckDue > 1 ? "s" : ""} overdue
-                <span className="ml-1.5 font-normal text-rose-600">— review these candidates</span>
+                <span className="ml-1.5 font-normal text-rose-600">— review these developers</span>
               </p>
               <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-rose-500" />
             </Link>
@@ -187,7 +187,7 @@ export function CodeClearOverview() {
           name="PASS RATE"
           value={stats?.passRateThis != null ? String(stats.passRateThis) : "—"}
           unit="% AT 65+"
-          caption="Verified candidates this month"
+          caption="Verified developers this month"
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
@@ -206,32 +206,8 @@ export function CodeClearOverview() {
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
 
-        {/* Direction copy */}
         <WidgetCard
           number="05"
-          name="OPERATING DIRECTION"
-          className="col-span-12 xl:col-span-8"
-          bodyClassName="widget-body--feature"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="max-w-2xl space-y-3">
-              <p className="font-display text-[28px] font-normal leading-[1.15] tracking-[-0.02em] text-[var(--text-1)]">
-                A licensable verification layer — not just a GitHub scanner.
-              </p>
-              <p className="text-sm leading-6 text-[var(--text-3)]">
-                CodeClear combines test results, identity checks, repo signal, interview notes, references, and delivery context into one defensible score. The strongest version reads as instrument-grade evidence, not a recruiter feed.
-              </p>
-            </div>
-            <Link href="/app/codeclear/pipeline">
-              <Button type="button" variant="secondary" size="sm">
-                Open signal pipeline
-              </Button>
-            </Link>
-          </div>
-        </WidgetCard>
-
-        <WidgetCard
-          number="06"
           name="QUEUE STATUS"
           className="col-span-12 xl:col-span-4"
           status={scanning > 0 ? "ACTIVE" : "IDLE"}
@@ -247,7 +223,7 @@ export function CodeClearOverview() {
 
         {/* Stage distribution */}
         <WidgetCard
-          number="07"
+          number="06"
           name="STAGE DISTRIBUTION"
           className="col-span-12 xl:col-span-8"
           status={`${stageTotal} TOTAL`}
@@ -275,7 +251,7 @@ export function CodeClearOverview() {
             })}
             {(stats?.byStatus ?? []).length === 0 ? (
               <div className="col-span-full py-6 text-center text-sm text-[var(--text-4)]">
-                No candidates yet.
+                No developers yet.
               </div>
             ) : null}
           </div>
@@ -283,7 +259,7 @@ export function CodeClearOverview() {
 
         {/* Activity */}
         <WidgetCard
-          number="08"
+          number="07"
           name="RECENT ACTIVITY"
           className="col-span-12 xl:col-span-4"
         >
@@ -308,7 +284,7 @@ export function CodeClearOverview() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-[var(--text-1)]">
-                        {entry.candidate?.name ?? "Candidate"}
+                        {entry.candidate?.name ?? "Developer"}
                       </p>
                       <p className="mt-0.5 text-sm text-[var(--text-3)]">{meta.label}</p>
                       <p className="widget-timestamp mt-1.5">{formatDate(entry.createdAt)}</p>

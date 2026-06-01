@@ -47,7 +47,7 @@ export default function ContextPage() {
               ["Marketing", "/", "Foundry public homepage (Gitwork logo, Foundry design)", "Live"],
               ["Docs / Proposals", "/app/proposals", "Proposal builder — sections, costing, timeline, PDF export", "Live"],
               ["Proof", "/app/proof", "Document sign-off workflow — DRAFT → APPROVED", "Live"],
-              ["CodeClear", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
+              ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
               ["Clients", "/app/clients", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", "AI project validation — 150+ automated checks, gap analysis, fix agent", "Live"],
               ["Study", "/app/study", "AI-powered user research — multi-agent interview pipeline", "Live"],
@@ -114,7 +114,7 @@ export default function ContextPage() {
       persona.ts                ← AI persona interview conductor
       synthesizer.ts            ← Session/report synthesis
       types.ts                  ← Shared study agent types
-    codeclear.ts                ← CodeClear candidate management
+    codeclear.ts                ← Code (developer validation) management
     codeclear-analysis.ts       ← GitHub code analysis
     proposals.ts                ← Proposal CRUD + default payloads
     support.ts                  ← Care/Support CRUD (clients, tickets, conversations)
@@ -127,7 +127,7 @@ export default function ContextPage() {
     study/                      ← Study UI components
     support/                    ← Care/Support UI
     proposals/                  ← Proposal builder components
-    marketing/codeclear-site-demo.tsx ← Public CodeClear demo widget
+    marketing/codeclear-site-demo.tsx ← Public Code demo widget
   hooks/                        ← React Query hooks (use-pulse, use-study, etc.)
   lib/
     prisma.ts                   ← Prisma client singleton

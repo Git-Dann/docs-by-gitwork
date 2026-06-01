@@ -67,7 +67,7 @@ export const serviceOffers = [
   },
   {
     title: "Hiring Signal",
-    copy: "CodeClear helps hiring companies frame the work properly and surface stronger-fit developers before the shortlist call.",
+    copy: "Code helps hiring companies frame the work properly and surface stronger-fit developers before the shortlist call.",
     points: ["Structured brief capture", "Higher-signal matching", "Agency-led review when you want it"],
   },
 ];
@@ -160,9 +160,9 @@ export const faqs = [
       "No. Gitwork supports in-house product teams, agencies, and established businesses that need embedded capacity or end-to-end delivery ownership.",
   },
   {
-    question: "What is the difference between Docs, Proof, and CodeClear?",
+    question: "What is the difference between Docs, Proof, and Code?",
     answer:
-      "Docs structures briefs and commercial scope, Proof turns source material into stronger proposals, and CodeClear helps hiring teams frame demand and surface better-fit developer matches.",
+      "Docs structures briefs and commercial scope, Proof turns source material into stronger proposals, and Code helps hiring teams frame demand and surface better-fit developer matches.",
   },
   {
     question: "Can Gitwork take a project from brief to launch?",
@@ -187,7 +187,7 @@ export const companyValues = [
   },
   {
     title: "Higher-signal matching",
-    copy: "When hiring support is needed, Gitwork uses CodeClear to frame demand and improve match quality before interviews begin.",
+    copy: "When hiring support is needed, Gitwork uses Code to frame demand and improve match quality before interviews begin.",
   },
 ];
 
@@ -285,14 +285,14 @@ export const products: ProductPage[] = [
   },
   {
     slug: "codeclear",
-    name: "CodeClear",
+    name: "Code",
     eyebrow: "Hiring signal",
     summary: "Give hiring companies a better public-facing way to frame demand and surface stronger-fit Gitwork developer matches.",
     heroTitle: "A sharper front door for hiring companies.",
     heroCopy:
-      "CodeClear helps companies describe the work, timeframe, and delivery shape, then moves the strongest-fit matches into a proper Gitwork review.",
+      "Code helps companies describe the work, timeframe, and delivery shape, then moves the strongest-fit matches into a proper Gitwork review.",
     audience: "For companies that want more signal before interviews and for Gitwork teams that want better framed hiring demand.",
-    primaryCta: { label: "Open CodeClear", href: "/app/codeclear" },
+    primaryCta: { label: "Open Code", href: "/app/codeclear" },
     secondaryCta: { label: "Book a Call", href: "https://calendly.com/gitworkgroup/30min", external: true },
     quickHits: [
       "Capture the role and project need properly",
@@ -310,7 +310,7 @@ export const products: ProductPage[] = [
       },
       {
         title: "Agency review layer",
-        copy: "CodeClear does not stop at candidate discovery. Gitwork can step in with staffing guidance and delivery ownership.",
+        copy: "Code does not stop at developer discovery. Gitwork can step in with staffing guidance and delivery ownership.",
       },
     ],
     workflow: [
@@ -342,7 +342,7 @@ export const footerColumns: Array<{ title: string; links: SiteLink[] }> = [
     links: [
       { label: "Open Platform", href: "/app/proposals" },
       { label: "Open Proof", href: "/app/proof" },
-      { label: "Open CodeClear", href: "/app/codeclear" },
+      { label: "Open Code", href: "/app/codeclear" },
     ],
   },
   {

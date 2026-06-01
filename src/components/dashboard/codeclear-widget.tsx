@@ -39,7 +39,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
         </div>
         <div className="flex flex-1 flex-col items-center justify-center">
           <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{stats.total}</p>
-          <p className="text-xs text-[var(--text-3)]">candidates</p>
+          <p className="text-xs text-[var(--text-3)]">developers</p>
         </div>
         {stats.passRateThis != null && (
           <p className="text-center text-xs text-[var(--text-3)]">

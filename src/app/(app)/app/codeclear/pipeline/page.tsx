@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 export default function CodeClearPipelinePage() {
   return (
     <AppShell
-      title="CodeClear"
-      subtitle="Move candidates through sourcing, assessment, verification, placement, and re-check stages."
+      title="Code"
+      subtitle="Move developers through sourcing, assessment, verification, placement, and re-check stages."
     >
       <Suspense>
         <CodeClearPipelineWorkspace />

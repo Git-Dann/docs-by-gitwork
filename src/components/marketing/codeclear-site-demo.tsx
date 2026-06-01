@@ -53,13 +53,13 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "Working UK hours",
       "Zero term commitment",
       "3 Tier 3 developer matches",
-      "CodeClear verified profiles",
+      "Code verified profiles",
     ],
     pro: [
       "Dedicated iOS + backend squad",
       "Full-time product manager included",
       "End-to-end delivery ownership",
-      "Unlimited CodeClear scans",
+      "Unlimited Code scans",
       "Embedded delivery support",
       "White-label exports",
     ],
@@ -67,7 +67,7 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "1 × senior iOS developer",
       "3-month minimum commitment",
       "Monthly delivery reviews",
-      "Up to 50 CodeClear scans",
+      "Up to 50 Code scans",
       "Proposal review & feedback",
       "Priority email support",
     ],
@@ -78,13 +78,13 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "Working UK hours",
       "Zero term commitment",
       "3 Tier 3 developer matches",
-      "CodeClear verified profiles",
+      "Code verified profiles",
     ],
     pro: [
       "AI + backend + frontend squad",
       "Full-time product manager included",
       "Prototype to production ownership",
-      "Unlimited CodeClear scans",
+      "Unlimited Code scans",
       "Embedded delivery support",
       "White-label exports",
     ],
@@ -92,7 +92,7 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "1 × senior platform engineer",
       "3-month minimum commitment",
       "Monthly delivery reviews",
-      "Up to 50 CodeClear scans",
+      "Up to 50 Code scans",
       "Proposal review & feedback",
       "Priority email support",
     ],
@@ -103,13 +103,13 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "Working UK hours",
       "Zero term commitment",
       "3 Tier 3 developer matches",
-      "CodeClear verified profiles",
+      "Code verified profiles",
     ],
     pro: [
       "Design system + frontend squad",
       "Full-time product manager included",
       "Component library to production",
-      "Unlimited CodeClear scans",
+      "Unlimited Code scans",
       "Embedded delivery support",
       "White-label exports",
     ],
@@ -117,7 +117,7 @@ const scenarioFeatures: Record<string, { starter: string[]; pro: string[]; inter
       "1 × senior frontend engineer",
       "3-month minimum commitment",
       "Monthly delivery reviews",
-      "Up to 50 CodeClear scans",
+      "Up to 50 Code scans",
       "Proposal review & feedback",
       "Priority email support",
     ],
@@ -158,7 +158,7 @@ export function CodeClearSiteDemo() {
   return (
     <section className="overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,#0b0f18_0%,#0e1320_100%)] p-5 text-white shadow-[0_32px_120px_rgba(4,8,18,0.34)] md:p-8">
       <div className="mx-auto max-w-[820px] text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">CodeClear integration</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/42">Code integration</p>
         <h3 className="mt-4 text-[40px] font-semibold leading-[1.05] tracking-[-0.05em] text-white">
           What do you want to build?
         </h3>

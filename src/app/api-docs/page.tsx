@@ -236,14 +236,14 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/codeclear/stats",
-    description: "Get CodeClear dashboard metrics, stage counts, re-check totals, and recent activity.",
+    description: "Get Code dashboard metrics, stage counts, re-check totals, and recent activity.",
     auth: true,
     response: `{ "total": 6, "byStatus": [{ "status": "SOURCED", "count": 1 }, { "status": "CODECLEAR_COMPLETE", "count": 1 }], "avgThis": 90, "avgLast": 82, "passRateThis": 100, "recheckDue": 1, "recentActivity": [{ "id": "...", "eventType": "SCORE_FINALIZED", "createdAt": "..." }] }`,
   },
   {
     method: "GET",
     path: "/api/codeclear/candidates",
-    description: "List CodeClear candidates with filters, score ranges, and facets for building the pipeline UI.",
+    description: "List developers with filters, score ranges, and facets for building the pipeline UI.",
     auth: true,
     params: [
       { name: "q", type: "string", required: false, description: "Search by name, GitHub handle, email, or stack" },
@@ -260,7 +260,7 @@ const endpoints: Endpoint[] = [
   {
     method: "POST",
     path: "/api/codeclear/candidates",
-    description: "Create a new CodeClear candidate in the shared Gitwork workspace.",
+    description: "Create a new developer in the shared Gitwork workspace.",
     auth: true,
     body: [
       { name: "name", type: "string", required: true, description: "Candidate display name" },
@@ -277,7 +277,7 @@ const endpoints: Endpoint[] = [
   {
     method: "PATCH",
     path: "/api/codeclear/candidates",
-    description: "Bulk-update CodeClear candidates by moving stages or flagging a re-check.",
+    description: "Bulk-update developers by moving stages or flagging a re-check.",
     auth: true,
     body: [
       { name: "action", type: "MOVE_STAGE | FLAG_RECHECK", required: true, description: "Bulk action mode" },
@@ -290,7 +290,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/codeclear/candidates/:id",
-    description: "Get a single CodeClear candidate including notes, placements, activity, scores, and GitHub runs.",
+    description: "Get a single developer including notes, placements, activity, scores, and GitHub runs.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     response: `{ "candidate": { "id": "...", "name": "...", "score": { "overallScore": 90 }, "scoreDraft": null, "githubAnalysisRuns": [], "placements": [], "notes": [], "activityLog": [] } }`,
@@ -298,7 +298,7 @@ const endpoints: Endpoint[] = [
   {
     method: "PATCH",
     path: "/api/codeclear/candidates/:id",
-    description: "Update the profile, stage, tier, optional re-check date, or People & Rates link for a CodeClear candidate.",
+    description: "Update the profile, stage, tier, optional re-check date, or People & Rates link for a developer.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     body: [
@@ -313,7 +313,7 @@ const endpoints: Endpoint[] = [
   {
     method: "DELETE",
     path: "/api/codeclear/candidates/:id",
-    description: "Delete a CodeClear candidate and its linked notes, activity, scores, runs, and placements.",
+    description: "Delete a developer and its linked notes, activity, scores, runs, and placements.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     response: `{ "ok": true }`,
@@ -321,7 +321,7 @@ const endpoints: Endpoint[] = [
   {
     method: "POST",
     path: "/api/codeclear/candidates/:id/notes",
-    description: "Attach a note to a CodeClear candidate timeline.",
+    description: "Attach a note to a developer timeline.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     body: [{ name: "body", type: "string", required: true, description: "Note content" }],
@@ -330,7 +330,7 @@ const endpoints: Endpoint[] = [
   {
     method: "PUT",
     path: "/api/codeclear/candidates/:id/score",
-    description: "Finalize a CodeClear score from manual review or the current draft values.",
+    description: "Finalize a score from manual review or the current draft values.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     body: [
@@ -348,7 +348,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/codeclear/candidates/:id/github-analysis/runs",
-    description: "List GitHub analysis runs captured for a CodeClear candidate.",
+    description: "List GitHub analysis runs captured for a developer.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     response: `{ "runs": [{ "id": "...", "status": "COMPLETED", "analysisVersion": "docs-codeclear-v1", "startedAt": "...", "completedAt": "...", "metrics": { "averageHealthScore": 84 } }] }`,
@@ -376,7 +376,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/codeclear/candidates/:id/scorecard",
-    description: "Download a generated PDF scorecard for a CodeClear candidate.",
+    description: "Download a generated PDF scorecard for a developer.",
     auth: true,
     params: [{ name: "id", type: "string", required: true, description: "Candidate CUID" }],
     response: `Binary PDF response`,

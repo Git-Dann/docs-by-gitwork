@@ -6,7 +6,7 @@ import { products, serviceOffers } from "@/components/marketing/site-content";
 export const metadata: Metadata = {
   title: "Products | Gitwork",
   description:
-    "Remote developers, custom development, dedicated teams, and project delivery — plus Docs, Proof, and CodeClear to run it all more cleanly.",
+    "Remote developers, custom development, dedicated teams, and project delivery — plus Docs, Proof, and Code to run it all more cleanly.",
 };
 
 export default function ProductsPage() {
@@ -94,7 +94,7 @@ export default function ProductsPage() {
               Three tools. One calmer operating system.
             </h2>
             <p className="mt-5 text-pretty text-[18px] leading-[1.7] text-white/56">
-              Docs, Proof, and CodeClear are built around real delivery friction. They work independently —
+              Docs, Proof, and Code are built around real delivery friction. They work independently —
               but they&apos;re stronger together.
             </p>
           </div>
@@ -150,7 +150,7 @@ export default function ProductsPage() {
             {[
               { title: "Clarify demand", copy: "Use Docs when the problem is fuzzy and the brief is still forming. Better structure before a single line is written." },
               { title: "Shape the plan", copy: "Use Proof when the team needs stronger rationale around scope, risk, and delivery. Less guessing, more evidence." },
-              { title: "Improve match quality", copy: "Use CodeClear when hiring teams need real signal before the shortlist call. Frame demand first, then find the fit." },
+              { title: "Improve match quality", copy: "Use Code when hiring teams need real signal before the shortlist call. Frame demand first, then find the fit." },
             ].map((item) => (
               <article key={item.title} className="bg-[#0a0a0a] px-8 py-10">
                 <h3 className="text-[24px] font-semibold tracking-[-0.04em] text-white">{item.title}</h3>

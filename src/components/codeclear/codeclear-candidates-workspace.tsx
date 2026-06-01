@@ -124,7 +124,7 @@ export function CodeClearCandidatesWorkspace() {
                 setSearch(value);
                 updateQuery({ q: value || null });
               }}
-              placeholder="Search candidates"
+              placeholder="Search developers"
               className="app-input pl-9"
             />
           </label>
@@ -400,7 +400,7 @@ export function CodeClearCandidatesWorkspace() {
           <button
             type="button"
             className="app-dialog-backdrop absolute inset-0"
-            aria-label="Close add candidate modal"
+            aria-label="Close add developer modal"
             onClick={() => setShowCreateModal(false)}
           />
           <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-4xl flex-col">
@@ -410,7 +410,7 @@ export function CodeClearCandidatesWorkspace() {
                   Add dev
                 </h3>
                 <p className="mt-1 text-sm text-[var(--text-4)]">
-                  Create a CodeClear profile. Run validation later to score
+                  Create a developer profile. Run validation later to score
                   this dev from real signals.
                 </p>
               </div>
