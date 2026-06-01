@@ -1,6 +1,6 @@
 import { DocumentStatus, DocumentType, Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
-import { apiOk, fromError } from "@/lib/api-response";
+import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
@@ -32,12 +32,17 @@ export async function GET(request: NextRequest) {
     // "ALL" → every type, a specific type → just that type. iOS passes ALL to
     // populate the cross-type Docs library.
     const typeParam = searchParams.get("documentType")?.trim().toUpperCase();
+    const allowedTypes = new Set<string>(Object.values(DocumentType));
     const typeFilter =
       !typeParam || typeParam === "PROPOSAL"
         ? "PROPOSAL"
         : typeParam === "ALL"
           ? undefined
-          : (typeParam as DocumentType);
+          : allowedTypes.has(typeParam)
+            ? (typeParam as DocumentType)
+            : null;
+    // Unknown type → 400 (not a leaked Prisma 500).
+    if (typeFilter === null) return apiError("Invalid documentType.", 400);
 
     const [sortField, sortDirectionRaw] = sort.split(":");
     const sortDirection = sortDirectionRaw === "asc" ? "asc" : "desc";

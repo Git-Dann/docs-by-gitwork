@@ -68,12 +68,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const nextMetadata = {
-      ...(existing.metadata as Record<string, unknown> | null),
-      ...DEFAULT_PROPOSAL_METADATA,
-      ...(payload.metadata ?? {}),
-    };
-
     await prisma.$transaction(async (tx) => {
       await tx.document.update({
         where: {
@@ -87,7 +81,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           summary: payload.summary,
           version: payload.version,
           expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : payload.expiresAt,
-          metadata: nextMetadata,
+          // Only touch metadata when the client actually sends it. An omitted
+          // metadata must NOT clobber saved values (notes / sign-off flags / client
+          // / version) with template defaults. Defaults are base-only; existing +
+          // payload win. (A metadata-less PATCH used to reset real data to demo
+          // defaults — silent data loss.)
+          ...(payload.metadata !== undefined
+            ? {
+                metadata: {
+                  ...DEFAULT_PROPOSAL_METADATA,
+                  ...(existing.metadata as Record<string, unknown> | null),
+                  ...payload.metadata,
+                },
+              }
+            : {}),
           exportSettings: payload.exportSettings as unknown as Prisma.InputJsonValue | undefined,
           // P0.4 labels + P5.18 parent
           labels:
