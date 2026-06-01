@@ -667,3 +667,100 @@ export const onboardingSubmitSchema = z.object({
 export const clientStatusUpdateSchema = z.object({
   status: workspaceClientStatusSchema,
 });
+
+// ── Backstage (internal ops): leave + expenses ──────────────────────────
+
+export const leaveTypeSchema = z.enum(["ANNUAL", "SICK", "UNPAID", "OTHER"]);
+
+export const leaveStatusSchema = z.enum([
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "CANCELLED",
+]);
+
+const isoDateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}/, "Date must be ISO-8601 (YYYY-MM-DD or full ISO)");
+
+export const leaveRequestInputSchema = z
+  .object({
+    type: leaveTypeSchema,
+    startDate: isoDateString,
+    endDate: isoDateString,
+    halfDayStart: z.boolean().optional().default(false),
+    halfDayEnd: z.boolean().optional().default(false),
+    reason: z.string().max(500).optional(),
+    // Admin-only: file a leave request on behalf of another user
+    userId: z.string().cuid().optional(),
+  })
+  .refine((v) => new Date(v.endDate) >= new Date(v.startDate), {
+    message: "endDate must be on or after startDate",
+    path: ["endDate"],
+  });
+
+export const leaveRequestUpdateSchema = z.object({
+  startDate: isoDateString.optional(),
+  endDate: isoDateString.optional(),
+  type: leaveTypeSchema.optional(),
+  halfDayStart: z.boolean().optional(),
+  halfDayEnd: z.boolean().optional(),
+  reason: z.string().max(500).optional(),
+});
+
+export const approvalDecisionSchema = z.object({
+  note: z.string().max(1000).optional(),
+});
+
+export const expenseStatusSchema = z.enum([
+  "SUBMITTED",
+  "APPROVED",
+  "REJECTED",
+  "REIMBURSED",
+]);
+
+export const expenseCategorySchema = z.enum([
+  "TRAVEL",
+  "EQUIPMENT",
+  "SOFTWARE",
+  "MEALS",
+  "ACCOMMODATION",
+  "OTHER",
+]);
+
+export const expenseInputSchema = z.object({
+  amount: z.number().positive().max(1_000_000),
+  currency: z.string().length(3).default("GBP"),
+  category: expenseCategorySchema,
+  vendor: z.string().max(120).optional(),
+  occurredOn: isoDateString,
+  notes: z.string().max(1000).optional(),
+  // Admin-only: file an expense on behalf of another user
+  userId: z.string().cuid().optional(),
+});
+
+export const expenseUpdateSchema = expenseInputSchema.partial().omit({ userId: true });
+
+export const expenseReviewSchema = z.object({
+  status: z.enum(["APPROVED", "REJECTED", "REIMBURSED"]),
+  note: z.string().max(1000).optional(),
+});
+
+export const backstageListQuerySchema = z.object({
+  scope: z.enum(["me", "team", "all"]).optional().default("me"),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(200).optional().default(50),
+  cursor: z.string().optional(),
+});
+
+export const memberCountrySchema = z.object({
+  countryCode: z.string().length(2).regex(/^[A-Z]{2}$/, "Must be ISO-3166-1 alpha-2"),
+});
+
+export const memberAnnualLeaveSchema = z.object({
+  annualLeaveDays: z.number().int().nonnegative().max(366).nullable(),
+});
+
+export const backstagePermissionSchema = z.object({
+  canApprove: z.boolean(),
+});

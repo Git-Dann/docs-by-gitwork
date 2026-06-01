@@ -176,6 +176,10 @@ model User {
   notificationPreference    NotificationPreference?
   auditLogEntries           AuditLog[]
   meetingSummariesGenerated MeetingSummary[]        @relation("MeetingSummaryGenerator")
+  leaveRequests             LeaveRequest[]          @relation("LeaveRequester")
+  leaveRequestsApproved     LeaveRequest[]          @relation("LeaveApprover")
+  expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
+  expensesReviewed          Expense[]               @relation("ExpenseReviewer")
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -245,6 +249,9 @@ model Workspace {
   customHostname           String?                    @unique // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
   customHostnameVerified   Boolean                    @default(false)
   customHostnameToken      String? // Random CNAME challenge value for DNS verification
+  // ── Backstage (internal ops) ────────────────────────────────────────
+  defaultAnnualLeaveDays   Int                        @default(25)
+  expenseCategories        Json? // Optional override of the hardcoded category list
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
   members                  WorkspaceMember[]
@@ -268,17 +275,22 @@ model Workspace {
   auditLogs                AuditLog[]
   meetingSummaries         MeetingSummary[]
   aiResponseCache          AiResponseCache[]
+  leaveRequests            LeaveRequest[]
+  expenses                 Expense[]
 }
 
 model WorkspaceMember {
-  id          String    @id @default(cuid())
-  workspaceId String
-  userId      String
-  role        String    @default("STAFF")
-  permissions Json      @default("[]")
-  createdAt   DateTime  @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  role            String    @default("STAFF")
+  permissions     Json      @default("[]")
+  // ── Backstage (internal ops) ───────────────────────────────────────
+  countryCode     String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
+  annualLeaveDays Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
+  createdAt       DateTime  @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
 }
@@ -1907,4 +1919,67 @@ model MeetingSummary {
 
   @@unique([workspaceId, eventId])
   @@index([workspaceId, updatedAt])
+}
+
+// ── Backstage (internal ops): leave + expenses ──────────────────────────
+// Backstage is the umbrella for internal Gitwork ops tools. v1 covers staff
+// leave booking + expenses tracking, surfaced as proactive staffing alerts
+// on the Foundry HQ dashboard. Future sub-tools (finance, inventory, vendor
+// admin) slot in under the same module without re-shaping the schema.
+model LeaveRequest {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  userId        String
+  type          String // ANNUAL | SICK | UNPAID | OTHER
+  startDate     DateTime // day-precision, UTC midnight
+  endDate       DateTime // inclusive
+  halfDayStart  Boolean   @default(false)
+  halfDayEnd    Boolean   @default(false)
+  reason        String?
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  approvedById  String?
+  approvedAt    DateTime?
+  rejectionNote String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user       User      @relation("LeaveRequester", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
+
+  @@index([workspaceId, userId])
+  @@index([workspaceId, status])
+  @@index([startDate, endDate])
+}
+
+model Expense {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  userId       String
+  amount       Decimal   @db.Decimal(10, 2)
+  currency     String    @default("GBP")
+  category     String // TRAVEL | EQUIPMENT | SOFTWARE | MEALS | ACCOMMODATION | OTHER
+  vendor       String?
+  occurredOn   DateTime // day-precision
+  notes        String?
+  // Receipt image lifecycle: full image lives in `receiptImage` while the expense
+  // is unresolved. On review the bytes drop and a small thumb is generated for
+  // audit. Object-storage migration logged in CLAUDE.md when volume grows.
+  receiptImage Bytes?
+  receiptThumb Bytes?
+  receiptMime  String? // "image/jpeg" | "image/webp" | "image/png"
+  status       String    @default("SUBMITTED") // SUBMITTED | APPROVED | REJECTED | REIMBURSED
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user       User      @relation("ExpenseClaimant", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation("ExpenseReviewer", fields: [reviewedById], references: [id])
+
+  @@index([workspaceId, userId])
+  @@index([workspaceId, status])
+  @@index([occurredOn])
 }

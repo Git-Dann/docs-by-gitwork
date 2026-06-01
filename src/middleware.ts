@@ -103,6 +103,7 @@ const MODULE_PATHS: Record<string, string> = {
   clients: "/app/clients",
   support: "/app/support",
   study: "/app/study",
+  backstage: "/app/backstage",
 };
 
 function configuredApiKey() {

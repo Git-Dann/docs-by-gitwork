@@ -24,6 +24,7 @@ export const MODULE_PERMISSIONS = [
   { id: "clients", label: "Portal", description: "Client management" },
   { id: "support", label: "Care", description: "Support and aftercare" },
   { id: "study", label: "Study", description: "AI-powered user research" },
+  { id: "backstage", label: "Backstage", description: "Internal team ops — leave, expenses" },
 ] as const;
 
 export type ModuleId = (typeof MODULE_PERMISSIONS)[number]["id"];
@@ -43,21 +44,30 @@ export const FEATURE_PERMISSIONS = [
     label: "See rates",
     description:
       "Rate card, day rates on Costing, dev tier defaults. Off for developer accounts.",
+    defaultOn: true,
   },
   {
     id: "seeAllClients",
     label: "See all clients",
     description:
       "Off scopes Portal/Pulse/Care/Study to clients this user is explicitly linked to.",
+    defaultOn: true,
+  },
+  {
+    id: "backstage.approve",
+    label: "Approve Backstage requests",
+    description:
+      "Approve/reject staff leave requests and review expenses. Grants HR-style access without making the user a workspace Admin.",
+    defaultOn: false,
   },
 ] as const;
 
 export type FeatureId = (typeof FEATURE_PERMISSIONS)[number]["id"];
 
-/** Default permission set for a fresh STAFF member — full module access + see everything. */
+/** Default permission set for a fresh STAFF member — full module access + default-on features. */
 export const DEFAULT_STAFF_PERMISSIONS: string[] = [
   ...MODULE_PERMISSIONS.map((m) => m.id),
-  ...FEATURE_PERMISSIONS.map((f) => f.id),
+  ...FEATURE_PERMISSIONS.filter((f) => f.defaultOn).map((f) => f.id),
 ];
 
 /**
@@ -89,7 +99,8 @@ export const PERMISSION_PRESETS = [
       "clients", // Portal — see only assigned clients (seeAllClients off)
       "support", // Care — for client-related comms
       "pulse", // Pulse — for their project's scans
-      // Notably no: codeclear, proposals, study, seeRates, seeAllClients
+      "backstage", // Backstage — devs file their own leave + expenses
+      // Notably no: codeclear, proposals, study, seeRates, seeAllClients, backstage.approve
     ],
   },
 ] as const;

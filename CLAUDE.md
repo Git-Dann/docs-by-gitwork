@@ -78,6 +78,7 @@ The sidebar uses different labels from the URL routes — mapping below:
 | **Portal** | `/app/clients` | `src/server/clients.ts` | Client management and detail pages |
 | **Care** | `/app/support` | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
 | **Study** | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI-powered user research — multi-agent persona interviews, synthesis, reports |
+| **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
 | **Proof** | `/app/proof` | `src/server/proof.ts` | Document sign-off workflow — currently **hidden from nav** (commented out in app-shell.tsx) |
 | **Rate Card** | `/app/settings` (tab) | `src/server/rate-card.ts` | People rates used in proposal costing |
@@ -256,6 +257,7 @@ Core domains:
 | Pulse | `PulseScan`, `PulseScanCheck`, `PulseMonitor` |
 | Study | `Study`, `StudyResearchPlan`, `StudyPlanQuestion`, `StudySession`, `StudyReport` |
 | Care/Support | `SupportClient`, `SupportClientMembership`, `SupportConversation`, `SupportMessage`, `SupportTicket`, `SupportWorkflowRule`, `SupportAuditLog`, `DraftSupportAction`, `AccountConnection`, `ChannelToken` |
+| Backstage | `LeaveRequest`, `Expense` (plus `WorkspaceMember.countryCode/annualLeaveDays`, `Workspace.defaultAnnualLeaveDays/expenseCategories`) |
 | Rate Card | `RateCardPerson` |
 | Identity | `CustomerIdentity` |
 
@@ -319,21 +321,24 @@ npm run lint         # ESLint
 
 ## 10. Upcoming Work (Next Sessions)
 
-### Auth — Gitwork employee login (HIGH PRIORITY)
-- Login system for Gitwork staff with **Admin** and **Staff** roles
-- `User` and `WorkspaceMember` models already exist in Prisma schema
-- All `/app/**` routes need to be auth-gated
-- Recommended approach: NextAuth.js v5 (Auth.js) with credentials provider, or WorkOS
-- Admin role: full access + user management
-- Staff role: platform access, no admin panel
-- Currently middleware only checks `API_KEY` env var — needs extending
-
 ### Care vector store
 - Add pgvector extension to Neon for semantic search
 - Enable `CREATE EXTENSION vector` on the Neon database
 - Add vector embedding column to `SupportConversation` and/or `SupportMessage`
 - Use Anthropic embeddings API or OpenAI text-embedding-3-small
 - Enable semantic search across client conversation history in Care module
+
+### Backstage v2 ideas (post-MVP)
+- Per-leave-type allowances (separate sick allowance, etc.) — single annual pool today
+- Multi-currency FX conversion for expenses — currently amount + currency stored verbatim
+- Leave-balance carryover year-to-year
+- APNs push notifications for new leave/expense submissions — schema (`DeviceToken`) supports it, trigger points exist in `src/server/backstage.ts`
+- Object-storage migration for receipts — `bytea` is fine while volume is low
+- Additional internal tools under `/app/backstage/<slug>` (finance, inventory, vendor admin) — Backstage was named as an umbrella; v1 is single-page only
+
+### Umbrella pattern for internal tools
+- Backstage is the convention: ONE sidebar item, ONE module entry, sub-tools added as tabs or `/app/backstage/<slug>` routes when they arrive
+- Do not add a second top-level "internal" sidebar item — slot it under Backstage instead
 
 ---
 
@@ -345,8 +350,9 @@ npm run lint         # ESLint
 | ~135 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
 | Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Can be re-enabled when ready. |
 | Library/Templates nav hidden | `src/components/app-shell.tsx` | Same — commented out, works but not exposed. |
-| No real auth | `src/middleware.ts` | Only `API_KEY` env var. Real login is upcoming (see above). |
-| `locals-settings` uses localStorage | `src/lib/local-settings.ts` | Account/workspace settings client-only. Will migrate to DB with auth. |
+| `locals-settings` uses localStorage | `src/lib/local-settings.ts` | Account/workspace settings client-only — pre-auth artifact. |
+| Stale `MODULE_PATHS` route names | `src/middleware.ts` | Still references old paths (`/app/support`, `/app/clients`, etc.) — the new routes (`/app/care`, `/app/portal`) aren't permission-gated as a result. Pre-existing bug, separate ticket. |
+| Backstage receipts in Postgres `bytea` | `prisma/schema.prisma` (`Expense.receiptImage/Thumb`) | Fine for now. Migrate to Vercel Blob / R2 once volume exceeds ~100 expenses or any receipt routinely > 1MB. Lifecycle: full image dropped on review, ~20KB thumb retained for audit. |
 
 ---
 
@@ -367,3 +373,18 @@ In the last session, the following was completed:
 3. **AI context page** added at `/context` (`src/app/context/page.tsx`) — structured project context for AI assistants to read on session resumption.
 
 4. **This CLAUDE.md** — comprehensive handoff guide.
+
+## 13. Recent Changes (June 2026)
+
+1. **Backstage module shipped** — internal Gitwork ops umbrella at `/app/backstage`:
+   - **Leave booking** with allowance tracking (default 25 days/year, per-user override on `WorkspaceMember.annualLeaveDays`). Half-day support. Workspace defaults on `Workspace.defaultAnnualLeaveDays`.
+   - **Expenses** with photo-receipt capture. Client-side compression via `browser-image-compression` (web) and native compression (iOS); server transcodes HEIC via `sharp` and generates a 200px thumb on review.
+   - **Staffing alerts** on Foundry HQ — combines approved leave + `date-holidays` lookups + conflict detection across the next 30 days. Powers both the web dashboard widget and the iOS dashboard widget.
+   - **HR via permission flag** — added `backstage.approve` to `FEATURE_PERMISSIONS` (default-off). Admins bypass automatically. UI toggle lives in Settings → Team's permission editor.
+   - **iOS contract** — every endpoint is mobile JWT-aware via `requireAuthedUser()` (bridges `getRequestUser()` headers + NextAuth `auth()`). Single multipart `/api/backstage/expenses/[id]/receipt` works for web + iOS.
+   - **Notifications** — submissions email all admins + `backstage.approve` holders via the existing Resend config on `Workspace.emailApiKey/emailFromAddress`. New `src/server/email.ts` helper (fire-and-forget).
+   - **Default permission** — newly auto-provisioned users get `backstage` so they can self-serve leave/expenses from day one.
+
+2. **`fromError` honours `error.status`** — `UnauthorizedError` (401) and `ForbiddenError` (403) in `src/server/auth/effective-user.ts` now propagate their HTTP status through the `fromError` helper.
+
+3. **`FEATURE_PERMISSIONS` learned about defaults** — entries now have `defaultOn: boolean`. `DEFAULT_STAFF_PERMISSIONS` filters in only the default-on ones, so adding a new opt-in capability (like `backstage.approve`) doesn't auto-grant it to existing staff presets.

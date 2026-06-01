@@ -10,6 +10,7 @@ import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import MeetingSummaryWidget from "@/components/dashboard/meeting-summary-widget";
 import ProofWidget from "@/components/dashboard/proof-widget";
+import BackstageWidget from "@/components/dashboard/backstage-widget";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -33,6 +34,7 @@ const GRID: GridEntry[] = [
   { component: CalendarWidget,       cols: 1, rows: 2, size: "md" },
   { component: MeetingSummaryWidget, cols: 3, rows: 2, size: "lg" },
   { component: ProofWidget,          cols: 1, rows: 1, size: "sm" },
+  { component: BackstageWidget,      cols: 2, rows: 2, size: "lg" },
 ];
 
 export function AppOverview() {

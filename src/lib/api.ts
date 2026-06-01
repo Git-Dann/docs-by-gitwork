@@ -1596,3 +1596,152 @@ export async function generateMeetingSummary(data: {
   });
 }
 
+// ─── Backstage (internal ops) ──────────────────────────────────────────────
+
+import type {
+  BackstageMember,
+  ExpenseDTO,
+  LeaveAllowanceDTO,
+  LeaveRequestDTO,
+  StaffingAlertsResponse,
+} from "@/types/backstage";
+
+export type BackstageScope = "me" | "team" | "all";
+
+export function listBackstageLeave(opts: {
+  scope?: BackstageScope;
+  status?: string;
+  limit?: number;
+}): Promise<LeaveRequestDTO[]> {
+  const params = new URLSearchParams();
+  if (opts.scope) params.set("scope", opts.scope);
+  if (opts.status) params.set("status", opts.status);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return apiFetch(`/api/backstage/leave${qs ? `?${qs}` : ""}`);
+}
+
+export function createBackstageLeave(data: {
+  type: string;
+  startDate: string;
+  endDate: string;
+  halfDayStart?: boolean;
+  halfDayEnd?: boolean;
+  reason?: string;
+  userId?: string;
+}): Promise<LeaveRequestDTO> {
+  return apiFetch("/api/backstage/leave", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelBackstageLeave(id: string): Promise<LeaveRequestDTO> {
+  return apiFetch(`/api/backstage/leave/${id}`, { method: "DELETE" });
+}
+
+export function approveBackstageLeave(id: string, note?: string): Promise<LeaveRequestDTO> {
+  return apiFetch(`/api/backstage/leave/${id}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: note ?? undefined }),
+  });
+}
+
+export function rejectBackstageLeave(id: string, note?: string): Promise<LeaveRequestDTO> {
+  return apiFetch(`/api/backstage/leave/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: note ?? undefined }),
+  });
+}
+
+export function listBackstageExpenses(opts: {
+  scope?: BackstageScope;
+  status?: string;
+  limit?: number;
+}): Promise<ExpenseDTO[]> {
+  const params = new URLSearchParams();
+  if (opts.scope) params.set("scope", opts.scope);
+  if (opts.status) params.set("status", opts.status);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return apiFetch(`/api/backstage/expenses${qs ? `?${qs}` : ""}`);
+}
+
+export function createBackstageExpense(data: {
+  amount: number;
+  currency: string;
+  category: string;
+  vendor?: string;
+  occurredOn: string;
+  notes?: string;
+  userId?: string;
+}): Promise<ExpenseDTO> {
+  return apiFetch("/api/backstage/expenses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function uploadBackstageReceipt(
+  expenseId: string,
+  file: File,
+): Promise<ExpenseDTO> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`/api/backstage/expenses/${expenseId}/receipt`, {
+    method: "POST",
+    body: form,
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.error === "string" ? data.error : `Upload failed: ${res.status}`;
+    throw new Error(msg);
+  }
+  return data as ExpenseDTO;
+}
+
+export function reviewBackstageExpense(
+  id: string,
+  status: "APPROVED" | "REJECTED" | "REIMBURSED",
+  note?: string,
+): Promise<ExpenseDTO> {
+  return apiFetch(`/api/backstage/expenses/${id}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, note: note ?? undefined }),
+  });
+}
+
+export function getBackstageAllowance(userId?: string): Promise<LeaveAllowanceDTO> {
+  const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return apiFetch(`/api/backstage/allowance${qs}`);
+}
+
+export function getBackstageAlerts(windowDays?: number): Promise<StaffingAlertsResponse> {
+  const qs = windowDays ? `?window=${windowDays}` : "";
+  return apiFetch(`/api/backstage/alerts${qs}`);
+}
+
+export function listBackstageTeam(): Promise<BackstageMember[]> {
+  return apiFetch("/api/backstage/team");
+}
+
+export async function setBackstageMemberPermission(
+  userId: string,
+  canApprove: boolean,
+): Promise<void> {
+  const res = await fetch(`/api/backstage/members/${userId}/permission`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ canApprove }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? `Request failed: ${res.status}`);
+  }
+}
+

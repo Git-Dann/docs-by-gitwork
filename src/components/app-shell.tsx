@@ -12,6 +12,7 @@ import {
   LifebuoyIcon,
   SignalIcon,
   UserGroupIcon,
+  WrenchScrewdriverIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
@@ -93,6 +94,12 @@ export function AppShell({
         label: "Study",
         description: "AI-powered user research",
         icon: AcademicCapIcon,
+      },
+      {
+        href: "/app/backstage",
+        label: "Backstage",
+        description: "Internal team ops — leave, expenses, availability",
+        icon: WrenchScrewdriverIcon,
       },
     ],
     [],

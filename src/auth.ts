@@ -76,7 +76,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               memberships: {
                 create: {
                   role: shouldBeAdmin ? "ADMIN" : "STAFF",
-                  permissions: [],
+                  // Every newly-provisioned Gitwork staff gets access to Backstage
+                  // (leave + expenses are self-serve from day one).
+                  permissions: ["backstage"],
                   workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
                 },
               },
