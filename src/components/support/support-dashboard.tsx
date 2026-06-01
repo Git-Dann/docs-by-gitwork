@@ -149,7 +149,10 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 // ─── tab types ───────────────────────────────────────────────────────────────
 
-type Tab = "inbox" | "tickets" | "reports" | "connectors" | "agents" | "settings";
+type Tab = "inbox" | "tickets" | "conversations" | "reports";
+
+const EMAIL_SOURCES: SupportSource[] = ["gmail"];
+const CHAT_SOURCES: SupportSource[] = ["discord", "reddit", "youtube", "instagram"];
 
 // ─── shared modal wrapper ─────────────────────────────────────────────────────
 
@@ -1074,7 +1077,7 @@ function InboxFiltersDropdown({
   );
 }
 
-function InboxView({ clientId }: { clientId: string }) {
+function InboxView({ clientId, sourcesFilter }: { clientId: string; sourcesFilter?: SupportSource[] }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
 
@@ -1122,11 +1125,12 @@ function InboxView({ clientId }: { clientId: string }) {
 
   // Derive which sources are present so we only show relevant chips
   const presentSources = useMemo(
-    () => [...new Set(convos.map((c) => c.source))],
-    [convos],
+    () => [...new Set(convos.filter((c) => !sourcesFilter || sourcesFilter.includes(c.source)).map((c) => c.source))],
+    [convos, sourcesFilter],
   );
 
   const filtered = convos.filter((c) => {
+    if (sourcesFilter && !sourcesFilter.includes(c.source)) return false;
     if (deferred && !c.subject.toLowerCase().includes(deferred.toLowerCase()) && !c.tags.some((t) => t.includes(deferred.toLowerCase()))) return false;
     if (filterSource !== "all" && c.source !== filterSource) return false;
     if (filterSentiment !== "all" && c.sentiment !== filterSentiment) return false;
@@ -1403,6 +1407,10 @@ function InboxView({ clientId }: { clientId: string }) {
       </div>
     </div>
   );
+}
+
+function ConversationsView({ clientId }: { clientId: string }) {
+  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} />;
 }
 
 function ConversationCard({
@@ -3158,6 +3166,9 @@ function SettingsView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* agents */}
+      <AgentsView clientId={clientId} />
+
       {/* portal link */}
       <section>
         <div className="app-card overflow-hidden p-0">
@@ -3291,10 +3302,8 @@ function SettingsView({ clientId }: { clientId: string }) {
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "inbox", label: "Inbox", icon: InboxIcon },
   { id: "tickets", label: "Tickets", icon: ClipboardDocumentListIcon },
+  { id: "conversations", label: "Conversations", icon: ChatBubbleLeftRightIcon },
   { id: "reports", label: "Reports", icon: DocumentTextIcon },
-  { id: "connectors", label: "Connectors", icon: BoltIcon },
-  { id: "agents", label: "Agents", icon: SparklesIcon },
-  { id: "settings", label: "Settings", icon: Cog8ToothIcon },
 ];
 
 // ─── main dashboard ──────────────────────────────────────────────────────────
@@ -3307,8 +3316,13 @@ export function SupportDashboard() {
     try { return localStorage.getItem("care-active-client") ?? ""; } catch { return ""; }
   });
   const [activeTab, setActiveTab] = useState<Tab>("inbox");
+  const [activePanel, setActivePanel] = useState<"settings" | "connectors" | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  function togglePanel(panel: "settings" | "connectors") {
+    setActivePanel((prev) => (prev === panel ? null : panel));
+  }
 
   function selectClient(id: string) {
     setActiveClientId(id);
@@ -3485,6 +3499,34 @@ export function SupportDashboard() {
             <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               Live
             </span>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => togglePanel("connectors")}
+                title="Connectors"
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition",
+                  activePanel === "connectors"
+                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+                )}
+              >
+                <BoltIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => togglePanel("settings")}
+                title="Settings"
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition",
+                  activePanel === "settings"
+                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+                )}
+              >
+                <Cog8ToothIcon className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <nav className="mt-3 flex gap-0 overflow-x-auto">
@@ -3494,7 +3536,7 @@ export function SupportDashboard() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => { setActiveTab(tab.id); setActivePanel(null); }}
                   className={cn(
                     "flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition",
                     activeTab === tab.id
@@ -3522,14 +3564,14 @@ export function SupportDashboard() {
           </nav>
         </div>
 
-        {/* tab content */}
+        {/* tab content / panel */}
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
-          {activeTab === "inbox" && <InboxView clientId={activeClientId} />}
-          {activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
-          {activeTab === "reports" && <ReportsView client={client} />}
-          {activeTab === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
-          {activeTab === "agents" && <AgentsView clientId={activeClientId} />}
-          {activeTab === "settings" && <SettingsView clientId={activeClientId} />}
+          {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
+          {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
+          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} />}
+          {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
+          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} />}
+          {!activePanel && activeTab === "reports" && <ReportsView client={client} />}
         </div>
       </div>
 
