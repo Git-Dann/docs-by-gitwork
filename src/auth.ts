@@ -10,13 +10,6 @@ const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  debug: true,
-  // TEMP DEBUG: surface the real error behind next-auth's masked "Configuration"
-  logger: {
-    error(error) {
-      console.error("[AUTH_DEBUG]", error.name, "—", error.message, "— cause:", error.cause);
-    },
-  },
   providers: [
     Google({
       // Uses AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET env vars
