@@ -8,7 +8,8 @@ import {
   useUploadReceipt,
 } from "@/hooks/use-backstage";
 import { useBackstageAccess } from "@/components/backstage/access";
-import { BackstagePanel } from "@/components/backstage/panel";
+import { BackstageModal } from "@/components/backstage/modal";
+import { Button } from "@/components/ui/button";
 import type { ExpenseCategory } from "@/types/backstage";
 
 const CATEGORIES: Array<{ value: ExpenseCategory; label: string }> = [
@@ -102,9 +103,9 @@ export function ExpenseForm({
   }
 
   return (
-    <BackstagePanel title="NEW EXPENSE">
+    <BackstageModal eyebrow="Backstage" title="New expense" onClose={onCancel}>
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
           {canApprove ? (
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium text-[var(--text-2)]">For</span>
@@ -225,27 +226,29 @@ export function ExpenseForm({
               {!compressing && !compressedSize ? "Optional — image is compressed in the browser before upload." : null}
             </p>
           </label>
+
+          {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
         </div>
 
-        {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-
-        <div className="mt-5 flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={create.isPending || upload.isPending || compressing}
-            className="rounded-[6px] bg-[var(--brand-600)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
-          >
-            {create.isPending || upload.isPending ? "Submitting…" : "Submit expense"}
-          </button>
-          <button
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+          <Button
             type="button"
+            variant="secondary"
             onClick={onCancel}
-            className="rounded-[6px] border border-[var(--border-2)] px-4 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            disabled={create.isPending || upload.isPending}
           >
             Cancel
-          </button>
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={create.isPending || upload.isPending}
+            disabled={compressing}
+          >
+            Submit expense
+          </Button>
         </div>
       </form>
-    </BackstagePanel>
+    </BackstageModal>
   );
 }

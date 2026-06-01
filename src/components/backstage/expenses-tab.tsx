@@ -29,8 +29,10 @@ export function ExpensesTab() {
         title="MY EXPENSES"
         bodyClassName="p-0"
         action={
-          <PanelAction onClick={() => setShowForm(true)}>
-            <PlusIcon className="h-3.5 w-3.5" />
+          <PanelAction
+            leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
+            onClick={() => setShowForm(true)}
+          >
             New expense
           </PanelAction>
         }

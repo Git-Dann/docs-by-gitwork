@@ -58,17 +58,17 @@ export function LeaveTab() {
         action={
           <>
             {canApprove ? (
-              <div className="mr-1 inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
+              <div className="inline-flex rounded-[6px] border border-[var(--border-2)] bg-white p-0.5">
                 {(["me", "all"] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setScope(s)}
                     className={cn(
-                      "px-2.5 py-1 text-xs font-medium transition",
+                      "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
                       scope === s
-                        ? "bg-[var(--brand-600)] text-white"
-                        : "bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                        : "text-[var(--text-3)] hover:text-[var(--text-1)]",
                     )}
                   >
                     {s === "me" ? "Mine" : "Everyone"}
@@ -77,12 +77,12 @@ export function LeaveTab() {
               </div>
             ) : null}
             <PanelAction
+              leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
               onClick={() => {
                 setEditing(null);
                 setShowForm(true);
               }}
             >
-              <PlusIcon className="h-3.5 w-3.5" />
               Request leave
             </PanelAction>
           </>
