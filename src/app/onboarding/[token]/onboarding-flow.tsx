@@ -194,6 +194,22 @@ export function OnboardingFlow({
     [fields, readOnly, step, token, flashSaved],
   );
 
+  // Live autosave — persist non-bank fields ~1.2s after the client stops
+  // typing, so a half-filled step survives leaving and coming back (not just
+  // on Next/Back). Bank fields save on leaving the bank step via persistBank.
+  const firstFieldsRender = useRef(true);
+  useEffect(() => {
+    if (readOnly || step === 0) return;
+    if (firstFieldsRender.current) {
+      firstFieldsRender.current = false;
+      return;
+    }
+    const id = window.setTimeout(() => {
+      void autosave({ currentStep: step });
+    }, 1200);
+    return () => window.clearTimeout(id);
+  }, [fields, step, readOnly, autosave]);
+
   const persistBank = useCallback(async () => {
     if (readOnly) return true;
     // Only send fields the user actually typed in this session (so an empty
