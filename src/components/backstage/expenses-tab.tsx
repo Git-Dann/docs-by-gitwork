@@ -6,6 +6,7 @@ import { useExpenses } from "@/hooks/use-backstage";
 import { ExpenseForm } from "@/components/backstage/expense-form";
 import { StatusPill } from "@/components/backstage/status-pill";
 import { ReceiptViewer } from "@/components/backstage/receipt-viewer";
+import { BackstagePanel, PanelAction } from "@/components/backstage/panel";
 import { formatDay, formatMoney, formatRelative } from "@/components/backstage/format";
 import type { ExpenseDTO } from "@/types/backstage";
 
@@ -16,18 +17,6 @@ export function ExpensesTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[var(--text-1)]">My expenses</h2>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 rounded-[6px] bg-[var(--brand-600)] px-3 py-2 text-sm font-medium text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
-        >
-          <PlusIcon className="h-4 w-4" />
-          New expense
-        </button>
-      </div>
-
       {showForm ? (
         <ExpenseForm
           onSubmitted={() => setShowForm(false)}
@@ -35,7 +24,17 @@ export function ExpensesTab() {
         />
       ) : null}
 
-      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
+      <BackstagePanel
+        number="01"
+        title="MY EXPENSES"
+        bodyClassName="p-0"
+        action={
+          <PanelAction onClick={() => setShowForm(true)}>
+            <PlusIcon className="h-3.5 w-3.5" />
+            New expense
+          </PanelAction>
+        }
+      >
         {expenses.isLoading ? (
           <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
         ) : (expenses.data ?? []).length === 0 ? (
@@ -80,7 +79,7 @@ export function ExpensesTab() {
             ))}
           </ul>
         )}
-      </div>
+      </BackstagePanel>
 
       {viewingReceipt ? (
         <ReceiptViewer

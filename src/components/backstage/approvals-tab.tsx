@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-backstage";
 import { StatusPill } from "@/components/backstage/status-pill";
 import { ReceiptViewer } from "@/components/backstage/receipt-viewer";
+import { BackstagePanel } from "@/components/backstage/panel";
 import {
   formatDateRange,
   formatDay,
@@ -28,25 +29,30 @@ export function ApprovalsTab() {
   const [viewingReceipt, setViewingReceipt] = useState<ExpenseDTO | null>(null);
 
   return (
-    <div className="space-y-8">
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-[var(--text-1)]">
-          Leave requests · pending
-          {pendingLeave.data ? (
-            <span className="ml-2 text-sm font-normal text-[var(--text-3)]">
+    <div className="space-y-6">
+      <BackstagePanel
+        number="01"
+        title="LEAVE REQUESTS · PENDING"
+        bodyClassName="p-0"
+        action={
+          pendingLeave.data ? (
+            <span
+              className="text-[11px] text-[var(--text-3)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
               {pendingLeave.data.length}
             </span>
-          ) : null}
-        </h2>
-        <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
-          {pendingLeave.isLoading ? (
-            <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
-          ) : (pendingLeave.data ?? []).length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--text-3)]">
-              Nothing pending.
-            </div>
-          ) : (
-            <ul className="divide-y divide-[var(--border-2)]">
+          ) : null
+        }
+      >
+        {pendingLeave.isLoading ? (
+          <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
+        ) : (pendingLeave.data ?? []).length === 0 ? (
+          <div className="p-6 text-center text-sm text-[var(--text-3)]">
+            Nothing pending.
+          </div>
+        ) : (
+          <ul className="divide-y divide-[var(--border-2)]">
               {(pendingLeave.data ?? []).map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-4 px-4 py-3">
                   <div className="min-w-0">
@@ -92,26 +98,30 @@ export function ApprovalsTab() {
               ))}
             </ul>
           )}
-        </div>
-      </section>
+      </BackstagePanel>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-[var(--text-1)]">
-          Expenses · awaiting review
-          {pendingExpenses.data ? (
-            <span className="ml-2 text-sm font-normal text-[var(--text-3)]">
+      <BackstagePanel
+        number="02"
+        title="EXPENSES · AWAITING REVIEW"
+        bodyClassName="p-0"
+        action={
+          pendingExpenses.data ? (
+            <span
+              className="text-[11px] text-[var(--text-3)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
               {pendingExpenses.data.length}
             </span>
-          ) : null}
-        </h2>
-        <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
-          {pendingExpenses.isLoading ? (
-            <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
-          ) : (pendingExpenses.data ?? []).length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--text-3)]">
-              Nothing pending.
-            </div>
-          ) : (
+          ) : null
+        }
+      >
+        {pendingExpenses.isLoading ? (
+          <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
+        ) : (pendingExpenses.data ?? []).length === 0 ? (
+          <div className="p-6 text-center text-sm text-[var(--text-3)]">
+            Nothing pending.
+          </div>
+        ) : (
             <ul className="divide-y divide-[var(--border-2)]">
               {(pendingExpenses.data ?? []).map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-4 px-4 py-3">
@@ -175,8 +185,7 @@ export function ApprovalsTab() {
               ))}
             </ul>
           )}
-        </div>
-      </section>
+      </BackstagePanel>
 
       {viewingReceipt ? (
         <ReceiptViewer

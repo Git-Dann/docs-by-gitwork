@@ -9,6 +9,7 @@ import {
 } from "@/hooks/use-backstage";
 import { LeaveRequestForm } from "@/components/backstage/leave-request-form";
 import { StatusPill } from "@/components/backstage/status-pill";
+import { BackstagePanel, PanelAction } from "@/components/backstage/panel";
 import { formatDateRange, formatRelative } from "@/components/backstage/format";
 
 export function LeaveTab() {
@@ -19,43 +20,15 @@ export function LeaveTab() {
 
   return (
     <div className="space-y-6">
-      {/* Allowance summary card */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <SummaryCard
-          label="Allocated"
-          value={allowance.data?.allocated ?? "—"}
-          suffix="days/year"
-        />
-        <SummaryCard
-          label="Used"
-          value={allowance.data?.used ?? "—"}
-          suffix="days"
-        />
-        <SummaryCard
-          label="Pending"
-          value={allowance.data?.pending ?? "—"}
-          suffix="days"
-        />
-        <SummaryCard
-          label="Remaining"
-          value={allowance.data?.remaining ?? "—"}
-          suffix="days"
-          accent
-        />
-      </div>
-
-      {/* Header + new button */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[var(--text-1)]">My leave</h2>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 rounded-[6px] bg-[var(--brand-600)] px-3 py-2 text-sm font-medium text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
-        >
-          <PlusIcon className="h-4 w-4" />
-          Request leave
-        </button>
-      </div>
+      {/* Allowance */}
+      <BackstagePanel number="01" title="ALLOWANCE">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Stat label="Allocated" value={allowance.data?.allocated ?? "—"} suffix="days/yr" />
+          <Stat label="Used" value={allowance.data?.used ?? "—"} suffix="days" />
+          <Stat label="Pending" value={allowance.data?.pending ?? "—"} suffix="days" />
+          <Stat label="Remaining" value={allowance.data?.remaining ?? "—"} suffix="days" accent />
+        </div>
+      </BackstagePanel>
 
       {showForm ? (
         <LeaveRequestForm
@@ -65,7 +38,17 @@ export function LeaveTab() {
       ) : null}
 
       {/* Requests list */}
-      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
+      <BackstagePanel
+        number="02"
+        title="MY LEAVE"
+        bodyClassName="p-0"
+        action={
+          <PanelAction onClick={() => setShowForm(true)}>
+            <PlusIcon className="h-3.5 w-3.5" />
+            Request leave
+          </PanelAction>
+        }
+      >
         {requests.isLoading ? (
           <div className="p-6 text-sm text-[var(--text-3)]">Loading…</div>
         ) : (requests.data ?? []).length === 0 ? (
@@ -112,12 +95,13 @@ export function LeaveTab() {
             ))}
           </ul>
         )}
-      </div>
+      </BackstagePanel>
     </div>
   );
 }
 
-function SummaryCard({
+// Editorial stat: serif figure + monospace label — the platform's data signature.
+function Stat({
   label,
   value,
   suffix,
@@ -133,12 +117,28 @@ function SummaryCard({
       className={
         accent
           ? "rounded-[10px] border border-[var(--brand-300)] bg-[var(--surface-brand)] p-4"
-          : "rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+          : "rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4"
       }
     >
-      <p className="text-xs uppercase tracking-wide text-[var(--text-4)]">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-[var(--text-1)]">
-        {value} <span className="text-sm font-normal text-[var(--text-3)]">{suffix}</span>
+      <p
+        className="text-[10px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {label}
+      </p>
+      <p className="mt-2 flex items-baseline gap-1.5">
+        <span
+          className="text-[32px] leading-none text-[var(--text-1)]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {value}
+        </span>
+        <span
+          className="text-[11px] text-[var(--text-3)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {suffix}
+        </span>
       </p>
     </div>
   );

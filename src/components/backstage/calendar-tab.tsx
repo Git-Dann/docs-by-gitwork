@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, GlobeAltIcon } from "@heroicons/react/24/outline";
 import { useBackstageCalendar } from "@/hooks/use-backstage";
+import { BackstagePanel } from "@/components/backstage/panel";
 import { cn } from "@/lib/format";
 import type { CalendarDay, CalendarLeaveBar, LeaveType } from "@/types/backstage";
 
@@ -101,14 +102,15 @@ export function CalendarTab() {
   const monthLabel = MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-[var(--text-1)]">{monthLabel}</h2>
-        <div className="flex items-center gap-1">
+    <BackstagePanel
+      number="01"
+      title="TEAM CALENDAR"
+      bodyClassName="space-y-4 p-4"
+      action={
+        <>
           {/* Holiday country toggle */}
           <details className="relative mr-1">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
               <GlobeAltIcon className="h-3.5 w-3.5 text-sky-500" />
               Holidays
             </summary>
@@ -140,7 +142,7 @@ export function CalendarTab() {
             type="button"
             aria-label="Previous month"
             onClick={() => setView(prevMonth(year, month))}
-            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1.5 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ChevronLeftIcon className="h-4 w-4" />
           </button>
@@ -152,7 +154,7 @@ export function CalendarTab() {
                 month: today.getUTCMonth() + 1,
               })
             }
-            className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             Today
           </button>
@@ -160,29 +162,32 @@ export function CalendarTab() {
             type="button"
             aria-label="Next month"
             onClick={() => setView(nextMonth(year, month))}
-            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1.5 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </button>
+        </>
+      }
+    >
+      {/* Month label + legend */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h2 className="text-lg font-semibold text-[var(--text-1)]">{monthLabel}</h2>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-[var(--text-3)]">
+            {(Object.keys(LEAVE_COLOURS) as LeaveType[]).map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <span className={cn("h-2 w-2 rounded-full", LEAVE_COLOURS[t].dot)} />
+                {LEAVE_COLOURS[t].label}
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-1.5">
+              <GlobeAltIcon className="h-3 w-3 text-sky-500" />
+              Public/religious holiday
+            </span>
+          </div>
         </div>
-      </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-[var(--text-3)]">
-        {(Object.keys(LEAVE_COLOURS) as LeaveType[]).map((t) => (
-          <span key={t} className="inline-flex items-center gap-1.5">
-            <span className={cn("h-2 w-2 rounded-full", LEAVE_COLOURS[t].dot)} />
-            {LEAVE_COLOURS[t].label}
-          </span>
-        ))}
-        <span className="inline-flex items-center gap-1.5">
-          <GlobeAltIcon className="h-3 w-3 text-sky-500" />
-          Public/religious holiday
-        </span>
-      </div>
-
-      {/* Calendar box — weekday header + grid joined into a single bordered card. */}
-      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+        {/* Calendar box — weekday header + grid joined into a single bordered card. */}
+        <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
         {/* Weekday header */}
         <div className="grid grid-cols-7 gap-px bg-[var(--border-2)]">
           {WEEKDAYS.map((d) => (
@@ -213,15 +218,15 @@ export function CalendarTab() {
         )}
       </div>
 
-      {/* Footer notes */}
-      <p className="text-xs text-[var(--text-4)]">
-        Approved leave only. Half-days show as half-filled pills. Public/religious holidays cover{" "}
-        {holidayCountries.length > 0
-          ? holidayCountries.map(countryName).join(" + ")
-          : "your configured countries"}{" "}
-        — use the Holidays menu to show or hide each.
-      </p>
-    </div>
+        {/* Footer notes */}
+        <p className="text-xs text-[var(--text-4)]">
+          Approved leave only. Half-days show as half-filled pills. Public/religious holidays cover{" "}
+          {holidayCountries.length > 0
+            ? holidayCountries.map(countryName).join(" + ")
+            : "your configured countries"}{" "}
+          — use the Holidays menu to show or hide each.
+        </p>
+    </BackstagePanel>
   );
 }
 

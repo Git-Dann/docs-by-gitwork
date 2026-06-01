@@ -12,6 +12,10 @@ function getHolidaysInstance(countryCode: string): InstanceType<typeof HolidaysC
   let inst = cache.get(cc);
   if (!inst) {
     inst = new HolidaysClass(cc);
+    // Always surface holiday names in English (e.g. Pakistan ships Urdu names by
+    // default: "یومِ تکبیر" → "Youm-e-Takbeer"). `date-holidays` falls back to its
+    // available languages, so this is a no-op where English isn't translated.
+    inst.setLanguages("en");
     cache.set(cc, inst);
   }
   return inst;
@@ -43,10 +47,16 @@ export function getHolidaysForCountry(
     }>;
     for (const h of yearHolidays) {
       if (!RELEVANT_TYPES.has(h.type)) continue;
-      const hDate = new Date(h.start);
+      // `h.date` is the holiday's LOCAL calendar date ("YYYY-MM-DD HH:mm:ss" in the
+      // country's own timezone). We must take that date string directly — converting
+      // `h.start` (a JS Date) through UTC shifts the day backwards for any country
+      // ahead of UTC (e.g. Pakistan +5, UK in BST +1), which previously rendered
+      // every holiday one day early.
+      const isoDate = h.date.slice(0, 10);
+      const hDate = new Date(`${isoDate}T00:00:00Z`);
       if (hDate < fromDate || hDate > toDate) continue;
       out.push({
-        date: hDate.toISOString().slice(0, 10),
+        date: isoDate,
         name: h.name,
         type: h.type,
         country: countryCode.toUpperCase(),
