@@ -25,6 +25,7 @@ It serves two audiences simultaneously:
 |---|---|
 | GitHub repo | `Git-Dann/docs-by-gitwork` |
 | Production branch | `main` — Vercel auto-deploys on every push |
+| Merge policy | **Squash-merge only** · merge & rebase-merge disabled · branches auto-delete on merge |
 | Production URL | `foundry-by-gitwork.vercel.app` |
 | Vercel team | `dans-projects-7462374f` |
 | Vercel project ID | `prj_u7FhnIWLk1xj5pHtAaApEnshLZfS` |
@@ -32,8 +33,35 @@ It serves two audiences simultaneously:
 | Also aliases | `docs-by-gitwork.vercel.app` |
 | AI context page | `foundry-by-gitwork.vercel.app/context` (noindex, not in nav) |
 
-**Branch strategy:** Work directly on `main` for small fixes. For larger features use a
-branch (`feature/...`) and push — Vercel creates a preview URL automatically.
+### Branch, merge & deploy workflow
+
+**`main` is the production branch — every push auto-deploys to production.** The goal is that
+**one merge = one clear, readable production deploy.** GitHub is configured to enforce this:
+
+- **Squash-merge only** — merge commits and rebase-merge are disabled. Each PR lands as a
+  single commit on `main`, titled with the PR title (which becomes the Vercel deploy label).
+- **Auto-delete head branches on merge** — merged branches are removed automatically, so they
+  don't accumulate.
+
+Rules of thumb:
+
+- **Small fixes** → commit directly to `main` with a clear [Conventional Commit](https://www.conventionalcommits.org)
+  message (`fix:`, `feat:`, `chore:`, `docs:` …). That message is what appears in the Vercel
+  deploy feed — make it descriptive.
+- **Features** → branch (`feature/...`), open a PR, let it **squash-merge**. One feature →
+  one clean deploy line. Vercel builds a preview URL for the branch automatically.
+- **Syncing a feature branch with `main`** → **rebase** (`git fetch && git rebase origin/main`).
+  Do **not** `git merge main` into the branch and push that merge onto `main` — merge commits
+  like *"Merge origin/main into feature/x"* land on production as unreadable deploys. (This was
+  the single biggest source of deploy-feed noise before it was cleaned up in June 2026.)
+- **Stay tidy** → prune stale worktrees (`git worktree prune`) and don't leave dozens of
+  abandoned branches around. Auto-delete handles remote branches post-merge.
+
+**Build safety:** `vercel.json` runs `prisma db push` **without** `--accept-data-loss` on every
+build. Additive schema changes apply automatically; **destructive** changes (dropped
+columns/data) are skipped rather than applied — run those manually against Neon when intended.
+Never re-add `--accept-data-loss`: it let any preview branch silently mutate the shared
+production database.
 
 ---
 
