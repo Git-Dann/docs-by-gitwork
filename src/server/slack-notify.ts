@@ -82,7 +82,7 @@ function buildPayload(input: NotifyInput): unknown {
         elements: [
           {
             type: "mrkdwn",
-            text: `Docs by Gitwork  ·  <${input.url ?? "https://foundry-by-gitwork.vercel.app/app/proposals"}|view document>`,
+            text: `Docs by Gitwork  ·  <${input.url ?? "https://foundry.gitwork.co.uk/app/proposals"}|view document>`,
           },
         ],
       },

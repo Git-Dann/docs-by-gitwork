@@ -4386,7 +4386,7 @@ function CustomHostnameSection() {
 
       <div className="space-y-5 p-6">
         <p className="text-sm leading-6 text-[var(--text-3)]">
-          Replace <code className="font-mono text-[12px] text-[var(--text-2)]">foundry-by-gitwork.vercel.app/docs/&hellip;</code>{" "}
+          Replace <code className="font-mono text-[12px] text-[var(--text-2)]">foundry.gitwork.co.uk/docs/&hellip;</code>{" "}
           on public share links with your own subdomain &mdash;{" "}
           <code className="font-mono text-[12px] text-[var(--text-2)]">docs.yourcompany.com/&hellip;</code>. Once verified,
           every share URL we generate uses the branded host instead.

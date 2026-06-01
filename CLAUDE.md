@@ -26,12 +26,12 @@ It serves two audiences simultaneously:
 | GitHub repo | `Git-Dann/docs-by-gitwork` |
 | Production branch | `main` — Vercel auto-deploys on every push |
 | Merge policy | **Squash-merge only** · merge & rebase-merge disabled · branches auto-delete on merge |
-| Production URL | `foundry-by-gitwork.vercel.app` |
+| Production URL | `foundry.gitwork.co.uk` |
 | Vercel team | `dans-projects-7462374f` |
 | Vercel project ID | `prj_u7FhnIWLk1xj5pHtAaApEnshLZfS` |
 | Vercel project name | `foundry-by-gitwork` |
-| Also aliases | `docs-by-gitwork.vercel.app` |
-| AI context page | `foundry-by-gitwork.vercel.app/context` (noindex, not in nav) |
+| Also aliases | `foundry-by-gitwork.vercel.app`, `docs-by-gitwork.vercel.app` |
+| AI context page | `foundry.gitwork.co.uk/context` (noindex, not in nav) |
 
 ### Branch, merge & deploy workflow
 

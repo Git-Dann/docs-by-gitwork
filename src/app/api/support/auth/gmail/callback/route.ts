@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const base = process.env.NEXTAUTH_URL ?? "https://foundry-by-gitwork.vercel.app";
+  const base = process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk";
   const careUrl = `${base}/app/support`;
 
   const code = searchParams.get("code");

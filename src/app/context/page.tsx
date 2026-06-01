@@ -25,7 +25,7 @@ export default function ContextPage() {
         <p>
           Foundry by Gitwork is a design-and-build agency platform. It combines an internal SaaS tool
           for the Gitwork team with a public marketing page. The production URL is{" "}
-          <code>foundry-by-gitwork.vercel.app</code>. The GitHub repo is{" "}
+          <code>foundry.gitwork.co.uk</code>. The GitHub repo is{" "}
           <code>Git-Dann/docs-by-gitwork</code> (main branch = production).
         </p>
       </section>

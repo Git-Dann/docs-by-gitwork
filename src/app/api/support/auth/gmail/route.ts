@@ -17,7 +17,7 @@ export function GET(request: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) return apiError("GOOGLE_CLIENT_ID not configured", 500);
 
-  const base = process.env.NEXTAUTH_URL ?? "https://foundry-by-gitwork.vercel.app";
+  const base = process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk";
   const redirectUri = `${base}/api/support/auth/gmail/callback`;
 
   const params = new URLSearchParams({

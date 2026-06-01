@@ -9,7 +9,7 @@ export function GET() {
     return apiError("GOOGLE_CLIENT_ID env var not configured", 500);
   }
 
-  const redirectUri = `${process.env.NEXTAUTH_URL ?? "https://foundry-by-gitwork.vercel.app"}/api/integrations/gmail/callback`;
+  const redirectUri = `${process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk"}/api/integrations/gmail/callback`;
 
   const params = new URLSearchParams({
     client_id: clientId,

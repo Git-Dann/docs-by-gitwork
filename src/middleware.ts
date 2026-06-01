@@ -8,6 +8,7 @@ const { auth } = NextAuth(authConfig);
 // Hostnames that the middleware short-circuits past for custom-domain routing. Anything not in
 // this list and not localhost gets the DB lookup. Keep in sync with vercel.json domains.
 const DEFAULT_HOSTS = new Set([
+  "foundry.gitwork.co.uk",
   "foundry-by-gitwork.vercel.app",
   "docs-by-gitwork.vercel.app",
 ]);
@@ -37,7 +38,7 @@ async function isCustomHostnameMatch(hostname: string): Promise<boolean> {
     // The Prisma client doesn't ship to the edge runtime — call our app's API route instead.
     // We hit our own /api/internal/resolve-host endpoint which runs on the Node runtime.
     const res = await fetch(
-      `https://${process.env.VERCEL_URL ?? "foundry-by-gitwork.vercel.app"}/api/internal/resolve-host?hostname=${encodeURIComponent(hostname)}`,
+      `https://${process.env.NEXTAUTH_URL ? new URL(process.env.NEXTAUTH_URL).host : "foundry.gitwork.co.uk"}/api/internal/resolve-host?hostname=${encodeURIComponent(hostname)}`,
       { headers: { "x-internal-call": "middleware" } },
     );
     if (res.ok) {

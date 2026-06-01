@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  const settingsUrl = `${process.env.NEXTAUTH_URL ?? "https://foundry-by-gitwork.vercel.app"}/app/settings`;
+  const settingsUrl = `${process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk"}/app/settings`;
 
   if (error || !code) {
     return NextResponse.redirect(`${settingsUrl}?gmail_error=${encodeURIComponent(error ?? "no_code")}`);
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${settingsUrl}?gmail_error=server_config`);
   }
 
-  const redirectUri = `${process.env.NEXTAUTH_URL ?? "https://foundry-by-gitwork.vercel.app"}/api/integrations/gmail/callback`;
+  const redirectUri = `${process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk"}/api/integrations/gmail/callback`;
 
   try {
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
