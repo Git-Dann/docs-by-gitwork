@@ -51,6 +51,19 @@ export async function GET(request: Request) {
     return apiOk(out);
   }
 
+  // TEMP DIAGNOSTIC: /api/health?check=care — captures the real Prisma error from
+  // the support dashboard aggregate. Removed alongside the auth diagnostic.
+  if (url.searchParams.get("check") === "care") {
+    try {
+      const { getSupportDashboardSummary } = await import("@/server/support");
+      const summary = await getSupportDashboardSummary();
+      return apiOk({ ok: true, clientCount: summary.clientCount, recent: summary.recentConversations.length });
+    } catch (e) {
+      const err = e as Error & { cause?: unknown };
+      return apiOk({ ok: false, name: err.name, message: err.message, cause: String(err.cause) });
+    }
+  }
+
   return apiOk({
     ok: true,
     service: "foundry-by-gitwork",
