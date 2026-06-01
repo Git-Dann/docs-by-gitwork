@@ -338,7 +338,9 @@ export async function updateLeaveRequest(
   if (existing.userId !== user.id && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot edit another user's leave");
   }
-  if (existing.status !== "PENDING") {
+  // Owners can only edit a request while it's pending; approvers (admin/HR) can
+  // amend anyone's leave at any point — e.g. fixing dates on already-approved leave.
+  if (existing.status !== "PENDING" && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot edit a resolved leave request");
   }
 

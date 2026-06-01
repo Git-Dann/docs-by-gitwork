@@ -299,6 +299,8 @@ Every Backstage tab (Calendar, Leave, Expenses, Approvals) is a full module surf
 
 **Stat tiles (Leave allowance)** — Allocated / Used / Pending / Remaining render as editorial stats: figure in DM Serif Display (`{typography.stat-display}`-style, ~32px) over a JetBrains Mono `{typography.data-label}` caption. Remaining uses the `{colors.surface-blue}` accent tile. This serif-figure + mono-label pairing is the platform's data signature — never plain bold sans.
 
+**Forms** — Leave/expense forms are themselves `BackstagePanel`s (un-numbered, e.g. `NEW LEAVE REQUEST`, `EDIT LEAVE`) using the standard `app-input` controls — never ad-hoc bordered boxes. Approver-only affordances (the **For** member picker for filing on behalf, the **Mine / Everyone** scope toggle, and the per-row **Edit**) are gated client-side via `useBackstageAccess().canApprove` and enforced server-side; they don't render for ordinary staff.
+
 **`calendar-grid`**
 - The weekday header row and the 6×7 day grid render as **one joined card** — a single `{rounded.lg}` bordered container with the weekday strip and grid divided by a hairline, never separated by a gap. (A `space-y` gap between them is a bug — they must read as one instrument face.)
 - Day cells: `min-h-[100px]`, `{colors.surface-raised}` face; out-of-month and weekend cells drop to `{colors.canvas}`. Today's date number sits in a `{colors.primary}` filled circle (one of the few sanctioned `{rounded.full}` uses, alongside status dots).

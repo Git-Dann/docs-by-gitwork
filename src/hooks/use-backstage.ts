@@ -6,6 +6,7 @@ import {
   cancelBackstageLeave,
   createBackstageExpense,
   createBackstageLeave,
+  updateBackstageLeave,
   getBackstageAlerts,
   getBackstageAllowance,
   getBackstageCalendar,
@@ -47,6 +48,19 @@ export function useCreateLeaveRequest() {
   return useMutation({
     mutationFn: (input: Parameters<typeof createBackstageLeave>[0]) =>
       createBackstageLeave(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backstage", "leave"] });
+      void qc.invalidateQueries({ queryKey: ["backstage", "allowance"] });
+      void qc.invalidateQueries({ queryKey: ["backstage", "alerts"] });
+    },
+  });
+}
+
+export function useUpdateLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateBackstageLeave>[1] }) =>
+      updateBackstageLeave(id, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["backstage", "leave"] });
       void qc.invalidateQueries({ queryKey: ["backstage", "allowance"] });

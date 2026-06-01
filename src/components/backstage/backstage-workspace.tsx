@@ -1,23 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
 import { ApprovalsTab } from "@/components/backstage/approvals-tab";
+import { useBackstageAccess } from "@/components/backstage/access";
 
 type Tab = "calendar" | "leave" | "expenses" | "approvals";
 
 export function BackstageWorkspace() {
-  const { data: session } = useSession();
-  const role = session?.user?.role ?? "STAFF";
-  const permissions = (session?.user?.permissions as string[] | undefined) ?? [];
-  const canApprove = role === "ADMIN" || permissions.includes("backstage.approve");
-  // Expenses is opt-in per account (backstage.expenses) so HR/finance can use it
-  // without being an Admin, and devs never see it. Admins bypass like everywhere else.
-  const canManageExpenses = role === "ADMIN" || permissions.includes("backstage.expenses");
+  const { canApprove, canManageExpenses } = useBackstageAccess();
 
   const [tab, setTab] = useState<Tab>("calendar");
 
