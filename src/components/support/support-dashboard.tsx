@@ -1700,10 +1700,12 @@ function ReportBuilder({
   }
 
   async function handleSave() {
+    // refundRequests / refundsProcessed are always equal to catCancellations — derive automatically
+    const payload = { ...p, refundRequests: p.catCancellations, refundsProcessed: p.catCancellations };
     if (report) {
-      await updateReport.mutateAsync({ reportId: report.id, data: { period, payload: p } });
+      await updateReport.mutateAsync({ reportId: report.id, data: { period, payload } });
     } else {
-      await createReport.mutateAsync({ period, payload: p, createdBy: p.author });
+      await createReport.mutateAsync({ period, payload, createdBy: p.author });
     }
     onSaved();
   }
@@ -1803,35 +1805,23 @@ function ReportBuilder({
         </div>
       </div>
 
-      {/* 04 // TICKET PRIORITY */}
+      {/* 04 // SUPPORT PERFORMANCE */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("04", "TICKET PRIORITY")}
-        <div className="p-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {numInput("Urgent", p.prioUrgent, (v) => update("prioUrgent", v))}
-            {numInput("High", p.prioHigh, (v) => update("prioHigh", v))}
-            {numInput("Medium", p.prioMedium, (v) => update("prioMedium", v))}
-            {numInput("Low", p.prioLow, (v) => update("prioLow", v))}
-          </div>
-        </div>
-      </div>
-
-      {/* 05 // SUPPORT PERFORMANCE */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("05", "SUPPORT PERFORMANCE")}
+        {widgetHeader("04", "SUPPORT PERFORMANCE")}
         <div className="p-5">
           {textareaInput("Performance notes", p.performanceText, (v) => update("performanceText", v),
             "Comment on resolution rate, backlog, SLA adherence…", 4)}
         </div>
       </div>
 
-      {/* 06 // REFUND REQUESTS */}
+      {/* 05 // REFUND REQUESTS */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("06", "REFUND REQUESTS")}
+        {widgetHeader("05", "REFUND REQUESTS")}
         <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {numInput("Total requests", p.refundRequests, (v) => update("refundRequests", v))}
-            {numInput("Processed", p.refundsProcessed, (v) => update("refundsProcessed", v))}
+          <p className="text-xs text-[var(--text-4)]">
+            Refund count is derived from cancellations above — enter the total £ value and any notes.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
             {numInput("Total value (£)", p.refundTotalValue, (v) => update("refundTotalValue", v), "£")}
           </div>
           {textareaInput("Breakdown notes", p.refundNotes, (v) => update("refundNotes", v),
@@ -1839,9 +1829,9 @@ function ReportBuilder({
         </div>
       </div>
 
-      {/* 07 // USAGE & SUBSCRIPTIONS */}
+      {/* 06 // USAGE & SUBSCRIPTIONS */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("07", "USAGE & SUBSCRIPTIONS")}
+        {widgetHeader("06", "USAGE & SUBSCRIPTIONS")}
         <div className="p-5 space-y-5">
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">User base (all-time)</p>
@@ -1884,9 +1874,9 @@ function ReportBuilder({
         </div>
       </div>
 
-      {/* 08 // SUMMARY */}
+      {/* 07 // SUMMARY */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("08", "SUMMARY")}
+        {widgetHeader("07", "SUMMARY")}
         <div className="p-5">
           {textareaInput("Summary narrative", p.summaryText, (v) => update("summaryText", v),
             "Write the closing summary bullet points for the report…", 5)}
