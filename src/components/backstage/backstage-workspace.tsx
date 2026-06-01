@@ -15,13 +15,16 @@ export function BackstageWorkspace() {
   const role = session?.user?.role ?? "STAFF";
   const permissions = (session?.user?.permissions as string[] | undefined) ?? [];
   const canApprove = role === "ADMIN" || permissions.includes("backstage.approve");
+  // Expenses is opt-in per account (backstage.expenses) so HR/finance can use it
+  // without being an Admin, and devs never see it. Admins bypass like everywhere else.
+  const canManageExpenses = role === "ADMIN" || permissions.includes("backstage.expenses");
 
   const [tab, setTab] = useState<Tab>("calendar");
 
   const tabs: Array<{ key: Tab; label: string; visible: boolean }> = [
     { key: "calendar", label: "Calendar", visible: true },
     { key: "leave", label: "Leave", visible: true },
-    { key: "expenses", label: "Expenses", visible: true },
+    { key: "expenses", label: "Expenses", visible: canManageExpenses },
     { key: "approvals", label: "Approvals", visible: canApprove },
   ];
 
@@ -48,7 +51,7 @@ export function BackstageWorkspace() {
       <div className="min-h-0">
         {tab === "calendar" ? <CalendarTab /> : null}
         {tab === "leave" ? <LeaveTab /> : null}
-        {tab === "expenses" ? <ExpensesTab /> : null}
+        {tab === "expenses" && canManageExpenses ? <ExpensesTab /> : null}
         {tab === "approvals" && canApprove ? <ApprovalsTab /> : null}
       </div>
     </div>

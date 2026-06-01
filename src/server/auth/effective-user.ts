@@ -100,3 +100,10 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
     throw new ForbiddenError("Backstage approval permission required");
   }
 }
+
+// Expenses are opt-in per account (decoupled from role): the `backstage.expenses`
+// feature flag. Admins bypass (consistent with every other permission check), so
+// the flag is the way to grant HR/finance access WITHOUT making them an Admin.
+export function canManageExpenses(user: EffectiveUser): boolean {
+  return user.role === "ADMIN" || user.permissions.includes("backstage.expenses");
+}

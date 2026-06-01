@@ -252,6 +252,10 @@ model Workspace {
   // ── Backstage (internal ops) ────────────────────────────────────────
   defaultAnnualLeaveDays   Int                        @default(25)
   expenseCategories        Json? // Optional override of the hardcoded category list
+  /// ISO-3166-1 alpha-2 country codes whose public/religious holidays show on the
+  /// team calendar for EVERYONE (workspace-wide), independent of where each member
+  /// is based. Defaults to UK + Pakistan; admins can extend to other countries.
+  holidayCountries         Json                       @default("[\"GB\", \"PK\"]")
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
   members                  WorkspaceMember[]

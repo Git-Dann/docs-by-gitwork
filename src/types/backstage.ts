@@ -153,4 +153,6 @@ export type CalendarMonth = {
   weeks: CalendarDay[][];
   /** Members with at least one leave bar in this month — used by the legend. */
   members: BackstageMember[];
+  /** ISO-3166-1 alpha-2 country codes whose holidays are included this month (workspace-wide, UK + PK by default). Drives the calendar's country toggle. */
+  holidayCountries: string[];
 };
