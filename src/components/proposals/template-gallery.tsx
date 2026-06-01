@@ -114,11 +114,12 @@ export function TemplateGallery({
   );
 
   return (
-    <div className="space-y-3">
-      {/* Filter chips — sticky to the top of the gallery scroll container so the operator can
-          flip doc type while scrolled deep into a long list. -mx-3 -mt-3 px-3 pt-3 backs the
-          chips up to the container's padded edges so the sticky background bleeds correctly. */}
-      <div className="sticky top-0 z-10 -mx-3 -mt-3 flex flex-wrap gap-1.5 bg-[var(--surface-canvas)] px-3 pb-2.5 pt-3">
+    <div>
+      {/* Filter chips — sticky to the top of the gallery scroll container. The chip row owns
+          its own padding + bottom border; the parent scroll container has no padding so
+          `sticky top-0` lands the chip row flush against the scroll viewport edge with no
+          content bleeding through above it. */}
+      <div className="sticky top-0 z-10 flex flex-wrap gap-1.5 border-b border-[var(--border-2)] bg-[var(--surface-canvas)] px-3 py-2.5">
         {visibleChips.map((chip) => (
           <FilterChip key={chip} active={filter === chip} onClick={() => setFilter(chip)}>
             {CHIP_LABEL[chip]}
@@ -127,13 +128,14 @@ export function TemplateGallery({
       </div>
 
       {/* Dense list rows — one template per row so the operator can scan many at a glance and
-          the modal doesn't get drowned in big cards. */}
+          the modal doesn't get drowned in big cards. Padding lives here, not on the parent
+          scroll container, so the sticky chip strip above stays flush. */}
       {loading ? (
-        <p className="text-sm text-[var(--text-3)]">Loading templates…</p>
+        <p className="px-3 py-3 text-sm text-[var(--text-3)]">Loading templates…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-[var(--text-3)]">No templates yet for this type.</p>
+        <p className="px-3 py-3 text-sm text-[var(--text-3)]">No templates yet for this type.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-1.5 p-3">
           {filtered.map((template) => {
             const sections = Array.isArray(template.sections)
               ? (template.sections as Array<{ key?: string; title?: string }>)

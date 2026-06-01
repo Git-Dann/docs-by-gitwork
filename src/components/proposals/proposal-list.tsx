@@ -914,14 +914,16 @@ export function ProposalList() {
                   </div>
                 </div>
 
-                {/* Right — gallery */}
+                {/* Right — gallery. No padding on the scroll container; the gallery handles its
+                    own padding so the sticky chip row can flush against the scroll viewport's
+                    top edge instead of leaving a 12px gap. */}
                 <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                   <div className="border-b border-[var(--border-2)] bg-white px-3 py-2">
                     <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                       Template library
                     </p>
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     <TemplateGallery
                       selectedTemplateId={form.templateId}
                       onPick={({ id, documentType }) =>
