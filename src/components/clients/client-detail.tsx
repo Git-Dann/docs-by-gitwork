@@ -26,7 +26,6 @@ import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
-import { TasksSummaryCard } from "@/components/tasks/tasks-summary-card";
 import {
   useClientDetail,
   useClientSlackActivity,
@@ -385,7 +384,19 @@ export function ClientDetail({ slug }: { slug: string }) {
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
-        <StatCard number="06" label="DEVS" value={(placements ?? []).filter((p) => !p.endDate).length} />
+        <StatCard
+          number="06"
+          label="DEVS"
+          value={(placements ?? []).filter((p) => !p.endDate).length}
+          action={
+            <Link
+              href={`/app/portal/${slug}/tasks`}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+            >
+              Tasks →
+            </Link>
+          }
+        />
       </div>
 
       {/* ── 07 // SLACK ACTIVITY ── */}
@@ -978,9 +989,6 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       </div>
 
-      {/* ── 16 // TASKS ── */}
-      <TasksSummaryCard clientId={client.id} number="16" />
-
       {/* Full-width optionals */}
         {/* 17 // PROOF DOCUMENTS */}
         {proofDocuments.length > 0 && (
@@ -1149,9 +1157,20 @@ function ClientDevelopersSection({
   );
 }
 
-function StatCard({ number, label, value }: { number: string; label: string; value: number }) {
+function StatCard({
+  number,
+  label,
+  value,
+  action,
+}: {
+  number: string;
+  label: string;
+  value: number;
+  /** Optional small control pinned bottom-right (e.g. a jump link). */
+  action?: React.ReactNode;
+}) {
   return (
-    <article className="widget-card">
+    <article className="widget-card relative">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{number}</span>
@@ -1167,6 +1186,7 @@ function StatCard({ number, label, value }: { number: string; label: string; val
         </p>
         <p className="widget-data-label mt-2">{label}</p>
       </div>
+      {action ? <div className="absolute bottom-3 right-3">{action}</div> : null}
     </article>
   );
 }

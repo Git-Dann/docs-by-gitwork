@@ -25,10 +25,10 @@ export function DevOverview() {
               {" // MY CLIENTS"}
             </span>
             <Link
-              href="/app/portal?tab=tasks"
+              href="/app/portal"
               className="widget-header__status inline-flex items-center gap-1 transition-colors hover:text-[var(--brand-700)]"
             >
-              Task board <ArrowRightIcon className="h-3 w-3" />
+              Portal <ArrowRightIcon className="h-3 w-3" />
             </Link>
           </div>
           <div className="widget-body space-y-1.5">
@@ -42,7 +42,7 @@ export function DevOverview() {
               clients.map((c) => (
                 <Link
                   key={c.id}
-                  href={`/app/portal/${c.slug}`}
+                  href={`/app/portal/${c.slug}/tasks`}
                   className="flex items-center justify-between rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
                 >
                   <span className="truncate text-sm font-medium text-[var(--text-1)]">{c.name}</span>

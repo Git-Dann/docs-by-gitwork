@@ -28,6 +28,7 @@ const taskInclude = {
   client: { select: { id: true, name: true, slug: true } },
   assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
   createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  featureBlock: { select: { id: true, name: true } },
   _count: { select: { comments: true } },
 } satisfies Prisma.TaskInclude;
 
@@ -52,6 +53,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     client: { id: row.client.id, name: row.client.name, slug: row.client.slug },
     assignee: userRef(row.assignee),
     createdBy: userRef(row.createdBy),
+    featureBlock: row.featureBlock ? { id: row.featureBlock.id, name: row.featureBlock.name } : null,
     title: row.title,
     description: row.description,
     status: row.status as TaskStatus,
@@ -100,7 +102,7 @@ async function clientScopeWhere(user: EffectiveUser): Promise<Prisma.TaskWhereIn
 }
 
 /** Throw unless the user may act on this client. */
-async function assertClientInScope(user: EffectiveUser, clientId: string): Promise<void> {
+export async function assertClientInScope(user: EffectiveUser, clientId: string): Promise<void> {
   if (canSeeAllClients(user)) {
     const client = await prisma.workspaceClient.findFirst({
       where: { id: clientId, workspaceId: user.workspaceId },
@@ -195,6 +197,19 @@ export async function getClientTaskSummary(
 
 // ─── Write ─────────────────────────────────────────────────────────────────
 
+/** Ensure a feature block exists under the given client + workspace. */
+async function assertBlockInClient(
+  workspaceId: string,
+  clientId: string,
+  blockId: string,
+): Promise<void> {
+  const block = await prisma.featureBlock.findFirst({
+    where: { id: blockId, workspaceId, clientId },
+    select: { id: true },
+  });
+  if (!block) throw new ForbiddenError("Feature block not found for this client");
+}
+
 async function nextOrderKey(workspaceId: string, clientId: string, status: TaskStatus): Promise<number> {
   const top = await prisma.task.findFirst({
     where: { workspaceId, clientId, status },
@@ -213,11 +228,15 @@ export async function createTask(
     status?: TaskStatus;
     priority?: TaskPriority;
     assigneeId?: string | null;
+    featureBlockId?: string | null;
     dueDate?: string | null;
   },
 ): Promise<TaskDTO> {
   await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
+  if (input.featureBlockId) {
+    await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
+  }
   const status = input.status ?? "BACKLOG";
   const ts = statusTimestamps(null, status, { startedAt: null });
 
@@ -227,6 +246,7 @@ export async function createTask(
       clientId: input.clientId,
       createdById: user.id,
       assigneeId: input.assigneeId ?? null,
+      featureBlockId: input.featureBlockId ?? null,
       title: input.title,
       description: input.description ?? null,
       status,
@@ -250,6 +270,7 @@ export async function updateTask(
     status?: TaskStatus;
     priority?: TaskPriority;
     assigneeId?: string | null;
+    featureBlockId?: string | null;
     dueDate?: string | null;
   },
 ): Promise<TaskDTO> {
@@ -268,6 +289,14 @@ export async function updateTask(
     data.assignee = input.assigneeId
       ? { connect: { id: input.assigneeId } }
       : { disconnect: true };
+  }
+  if (input.featureBlockId !== undefined) {
+    if (input.featureBlockId) {
+      await assertBlockInClient(user.workspaceId, existing.clientId, input.featureBlockId);
+      data.featureBlock = { connect: { id: input.featureBlockId } };
+    } else {
+      data.featureBlock = { disconnect: true };
+    }
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
   if (input.status !== undefined && input.status !== existing.status) {

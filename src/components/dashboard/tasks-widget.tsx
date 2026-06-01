@@ -31,7 +31,7 @@ export default function TasksWidget({ size }: { size: WidgetSize }) {
           06 // TASKS
         </span>
         <Link
-          href="/app/portal?tab=tasks"
+          href="/app/portal"
           className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]"
         >
           Open

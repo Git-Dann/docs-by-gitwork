@@ -5,7 +5,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
-import { useCreateTask, useUpdateTask } from "@/hooks/use-tasks";
+import { useCreateTask, useUpdateTask, useFeatureBlocks } from "@/hooks/use-tasks";
 import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
@@ -46,8 +46,11 @@ export function TaskFormModal({
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
+  const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
   const [error, setError] = useState<string | null>(null);
 
+  const blocksQuery = useFeatureBlocks(clientId || null);
+  const blocks = blocksQuery.data ?? [];
   const members = teamQuery.data ?? [];
   const clients = clientsQuery.data?.clients ?? [];
   const saving = create.isPending || update.isPending;
@@ -72,6 +75,7 @@ export function TaskFormModal({
             status,
             priority,
             assigneeId: assigneeId || null,
+            featureBlockId: featureBlockId || null,
             dueDate: dueDate || null,
           },
         });
@@ -84,6 +88,7 @@ export function TaskFormModal({
           status,
           priority,
           assigneeId: assigneeId || null,
+          featureBlockId: featureBlockId || null,
           dueDate: dueDate || null,
         });
         onSaved?.(saved);
@@ -166,6 +171,26 @@ export function TaskFormModal({
                   Move a task to another client by recreating it.
                 </p>
               ) : null}
+            </div>
+          ) : null}
+
+          {blocks.length > 0 ? (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                Feature block <span className="text-[var(--text-4)]">(list)</span>
+              </label>
+              <select
+                className="app-select w-full"
+                value={featureBlockId}
+                onChange={(e) => setFeatureBlockId(e.target.value)}
+              >
+                <option value="">No block</option>
+                {blocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
             </div>
           ) : null}
 

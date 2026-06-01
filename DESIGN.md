@@ -356,6 +356,30 @@ A single `widget-card` (`01 // MY DAY`) with Doing / Up next / Done-today groups
 of day** actions that show the pushed time in mono. The DevOps roll-up (`02 // DAILY ROLL-UP`)
 lists each dev's AM/PM push state as labelled `status-dot`s with a single Publish action.
 
+**Feature blocks ("lists")** — A feature block is the unit of timeline planning: a name, a
+start + end date, a colour, and a set of tasks. Created/edited via `feature-block-form` (a modal
+with a colour swatch picker). Tasks optionally belong to a block; loose tasks show on the board
+only. On a card the block renders as a `{colors.surface-brand}` chip; the list view adds a Block
+column.
+
+**`gantt-chart`** — Dependency-free timeline. Each feature block is one bar, positioned by its
+start/end on a continuous day-scale axis. A sticky left rail (240px) lists the block name,
+progress, and its task titles (done = green dot); the scrollable track holds the bars (progress
+fill inside each). A zoom control switches **Month · Quarter · 6 months · Year** (pixels-per-day),
+and a **red vertical line marks today**, spanning all rows. Bars take the block colour from a
+fixed palette (blue/violet/emerald/amber/rose/slate). The same component renders the public
+client timeline read-only.
+
+**Per-client tasks page** (`/app/portal/[slug]/tasks`) — opened from the **`06 // DEVS`** card's
+bottom-right **Tasks →** button (no Portal-level tab, no extra client-detail card). Header is a
+back-link to the client + a **Board · List · Gantt** view toggle; actions are New task, New block
+(in Gantt view), and **Share timeline**.
+
+**Public timeline** (`/timeline/[token]`) — a tokenised, read-only, client-facing Gantt: feature
+blocks + task names + progress + the today line, with no assignees/notes/internal status. Toggled
+per client from the Share control. Follows the public Pulse report's no-auth, `noindex` pattern;
+closes with a quiet "Powered by Gitwork" footer.
+
 ---
 
 ## Do's and Don'ts

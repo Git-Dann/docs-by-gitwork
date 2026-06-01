@@ -16,6 +16,12 @@ import {
   publishRollup,
   listMemberClients,
   setMemberClients,
+  listFeatureBlocks,
+  createFeatureBlock,
+  updateFeatureBlock,
+  deleteFeatureBlock,
+  getTimelineShare,
+  setTimelineShare,
 } from "@/lib/api";
 import type { TaskStatus } from "@/types/tasks";
 
@@ -29,6 +35,8 @@ const QK = {
   myDay: (date?: string) => ["tasks", "myday", date ?? "today"] as const,
   roster: ["tasks", "rollup"] as const,
   memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
+  blocks: (clientId: string) => ["tasks", "blocks", clientId] as const,
+  share: (slug: string) => ["tasks", "share", slug] as const,
 };
 
 /** Invalidate every task-derived query after a write. */
@@ -170,5 +178,60 @@ export function useSetMemberClients() {
       setMemberClients(memberId, clientIds),
     onSuccess: (_data, vars) =>
       void qc.invalidateQueries({ queryKey: QK.memberClients(vars.memberId) }),
+  });
+}
+
+// ─── Feature blocks ("lists") ────────────────────────────────────────────────
+
+export function useFeatureBlocks(clientId: string | null) {
+  return useQuery({
+    queryKey: QK.blocks(clientId ?? ""),
+    queryFn: () => listFeatureBlocks(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateFeatureBlock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createFeatureBlock>[0]) => createFeatureBlock(input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useUpdateFeatureBlock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateFeatureBlock>[1] }) =>
+      updateFeatureBlock(id, input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useDeleteFeatureBlock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteFeatureBlock(id),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+// ─── Public timeline share ───────────────────────────────────────────────────
+
+export function useTimelineShare(slug: string | null) {
+  return useQuery({
+    queryKey: QK.share(slug ?? ""),
+    queryFn: () => getTimelineShare(slug as string),
+    enabled: Boolean(slug),
+    staleTime: 30_000,
+  });
+}
+
+export function useSetTimelineShare(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setTimelineShare(slug, enabled),
+    onSuccess: (data) => qc.setQueryData(QK.share(slug), data),
   });
 }
