@@ -28,12 +28,22 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const status = searchParams.get("status")?.trim();
     const sort = searchParams.get("sort")?.trim() ?? "updatedAt:desc";
+    // documentType: absent/"PROPOSAL" → proposals only (default; web unchanged),
+    // "ALL" → every type, a specific type → just that type. iOS passes ALL to
+    // populate the cross-type Docs library.
+    const typeParam = searchParams.get("documentType")?.trim().toUpperCase();
+    const typeFilter =
+      !typeParam || typeParam === "PROPOSAL"
+        ? "PROPOSAL"
+        : typeParam === "ALL"
+          ? undefined
+          : (typeParam as DocumentType);
 
     const [sortField, sortDirectionRaw] = sort.split(":");
     const sortDirection = sortDirectionRaw === "asc" ? "asc" : "desc";
 
     const where: Prisma.DocumentWhereInput = {
-      documentType: "PROPOSAL",
+      ...(typeFilter ? { documentType: typeFilter } : {}),
       ...(status && status !== "ALL" ? { status: status as DocumentStatus } : {}),
       ...(search
         ? {
