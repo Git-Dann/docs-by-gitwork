@@ -2099,6 +2099,8 @@ function BankDetailsModal({
             <BanknotesIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" />
             Encrypted at rest. Reveal is server-side only and not cached.
           </div>
+          {/* Fixed-height area so the modal doesn't change size on reveal/hide. */}
+          <div className="min-h-[210px]">
           {!revealed ? (
             <div className="grid gap-4 sm:grid-cols-3">
               <BankField label="Account" value={bank.accountNumberLast4 ? `•••• ${bank.accountNumberLast4}` : "On file"} />
@@ -2116,6 +2118,7 @@ function BankDetailsModal({
               <BankField label="Currency" value={revealed.currency ?? "—"} />
             </div>
           )}
+          </div>
           {error && <p className="mt-3 text-xs text-rose-700">{error}</p>}
           <div className="mt-6 flex justify-end gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={onClose}>

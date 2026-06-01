@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircleIcon, ArrowRightIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, ArrowRightIcon, ArrowLeftIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
@@ -91,6 +91,23 @@ function formatSortCode(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 6);
   return digits.replace(/(\d{2})(?=\d)/g, "$1-");
 }
+
+// Bank-field input guards — restrict to the characters each field can hold.
+function digitsOnly(value: string, max: number): string {
+  return value.replace(/\D/g, "").slice(0, max);
+}
+function alnumUpper(value: string, max: number): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, max);
+}
+
+// Common UK banks — powers the bank-name autocomplete (native <datalist>).
+const UK_BANKS = [
+  "Barclays", "HSBC", "Lloyds Bank", "NatWest", "Santander", "Halifax",
+  "Nationwide", "TSB", "The Co-operative Bank", "Metro Bank", "Monzo",
+  "Starling Bank", "Revolut", "Royal Bank of Scotland", "Bank of Scotland",
+  "Virgin Money", "Tide", "Wise", "Allied Irish Bank", "Bank of Ireland",
+  "Clydesdale Bank", "Coutts", "First Direct", "Cynergy Bank",
+];
 
 export function OnboardingFlow({
   token,
@@ -519,6 +536,7 @@ export function OnboardingFlow({
                 bankSummary={bankSummary}
                 onEditStep={(i) => goTo(i)}
                 readOnly={readOnly}
+                token={token}
               />
             )}
           </div>
@@ -665,6 +683,7 @@ function StepYou({
             readOnly={readOnly}
             placeholder="Jane"
             autoComplete="given-name"
+            maxLength={60}
           />
         </Field>
         <Field label="Last name">
@@ -674,6 +693,7 @@ function StepYou({
             readOnly={readOnly}
             placeholder="Smith"
             autoComplete="family-name"
+            maxLength={60}
           />
         </Field>
       </div>
@@ -752,17 +772,21 @@ function StepCompany({
         <Field label="Company number">
           <TextInput
             value={s(fields.companyNumber)}
-            onChange={setField("companyNumber")}
+            onChange={(v) => setField("companyNumber")(v.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 10))}
             readOnly={readOnly}
             placeholder="12345678"
+            autoComplete="off"
+            maxLength={10}
           />
         </Field>
         <Field label="VAT number" hint="If you're VAT registered.">
           <TextInput
             value={s(fields.vatNumber)}
-            onChange={setField("vatNumber")}
+            onChange={(v) => setField("vatNumber")(v.toUpperCase().slice(0, 15))}
             readOnly={readOnly}
             placeholder="GB123456789"
+            autoComplete="off"
+            maxLength={15}
           />
         </Field>
       </div>
@@ -825,9 +849,10 @@ function StepCompany({
           <TextInput
             autoComplete="postal-code"
             value={s(fields.postcode)}
-            onChange={setField("postcode")}
+            onChange={(v) => setField("postcode")(v.toUpperCase().slice(0, 10))}
             readOnly={readOnly}
             placeholder="M1 1AA"
+            maxLength={10}
           />
         </Field>
         <Field label="Country">
@@ -979,6 +1004,7 @@ function StepGoals({
           onChange={setField("projectGoals")}
           readOnly={readOnly}
           rows={8}
+          maxLength={5000}
         />
       </Field>
     </>
@@ -1000,8 +1026,13 @@ function StepBank({
     <>
       <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-xs leading-relaxed text-[var(--text-3)]">
         Bank details are <strong>encrypted at rest</strong>. We use them to set up invoicing on
-        your project. Only Gitwork staff (Dan and Harry) can see them.
+        your project. Only Gitwork staff can see them.
       </div>
+      <datalist id="uk-banks">
+        {UK_BANKS.map((b) => (
+          <option key={b} value={b} />
+        ))}
+      </datalist>
       {bankSummary.onFile && (
         <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           We&apos;ve got your bank details on file
@@ -1018,6 +1049,8 @@ function StepBank({
             onChange={setBank("accountHolder")}
             readOnly={readOnly}
             placeholder="Acme Health Ltd"
+            autoComplete="off"
+            maxLength={70}
           />
         </Field>
         <Field label="Bank name">
@@ -1026,6 +1059,9 @@ function StepBank({
             onChange={setBank("bankName")}
             readOnly={readOnly}
             placeholder="Barclays"
+            list="uk-banks"
+            autoComplete="off"
+            maxLength={60}
           />
         </Field>
         <Field label="Sort code">
@@ -1039,14 +1075,15 @@ function StepBank({
             maxLength={8}
           />
         </Field>
-        <Field label="Account number">
+        <Field label="Account number" hint="8 digits.">
           <TextInput
             value={bankInput.accountNumber}
-            onChange={setBank("accountNumber")}
+            onChange={(v) => setBank("accountNumber")(digitsOnly(v, 8))}
             readOnly={readOnly}
             placeholder="12345678"
             autoComplete="off"
             inputMode="numeric"
+            maxLength={8}
           />
         </Field>
         <Field
@@ -1055,26 +1092,28 @@ function StepBank({
         >
           <TextInput
             value={bankInput.iban}
-            onChange={setBank("iban")}
+            onChange={(v) => setBank("iban")(alnumUpper(v, 34))}
             readOnly={readOnly}
-            placeholder="GB29 NWBK 6016 1331 9268 19"
+            placeholder="GB29NWBK60161331926819"
             autoComplete="off"
+            maxLength={34}
           />
         </Field>
         <Field label="SWIFT / BIC">
           <TextInput
             value={bankInput.swiftBic}
-            onChange={setBank("swiftBic")}
+            onChange={(v) => setBank("swiftBic")(alnumUpper(v, 11))}
             readOnly={readOnly}
             placeholder="NWBKGB2L"
             autoComplete="off"
+            maxLength={11}
           />
         </Field>
       </div>
       <Field label="Currency" hint="ISO code (GBP, USD, EUR…).">
         <TextInput
           value={bankInput.currency}
-          onChange={setBank("currency")}
+          onChange={(v) => setBank("currency")(v.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 3))}
           readOnly={readOnly}
           placeholder="GBP"
           maxLength={3}
@@ -1089,11 +1128,13 @@ function StepReview({
   bankSummary,
   onEditStep,
   readOnly,
+  token,
 }: {
   fields: SessionFields;
   bankSummary: BankSummary;
   onEditStep: (idx: number) => void;
   readOnly: boolean;
+  token: string;
 }) {
   const contactName = [fields.contactFirstName, fields.contactLastName].filter(Boolean).join(" ");
   const rows: Array<{ stepIdx: number; label: string; value: string }> = [
@@ -1138,6 +1179,18 @@ function StepReview({
           </li>
         ))}
       </ul>
+      <a
+        href={`/api/onboarding/${token}/pdf`}
+        target="_blank"
+        rel="noreferrer"
+        className="app-button app-button-secondary app-button-sm w-full justify-center sm:w-auto"
+      >
+        <ArrowDownTrayIcon className="h-4 w-4" />
+        Download a copy (PDF)
+      </a>
+      <p className="text-xs text-[var(--text-4)]">
+        Your bank details are never included in the download.
+      </p>
       {!readOnly && (
         <>
           <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-xs leading-relaxed text-[var(--text-3)]">

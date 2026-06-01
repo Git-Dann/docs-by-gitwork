@@ -147,8 +147,16 @@ function ClientCard({ client }: { client: ClientListItem }) {
               <SparklesIcon className="h-3 w-3 text-[var(--brand-700)]" />
               SUGGESTED
             </span>
+          ) : client.status === "PENDING_REVIEW" ? (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+              PENDING
+            </span>
           ) : (
-            "CLIENT"
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              ACTIVE
+            </span>
           )}
         </span>
         {/* Drive + ClickUp quick-links — right-aligned, no trash here */}
@@ -569,25 +577,6 @@ export function ClientManagement() {
           </div>
         </section>
 
-        {/* ── Pending review — surfaced on the Active view whenever there are
-            submitted onboardings awaiting a move to workflow. Only renders when
-            there's at least one. ── */}
-        {tab === "active" && pendingClients.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="widget-data-label">Pending review</span>
-              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-800">
-                {pendingClients.length}
-              </span>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {pendingClients.map((client) => (
-                <ClientCard key={client.id} client={client} />
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* ── Content per tab ── */}
         {isPending ? (
           <div className="widget-card">
@@ -622,6 +611,24 @@ export function ClientManagement() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* ── Pending review — shown at the bottom of the Active view whenever
+            there are submitted onboardings awaiting a move to workflow. ── */}
+        {tab === "active" && pendingClients.length > 0 && (
+          <section className="space-y-3 pt-1">
+            <div className="flex items-center gap-2">
+              <span className="widget-data-label">Pending review</span>
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-800">
+                {pendingClients.length}
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {pendingClients.map((client) => (
+                <ClientCard key={client.id} client={client} />
+              ))}
+            </div>
+          </section>
         )}
       </div>
 
