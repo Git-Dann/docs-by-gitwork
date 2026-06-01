@@ -17,15 +17,15 @@ function ClientRow({ clientId, name }: { clientId: string; name: string }) {
       href={`/app/support`}
       className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
     >
-      <span className="truncate text-sm text-[var(--text-1)]">{name}</span>
+      <span className="truncate text-sm text-[#0F172A]">{name}</span>
       <div className="ml-2 flex shrink-0 items-center gap-1.5">
         {openTickets > 0 && (
-          <span className="rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[var(--text-2)]">
+          <span className="rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[#475569]">
             {openTickets}t
           </span>
         )}
         {unread > 0 && (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1D4ED8] text-xs font-bold text-white">
             {unread}
           </span>
         )}
@@ -46,17 +46,22 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
   if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
-        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
-          <HeartIcon className="h-2.5 w-2.5" />
-          Care
-        </span>
-        <div className="flex flex-1 flex-col items-center justify-center">
-          <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{clients.length}</p>
-          <p className="text-xs text-[var(--text-3)]">clients</p>
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            04 // CARE
+          </span>
         </div>
-        <p className="text-center text-xs text-[var(--text-3)]">
-          {clients.length === 0 ? "No clients yet" : "Support active"}
-        </p>
+        {/* Body */}
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{clients.length}</p>
+            <p className="text-xs text-[#475569]">clients</p>
+          </div>
+          <p className="text-center text-xs text-[#475569]">
+            {clients.length === 0 ? "No clients yet" : "Support active"}
+          </p>
+        </div>
       </div>
     );
   }
@@ -65,34 +70,35 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
-          <HeartIcon className="h-2.5 w-2.5" />
-          Care
+      {/* Widget header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          04 // CARE
         </span>
-        <Link href="/app/support" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/support" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>
 
-      {/* List */}
-      <div className="mt-2 flex-1 overflow-y-auto">
-        {clients.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-            <HeartIcon className="h-6 w-6 text-[var(--text-4)]" />
-            <p className="text-xs text-[var(--text-3)]">No support clients yet</p>
-            <Link href="/app/support" className="text-xs font-medium text-[var(--accent)] hover:underline">
-              Add a client →
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            {clients.slice(0, displayCount).map((c) => (
-              <ClientRow key={c.id} clientId={c.id} name={c.name} />
-            ))}
-          </div>
-        )}
+      {/* Body */}
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <div className="flex-1 overflow-y-auto">
+          {clients.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+              <HeartIcon className="h-6 w-6 text-[#94A3B8]" />
+              <p className="text-xs text-[#475569]">No support clients yet</p>
+              <Link href="/app/support" className="text-xs font-medium text-[#1D4ED8] hover:underline">
+                Add a client →
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {clients.slice(0, displayCount).map((c) => (
+                <ClientRow key={c.id} clientId={c.id} name={c.name} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

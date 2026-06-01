@@ -39,22 +39,30 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
 
   if (!data?.connected) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-2 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-50">
-          <EnvelopeIcon className="h-5 w-5 text-sky-400" />
+      <div className="flex h-full flex-col">
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            08 // MAIL
+          </span>
         </div>
-        <div>
-          <p className="text-xs font-semibold text-[var(--text-1)]">Gmail not connected</p>
-          <p className="mt-0.5 text-xs text-[var(--text-3)]">
-            Sign out and back in to grant Gmail access
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-50">
+            <EnvelopeIcon className="h-5 w-5 text-sky-400" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-[#0F172A]">Gmail not connected</p>
+            <p className="mt-0.5 text-xs text-[#475569]">
+              Sign out and back in to grant Gmail access
+            </p>
+          </div>
+          <Link
+            href="/api/auth/signout"
+            className="rounded-[6px] bg-[#1D4ED8] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Re-connect via Google
+          </Link>
         </div>
-        <Link
-          href="/api/auth/signout"
-          className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-        >
-          Re-connect via Google
-        </Link>
       </div>
     );
   }
@@ -65,49 +73,50 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Widget header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          08 // MAIL
+        </span>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
-            <EnvelopeIcon className="h-2.5 w-2.5" />
-            Mail
-          </span>
           {unread > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-xs font-bold text-white">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1D4ED8] px-1 text-xs font-bold text-white">
               {unread}
             </span>
           )}
+          <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>{messages.length} msgs</span>
         </div>
-        <span className="text-xs text-[var(--text-3)]">{messages.length} messages</span>
       </div>
 
-      {/* Message list */}
-      <div className="mt-1.5 flex-1 divide-y divide-[var(--border-1)] overflow-y-auto">
-        {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--text-3)]">
-            Inbox empty
-          </div>
-        ) : (
-          messages.slice(0, displayCount).map((msg) => (
-            <div
-              key={msg.id}
-              className={`py-1.5 transition-colors ${msg.unread ? "" : "opacity-60"}`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span
-                  className={`truncate text-sm ${msg.unread ? "font-semibold text-[var(--text-1)]" : "text-[var(--text-2)]"}`}
-                >
-                  {parseFrom(msg.from)}
-                </span>
-                <span className="shrink-0 text-xs text-[var(--text-3)]">{formatDate(msg.date)}</span>
-              </div>
-              <p className="truncate text-sm text-[var(--text-2)]">{msg.subject}</p>
-              {size !== "sm" && (
-                <p className="truncate text-xs text-[var(--text-3)]">{msg.snippet}</p>
-              )}
+      {/* Body */}
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <div className="flex-1 divide-y divide-[rgba(0,0,0,0.06)] overflow-y-auto">
+          {messages.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-xs text-[#94A3B8]">
+              Inbox empty
             </div>
-          ))
-        )}
+          ) : (
+            messages.slice(0, displayCount).map((msg) => (
+              <div
+                key={msg.id}
+                className={`py-1.5 transition-colors ${msg.unread ? "" : "opacity-60"}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className={`truncate text-sm ${msg.unread ? "font-semibold text-[#0F172A]" : "text-[#475569]"}`}
+                  >
+                    {parseFrom(msg.from)}
+                  </span>
+                  <span className="shrink-0 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>{formatDate(msg.date)}</span>
+                </div>
+                <p className="truncate text-sm text-[#475569]">{msg.subject}</p>
+                {size !== "sm" && (
+                  <p className="truncate text-xs text-[#94A3B8]">{msg.snippet}</p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,64 +1,58 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDaysIcon } from "@heroicons/react/24/solid";
+import { SparklesIcon, VideoCameraIcon } from "@heroicons/react/24/solid";
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents } from "@/lib/api";
-import type { CalendarEvent } from "@/lib/api";
+import { getCalendarEvents, generateMeetingSummary, getIntegrations } from "@/lib/api";
+import type { CalendarEvent, SlackChannel } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
 
-function formatEventTime(start: string, end: string): string {
+function formatTime(iso: string): string {
+  if (!iso.includes("T")) return "All day";
   try {
-    const s = new Date(start);
-    const e = new Date(end);
-    const timeOpts: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
-    const dateOpts: Intl.DateTimeFormatOptions = { weekday: "short", day: "numeric", month: "short" };
-    const today = new Date();
-    const isToday = s.toDateString() === today.toDateString();
-    if (isToday) {
-      return `Today ${s.toLocaleTimeString("en-GB", timeOpts)} – ${e.toLocaleTimeString("en-GB", timeOpts)}`;
-    }
-    return `${s.toLocaleDateString("en-GB", dateOpts)}, ${s.toLocaleTimeString("en-GB", timeOpts)}`;
+    return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
   } catch {
-    return start;
+    return "";
   }
 }
 
-function isAllDay(start: string): boolean {
-  return !start.includes("T");
+function formatDate(iso: string): string {
+  try {
+    const eventDay = iso.includes("T") ? iso.slice(0, 10) : iso;
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+    if (eventDay === todayStr) return "Today";
+    if (eventDay === tomorrowStr) return "Tomorrow";
+
+    return new Date(eventDay).toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  } catch {
+    return iso;
+  }
 }
 
-function EventRow({ event, compact }: { event: CalendarEvent; compact?: boolean }) {
-  return (
-    <div className="rounded-[6px] border border-[var(--border-1)] bg-[var(--surface-0)] p-2">
-      <p className={`font-medium text-[var(--text-1)] ${compact ? "truncate text-xs" : "text-xs"}`}>
-        {event.summary}
-      </p>
-      {!isAllDay(event.start) && (
-        <p className="mt-0.5 text-xs text-[var(--text-3)]">{formatEventTime(event.start, event.end)}</p>
-      )}
-      {!compact && event.attendees.length > 0 && (
-        <p className="mt-0.5 text-xs text-[var(--text-3)]">
-          {event.attendees.slice(0, 3).join(", ")}
-          {event.attendees.length > 3 && ` +${event.attendees.length - 3}`}
-        </p>
-      )}
-      {event.meetLink && (
-        <a
-          href={event.meetLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1 inline-flex items-center gap-1 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-2)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          Join →
-        </a>
-      )}
-    </div>
-  );
+interface CachedSummary {
+  summary: string;
+  cached: boolean;
+  cachedAt?: string;
+  generatedBy?: string | null;
 }
 
 export default function CalendarWidget({ size }: { size: WidgetSize }) {
+  const [summaries, setSummaries] = useState<Record<string, CachedSummary>>({});
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
+
   const { data, isLoading } = useQuery({
     queryKey: ["integrations", "calendar"],
     queryFn: getCalendarEvents,
@@ -66,57 +60,295 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
     retry: false,
   });
 
+  const { data: integrations } = useQuery({
+    queryKey: ["integrations", "settings"],
+    queryFn: getIntegrations,
+    staleTime: 1000 * 60 * 10,
+    retry: false,
+  });
+
+  const slackChannels = (integrations?.slackChannels ?? []) as SlackChannel[];
+
+  function toggleChannel(id: string) {
+    setSelectedChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSummarise(event: CalendarEvent, opts?: { force?: boolean }) {
+    if (!opts?.force && summaries[event.id]) {
+      setSelected(event.id);
+      return;
+    }
+    setGenerating(event.id);
+    setSelected(event.id);
+    try {
+      const channelIds = selectedChannels.size > 0 ? Array.from(selectedChannels) : undefined;
+      const res = await generateMeetingSummary({
+        eventId: event.id,
+        eventTitle: event.summary,
+        eventDate: event.start,
+        attendees: event.attendees,
+        channelIds,
+        force: opts?.force,
+      });
+      setSummaries((prev) => ({
+        ...prev,
+        [event.id]: {
+          summary: res.summary,
+          cached: res.cached,
+          cachedAt: res.cachedAt,
+          generatedBy: res.generatedBy ?? null,
+        },
+      }));
+    } catch {
+      setSummaries((prev) => ({
+        ...prev,
+        [event.id]: {
+          summary: "Failed to generate summary. Check your AI and Google settings.",
+          cached: false,
+        },
+      }));
+    } finally {
+      setGenerating(null);
+    }
+  }
+
   if (isLoading) {
     return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
 
+  // ── sm size: mini view ──────────────────────────────────────────────────────
+  if (size === "sm") {
+    const events = data?.events ?? [];
+    const nextEvent = events[0];
+    return (
+      <div className="flex h-full flex-col">
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            09 // CALENDAR
+          </span>
+        </div>
+        {/* Body */}
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{events.length}</p>
+            <p className="text-xs text-[#475569]">events upcoming</p>
+          </div>
+          {nextEvent && (
+            <p className="truncate text-center text-xs text-[#475569]">{nextEvent.summary}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Not connected ───────────────────────────────────────────────────────────
   if (!data?.connected) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-2 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
-          <CalendarDaysIcon className="h-5 w-5 text-teal-400" />
+      <div className="flex h-full flex-col">
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            09 // CALENDAR
+          </span>
         </div>
-        <div>
-          <p className="text-xs font-semibold text-[var(--text-1)]">Calendar not connected</p>
-          <p className="mt-0.5 text-xs text-[var(--text-3)]">
-            Sign out and back in to grant Calendar access
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
+            <VideoCameraIcon className="h-5 w-5 text-teal-400" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-[#0F172A]">Calendar not connected</p>
+            <p className="mt-0.5 text-xs text-[#475569]">
+              Sign out and back in to grant Calendar access
+            </p>
+          </div>
+          <Link
+            href="/api/auth/signout"
+            className="rounded-[6px] bg-[#1D4ED8] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Re-connect via Google
+          </Link>
         </div>
-        <Link
-          href="/api/auth/signout"
-          className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-        >
-          Re-connect via Google
-        </Link>
       </div>
     );
   }
 
   const events = data.events ?? [];
-  const displayCount = size === "lg" ? 8 : size === "md" ? 4 : 2;
+  const activeSummary = selected ? summaries[selected] : null;
+  const activeEvent = selected ? events.find((e) => e.id === selected) : null;
 
+  // ── md / lg: full calendar + meeting prep ───────────────────────────────────
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
-          <CalendarDaysIcon className="h-2.5 w-2.5" />
-          Calendar
+      {/* Widget header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          09 // CALENDAR
         </span>
-        <span className="text-xs text-[var(--text-3)]">next 14 days</span>
+        <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
       </div>
 
-      {/* Events */}
-      <div className="mt-2 flex-1 space-y-1.5 overflow-y-auto">
-        {events.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--text-3)]">
-            No upcoming events
+      {/* Body: two-panel layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left panel: event list */}
+        <div className="flex w-56 shrink-0 flex-col border-r border-[rgba(0,0,0,0.08)]">
+          <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2">
+            <p className="text-xs font-medium text-[#475569]">Upcoming</p>
           </div>
-        ) : (
-          events.slice(0, displayCount).map((ev) => (
-            <EventRow key={ev.id} event={ev} compact={size === "sm"} />
-          ))
-        )}
+          <div className="flex-1 overflow-y-auto">
+            {events.length === 0 ? (
+              <div className="flex h-full items-center justify-center p-4 text-center">
+                <p className="text-xs text-[#94A3B8]">No upcoming events</p>
+              </div>
+            ) : (
+              events.map((ev) => (
+                <button
+                  key={ev.id}
+                  className={`w-full border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[#EFF6FF] ${selected === ev.id ? "bg-[#EFF6FF]" : ""}`}
+                  onClick={() => setSelected(ev.id === selected ? null : ev.id)}
+                >
+                  <p className="truncate text-sm font-medium text-[#0F172A]">{ev.summary}</p>
+                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {formatDate(ev.start)} · {formatTime(ev.start)}
+                  </p>
+                  {summaries[ev.id] ? (
+                    <span className="mt-0.5 block text-xs font-medium text-[#16A34A]">✓ Ready</span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelected(ev.id);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 text-xs text-[#1D4ED8] hover:underline"
+                    >
+                      <SparklesIcon className="h-3 w-3" /> Summarise
+                    </button>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Right panel: summary / empty state */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {!selected || !activeEvent ? (
+            /* Nothing selected */
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+              <SparklesIcon className="h-6 w-6 text-[#94A3B8]" />
+              <p className="text-xs text-[#475569]">Select a meeting to prep</p>
+              <p className="text-xs text-[#94A3B8]">AI summary · emails · Slack</p>
+            </div>
+          ) : generating === selected ? (
+            /* Generating */
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
+              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[#1D4ED8] border-t-transparent" />
+              <p className="text-xs text-[#475569]">Generating summary…</p>
+            </div>
+          ) : activeSummary ? (
+            /* Summary ready */
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Panel header */}
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[#0F172A]">{activeEvent.summary}</p>
+                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelected(null)}
+                  className="shrink-0 rounded-[6px] p-1 text-[#475569] transition-colors hover:bg-[var(--surface-1)] hover:text-[#0F172A]"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Summary body */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#0F172A]">
+                  {activeSummary.summary}
+                </p>
+              </div>
+              {/* Footer */}
+              <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[rgba(0,0,0,0.08)] px-4 py-2.5">
+                <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                  {activeSummary.cached
+                    ? `Cached${activeSummary.generatedBy ? ` · ${activeSummary.generatedBy}` : ""}`
+                    : "Just generated"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleSummarise(activeEvent, { force: true })}
+                  className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[#1D4ED8] transition-colors hover:bg-[var(--surface-1)]"
+                >
+                  <SparklesIcon className="h-3 w-3" />
+                  Regenerate
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* No summary yet: channel picker + generate button */
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Panel header */}
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[#0F172A]">{activeEvent.summary}</p>
+                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelected(null)}
+                  className="shrink-0 rounded-[6px] p-1 text-[#475569] transition-colors hover:bg-[var(--surface-1)] hover:text-[#0F172A]"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+              {/* Picker body */}
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+                {slackChannels.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-[#475569]">Slack channels</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {slackChannels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => toggleChannel(ch.id)}
+                          className={`inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors ${
+                            selectedChannels.has(ch.id)
+                              ? "border-[#1D4ED8] bg-[#1D4ED8] text-white"
+                              : "border-[rgba(0,0,0,0.12)] text-[#475569] hover:border-[#1D4ED8] hover:text-[#1D4ED8]"
+                          }`}
+                        >
+                          #{ch.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-[#94A3B8]">
+                      {selectedChannels.size === 0 ? "All channels will be searched" : `${selectedChannels.size} selected`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-auto">
+                  <button
+                    onClick={() => void handleSummarise(activeEvent)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#1D4ED8] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  >
+                    <SparklesIcon className="h-4 w-4" />
+                    Generate Summary
+                  </button>
+                  <p className="mt-2 text-center text-xs text-[#94A3B8]">Uses AI · emails · Slack</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

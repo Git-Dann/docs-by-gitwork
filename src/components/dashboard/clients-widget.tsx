@@ -18,17 +18,22 @@ export default function ClientsWidget({ size }: { size: WidgetSize }) {
   if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
-        <span className="inline-flex items-center gap-1 rounded-md bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
-          <BuildingOffice2Icon className="h-2.5 w-2.5" />
-          Portal
-        </span>
-        <div className="flex flex-1 flex-col items-center justify-center">
-          <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{clients.length}</p>
-          <p className="text-xs text-[var(--text-3)]">clients</p>
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            07 // CLIENTS
+          </span>
         </div>
-        <p className="text-center text-xs text-[var(--text-3)]">
-          {clients.length === 0 ? "No clients yet" : ""}
-        </p>
+        {/* Body */}
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{clients.length}</p>
+            <p className="text-xs text-[#475569]">clients</p>
+          </div>
+          <p className="text-center text-xs text-[#475569]">
+            {clients.length === 0 ? "No clients yet" : ""}
+          </p>
+        </div>
       </div>
     );
   }
@@ -37,43 +42,44 @@ export default function ClientsWidget({ size }: { size: WidgetSize }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">
-          <BuildingOffice2Icon className="h-2.5 w-2.5" />
-          Portal
+      {/* Widget header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          07 // CLIENTS
         </span>
-        <Link href="/app/clients" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/clients" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>
 
-      {/* List */}
-      <div className="mt-2 flex-1 overflow-y-auto">
-        {sorted.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-            <BuildingOffice2Icon className="h-6 w-6 text-[var(--text-4)]" />
-            <p className="text-xs text-[var(--text-3)]">No clients yet</p>
-            <Link href="/app/clients" className="text-xs font-medium text-[var(--accent)] hover:underline">
-              Add a client →
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            {sorted.slice(0, displayCount).map((c) => (
-              <Link
-                key={c.id}
-                href={`/app/clients/${c.id}`}
-                className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
-              >
-                <span className="truncate text-sm text-[var(--text-1)]">{c.name}</span>
-                <span className="ml-2 shrink-0 text-xs text-[var(--text-3)]">
-                  {c.proposalCount} {c.proposalCount === 1 ? "proposal" : "proposals"}
-                </span>
+      {/* Body */}
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <div className="flex-1 overflow-y-auto">
+          {sorted.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+              <BuildingOffice2Icon className="h-6 w-6 text-[#94A3B8]" />
+              <p className="text-xs text-[#475569]">No clients yet</p>
+              <Link href="/app/clients" className="text-xs font-medium text-[#1D4ED8] hover:underline">
+                Add a client →
               </Link>
-            ))}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {sorted.slice(0, displayCount).map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/app/clients/${c.id}`}
+                  className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
+                >
+                  <span className="truncate text-sm text-[#0F172A]">{c.name}</span>
+                  <span className="ml-2 shrink-0 text-xs text-[#475569]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {c.proposalCount} {c.proposalCount === 1 ? "proposal" : "proposals"}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

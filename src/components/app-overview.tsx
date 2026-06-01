@@ -4,13 +4,11 @@ import PulseWidget from "@/components/dashboard/pulse-widget";
 import CodeClearWidget from "@/components/dashboard/codeclear-widget";
 import StudyWidget from "@/components/dashboard/study-widget";
 import CareWidget from "@/components/dashboard/care-widget";
+import BackstageWidget from "@/components/dashboard/backstage-widget";
 import ProposalsWidget from "@/components/dashboard/proposals-widget";
 import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
-import MeetingSummaryWidget from "@/components/dashboard/meeting-summary-widget";
-import ProofWidget from "@/components/dashboard/proof-widget";
-import BackstageWidget from "@/components/dashboard/backstage-widget";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -24,17 +22,15 @@ type GridEntry = {
 const ROW_HEIGHT = 220;
 
 const GRID: GridEntry[] = [
-  { component: PulseWidget,          cols: 2, rows: 1, size: "md" },
-  { component: CodeClearWidget,      cols: 1, rows: 1, size: "sm" },
-  { component: StudyWidget,          cols: 1, rows: 1, size: "sm" },
-  { component: CareWidget,           cols: 1, rows: 1, size: "sm" },
-  { component: ProposalsWidget,      cols: 2, rows: 2, size: "lg" },
-  { component: ClientsWidget,        cols: 1, rows: 2, size: "md" },
-  { component: GmailWidget,          cols: 2, rows: 2, size: "lg" },
-  { component: CalendarWidget,       cols: 1, rows: 2, size: "md" },
-  { component: MeetingSummaryWidget, cols: 3, rows: 2, size: "lg" },
-  { component: ProofWidget,          cols: 1, rows: 1, size: "sm" },
-  { component: BackstageWidget,      cols: 2, rows: 2, size: "lg" },
+  { component: PulseWidget,     cols: 2, rows: 1, size: "md" },
+  { component: CodeClearWidget, cols: 1, rows: 1, size: "sm" },
+  { component: StudyWidget,     cols: 1, rows: 1, size: "sm" },
+  { component: CareWidget,      cols: 1, rows: 1, size: "sm" },
+  { component: BackstageWidget, cols: 1, rows: 1, size: "sm" },
+  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg" },
+  { component: ClientsWidget,   cols: 1, rows: 2, size: "md" },
+  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
+  { component: CalendarWidget,  cols: 2, rows: 2, size: "lg" },
 ];
 
 export function AppOverview() {
@@ -61,7 +57,7 @@ export function AppOverview() {
         {GRID.map(({ component: Widget, cols, rows, size }, i) => (
           <div
             key={i}
-            className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
+            className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
             style={{
               gridColumn: `span ${cols}`,
               gridRow: `span ${rows}`,

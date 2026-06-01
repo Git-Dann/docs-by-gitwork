@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { CodeBracketIcon } from "@heroicons/react/24/solid";
 import { useCodeClearStats } from "@/hooks/use-codeclear";
 import type { WidgetSize } from "@/components/app-overview";
 
@@ -26,26 +25,29 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
   if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
-            <CodeBracketIcon className="h-2.5 w-2.5" />
-            Code
+        {/* Widget header */}
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            02 // CODE
           </span>
           {stats.recheckDue > 0 && (
-            <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-600">
+            <span className="text-xs font-medium text-amber-500">
               {stats.recheckDue} recheck
             </span>
           )}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center">
-          <p className="text-3xl font-bold tabular-nums text-[var(--text-1)]">{stats.total}</p>
-          <p className="text-xs text-[var(--text-3)]">developers</p>
+        {/* Body */}
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{stats.total}</p>
+            <p className="text-xs text-[#475569]">developers</p>
+          </div>
+          {stats.passRateThis != null && (
+            <p className="text-center text-xs text-[#475569]">
+              {Math.round(stats.passRateThis * 100)}% pass rate
+            </p>
+          )}
         </div>
-        {stats.passRateThis != null && (
-          <p className="text-center text-xs text-[var(--text-3)]">
-            {Math.round(stats.passRateThis * 100)}% pass rate
-          </p>
-        )}
       </div>
     );
   }
@@ -54,59 +56,61 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
-          <CodeBracketIcon className="h-2.5 w-2.5" />
-          Code
+      {/* Widget header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          02 // CODE
         </span>
-        <Link href="/app/codeclear" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
+        <Link href="/app/codeclear" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>
 
-      {/* Pipeline bar chart */}
-      <div className="mt-3 flex flex-1 items-end gap-2">
-        {PIPELINE.map((stage) => {
-          const count = countFor(stage.status);
-          const heightPct = Math.max(6, Math.round((count / maxCount) * 100));
-          return (
-            <div key={stage.status} className="flex flex-1 flex-col items-center gap-1">
-              <span className="text-xs font-semibold tabular-nums text-[var(--text-1)]">{count}</span>
-              <div className="w-full overflow-hidden rounded-t-[4px] bg-[var(--surface-2)]" style={{ height: 56 }}>
-                <div
-                  className="w-full rounded-t-[4px] transition-all duration-500"
-                  style={{
-                    height: `${heightPct}%`,
-                    marginTop: `${100 - heightPct}%`,
-                    backgroundColor: stage.color,
-                    opacity: count === 0 ? 0.25 : 1,
-                  }}
-                />
+      {/* Body */}
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        {/* Pipeline bar chart */}
+        <div className="flex flex-1 items-end gap-2">
+          {PIPELINE.map((stage) => {
+            const count = countFor(stage.status);
+            const heightPct = Math.max(6, Math.round((count / maxCount) * 100));
+            return (
+              <div key={stage.status} className="flex flex-1 flex-col items-center gap-1">
+                <span className="text-xs tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-mono)" }}>{count}</span>
+                <div className="w-full overflow-hidden rounded-t-[4px] bg-[var(--surface-2)]" style={{ height: 56 }}>
+                  <div
+                    className="w-full rounded-t-[4px] transition-all duration-500"
+                    style={{
+                      height: `${heightPct}%`,
+                      marginTop: `${100 - heightPct}%`,
+                      backgroundColor: stage.color,
+                      opacity: count === 0 ? 0.25 : 1,
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-[#475569]">
+                  {stage.label}
+                </span>
               </div>
-              <span className="text-xs text-[var(--text-3)]">
-                {stage.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Footer */}
-      <div className="mt-2 flex items-center justify-between border-t border-[var(--border-1)] pt-2">
-        {stats.passRateThis != null ? (
-          <span className="text-xs text-[var(--text-3)]">
-            Pass rate:{" "}
-            <strong className="text-[var(--text-1)]">{Math.round(stats.passRateThis * 100)}%</strong>
-          </span>
-        ) : (
-          <span className="text-xs text-[var(--text-3)]">{stats.total} total</span>
-        )}
-        {stats.recheckDue > 0 && (
-          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-600">
-            {stats.recheckDue} recheck due
-          </span>
-        )}
+        {/* Footer */}
+        <div className="mt-2 flex items-center justify-between border-t border-[rgba(0,0,0,0.08)] pt-2">
+          {stats.passRateThis != null ? (
+            <span className="text-xs text-[#475569]">
+              Pass rate:{" "}
+              <strong className="text-[#0F172A]">{Math.round(stats.passRateThis * 100)}%</strong>
+            </span>
+          ) : (
+            <span className="text-xs text-[#475569]">{stats.total} total</span>
+          )}
+          {stats.recheckDue > 0 && (
+            <span className="text-xs font-medium text-amber-500">
+              {stats.recheckDue} recheck due
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
