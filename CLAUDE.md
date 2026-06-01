@@ -335,6 +335,23 @@ npm run lint         # ESLint
 - Use Anthropic embeddings API or OpenAI text-embedding-3-small
 - Enable semantic search across client conversation history in Care module
 
+### Staff Timetable — leave & holidays product (NEW)
+- Inspired by [Timetastic](https://timetastic.co.uk): staff leave/absence booking + team calendar
+- Highlight public holidays for **UK** and **Pakistan** to start; expand to other countries'
+  religious holidays afterwards
+- Holidays are not just calendar items — surface them as **proactive comms prompts**:
+  flag when to message a client about reduced availability / downtime over a holiday period
+- Likely new Prisma models: `LeaveRequest`, `Holiday` (per-country, with type/religious flag),
+  plus team-calendar views in a new `/app` module
+- Ties into the upcoming Admin/Staff auth roles (approvals, who-can-book)
+
+### Expenses Tracker (NEW)
+- Snap a photo of a receipt and upload from the platform
+- Client-side **image compression** on upload before storing
+- Likely new Prisma model: `Expense` (amount, category, receipt asset, status)
+- Needs a new **HR staff role / permission set** so UK-based HR can access expenses
+  (extends the Admin/Staff role work above)
+
 ---
 
 ## 11. Known Issues / Tech Debt
