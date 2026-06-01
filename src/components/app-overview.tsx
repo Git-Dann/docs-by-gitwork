@@ -36,15 +36,10 @@ const GRID: GridEntry[] = [
 export function AppOverview() {
   return (
     <div className="space-y-4">
-      {/* Title hidden on mobile — AppShell already shows it in the mobile top bar */}
-      <div className="hidden lg:block">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">Foundry HQ</h1>
-        <p className="text-sm text-[var(--text-3)]">Your workspace at a glance</p>
-      </div>
-
       {/*
         Mobile: flex-col — widgets stack vertically, minHeight gives each sensible space.
         lg+: grid kicks in with the 3-col layout and fixed row heights.
+        The page header is rendered by AppShell (same as every other module page).
       */}
       <div
         className="flex flex-col gap-3 lg:grid lg:gap-3"
