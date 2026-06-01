@@ -333,7 +333,8 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     status: client.status,
     googleDriveFolderUrl: client.googleDriveFolderUrl,
     clickupUrl: client.clickupUrl,
-    hasCareClient: false, // overridden by listDerivedClients which does the care lookup
+    hasCareClient: false, // overridden by listDerivedClients
+    repoUrls: [],        // overridden by listDerivedClients
   };
 }
 
@@ -452,17 +453,37 @@ export async function listDerivedClients(filters?: {
   const search = filters?.search?.trim().toLowerCase() ?? "";
   const statusFilter = filters?.status ?? "ACTIVE";
 
-  // Single query: which portal client IDs have a linked Care client.
-  // SupportClient.workspaceClientId is the FK to WorkspaceClient.id.
-  const careRecords = await prisma.supportClient.findMany({
-    where: { workspaceClientId: { not: null } },
-    select: { workspaceClientId: true },
-  });
+  const merged = mergeClients(manualClients, proposals, hiddenSlugs);
+  const manualIds = merged.filter((c) => c.source === "MANUAL").map((c) => c.id);
+
+  // Parallel enrichment queries — single round-trip for both.
+  const [careRecords, platformRepos] = await Promise.all([
+    // Which portal clients have a linked Care client (FK on SupportClient).
+    prisma.supportClient.findMany({
+      where: { workspaceClientId: { not: null } },
+      select: { workspaceClientId: true },
+    }),
+    // All non-null repoUrls from platforms belonging to manual clients.
+    prisma.clientPlatform.findMany({
+      where: { clientId: { in: manualIds }, repoUrl: { not: null } },
+      select: { clientId: true, repoUrl: true, name: true },
+    }),
+  ]);
+
   const careIds = new Set(
     careRecords.map((r) => r.workspaceClientId).filter(Boolean),
   );
 
-  const clients = mergeClients(manualClients, proposals, hiddenSlugs)
+  // Group repo URLs by client
+  const reposByClientId = new Map<string, string[]>();
+  for (const p of platformRepos) {
+    if (!p.repoUrl) continue;
+    const list = reposByClientId.get(p.clientId) ?? [];
+    list.push(p.repoUrl);
+    reposByClientId.set(p.clientId, list);
+  }
+
+  const clients = merged
     .filter((client) => {
       if (statusFilter !== "ALL" && client.status !== statusFilter) {
         return false;
@@ -473,6 +494,7 @@ export async function listDerivedClients(filters?: {
     .map((client) => ({
       ...toClientListItem(client),
       hasCareClient: careIds.has(client.id),
+      repoUrls: reposByClientId.get(client.id) ?? [],
     }));
 
   return { clients };

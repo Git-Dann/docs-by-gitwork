@@ -21,6 +21,7 @@ export interface ClientListItem extends ClientRecord {
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   hasCareClient: boolean;
+  repoUrls: string[];
 }
 
 export interface ClientBankSummary {

@@ -130,6 +130,134 @@ function DeleteButton({ clientSlug }: { clientSlug: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// GitHub helpers
+// ---------------------------------------------------------------------------
+
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  );
+}
+
+function parseRepoName(url: string): string {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) return `${parts[0]}/${parts[1].replace(/\.git$/, "")}`;
+    return parts[0] ?? url;
+  } catch {
+    return url;
+  }
+}
+
+function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, right: 0 });
+  const close = useCallback(() => setOpen(false), []);
+
+  function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setCoords({ top: rect.top, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (
+        popoverRef.current && !popoverRef.current.contains(t) &&
+        triggerRef.current && !triggerRef.current.contains(t)
+      ) close();
+    }
+    function onKeyDown(e: KeyboardEvent) { if (e.key === "Escape") close(); }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, close]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={handleToggle}
+        title={`${repoUrls.length} GitHub repositories`}
+        className={cn(
+          "opacity-40 hover:opacity-70 transition-opacity",
+          open && "opacity-90",
+        )}
+      >
+        <GitHubIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+      </button>
+
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          style={{
+            position: "fixed",
+            top: coords.top,
+            right: coords.right,
+            transform: "translateY(calc(-100% - 8px))",
+          }}
+          className="z-[9999] w-64 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white shadow-xl"
+        >
+          {/* Arrow */}
+          <div className="absolute -bottom-1.5 right-3 h-3 w-3 rotate-45 border-b border-r border-[rgba(0,0,0,0.08)] bg-white" />
+          {/* Header */}
+          <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5">
+            <p
+              className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {repoUrls.length} Repositories
+            </p>
+          </div>
+          {/* Repo list */}
+          <div className="divide-y divide-[rgba(0,0,0,0.05)]">
+            {repoUrls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--surface-1)] transition-colors"
+              >
+                <GitHubIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                <span className="flex-1 truncate text-sm text-[var(--text-1)]">
+                  {parseRepoName(url)}
+                </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]"
+                >
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ClientCard — card-based representation of a single client
 // ---------------------------------------------------------------------------
 function ClientCard({ client }: { client: ClientListItem }) {
@@ -195,6 +323,21 @@ function ClientCard({ client }: { client: ClientListItem }) {
             >
               <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
             </Link>
+          )}
+          {client.repoUrls?.length === 1 && (
+            <a
+              href={client.repoUrls[0]}
+              target="_blank"
+              rel="noreferrer"
+              title="GitHub repository"
+              className="opacity-40 hover:opacity-70 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GitHubIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+            </a>
+          )}
+          {(client.repoUrls?.length ?? 0) > 1 && (
+            <GitHubRepoButton repoUrls={client.repoUrls} />
           )}
         </div>
       </div>
