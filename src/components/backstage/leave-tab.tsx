@@ -10,13 +10,25 @@ import {
 import { LeaveRequestForm } from "@/components/backstage/leave-request-form";
 import { StatusPill } from "@/components/backstage/status-pill";
 import { BackstagePanel, PanelAction } from "@/components/backstage/panel";
+import { useBackstageAccess } from "@/components/backstage/access";
+import { cn } from "@/lib/format";
 import { formatDateRange, formatRelative } from "@/components/backstage/format";
+import type { LeaveRequestDTO } from "@/types/backstage";
 
 export function LeaveTab() {
+  const { canApprove } = useBackstageAccess();
   const [showForm, setShowForm] = useState(false);
-  const requests = useLeaveRequests("me");
+  const [editing, setEditing] = useState<LeaveRequestDTO | null>(null);
+  // Approvers (admin/HR) can switch to the whole team to view + edit anyone's leave.
+  const [scope, setScope] = useState<"me" | "all">("me");
+  const requests = useLeaveRequests(canApprove ? scope : "me");
   const allowance = useLeaveAllowance();
   const cancelMut = useCancelLeaveRequest();
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
 
   return (
     <div className="space-y-6">
@@ -30,23 +42,50 @@ export function LeaveTab() {
         </div>
       </BackstagePanel>
 
-      {showForm ? (
+      {showForm || editing ? (
         <LeaveRequestForm
-          onSubmitted={() => setShowForm(false)}
-          onCancel={() => setShowForm(false)}
+          editing={editing ?? undefined}
+          onSubmitted={closeForm}
+          onCancel={closeForm}
         />
       ) : null}
 
       {/* Requests list */}
       <BackstagePanel
         number="02"
-        title="MY LEAVE"
+        title={canApprove && scope === "all" ? "TEAM LEAVE" : "MY LEAVE"}
         bodyClassName="p-0"
         action={
-          <PanelAction onClick={() => setShowForm(true)}>
-            <PlusIcon className="h-3.5 w-3.5" />
-            Request leave
-          </PanelAction>
+          <>
+            {canApprove ? (
+              <div className="mr-1 inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
+                {(["me", "all"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setScope(s)}
+                    className={cn(
+                      "px-2.5 py-1 text-xs font-medium transition",
+                      scope === s
+                        ? "bg-[var(--brand-600)] text-white"
+                        : "bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    {s === "me" ? "Mine" : "Everyone"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <PanelAction
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Request leave
+            </PanelAction>
+          </>
         }
       >
         {requests.isLoading ? (
@@ -62,6 +101,9 @@ export function LeaveTab() {
               <li key={r.id} className="flex items-center justify-between gap-4 px-4 py-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-[var(--text-1)]">
+                    {canApprove && scope === "all" ? (
+                      <span className="text-[var(--text-1)]">{r.user.name} · </span>
+                    ) : null}
                     {formatDateRange(r.startDate, r.endDate, {
                       halfDayStart: r.halfDayStart,
                       halfDayEnd: r.halfDayEnd,
@@ -80,6 +122,18 @@ export function LeaveTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusPill status={r.status} />
+                  {canApprove || r.status === "PENDING" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForm(false);
+                        setEditing(r);
+                      }}
+                      className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                   {r.status === "PENDING" || r.status === "APPROVED" ? (
                     <button
                       type="button"

@@ -1638,6 +1638,24 @@ export function cancelBackstageLeave(id: string): Promise<LeaveRequestDTO> {
   return apiFetch(`/api/backstage/leave/${id}`, { method: "DELETE" });
 }
 
+export function updateBackstageLeave(
+  id: string,
+  data: {
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+    halfDayStart?: boolean;
+    halfDayEnd?: boolean;
+    reason?: string;
+  },
+): Promise<LeaveRequestDTO> {
+  return apiFetch(`/api/backstage/leave/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export function approveBackstageLeave(id: string, note?: string): Promise<LeaveRequestDTO> {
   return apiFetch(`/api/backstage/leave/${id}/approve`, {
     method: "POST",

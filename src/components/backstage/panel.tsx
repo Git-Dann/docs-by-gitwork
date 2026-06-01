@@ -10,7 +10,7 @@ export function BackstagePanel({
   children,
   bodyClassName = "p-4",
 }: {
-  number: string;
+  number?: string;
   title: string;
   action?: ReactNode;
   children: ReactNode;
@@ -20,8 +20,14 @@ export function BackstagePanel({
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">{number}</span>
-          {` // ${title}`}
+          {number ? (
+            <>
+              <span className="widget-header__label--number">{number}</span>
+              {` // ${title}`}
+            </>
+          ) : (
+            title
+          )}
         </span>
         {action ? <div className="flex items-center gap-1.5">{action}</div> : null}
       </div>
