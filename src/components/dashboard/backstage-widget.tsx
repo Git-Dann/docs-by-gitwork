@@ -116,7 +116,9 @@ function AlertRow({ alert }: { alert: StaffingAlert }) {
             <span className="text-[#475569]">· {formatDay(alert.date)}</span>
           </p>
           <p className="truncate text-[10px] text-[#94A3B8]">
-            Affects: {alert.affectedMembers.map((m) => m.name).join(", ")}
+            {alert.affectedMembers.length > 0
+              ? `Affects: ${alert.affectedMembers.map((m) => m.name).join(", ")}`
+              : "Consider client comms / availability"}
           </p>
         </div>
       </div>

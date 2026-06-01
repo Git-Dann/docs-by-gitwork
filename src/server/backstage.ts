@@ -5,6 +5,7 @@ import {
   type EffectiveUser,
   ForbiddenError,
   canApproveBackstage,
+  canManageExpenses,
 } from "@/server/auth/effective-user";
 import { isNonWorkingDay, getHolidaysForCountry } from "@/server/backstage-holidays";
 import {
@@ -86,6 +87,30 @@ function computeWorkingDays(
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
+}
+
+// Workspace-wide holiday countries (ISO-3166-1 alpha-2). These drive which
+// countries' public/religious holidays appear on the team calendar + staffing
+// alerts FOR EVERYONE — independent of where each member is based. Defaults to
+// UK + Pakistan when unset or malformed.
+const DEFAULT_HOLIDAY_COUNTRIES = ["GB", "PK"];
+
+function parseHolidayCountries(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    const codes = raw
+      .filter((x): x is string => typeof x === "string" && x.trim().length === 2)
+      .map((s) => s.trim().toUpperCase());
+    if (codes.length > 0) return Array.from(new Set(codes));
+  }
+  return DEFAULT_HOLIDAY_COUNTRIES;
+}
+
+async function getWorkspaceHolidayCountries(workspaceId: string): Promise<string[]> {
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { holidayCountries: true },
+  });
+  return parseHolidayCountries(ws?.holidayCountries);
 }
 
 function leaveRowToDTO(row: LeaveRow, countryCode: string): LeaveRequestDTO {
@@ -521,6 +546,7 @@ export async function listExpenses(
   } = {},
 ): Promise<ExpenseDTO[]> {
   await ensureBaseRecords();
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const scope = opts.scope ?? "me";
   if (scope === "all" && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot view all expenses");
@@ -544,6 +570,7 @@ export async function listExpenses(
 }
 
 export async function getExpense(user: EffectiveUser, id: string): Promise<ExpenseDTO> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const row = await prisma.expense.findFirst({
     where: { id, workspaceId: user.workspaceId },
     include: {
@@ -571,6 +598,7 @@ export async function createExpense(
   },
 ): Promise<ExpenseDTO> {
   await ensureBaseRecords();
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const targetUserId =
     input.userId && input.userId !== user.id
       ? (canApproveBackstage(user)
@@ -640,6 +668,7 @@ export async function updateExpense(
     notes: string;
   }>,
 ): Promise<ExpenseDTO> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const existing = await prisma.expense.findFirst({
     where: { id, workspaceId: user.workspaceId },
   });
@@ -670,6 +699,7 @@ export async function updateExpense(
 }
 
 export async function deleteExpense(user: EffectiveUser, id: string): Promise<void> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const existing = await prisma.expense.findFirst({
     where: { id, workspaceId: user.workspaceId },
   });
@@ -692,6 +722,7 @@ export async function attachReceipt(
   bytes: Buffer,
   mime: string,
 ): Promise<ExpenseDTO> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const existing = await prisma.expense.findFirst({
     where: { id: expenseId, workspaceId: user.workspaceId },
   });
@@ -735,6 +766,7 @@ export async function getReceiptBytes(
   user: EffectiveUser,
   expenseId: string,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const row = await prisma.expense.findFirst({
     where: { id: expenseId, workspaceId: user.workspaceId },
     select: {
@@ -765,6 +797,7 @@ export async function reviewExpense(
   decision: "APPROVED" | "REJECTED" | "REIMBURSED",
   note?: string,
 ): Promise<ExpenseDTO> {
+  if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   if (!canApproveBackstage(user)) throw new ForbiddenError("Approval permission required");
   const existing = await prisma.expense.findFirst({
     where: { id, workspaceId: user.workspaceId },
@@ -869,10 +902,12 @@ export async function getStaffingAlerts(
     });
   }
 
-  // 2) Holiday cards — group by (date, country), list affected members.
-  const countriesPresent = Array.from(new Set(members.map((m) => m.countryCode)));
+  // 2) Holiday cards — workspace-wide holiday countries (UK + PK by default), so
+  // a Pakistan holiday surfaces as a client-comms prompt even when the whole team
+  // is UK-based. Group by (date, country); list any members based in that country.
+  const holidayCountries = await getWorkspaceHolidayCountries(user.workspaceId);
   const holidayBuckets = new Map<string, { date: string; name: string; country: string }>();
-  for (const cc of countriesPresent) {
+  for (const cc of holidayCountries) {
     const hols = getHolidaysForCountry(cc, fromDate, toDate);
     for (const h of hols) {
       if (h.type !== "public" && h.type !== "bank" && h.type !== "religious") continue;
@@ -886,7 +921,6 @@ export async function getStaffingAlerts(
     const affected = members
       .filter((m) => m.countryCode === h.country)
       .map((m) => ({ id: m.user.id, name: m.user.name ?? m.user.email }));
-    if (affected.length === 0) continue;
     alerts.push({
       kind: "holiday",
       date: new Date(`${h.date}T00:00:00Z`).toISOString(),
@@ -1000,7 +1034,7 @@ export async function getCalendarMonth(
     .toISOString()
     .slice(0, 10);
 
-  const [members, leave] = await Promise.all([
+  const [members, leave, holidayCountries] = await Promise.all([
     prisma.workspaceMember.findMany({
       where: { workspaceId: user.workspaceId },
       include: {
@@ -1017,10 +1051,13 @@ export async function getCalendarMonth(
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
+    getWorkspaceHolidayCountries(user.workspaceId),
   ]);
 
-  // Holidays: compute once per country present in the workspace, index by ISO date.
-  const countries = Array.from(new Set(members.map((m) => m.countryCode)));
+  // Holidays: workspace-wide country set (UK + PK by default) so everyone sees the
+  // same holidays regardless of where they're based. Compute once per country,
+  // index by ISO date.
+  const countries = holidayCountries;
   const holidayByDate = new Map<string, ReturnType<typeof getHolidaysForCountry>>();
   for (const cc of countries) {
     const hols = getHolidaysForCountry(cc, gridStart, gridEnd);
@@ -1116,5 +1153,6 @@ export async function getCalendarMonth(
     month,
     weeks,
     members: legendMembers,
+    holidayCountries,
   };
 }

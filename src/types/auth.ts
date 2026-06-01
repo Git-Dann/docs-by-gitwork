@@ -60,6 +60,13 @@ export const FEATURE_PERMISSIONS = [
       "Approve/reject staff leave requests and review expenses. Grants HR-style access without making the user a workspace Admin.",
     defaultOn: false,
   },
+  {
+    id: "backstage.expenses",
+    label: "Access Expenses",
+    description:
+      "See and submit the Backstage Expenses tab. Off by default — switch on per person (e.g. HR, finance) without making them an Admin. Devs don't get this.",
+    defaultOn: false,
+  },
 ] as const;
 
 export type FeatureId = (typeof FEATURE_PERMISSIONS)[number]["id"];
@@ -99,8 +106,8 @@ export const PERMISSION_PRESETS = [
       "clients", // Portal — see only assigned clients (seeAllClients off)
       "support", // Care — for client-related comms
       "pulse", // Pulse — for their project's scans
-      "backstage", // Backstage — devs file their own leave + expenses
-      // Notably no: codeclear, proposals, study, seeRates, seeAllClients, backstage.approve
+      "backstage", // Backstage — devs file their own leave (Expenses gated separately by backstage.expenses)
+      // Notably no: codeclear, proposals, study, seeRates, seeAllClients, backstage.approve, backstage.expenses
     ],
   },
 ] as const;

@@ -13,6 +13,36 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// Viewer's hidden-holiday-country preference. Workspace-wide which countries
+// EXIST (UK + PK by default, configured server-side); this just lets each
+// person hide ones they don't care about on their own view.
+const HIDDEN_COUNTRIES_KEY = "backstage:calendar:hiddenHolidayCountries";
+
+const REGION_NAMES =
+  typeof Intl !== "undefined" && "DisplayNames" in Intl
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+function countryName(code: string): string {
+  try {
+    return REGION_NAMES?.of(code.toUpperCase()) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
+
+function readHiddenCountries(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_COUNTRIES_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x) => typeof x === "string")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 const LEAVE_COLOURS: Record<LeaveType, { bar: string; dot: string; label: string }> = {
   ANNUAL: {
     bar: "bg-[var(--brand-100)] text-[var(--brand-800)] border-[var(--brand-300)]",
@@ -52,6 +82,22 @@ export function CalendarTab() {
   });
   const cal = useBackstageCalendar(year, month);
 
+  const [hiddenCountries, setHiddenCountries] = useState<Set<string>>(readHiddenCountries);
+
+  const holidayCountries = cal.data?.holidayCountries ?? [];
+
+  function toggleCountry(code: string) {
+    setHiddenCountries((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(HIDDEN_COUNTRIES_KEY, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+  }
+
   const monthLabel = MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
 
   return (
@@ -60,6 +106,36 @@ export function CalendarTab() {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-[var(--text-1)]">{monthLabel}</h2>
         <div className="flex items-center gap-1">
+          {/* Holiday country toggle */}
+          <details className="relative mr-1">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
+              <GlobeAltIcon className="h-3.5 w-3.5 text-sky-500" />
+              Holidays
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-60 rounded-[8px] border border-[var(--border-2)] bg-white p-2 shadow-lg">
+              <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-[var(--text-3)]">
+                Show holidays for
+              </p>
+              {holidayCountries.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-[var(--text-4)]">No countries configured.</p>
+              ) : (
+                holidayCountries.map((cc) => (
+                  <label
+                    key={cc}
+                    className="flex cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm text-[var(--text-1)] hover:bg-[var(--surface-1)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenCountries.has(cc)}
+                      onChange={() => toggleCountry(cc)}
+                    />
+                    <span className="flex-1 truncate">{countryName(cc)}</span>
+                    <span className="text-[10px] font-medium text-[var(--text-4)]">{cc}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </details>
           <button
             type="button"
             aria-label="Previous month"
@@ -105,49 +181,56 @@ export function CalendarTab() {
         </span>
       </div>
 
-      {/* Weekday header */}
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-[10px] border border-[var(--border-2)] bg-[var(--border-2)]">
-        {WEEKDAYS.map((d) => (
-          <div
-            key={d}
-            className="bg-[var(--surface-1)] px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]"
-          >
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Grid */}
-      {cal.isLoading ? (
-        <div className="grid h-[480px] place-items-center rounded-b-[10px] border border-t-0 border-[var(--border-2)] bg-white text-sm text-[var(--text-3)]">
-          Loading…
-        </div>
-      ) : cal.isError ? (
-        <div className="grid h-[480px] place-items-center rounded-b-[10px] border border-t-0 border-[var(--border-2)] bg-white text-sm text-red-600">
-          {(cal.error as Error)?.message ?? "Failed to load calendar"}
-        </div>
-      ) : (
-        <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-[10px] border border-t-0 border-[var(--border-2)] bg-[var(--border-2)]">
-          {cal.data?.weeks.flat().map((day) => (
-            <DayCell key={day.date} day={day} />
+      {/* Calendar box — weekday header + grid joined into a single bordered card. */}
+      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+        {/* Weekday header */}
+        <div className="grid grid-cols-7 gap-px bg-[var(--border-2)]">
+          {WEEKDAYS.map((d) => (
+            <div
+              key={d}
+              className="bg-[var(--surface-1)] px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]"
+            >
+              {d}
+            </div>
           ))}
         </div>
-      )}
+
+        {/* Grid */}
+        {cal.isLoading ? (
+          <div className="grid h-[480px] place-items-center border-t border-[var(--border-2)] bg-white text-sm text-[var(--text-3)]">
+            Loading…
+          </div>
+        ) : cal.isError ? (
+          <div className="grid h-[480px] place-items-center border-t border-[var(--border-2)] bg-white text-sm text-red-600">
+            {(cal.error as Error)?.message ?? "Failed to load calendar"}
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 gap-px border-t border-[var(--border-2)] bg-[var(--border-2)]">
+            {cal.data?.weeks.flat().map((day) => (
+              <DayCell key={day.date} day={day} hiddenCountries={hiddenCountries} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Footer notes */}
       <p className="text-xs text-[var(--text-4)]">
-        Approved leave only. Half-days show as half-filled pills. Public/religious holidays are
-        based on each member&apos;s configured country.
+        Approved leave only. Half-days show as half-filled pills. Public/religious holidays cover{" "}
+        {holidayCountries.length > 0
+          ? holidayCountries.map(countryName).join(" + ")
+          : "your configured countries"}{" "}
+        — use the Holidays menu to show or hide each.
       </p>
     </div>
   );
 }
 
-function DayCell({ day }: { day: CalendarDay }) {
+function DayCell({ day, hiddenCountries }: { day: CalendarDay; hiddenCountries: Set<string> }) {
   const date = new Date(day.date + "T00:00:00Z");
   const dayNum = date.getUTCDate();
   const MAX_PILLS = 3;
   const overflow = day.leave.length > MAX_PILLS ? day.leave.length - MAX_PILLS : 0;
+  const holidays = day.holidays.filter((h) => !hiddenCountries.has(h.country));
 
   return (
     <div
@@ -170,25 +253,25 @@ function DayCell({ day }: { day: CalendarDay }) {
         >
           {dayNum}
         </span>
-        {day.holidays.length > 0 ? (
+        {holidays.length > 0 ? (
           <span
             className="inline-flex items-center gap-0.5 truncate rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700"
-            title={day.holidays.map((h) => `${h.country}: ${h.name}`).join(" · ")}
+            title={holidays.map((h) => `${h.country}: ${h.name}`).join(" · ")}
           >
             <GlobeAltIcon className="h-3 w-3 shrink-0" />
-            {day.holidays.map((h) => h.country).join(" ")}
+            {Array.from(new Set(holidays.map((h) => h.country))).join(" ")}
           </span>
         ) : null}
       </div>
 
       {/* Holiday names (first one) */}
-      {day.holidays.length > 0 ? (
+      {holidays.length > 0 ? (
         <p
           className="mt-1 truncate text-[10px] text-sky-700"
-          title={day.holidays.map((h) => h.name).join(" · ")}
+          title={holidays.map((h) => h.name).join(" · ")}
         >
-          {day.holidays[0].name}
-          {day.holidays.length > 1 ? ` +${day.holidays.length - 1}` : ""}
+          {holidays[0].name}
+          {holidays.length > 1 ? ` +${holidays.length - 1}` : ""}
         </p>
       ) : null}
 
