@@ -195,22 +195,26 @@ function CareModal({
   onClose,
   children,
   wide,
+  fixedHeight = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
-  wide?: "xl" | "2xl" | boolean;
+  wide?: "xl" | "2xl" | "3xl" | boolean;
+  /** Pin the panel to a fixed height (h-[600px]) with the body scrolling — matches the platform's other 2-col modals. */
+  fixedHeight?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div
         className={cn(
-          "app-dialog-panel relative z-10 w-full p-6",
-          wide === "2xl" ? "max-w-2xl" : wide ? "max-w-xl" : "max-w-md",
+          "app-dialog-panel relative z-10 flex w-full flex-col p-6",
+          wide === "3xl" ? "max-w-3xl" : wide === "2xl" ? "max-w-2xl" : wide ? "max-w-xl" : "max-w-md",
+          fixedHeight && "h-[600px] max-h-[85vh]",
         )}
       >
-        <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="mb-5 flex shrink-0 items-center justify-between gap-4">
           <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">{title}</h3>
           <button
             type="button"
@@ -220,7 +224,7 @@ function CareModal({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        {children}
+        {fixedHeight ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
       </div>
     </div>
   );
@@ -1124,79 +1128,7 @@ function InboxFiltersDropdown({
   );
 }
 
-// ─── source watching bar ─────────────────────────────────────────────────────
-
-function SourceWatchingBar({
-  clientId,
-  sources,
-  onGoToConnectors,
-}: {
-  clientId: string;
-  sources: SupportSource[];
-  onGoToConnectors?: () => void;
-}) {
-  const { data } = useSupportConnections(clientId);
-  // Show all connectors for these sources regardless of health — even needs_setup connectors
-  // are useful to display so the user knows what's configured and can edit them.
-  const connections = (data?.connections ?? []).filter((c) => sources.includes(c.source));
-  if (connections.length === 0) return null;
-  return (
-    <div className="space-y-1.5 border-b border-black/[0.06] bg-[var(--surface-1)] px-3 py-2">
-      {connections.map((conn) => {
-        const cfg = conn.scraperConfig;
-        let summary = "";
-        let viewUrl = "";
-        if (conn.source === "reddit" && cfg?.subreddit) {
-          summary = `r/${cfg.subreddit}`;
-          viewUrl = `https://www.reddit.com/r/${cfg.subreddit}`;
-        } else if (conn.source === "discord") {
-          const chs = cfg?.channels ?? [];
-          summary = chs.length > 0
-            ? chs.map((c) => `#${c.name}`).join(" · ")
-            : (cfg?.guildName ?? conn.label);
-          if (cfg?.guildId) viewUrl = `https://discord.com/channels/${cfg.guildId}`;
-        } else if (conn.source === "gmail") {
-          summary = cfg?.query?.trim() ? cfg.query : "no filter — all mail";
-          viewUrl = "https://mail.google.com";
-        }
-        const isError = conn.health === "error";
-        const needsSetup = conn.health === "needs_setup";
-        return (
-          <div key={conn.id} className="flex items-center gap-2 text-[11px]">
-            <SourceIcon source={conn.source} className={cn("h-3 w-3 shrink-0", isError ? "text-red-400" : needsSetup ? "text-amber-400" : "text-[var(--text-4)]")} />
-            <span className={cn("min-w-0 flex-1 truncate font-mono", isError ? "text-red-500" : "text-[var(--text-3)]")}>
-              {summary || conn.label}
-            </span>
-            {isError && <span className="shrink-0 text-[10px] font-medium text-red-500">Error</span>}
-            {needsSetup && <span className="shrink-0 text-[10px] font-medium text-amber-500">Setup needed</span>}
-            {viewUrl && (
-              <a
-                href={viewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="shrink-0 text-[10px] font-medium text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
-              >
-                View ↗
-              </a>
-            )}
-            {onGoToConnectors && (
-              <button
-                type="button"
-                onClick={onGoToConnectors}
-                className="shrink-0 rounded-[3px] border border-[var(--border-2)] px-1.5 py-px text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConnectors }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string; onGoToConnectors?: () => void }) {
+function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
   const syncConn = useSyncConnection(clientId);
@@ -1206,6 +1138,18 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
     if (!sourcesFilter) return null;
     return (connectionsData?.connections ?? []).find((c) => sourcesFilter.includes(c.source)) ?? null;
   }, [connectionsData, sourcesFilter]);
+  const [syncResult, setSyncResult] = useState<{ ingested?: number; errors: string[] } | null>(null);
+
+  async function handleEmptySync(connId: string) {
+    setSyncResult(null);
+    try {
+      const r = await syncConn.mutateAsync({ connId, resync: true });
+      const res = r as unknown as { ingested?: number; created?: number; errors?: string[] };
+      setSyncResult({ ingested: res.ingested ?? res.created ?? 0, errors: res.errors ?? [] });
+    } catch (e) {
+      setSyncResult({ errors: [e instanceof Error ? e.message : String(e)] });
+    }
+  }
 
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -1308,13 +1252,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
               {filtered.length}
             </span>
           </div>
-          {sourcesFilter && (
-            <SourceWatchingBar
-              clientId={clientId}
-              sources={sourcesFilter}
-              onGoToConnectors={onGoToConnectors}
-            />
-          )}
           <div className="flex-1 overflow-y-auto p-3">
             <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-0.5">
             {convosLoading && (
@@ -1412,13 +1349,23 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
                       {matchingConn && (
                         <button
                           type="button"
-                          onClick={() => syncConn.mutate(matchingConn.id)}
+                          onClick={() => void handleEmptySync(matchingConn.id)}
                           disabled={syncConn.isPending}
                           className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                         >
                           <BoltIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
                           {syncConn.isPending ? "Syncing…" : "Sync Now to pull messages"}
                         </button>
+                      )}
+                      {syncResult && (
+                        <p className={cn(
+                          "max-w-[20rem] text-[12px]",
+                          syncResult.errors.length > 0 ? "text-red-600" : "text-emerald-700",
+                        )}>
+                          {syncResult.errors.length > 0
+                            ? `Sync failed: ${syncResult.errors[0]}`
+                            : `Synced — ${syncResult.ingested ?? 0} pulled in. If still empty, the bot may lack channel access (check Edit connector).`}
+                        </p>
                       )}
                     </div>
                   )}
@@ -1455,7 +1402,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
               </div>
 
               {/* ── Right: metadata sidebar ─────────────────────────────── */}
-              <div className="flex min-h-0 flex-col overflow-y-auto bg-[var(--surface-1)] p-4">
+              <div className="flex min-h-0 flex-col overflow-y-auto border-l border-[var(--border-2)] bg-white p-4">
                 {/* source + customer */}
                 <div className="mb-4">
                   <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">From</p>
@@ -1535,8 +1482,8 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
   );
 }
 
-function ConversationsView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
-  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." onGoToConnectors={onGoToConnectors} />;
+function ConversationsView({ clientId }: { clientId: string }) {
+  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
 }
 
 function ConversationCard({
@@ -1629,6 +1576,19 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
 
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{ ingested?: number; errors: string[] } | null>(null);
+
+  async function handleSync(connId: string) {
+    setSyncResult(null);
+    try {
+      const r = await syncConn.mutateAsync({ connId, resync: true });
+      // server returns { ingested, filtered, errors } — types vary, read loosely
+      const res = r as unknown as { ingested?: number; created?: number; errors?: string[] };
+      setSyncResult({ ingested: res.ingested ?? res.created ?? 0, errors: res.errors ?? [] });
+    } catch (e) {
+      setSyncResult({ errors: [e instanceof Error ? e.message : String(e)] });
+    }
+  }
 
   // Auto-select first connector when data loads
   useEffect(() => {
@@ -1753,7 +1713,7 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
                 </a>
                 <button
                   type="button"
-                  onClick={() => syncConn.mutate(selectedConn.id)}
+                  onClick={() => void handleSync(selectedConn.id)}
                   disabled={syncConn.isPending}
                   className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                 >
@@ -1835,6 +1795,20 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
                     <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
                   ))}
                   <span className="ml-1 text-amber-600">— flagged below</span>
+                </div>
+              )}
+              {/* sync result / error banner */}
+              {syncResult && (
+                <div className={cn(
+                  "mb-3 rounded-[8px] border px-3 py-2 text-[12px]",
+                  syncResult.errors.length > 0
+                    ? "border-red-200 bg-red-50 text-red-600"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                )}>
+                  {syncResult.errors.length > 0
+                    ? <><span className="font-semibold">Sync failed:</span> {syncResult.errors[0]}</>
+                    : <><span className="font-semibold">Synced.</span> {syncResult.ingested ?? 0} new post{(syncResult.ingested ?? 0) !== 1 ? "s" : ""} pulled in.</>
+                  }
                 </div>
               )}
               {posts.length === 0 ? (
@@ -2844,8 +2818,14 @@ function EditConnectorModal({
   const existingChannels = conn.scraperConfig?.channels ?? [];
 
   return (
-    <CareModal title="Edit connector" onClose={onClose} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <CareModal title="Edit connector" onClose={onClose} wide="3xl" fixedHeight>
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        {/* scrollable 2-column body */}
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-5 overflow-y-auto pr-1">
+
+        {/* ── Left column: connection ──────────────────────────────── */}
+        <div className="space-y-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Connection</p>
         <label className="block space-y-1.5">
           <span className="app-field-label">Label</span>
           <input
@@ -3010,6 +2990,11 @@ function EditConnectorModal({
             </label>
           </div>
         )}
+        </div>{/* ── end left column ── */}
+
+        {/* ── Right column: filters + status ───────────────────────── */}
+        <div className="space-y-4 border-l border-[var(--border-2)] pl-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Filters &amp; status</p>
 
         {/* Shared filters — live sources only */}
         {LIVE_SOURCES.includes(conn.source) && (
@@ -3028,14 +3013,17 @@ function EditConnectorModal({
             <option value="error">Error</option>
           </select>
         </label>
+        </div>{/* ── end right column ── */}
+
+        </div>{/* ── end scrollable body ── */}
 
         {error && (
-          <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
+          <p className="mt-3 shrink-0 rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
             {error}
           </p>
         )}
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="mt-3 flex shrink-0 justify-end gap-2 border-t border-[var(--border-2)] pt-3">
           <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -4269,9 +4257,9 @@ export function SupportDashboard() {
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
           {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
           {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
-          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" onGoToConnectors={() => setActivePanel("connectors")} />}
+          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" />}
           {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} onGoToConnectors={() => setActivePanel("connectors")} />}
-          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} onGoToConnectors={() => setActivePanel("connectors")} />}
+          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} />}
           {!activePanel && activeTab === "reports" && <ReportsView client={client} />}
         </div>
       </div>
