@@ -99,11 +99,13 @@ function StudyCard({
   index,
   personasById,
   onDelete,
+  canManage,
 }: {
   study: StudyListItem;
   index: number;
   personasById: Record<string, { initials: string; color: string }>;
   onDelete: (id: string) => void;
+  canManage: boolean;
 }) {
   const numberLabel = String(index + 1).padStart(2, "0");
   return (
@@ -141,17 +143,19 @@ function StudyCard({
             {study.sessionCount > 0 && ` · ${study.completedSessionCount}/${study.sessionCount}`}
           </span>
           <span className="widget-timestamp">{formatDate(study.createdAt)}</span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              if (confirm("Delete this study?")) onDelete(study.id);
-            }}
-            className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
-            title="Delete study"
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </button>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirm("Delete this study?")) onDelete(study.id);
+              }}
+              className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+              title="Delete study"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
       </div>
     </article>
@@ -323,6 +327,7 @@ export function StudyList() {
               index={i}
               personasById={personasById}
               onDelete={(id) => deleteStudy(id)}
+              canManage={canManageStudy}
             />
           ))}
         </div>

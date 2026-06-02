@@ -55,7 +55,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const candidate = candidateQuery.data?.candidate ?? null;
   const clients = clientsQuery.data?.clients ?? [];
 
-  const { canViewRates } = usePermissions();
+  const { canViewRates, canManageCode } = usePermissions();
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
@@ -225,24 +225,28 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
               >
                 {candidate.analysisState === "NEVER_RUN" ? "Run validation" : "Re-run validation"}
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                leadingIcon={<PencilIcon className="h-3.5 w-3.5" />}
-                onClick={() => setShowEdit(true)}
-              >
-                Edit
-              </Button>
-              <Button
-                type="button"
-                variant="tertiary"
-                size="sm"
-                leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
-                onClick={() => setShowDeleteConfirm(true)}
-              >
-                Delete
-              </Button>
+              {canManageCode ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={<PencilIcon className="h-3.5 w-3.5" />}
+                    onClick={() => setShowEdit(true)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="tertiary"
+                    size="sm"
+                    leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    Delete
+                  </Button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
