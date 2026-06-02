@@ -34,7 +34,6 @@ import {
   useClientMeetings,
   useClientSlackActivity,
   useIngestClientMeeting,
-  useToggleMeetingActionItem,
   useCreateClientDesign,
   useCreateClientPlatform,
   useDeleteClientDesign,
@@ -645,7 +644,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side) ── */}
       <div className="grid grid-cols-2 gap-4">
       {/* 11 // DESIGNS */}
-      <section className="widget-card">
+      <section className="widget-card flex flex-col">
         <div className="widget-header">
           <span className="widget-header__label">
             <span className="widget-header__label--number">11</span>
@@ -663,9 +662,9 @@ export function ClientDetail({ slug }: { slug: string }) {
           )}
         </div>
 
-        <div className="p-5">
+        <div className="flex flex-1 flex-col p-5">
           {designs.length === 0 ? (
-            <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+            <div className="flex flex-1 items-center justify-center rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
                 {isSuggested ? "Save this client to start adding design files." : (
                   <button
@@ -1128,7 +1127,6 @@ function MeetingNotesSection({ slug }: { slug: string }) {
 
   const { data, isLoading } = useClientMeetings(slug, true, query);
   const ingest = useIngestClientMeeting(slug);
-  const toggle = useToggleMeetingActionItem(slug);
   const createTask = useCreateTask();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
@@ -1334,7 +1332,6 @@ function MeetingNotesSection({ slug }: { slug: string }) {
         <MeetingNotesModal
           meeting={viewing}
           onClose={() => setViewing(null)}
-          onToggleItem={(itemId, done) => toggle.mutate({ meetingId: viewing.id, actionItemId: itemId, done })}
           onAddTask={addActionItemAsTask}
           addingTaskId={addingTaskId}
           addedTaskIds={addedTaskIds}
@@ -1349,14 +1346,12 @@ function MeetingNotesSection({ slug }: { slug: string }) {
 function MeetingNotesModal({
   meeting,
   onClose,
-  onToggleItem,
   onAddTask,
   addingTaskId,
   addedTaskIds,
 }: {
   meeting: ScribeMeeting;
   onClose: () => void;
-  onToggleItem: (itemId: string, done: boolean) => void;
   onAddTask: (clientId: string, itemId: string, text: string) => void;
   addingTaskId: string | null;
   addedTaskIds: Record<string, boolean>;
@@ -1372,22 +1367,36 @@ function MeetingNotesModal({
       onClick={onClose}
     >
       <div
-        className="app-dialog-panel flex h-[80vh] max-h-[680px] w-full max-w-4xl flex-col overflow-hidden"
+        className="app-dialog-panel flex max-h-[85vh] w-full max-w-[720px] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header — title top-left, time + attendees beneath */}
+        {/* Header — Scribe eyebrow (mono), editorial serif title, mono time, attendee chips */}
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-6 py-4">
           <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-700)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <VideoCameraIcon className="h-3 w-3" />
+              Scribe
+            </span>
+            <h3
+              className="mt-1.5 truncate text-xl leading-tight text-[var(--text-1)]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
               {meeting.title}
             </h3>
-            {when && <p className="mt-1 text-xs text-[var(--text-3)]">{when}</p>}
+            {when && (
+              <p className="mt-1 text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                {when}
+              </p>
+            )}
             {meeting.attendees.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="mt-3 flex flex-wrap gap-1">
                 {meeting.attendees.map((a) => (
                   <span
                     key={a}
-                    className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] text-[var(--text-3)]"
+                    className="rounded-[4px] border border-[var(--border-1)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] text-[var(--text-3)]"
                   >
                     {a}
                   </span>
@@ -1408,7 +1417,7 @@ function MeetingNotesModal({
         {/* Body — 2 columns, each scrolls independently */}
         <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-[var(--border-1)] overflow-hidden">
           <div className="min-h-0 overflow-y-auto p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Notes</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>Notes</p>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
               {meeting.summary || "No summary captured."}
             </p>
@@ -1417,7 +1426,7 @@ function MeetingNotesModal({
           <div className="min-h-0 space-y-5 overflow-y-auto p-6">
             {decisions.length > 0 && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Decisions</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>Decisions</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[var(--text-2)]">
                   {decisions.map((d, i) => (
                     <li key={i}>{d}</li>
@@ -1427,20 +1436,15 @@ function MeetingNotesModal({
             )}
 
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Action items</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>Action items</p>
               {meeting.actionItems.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--text-4)]">None.</p>
               ) : (
                 <ul className="mt-2 flex flex-col gap-2">
                   {meeting.actionItems.map((a) => (
                     <li key={a.id} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                      <input
-                        type="checkbox"
-                        checked={a.done}
-                        onChange={() => onToggleItem(a.id, !a.done)}
-                        className="mt-0.5"
-                      />
-                      <span className={a.done ? "text-[var(--text-4)] line-through" : ""}>
+                      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[var(--brand-600)]" />
+                      <span>
                         {a.text}
                         {a.owner ? <span className="text-[var(--text-4)]"> — {a.owner}</span> : null}
                       </span>
