@@ -14,6 +14,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useClientDetail } from "@/hooks/use-proposals";
 import {
   useTasks,
@@ -217,6 +218,7 @@ function ViewTab({
 }
 
 function TimelineShareControl({ slug }: { slug: string }) {
+  const { canShareClientTimeline } = usePermissions();
   const { data: share } = useTimelineShare(slug);
   const setShare = useSetTimelineShare(slug);
   const [open, setOpen] = useState(false);
@@ -225,6 +227,9 @@ function TimelineShareControl({ slug }: { slug: string }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const fullUrl = share?.url ? `${origin}${share.url}` : "";
   const enabled = share?.enabled ?? false;
+
+  // High-risk (public link) — hidden unless the role holds clients.shareTimeline.
+  if (!canShareClientTimeline) return null;
 
   return (
     <div className="relative">

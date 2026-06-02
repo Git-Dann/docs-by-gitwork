@@ -2,12 +2,14 @@ import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getStudy, runStudy } from "@/server/study";
+import { assertCan, canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 10;
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ studyId: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ studyId: string }> }) {
   try {
+    assertCan(await getEffectiveUserOrNull(req), canManageStudy, "run studies");
     const { studyId } = await params;
     const study = await getStudy(studyId);
     if (!study) return apiError("Study not found", 404);

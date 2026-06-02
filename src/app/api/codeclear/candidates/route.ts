@@ -9,7 +9,12 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { buildCodeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
-import { canViewRates, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  assertCan,
+  canManageCode,
+  canViewRates,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import {
   candidateBulkUpdateSchema,
   candidateCreateSchema,
@@ -245,6 +250,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage candidates");
     const { workspace, user } = await ensureBaseRecords();
     const body = candidateCreateSchema.parse(await request.json());
 

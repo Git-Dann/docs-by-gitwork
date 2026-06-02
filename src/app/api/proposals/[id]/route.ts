@@ -5,6 +5,7 @@ import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalUpdateSchema } from "@/server/validators";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -34,6 +35,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "edit documents");
     const { id } = await context.params;
     const payload = proposalUpdateSchema.parse(await request.json());
 

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { deleteClientRecord, getDerivedClientDetail, updateClientRecord } from "@/server/clients";
 import { clientUpdateSchema } from "@/server/validators";
+import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "delete clients");
     const { slug } = await context.params;
     const deleted = await deleteClientRecord(slug);
 
@@ -41,6 +43,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "edit clients");
     const { slug } = await context.params;
     const body = clientUpdateSchema.parse(await request.json());
     const client = await updateClientRecord(slug, body);

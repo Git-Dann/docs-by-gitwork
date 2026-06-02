@@ -216,3 +216,57 @@ export function canViewCosts(user: EffectiveUser): boolean {
 export function canViewRateCard(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role) || user.permissions.includes("rateCard.view");
 }
+
+// ── Action-level (view vs manage + high-risk) ────────────────────────────────
+// Each gates the write surface of a product. Without the `*.manage` permission a
+// member can still open the module (view) but not create/edit/delete. High-risk
+// actions (fix-agent PRs, public sharing) default to Admin-only. Enforced on the
+// mutation routes — read paths stay open to anyone with the module.
+
+function can(user: EffectiveUser, id: string): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes(id);
+}
+
+/** Run the Pulse fix-agent (opens GitHub PRs on the client repo). High-risk. */
+export function canRunFixAgent(user: EffectiveUser): boolean {
+  return can(user, "pulse.fixAgent");
+}
+/** Add/edit/delete candidates + run analysis in Code. */
+export function canManageCode(user: EffectiveUser): boolean {
+  return can(user, "code.manage");
+}
+/** Create/edit/delete documents in Docs. */
+export function canManageDocs(user: EffectiveUser): boolean {
+  return can(user, "docs.manage");
+}
+/** Generate public share links for documents. High-risk. */
+export function canShareDocs(user: EffectiveUser): boolean {
+  return can(user, "docs.share");
+}
+/** Create/edit/delete clients in Portal. */
+export function canManageClients(user: EffectiveUser): boolean {
+  return can(user, "clients.manage");
+}
+/** Publish a public client timeline link. High-risk. */
+export function canShareClientTimeline(user: EffectiveUser): boolean {
+  return can(user, "clients.shareTimeline");
+}
+/** Connect/disconnect channels + edit workflow rules in Care. */
+export function canManageSupport(user: EffectiveUser): boolean {
+  return can(user, "support.manage");
+}
+/** Create + run studies in Study. */
+export function canManageStudy(user: EffectiveUser): boolean {
+  return can(user, "study.manage");
+}
+
+/**
+ * Gate a mutation route by an action permission. No-ops for trusted API_KEY-only
+ * callers (no per-user identity) — same convention as the field gates — and throws
+ * ForbiddenError for a signed-in user who lacks it.
+ */
+export function assertCan(user: EffectiveUser | null, check: (u: EffectiveUser) => boolean, label: string): void {
+  if (user && !check(user)) {
+    throw new ForbiddenError(`You don't have permission to ${label}.`);
+  }
+}

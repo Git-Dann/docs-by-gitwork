@@ -7,7 +7,12 @@
 // every member's effective permissions server-side.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowPathIcon, CheckIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  LockClosedIcon,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { getRolePermissions, updateRolePermissions } from "@/lib/api";
@@ -17,6 +22,7 @@ import {
   ROLES,
   type ConfigurableRoleId,
   type PermissionCategory,
+  type PermissionDef,
   type RoleMatrix,
 } from "@/types/auth";
 
@@ -25,6 +31,7 @@ const CATEGORY_LABEL: Record<PermissionCategory, string> = {
   field: "Field",
   feature: "Feature",
   settings: "Settings",
+  action: "Action",
 };
 
 const CATEGORY_CHIP: Record<PermissionCategory, string> = {
@@ -32,9 +39,13 @@ const CATEGORY_CHIP: Record<PermissionCategory, string> = {
   field: "bg-amber-50 text-amber-700",
   feature: "bg-[var(--surface-2)] text-[var(--text-3)]",
   settings: "bg-violet-50 text-violet-700",
+  action: "bg-sky-50 text-sky-700",
 };
 
 const CONFIGURABLE: ConfigurableRoleId[] = ["ADMIN", "STAFF", "DEVELOPER"];
+
+// Shared column template: permission label + the four role columns.
+const GRID = "grid grid-cols-[minmax(0,1fr)_repeat(4,64px)] items-center gap-x-2";
 
 function sameMatrix(a: RoleMatrix, b: RoleMatrix): boolean {
   return CONFIGURABLE.every(
@@ -49,6 +60,19 @@ export function RolesSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  // Which product groups are expanded. Collapsed by default so the matrix stays compact;
+  // each collapsed header still shows a per-role count so you get the overview at a glance.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const allOpen = open.size === PERMISSION_CATALOG.length;
+  const toggleOpen = (product: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(product)) next.delete(product);
+      else next.add(product);
+      return next;
+    });
+  const toggleAll = () =>
+    setOpen(allOpen ? new Set() : new Set(PERMISSION_CATALOG.map((g) => g.product)));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,54 +147,65 @@ export function RolesSection() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={resetToDefaults}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <ArrowPathIcon className="h-3.5 w-3.5" />
-            Reset to defaults
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              {allOpen ? "Collapse all" : "Expand all"}
+            </button>
+            <button
+              type="button"
+              onClick={resetToDefaults}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" />
+              Reset
+            </button>
+          </div>
         </div>
 
         {loading || !matrix ? (
           <p className="mt-6 text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border-2)]">
-                  <th className="py-2 pr-4 text-left align-bottom font-medium text-[var(--text-2)]">
-                    Permission
-                  </th>
-                  {ROLES.map((r) => (
-                    <th
-                      key={r.id}
-                      className="px-2 pb-2 text-center align-bottom font-medium"
-                      style={{ width: 96 }}
-                    >
-                      <span className="block text-[var(--text-1)]">{r.label}</span>
-                      {!r.configurable ? (
-                        <span className="mt-0.5 block text-[10px] font-normal leading-tight text-[var(--text-4)]">
-                          Everything · locked
-                        </span>
-                      ) : null}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+            <div className="min-w-[560px]">
+              {/* Sticky role-column header */}
+              <div
+                className={cn(
+                  GRID,
+                  "sticky top-0 z-10 border-b border-[var(--border-2)] bg-white px-3 pb-2",
+                )}
+              >
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
+                  Permission
+                </span>
+                {ROLES.map((r) => (
+                  <span key={r.id} className="text-center">
+                    <span className="block text-xs font-semibold text-[var(--text-1)]">{r.label}</span>
+                    {!r.configurable ? (
+                      <span className="block text-[10px] leading-tight text-[var(--text-4)]">locked</span>
+                    ) : null}
+                  </span>
+                ))}
+              </div>
+
+              {/* Collapsible product groups */}
+              <div className="mt-2 space-y-2">
                 {PERMISSION_CATALOG.map((group) => (
-                  <ProductRows
+                  <ProductGroup
                     key={group.product}
                     product={group.product}
                     permissions={group.permissions}
                     matrix={matrix}
                     onToggle={toggle}
+                    open={open.has(group.product)}
+                    onToggleOpen={() => toggleOpen(group.product)}
                   />
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -196,67 +231,101 @@ export function RolesSection() {
   );
 }
 
-function ProductRows({
+/** One collapsible product card: a header (name + per-role count summary) and, when
+ *  expanded, the permission rows aligned under the role columns. */
+function ProductGroup({
   product,
   permissions,
   matrix,
   onToggle,
+  open,
+  onToggleOpen,
 }: {
   product: string;
-  permissions: readonly { id: string; label: string; description: string; category: PermissionCategory }[];
+  permissions: readonly PermissionDef[];
   matrix: RoleMatrix;
   onToggle: (role: ConfigurableRoleId, id: string) => void;
+  open: boolean;
+  onToggleOpen: () => void;
 }) {
+  const total = permissions.length;
+  const summary = (role: ConfigurableRoleId): string => {
+    const n = permissions.filter((p) => matrix[role].includes(p.id)).length;
+    return n === 0 ? "—" : n === total ? "all" : String(n);
+  };
+
   return (
-    <>
-      <tr>
-        <td colSpan={1 + ROLES.length} className="pt-5 pb-1">
-          <span className="app-eyebrow">{product}</span>
-        </td>
-      </tr>
-      {permissions.map((perm) => (
-        <tr key={perm.id} className="border-t border-[var(--border-3)] align-top">
-          <td className="py-2.5 pr-4">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-[var(--text-1)]">{perm.label}</span>
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                  CATEGORY_CHIP[perm.category],
-                )}
-              >
-                {CATEGORY_LABEL[perm.category]}
-              </span>
+    <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+      {/* Header — click to expand. Counts sit under each role column. */}
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        className={cn(GRID, "w-full bg-[var(--surface-1)] px-3 py-2.5 text-left transition hover:bg-[var(--surface-2)]")}
+        aria-expanded={open}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRightIcon
+            className={cn("h-4 w-4 shrink-0 text-[var(--text-4)] transition-transform", open && "rotate-90")}
+          />
+          <span className="truncate text-sm font-semibold text-[var(--text-1)]">{product}</span>
+          <span className="shrink-0 text-[11px] text-[var(--text-4)]">{total}</span>
+        </span>
+        <span className="text-center text-[10px] font-medium uppercase text-[var(--text-4)]">all</span>
+        {CONFIGURABLE.map((role) => {
+          const label = summary(role);
+          return (
+            <span
+              key={role}
+              className={cn(
+                "text-center text-xs tabular-nums",
+                label === "—" ? "text-[var(--text-4)]" : "font-medium text-[var(--brand-700)]",
+              )}
+            >
+              {label}
+            </span>
+          );
+        })}
+      </button>
+
+      {open ? (
+        <div className="divide-y divide-[var(--border-3)] border-t border-[var(--border-2)]">
+          {permissions.map((perm) => (
+            <div key={perm.id} className={cn(GRID, "px-3 py-2.5")}>
+              <div className="min-w-0 pr-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-sm font-medium text-[var(--text-1)]">{perm.label}</span>
+                  <span
+                    className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", CATEGORY_CHIP[perm.category])}
+                  >
+                    {CATEGORY_LABEL[perm.category]}
+                  </span>
+                  {perm.highRisk ? (
+                    <span className="rounded-full bg-[var(--danger-50)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--danger-700)]">
+                      High-risk
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-[11px] leading-tight text-[var(--text-4)]">{perm.description}</p>
+              </div>
+              {/* Super Admin — always on, locked. */}
+              <div className="flex items-center justify-center">
+                <CheckIcon className="h-4 w-4 text-[var(--text-4)]" aria-label="Always on" />
+              </div>
+              {CONFIGURABLE.map((role) => (
+                <div key={role} className="flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer accent-[var(--brand-700)]"
+                    checked={matrix[role].includes(perm.id)}
+                    onChange={() => onToggle(role, perm.id)}
+                    aria-label={`${role}: ${perm.label}`}
+                  />
+                </div>
+              ))}
             </div>
-            <p className="mt-0.5 max-w-md text-[11px] leading-tight text-[var(--text-4)]">
-              {perm.description}
-            </p>
-          </td>
-          {ROLES.map((r) => {
-            if (!r.configurable) {
-              // Super Admin — always on, locked.
-              return (
-                <td key={r.id} className="px-2 py-2.5 text-center">
-                  <CheckIcon className="mx-auto h-4 w-4 text-[var(--text-4)]" aria-label="Always on" />
-                </td>
-              );
-            }
-            const role = r.id as ConfigurableRoleId;
-            const checked = matrix[role].includes(perm.id);
-            return (
-              <td key={r.id} className="px-2 py-2.5 text-center">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 cursor-pointer accent-[var(--brand-700)]"
-                  checked={checked}
-                  onChange={() => onToggle(role, perm.id)}
-                  aria-label={`${r.label}: ${perm.label}`}
-                />
-              </td>
-            );
-          })}
-        </tr>
-      ))}
-    </>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

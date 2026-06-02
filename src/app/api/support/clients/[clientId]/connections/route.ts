@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listConnections, createConnection } from "@/server/support";
+import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care connections");
     const { clientId } = await params;
     const body = await request.json();
     const connection = await createConnection(clientId, body);

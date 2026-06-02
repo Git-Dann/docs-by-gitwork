@@ -22,6 +22,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan } from "@/hooks/use-pulse";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
@@ -673,6 +674,7 @@ function AgentPanel({
   fixError,
   onAutoFix,
   fixing,
+  canRunFixAgent,
   onMonitor,
   creatingMonitor,
   monitorWebhookUrl,
@@ -683,6 +685,7 @@ function AgentPanel({
   fixError: string | null;
   onAutoFix: () => void;
   fixing: boolean;
+  canRunFixAgent: boolean;
   onMonitor: () => void;
   creatingMonitor: boolean;
   monitorWebhookUrl: string | null;
@@ -852,16 +855,20 @@ function AgentPanel({
     },
   ];
 
+  // High-risk: the fix-agent opens GitHub PRs — hide that slot unless the role holds pulse.fixAgent.
+  const visibleSlots = slots.filter((slot) => slot.id !== "fix" || canRunFixAgent);
+
   return (
     <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-semibold text-[var(--text-1)]">Scan agents</p>
         <span className="text-xs text-[var(--text-4)]">
-          {slots.filter((s) => s.status === "completed").length}/{slots.filter((s) => s.status !== "na").length} completed
+          {visibleSlots.filter((s) => s.status === "completed").length}/
+          {visibleSlots.filter((s) => s.status !== "na").length} completed
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {slots.map((slot) => (
+        {visibleSlots.map((slot) => (
           <AgentCard key={slot.id} slot={slot} />
         ))}
       </div>
@@ -901,6 +908,7 @@ function AiUnavailable({ aiError }: { aiError: string | null }) {
 
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
+  const { canRunFixAgent } = usePermissions();
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
@@ -1170,6 +1178,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           fixError={fixError}
           onAutoFix={handleAutoFix}
           fixing={fixing}
+          canRunFixAgent={canRunFixAgent}
           onMonitor={handleMonitor}
           creatingMonitor={creatingMonitor}
           monitorWebhookUrl={monitorWebhookUrl}
