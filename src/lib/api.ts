@@ -1954,6 +1954,30 @@ export function deleteTask(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
 }
 
+export interface TaskBatchPatch {
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigneeIds?: string[];
+  featureBlockId?: string | null;
+  dueDate?: string | null;
+}
+
+export function batchUpdateTasks(ids: string[], patch: TaskBatchPatch): Promise<{ updated: number }> {
+  return apiFetch("/api/tasks/batch", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, patch }),
+  });
+}
+
+export function batchDeleteTasks(ids: string[]): Promise<{ deleted: number }> {
+  return apiFetch("/api/tasks/batch", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export function listTaskComments(id: string): Promise<TaskCommentDTO[]> {
   return apiFetch(`/api/tasks/${id}/comments`);
 }

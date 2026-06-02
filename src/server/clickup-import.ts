@@ -158,7 +158,7 @@ const MILESTONE_LIST = /milestone/i;
  */
 const FOLDER_ALIASES: Record<string, string> = {};
 
-function normalize(value: string): string {
+export function normalize(value: string): string {
   return value
     .trim()
     .toLowerCase()
@@ -168,7 +168,7 @@ function normalize(value: string): string {
 }
 
 /** Map a ClickUp status to one of our five. Returns null for done/complete/closed. */
-function mapStatus(status: CuStatus | null | undefined): TaskStatus | null {
+export function mapStatus(status: CuStatus | null | undefined): TaskStatus | null {
   const type = (status?.type ?? "").toLowerCase();
   const name = (status?.status ?? "").toLowerCase().trim();
   // ClickUp's structural "closed"/"done" type, OR a custom status named like one.
@@ -185,7 +185,7 @@ function mapStatus(status: CuStatus | null | undefined): TaskStatus | null {
   return TaskStatus.BACKLOG;
 }
 
-function mapPriority(priority: CuTask["priority"]): TaskPriority {
+export function mapPriority(priority: CuTask["priority"]): TaskPriority {
   const p = (priority?.priority ?? "").toLowerCase();
   if (p === "urgent" || p === "high") return TaskPriority.HIGH; // urgent folded into High
   if (p === "low") return TaskPriority.LOW;

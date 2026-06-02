@@ -387,6 +387,15 @@ the form uses togglable name chips); **subtasks** (one level — checklist in th
 **undated feature blocks** (board-only groupings until both dates are set, then they become bars).
 Milestone/block bar colours share one palette (blue/violet/emerald/amber/rose/slate).
 
+**Bulk selection (List view)** — the per-client **List** view supports multi-select for triage at
+scale (e.g. assigning devs across an import). A leading checkbox column + a **tri-state** header
+box (checked / indeterminate / empty) drive **select-all / deselect-all**; selected rows tint
+`{colors.surface-brand}`. When any row is selected a **batch bar** (`task-batch-bar`) sticks to the
+top of the list: a `{colors.surface-brand}` panel showing "N selected" + Clear, then right-aligned
+actions — **Assign** (member checklist → replace assignees), **Status**, **Priority**, **Block**
+(each a small dismissible dropdown), and **Delete** (inline two-click confirm in `{colors.danger}`).
+Checkbox clicks stop propagation so they never open the detail drawer.
+
 ---
 
 ## Do's and Don'ts

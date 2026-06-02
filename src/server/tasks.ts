@@ -403,6 +403,86 @@ export async function deleteTask(user: EffectiveUser, id: string): Promise<void>
   await prisma.task.delete({ where: { id } });
 }
 
+// ─── Batch (select-all + bulk edit/delete) ───────────────────────────────────
+
+export interface TaskBatchPatch {
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigneeIds?: string[];
+  featureBlockId?: string | null;
+  dueDate?: string | null;
+}
+
+/** Load the requested tasks that exist in this workspace; throw if any is out of scope. */
+async function loadTasksInScope(
+  user: EffectiveUser,
+  ids: string[],
+): Promise<{ id: string; clientId: string; status: string; startedAt: Date | null }[]> {
+  const rows = await prisma.task.findMany({
+    where: { id: { in: ids }, workspaceId: user.workspaceId },
+    select: { id: true, clientId: true, status: true, startedAt: true },
+  });
+  if (!canSeeAllClients(user)) {
+    const allowed = new Set(await assignedClientIds(user));
+    for (const r of rows) {
+      if (!allowed.has(r.clientId)) throw new ForbiddenError("A selected task is outside your clients");
+    }
+  }
+  return rows;
+}
+
+/** Apply one patch to many tasks. Loops (relation `set` + per-row status stamps can't updateMany). */
+export async function batchUpdateTasks(
+  user: EffectiveUser,
+  ids: string[],
+  patch: TaskBatchPatch,
+): Promise<{ updated: number }> {
+  if (!ids.length) return { updated: 0 };
+  const rows = await loadTasksInScope(user, ids);
+  if (!rows.length) return { updated: 0 };
+
+  // A feature block belongs to ONE client — only valid when every selected task shares it.
+  if (patch.featureBlockId) {
+    const clientsInSelection = new Set(rows.map((r) => r.clientId));
+    if (clientsInSelection.size > 1) {
+      throw new ForbiddenError("Selected tasks span multiple clients — can't move them into one block");
+    }
+    await assertBlockInClient(user.workspaceId, rows[0].clientId, patch.featureBlockId);
+  }
+
+  let updated = 0;
+  for (const r of rows) {
+    const data: Prisma.TaskUpdateInput = {};
+    if (patch.priority !== undefined) data.priority = patch.priority;
+    if (patch.dueDate !== undefined) data.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+    if (patch.assigneeIds !== undefined) {
+      data.assignees = { set: patch.assigneeIds.map((id) => ({ id })) };
+      data.assignee = { disconnect: true };
+    }
+    if (patch.featureBlockId !== undefined) {
+      data.featureBlock = patch.featureBlockId
+        ? { connect: { id: patch.featureBlockId } }
+        : { disconnect: true };
+    }
+    if (patch.status !== undefined && patch.status !== r.status) {
+      data.status = patch.status;
+      Object.assign(data, statusTimestamps(r.status as TaskStatus, patch.status, r));
+    }
+    if (Object.keys(data).length === 0) continue;
+    await prisma.task.update({ where: { id: r.id }, data });
+    updated++;
+  }
+  return { updated };
+}
+
+export async function batchDeleteTasks(user: EffectiveUser, ids: string[]): Promise<{ deleted: number }> {
+  if (!ids.length) return { deleted: 0 };
+  const rows = await loadTasksInScope(user, ids);
+  if (!rows.length) return { deleted: 0 };
+  const res = await prisma.task.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+  return { deleted: res.count };
+}
+
 // ─── Notes ─────────────────────────────────────────────────────────────────
 
 export async function listTaskComments(user: EffectiveUser, taskId: string): Promise<TaskCommentDTO[]> {

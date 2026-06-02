@@ -30,6 +30,7 @@ import { TaskFormModal } from "@/components/tasks/task-form";
 import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
 import { MilestoneFormModal } from "@/components/tasks/milestone-form";
+import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 
 type View = "board" | "list" | "gantt";
 
@@ -39,6 +40,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const clientId = client?.id ?? null;
 
   const [view, setView] = useState<View>("board");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [blockModal, setBlockModal] = useState<{ open: boolean; block: FeatureBlockDTO | null }>({
@@ -77,6 +79,19 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     () => milestones.map((m) => ({ id: m.id, name: m.name, date: m.date, color: m.color })),
     [milestones],
   );
+
+  function switchView(v: View) {
+    setView(v);
+    setSelected(new Set()); // selection is list-view only
+  }
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   if (clientLoading || !client) {
     return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
@@ -131,13 +146,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
       {/* View toggle */}
       <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
-        <ViewTab active={view === "board"} onClick={() => setView("board")} icon={<Squares2X2Icon className="h-4 w-4" />}>
+        <ViewTab active={view === "board"} onClick={() => switchView("board")} icon={<Squares2X2Icon className="h-4 w-4" />}>
           Board
         </ViewTab>
-        <ViewTab active={view === "list"} onClick={() => setView("list")} icon={<ListBulletIcon className="h-4 w-4" />} borderLeft>
+        <ViewTab active={view === "list"} onClick={() => switchView("list")} icon={<ListBulletIcon className="h-4 w-4" />} borderLeft>
           List
         </ViewTab>
-        <ViewTab active={view === "gantt"} onClick={() => setView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
+        <ViewTab active={view === "gantt"} onClick={() => switchView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
           Gantt
         </ViewTab>
       </div>
@@ -148,7 +163,24 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : view === "board" ? (
         <TaskBoard tasks={tasks} showClient={false} onCardClick={setOpenTaskId} />
       ) : view === "list" ? (
-        <TaskList tasks={tasks} showClient={false} onRowClick={setOpenTaskId} />
+        <div className="space-y-3">
+          {selected.size > 0 ? (
+            <TaskBatchBar
+              selectedIds={[...selected]}
+              blocks={blocks}
+              onClear={() => setSelected(new Set())}
+            />
+          ) : null}
+          <TaskList
+            tasks={tasks}
+            showClient={false}
+            onRowClick={setOpenTaskId}
+            selectable
+            selectedIds={selected}
+            onToggleSelect={toggleSelect}
+            onToggleAll={(checked) => setSelected(checked ? new Set(tasks.map((t) => t.id)) : new Set())}
+          />
+        </div>
       ) : (
         <GanttChart
           blocks={ganttBlocks}

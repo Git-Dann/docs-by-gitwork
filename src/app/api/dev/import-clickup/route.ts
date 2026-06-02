@@ -21,9 +21,10 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { runClickupImport } from "@/server/clickup-import";
+import { runCsvImport } from "@/server/clickup-csv-import";
 
 export const dynamic = "force-dynamic";
-// ClickUp pagination across ~80 lists can take a while — give it room.
+// Importing ~1k tasks (or paginating ~80 ClickUp lists) can take a while.
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
@@ -31,21 +32,22 @@ export async function POST(req: Request) {
     const user = await requireAuthedUser(req);
     if (user.role !== "ADMIN") return apiError("Admin only", 403);
 
-    if (!process.env.CLICKUP_TOKEN) {
-      return apiError("CLICKUP_TOKEN env var is not set", 400);
-    }
-
     const body = (await req.json().catch(() => ({}))) as {
       dryRun?: boolean;
       clientSlug?: string;
+      source?: "csv" | "api";
     };
 
-    const report = await runClickupImport({
-      dryRun: body.dryRun !== false, // default true unless explicitly false
-      clientSlug: typeof body.clientSlug === "string" ? body.clientSlug : undefined,
-    });
+    const dryRun = body.dryRun !== false; // default true unless explicitly false
+    const clientSlug = typeof body.clientSlug === "string" ? body.clientSlug : undefined;
 
-    return apiOk(report);
+    // Default to the CSV-export path (no token). source:"api" uses CLICKUP_TOKEN.
+    if (body.source === "api") {
+      if (!process.env.CLICKUP_TOKEN) return apiError("CLICKUP_TOKEN env var is not set", 400);
+      return apiOk(await runClickupImport({ dryRun, clientSlug }));
+    }
+
+    return apiOk(await runCsvImport({ dryRun, clientSlug }));
   } catch (e) {
     return fromError(e);
   }
