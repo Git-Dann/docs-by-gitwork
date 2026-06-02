@@ -465,7 +465,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
     return { fetched: 0, ingested: 0, filtered: 0, errors: ["No inbox configured — set 'Inbox to read' on this Gmail connector"] };
   }
 
-  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+  let gmail: ReturnType<typeof google.gmail>;
   try {
     const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
     const auth = new google.auth.GoogleAuth({
@@ -473,7 +473,8 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
       scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
       clientOptions: { subject: impersonateEmail },
     });
-    gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
+    const gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
+    gmail = google.gmail({ version: "v1", auth: gmailAuth });
   } catch (err) {
     return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
