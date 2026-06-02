@@ -1297,7 +1297,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
           </div>
         </div>
 
-        {/* ── detail pane — 2-column: messages + metadata sidebar ─────── */}
+        {/* ── detail pane ──────────────────────────────────────────────── */}
         <div className="app-card flex min-w-0 flex-col overflow-hidden" style={{ minHeight: 0, maxHeight: "calc(100vh - 14rem)" }}>
           {/* widget header */}
           <div className="flex h-9 shrink-0 items-center justify-between border-b border-black/[0.06] px-4">
@@ -1316,164 +1316,86 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
               Select a conversation
             </div>
           ) : (
-            <div className="grid min-h-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: "minmax(0,1fr) 220px" }}>
-
-              {/* ── Left: message thread ────────────────────────────────── */}
-              <div className="flex min-h-0 flex-col overflow-hidden border-r border-[var(--border-2)]">
-                {/* subject header */}
-                <div className="shrink-0 border-b border-[var(--border-2)] px-5 py-3">
-                  <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">
-                    {activeConvo.subject}
-                  </h2>
-                  {activeKeywords.length > 0 && messages.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-amber-700">
-                      <span className="font-semibold">Watching:</span>
-                      {activeKeywords.map((kw) => (
-                        <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* messages */}
-                <div className="flex-1 space-y-3 overflow-y-auto p-5">
-                  {msgsLoading && (
-                    <div className="space-y-2">
-                      {[...Array(2)].map((_, i) => (
-                        <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
-                      ))}
-                    </div>
-                  )}
-                  {!msgsLoading && messages.length === 0 && (
-                    <div className="flex flex-col items-center gap-3 py-8 text-center">
-                      <p className="text-sm text-[var(--text-4)]">No messages yet.</p>
-                      {matchingConn && (
-                        <button
-                          type="button"
-                          onClick={() => void handleEmptySync(matchingConn.id)}
-                          disabled={syncConn.isPending}
-                          className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                        >
-                          <BoltIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
-                          {syncConn.isPending ? "Syncing…" : "Sync Now to pull messages"}
-                        </button>
-                      )}
-                      {syncResult && (
-                        <p className={cn(
-                          "max-w-[20rem] text-[12px]",
-                          syncResult.errors.length > 0 ? "text-red-600" : "text-emerald-700",
-                        )}>
-                          {syncResult.errors.length > 0
-                            ? `Sync failed: ${syncResult.errors[0]}`
-                            : `Synced — ${syncResult.ingested ?? 0} pulled in. If still empty, the bot may lack channel access (check Edit connector).`}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {messages.map((msg) => {
-                    const hasKeyword = activeKeywords.length > 0 && activeKeywords.some((kw) =>
-                      msg.body.toLowerCase().includes(kw.toLowerCase()),
-                    );
-                    return (
-                      <div key={msg.id} className={cn("flex flex-col gap-0.5", msg.direction === "outbound" ? "items-end" : "items-start")}>
-                        <div className="flex items-center gap-1.5 px-1 text-[10px] text-[var(--text-4)]">
-                          <span className="font-medium text-[var(--text-3)]">{msg.authorLabel}</span>
-                          <span>·</span>
-                          <span>{formatShort(msg.createdAt)}</span>
-                          {hasKeyword && (
-                            <span className="rounded-[4px] bg-amber-100 px-1 py-px font-semibold text-amber-700">keyword</span>
-                          )}
-                        </div>
-                        <div
-                          className={cn(
-                            "max-w-[85%] rounded-[10px] border px-3.5 py-2.5 text-sm leading-relaxed",
-                            hasKeyword
-                              ? "border-amber-300 bg-amber-50 text-[var(--text-1)]"
-                              : msg.direction === "outbound"
-                                ? "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]"
-                                : "border-[var(--border-2)] bg-white text-[var(--text-2)]",
-                          )}
-                        >
-                          <HighlightedText text={msg.body} keywords={activeKeywords} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── Right: metadata sidebar ─────────────────────────────── */}
-              <div className="flex min-h-0 flex-col overflow-y-auto border-l border-[var(--border-2)] bg-white p-4">
-                {/* source + customer */}
-                <div className="mb-4">
-                  <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">From</p>
-                  <div className="flex items-center gap-1.5">
-                    <SourceIcon source={activeConvo.source} className="h-3.5 w-3.5 shrink-0 text-[var(--text-3)]" />
-                    <span className="truncate text-[12px] font-medium text-[var(--text-1)]">{activeConvo.customerLabel}</span>
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{SOURCE_LABEL[activeConvo.source]}</p>
-                </div>
-
-                {/* date */}
-                <div className="mb-4">
-                  <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Received</p>
-                  <p className="text-[12px] text-[var(--text-2)]">{formatShort(activeConvo.receivedAt)}</p>
-                </div>
-
-                {/* sentiment */}
-                {activeConvo.sentiment !== "neutral" && (
-                  <div className="mb-4">
-                    <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Sentiment</p>
-                    <span className={cn(
-                      "rounded-[5px] px-2 py-0.5 text-[11px] font-semibold",
-                      activeConvo.sentiment === "positive" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600",
-                    )}>
-                      {activeConvo.sentiment}
-                    </span>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {/* subject header */}
+              <div className="shrink-0 border-b border-[var(--border-2)] px-5 py-3">
+                <h2 className="truncate text-sm font-semibold text-[var(--text-1)]">
+                  {activeConvo.subject}
+                </h2>
+                {activeKeywords.length > 0 && messages.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-amber-700">
+                    <span className="font-semibold">Watching:</span>
+                    {activeKeywords.map((kw) => (
+                      <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
+                    ))}
                   </div>
                 )}
-
-                {/* tags */}
-                {(() => {
-                  const visibleTags = activeConvo.tags.filter((t) => t !== activeConvo.source && !t.startsWith("kw:"));
-                  const kwTags = activeConvo.tags.filter((t) => t.startsWith("kw:")).map((t) => t.slice(3));
-                  if (visibleTags.length === 0 && kwTags.length === 0) return null;
+              </div>
+              {/* messages */}
+              <div className="flex-1 space-y-3 overflow-y-auto p-5">
+                {msgsLoading && (
+                  <div className="space-y-2">
+                    {[...Array(2)].map((_, i) => (
+                      <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                    ))}
+                  </div>
+                )}
+                {!msgsLoading && messages.length === 0 && (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center">
+                    <p className="text-sm text-[var(--text-4)]">No messages yet.</p>
+                    {matchingConn && (
+                      <button
+                        type="button"
+                        onClick={() => void handleEmptySync(matchingConn.id)}
+                        disabled={syncConn.isPending}
+                        className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                      >
+                        <BoltIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
+                        {syncConn.isPending ? "Syncing…" : "Sync Now to pull messages"}
+                      </button>
+                    )}
+                    {syncResult && (
+                      <p className={cn(
+                        "max-w-[20rem] text-[12px]",
+                        syncResult.errors.length > 0 ? "text-red-600" : "text-emerald-700",
+                      )}>
+                        {syncResult.errors.length > 0
+                          ? `Sync failed: ${syncResult.errors[0]}`
+                          : `Synced — ${syncResult.ingested ?? 0} pulled in. If still empty, the bot may lack channel access (check Edit connector).`}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {messages.map((msg) => {
+                  const hasKeyword = activeKeywords.length > 0 && activeKeywords.some((kw) =>
+                    msg.body.toLowerCase().includes(kw.toLowerCase()),
+                  );
                   return (
-                    <div className="mb-4">
-                      <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Tags</p>
-                      <div className="flex flex-wrap gap-1">
-                        {visibleTags.map((tag) => (
-                          <span key={tag} className="rounded-[5px] border border-[var(--border-2)] bg-white px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">
-                            {tag.replace(/_/g, " ")}
-                          </span>
-                        ))}
-                        {kwTags.map((kw) => (
-                          <span key={kw} className="rounded-[5px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
-                            {kw}
-                          </span>
-                        ))}
+                    <div key={msg.id} className={cn("flex flex-col gap-0.5", msg.direction === "outbound" ? "items-end" : "items-start")}>
+                      <div className="flex items-center gap-1.5 px-1 text-[10px] text-[var(--text-4)]">
+                        <span className="font-medium text-[var(--text-3)]">{msg.authorLabel}</span>
+                        <span>·</span>
+                        <span>{formatShort(msg.createdAt)}</span>
+                        {hasKeyword && (
+                          <span className="rounded-[4px] bg-amber-100 px-1 py-px font-semibold text-amber-700">keyword</span>
+                        )}
+                      </div>
+                      <div
+                        className={cn(
+                          "max-w-[85%] rounded-[10px] border px-3.5 py-2.5 text-sm leading-relaxed",
+                          hasKeyword
+                            ? "border-amber-300 bg-amber-50 text-[var(--text-1)]"
+                            : msg.direction === "outbound"
+                              ? "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]"
+                              : "border-[var(--border-2)] bg-white text-[var(--text-2)]",
+                        )}
+                      >
+                        <HighlightedText text={msg.body} keywords={activeKeywords} />
                       </div>
                     </div>
                   );
-                })()}
-
-                {/* messages count */}
-                {messages.length > 0 && (
-                  <div className="mb-4">
-                    <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Messages</p>
-                    <p className="text-[12px] text-[var(--text-2)]">{messages.length}</p>
-                  </div>
-                )}
-
-                {/* unread badge */}
-                {activeConvo.unread && (
-                  <div className="mt-auto">
-                    <span className="inline-flex items-center gap-1 rounded-[5px] bg-[var(--brand-700)] px-2 py-0.5 text-[11px] font-semibold text-white">
-                      Unread
-                    </span>
-                  </div>
-                )}
+                })}
               </div>
-
             </div>
           )}
         </div>

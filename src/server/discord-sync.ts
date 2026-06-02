@@ -23,17 +23,31 @@ export async function fetchNewMessages(
   botToken: string,
   afterSnowflake?: string | null,
 ): Promise<DiscordMessage[]> {
-  const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
-  url.searchParams.set("limit", "100");
-  if (afterSnowflake) url.searchParams.set("after", afterSnowflake);
+  const all: DiscordMessage[] = [];
+  let cursor = afterSnowflake ?? undefined;
 
-  const res = await fetch(url.toString(), { headers: authHeaders(botToken) });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Discord channels/${channelId}/messages → ${res.status}: ${err}`);
+  // Paginate in batches of 100 until the channel is exhausted
+  while (true) {
+    const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("after", cursor);
+
+    const res = await fetch(url.toString(), { headers: authHeaders(botToken) });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Discord channels/${channelId}/messages → ${res.status}: ${err}`);
+    }
+    const batch = (await res.json()) as DiscordMessage[];
+    // Discord returns newest-first; reverse so we accumulate oldest-first
+    const ordered = batch.reverse();
+    all.push(...ordered);
+
+    if (batch.length < 100) break; // last page
+    // Advance cursor to the newest message in this batch (last after reverse)
+    cursor = ordered[ordered.length - 1].id;
   }
-  const messages = (await res.json()) as DiscordMessage[];
-  return messages.reverse(); // Discord returns newest-first; we want oldest-first
+
+  return all;
 }
 
 export async function sendDiscordMessage(

@@ -198,9 +198,9 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   const ignoreBots = config.ignoreBots ?? true;
   const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
   // firstSyncAfter: used both for first-time syncs AND when lastSyncedAt has been cleared
-  // (i.e. the user hit "Re-sync history"). We reach back `lookbackDays` (default 30).
+  // (i.e. the user hit "Sync Now"). We reach back `lookbackDays` (default 1 = last 24h).
   const firstSyncAfter = dateToSnowflake(
-    new Date(lookbackSeconds(config.lookbackDays, 30) * 1000),
+    new Date(lookbackSeconds(config.lookbackDays, 1) * 1000),
   );
   // Treat lastSyncedAt === null as "start fresh" — covers both first sync and manual re-sync.
   // This ensures re-sync actually goes back to the lookback window instead of being a no-op.
@@ -327,11 +327,11 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
   }
 
-  // Use lastSyncedAt as cursor; on first sync go back `lookbackDays` (default 7)
+  // Use lastSyncedAt as cursor; on first sync / resync go back `lookbackDays` (default 1 = last 24h)
   const lastSyncedAt = ctx.connection.lastSyncedAt;
   const afterUtc = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : lookbackSeconds(config?.lookbackDays, 7);
+    : lookbackSeconds(config?.lookbackDays, 1);
 
   let ingested = 0;
   let filtered = 0;
@@ -339,7 +339,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   const include = normalizeKeywords(config?.keywords);
   const exclude = normalizeKeywords(config?.excludeKeywords);
   const maxItems = config?.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
-  const limit = Math.min(maxItems ?? 25, 100);
+  const limit = Math.min(maxItems ?? 100, 100);
 
   try {
     // Use the RSS/Atom feed — no credentials required
