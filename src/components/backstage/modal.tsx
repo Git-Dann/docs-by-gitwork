@@ -19,14 +19,14 @@ export function BackstageModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4"
       onClick={onClose}
     >
       <div
-        className="proposal-form-theme w-full max-w-2xl rounded-[14px] bg-white shadow-2xl"
+        className="proposal-form-theme my-auto max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[14px] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-[14px] border-b border-[var(--border-2)] bg-white px-6 py-4">
           <div className="min-w-0">
             {eyebrow ? <p className="app-eyebrow">{eyebrow}</p> : null}
             <h2 className="mt-0.5 truncate text-lg font-semibold text-[var(--text-1)]">{title}</h2>

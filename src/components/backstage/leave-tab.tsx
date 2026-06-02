@@ -4,14 +4,13 @@ import { useState } from "react";
 import { CalendarDaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import {
   useCancelLeaveRequest,
-  useLeaveAllowance,
   useLeaveRequests,
 } from "@/hooks/use-backstage";
 import { LeaveRequestForm } from "@/components/backstage/leave-request-form";
 import { StatusPill } from "@/components/backstage/status-pill";
 import { BackstagePanel, PanelAction } from "@/components/backstage/panel";
+import { ScopeToggle } from "@/components/backstage/scope-toggle";
 import { useBackstageAccess } from "@/components/backstage/access";
-import { cn } from "@/lib/format";
 import { formatDateRange, formatRelative } from "@/components/backstage/format";
 import type { LeaveRequestDTO } from "@/types/backstage";
 
@@ -22,7 +21,6 @@ export function LeaveTab() {
   // Approvers (admin/HR) can switch to the whole team to view + edit anyone's leave.
   const [scope, setScope] = useState<"me" | "all">("me");
   const requests = useLeaveRequests(canApprove ? scope : "me");
-  const allowance = useLeaveAllowance();
   const cancelMut = useCancelLeaveRequest();
 
   function closeForm() {
@@ -32,16 +30,6 @@ export function LeaveTab() {
 
   return (
     <div className="space-y-6">
-      {/* Allowance */}
-      <BackstagePanel number="01" title="ALLOWANCE">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="Allocated" value={allowance.data?.allocated ?? "—"} suffix="days/yr" />
-          <Stat label="Used" value={allowance.data?.used ?? "—"} suffix="days" />
-          <Stat label="Pending" value={allowance.data?.pending ?? "—"} suffix="days" />
-          <Stat label="Remaining" value={allowance.data?.remaining ?? "—"} suffix="days" accent />
-        </div>
-      </BackstagePanel>
-
       {showForm || editing ? (
         <LeaveRequestForm
           editing={editing ?? undefined}
@@ -52,30 +40,12 @@ export function LeaveTab() {
 
       {/* Requests list */}
       <BackstagePanel
-        number="02"
+        number="01"
         title={canApprove && scope === "all" ? "TEAM LEAVE" : "MY LEAVE"}
         bodyClassName="p-0"
         action={
           <>
-            {canApprove ? (
-              <div className="inline-flex rounded-[6px] border border-[var(--border-2)] bg-white p-0.5">
-                {(["me", "all"] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setScope(s)}
-                    className={cn(
-                      "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
-                      scope === s
-                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                        : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-                    )}
-                  >
-                    {s === "me" ? "Mine" : "Everyone"}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            {canApprove ? <ScopeToggle value={scope} onChange={setScope} /> : null}
             <PanelAction
               leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
               onClick={() => {
@@ -150,50 +120,6 @@ export function LeaveTab() {
           </ul>
         )}
       </BackstagePanel>
-    </div>
-  );
-}
-
-// Editorial stat: serif figure + monospace label — the platform's data signature.
-function Stat({
-  label,
-  value,
-  suffix,
-  accent,
-}: {
-  label: string;
-  value: number | string;
-  suffix: string;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={
-        accent
-          ? "rounded-[10px] border border-[var(--brand-300)] bg-[var(--surface-brand)] p-4"
-          : "rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4"
-      }
-    >
-      <p
-        className="text-[10px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {label}
-      </p>
-      <p className="mt-2 flex items-baseline gap-1.5">
-        <span
-          className="text-[32px] leading-none text-[var(--text-1)]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          {value}
-        </span>
-        <span
-          className="text-[11px] text-[var(--text-3)]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {suffix}
-        </span>
-      </p>
     </div>
   );
 }

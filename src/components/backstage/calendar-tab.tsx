@@ -75,7 +75,7 @@ function prevMonth(year: number, month: number): { year: number; month: number }
   return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 }
 
-export function CalendarTab() {
+export function CalendarTab({ number = "01" }: { number?: string }) {
   const today = new Date();
   const [{ year, month }, setView] = useState<{ year: number; month: number }>({
     year: today.getUTCFullYear(),
@@ -103,7 +103,7 @@ export function CalendarTab() {
 
   return (
     <BackstagePanel
-      number="01"
+      number={number}
       title="TEAM CALENDAR"
       bodyClassName="space-y-4 p-4"
       action={
