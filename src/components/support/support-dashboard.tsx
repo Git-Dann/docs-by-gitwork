@@ -1094,12 +1094,28 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
   const [replyText, setReplyText] = useState("");
   const [draft, setDraft] = useState<DraftState>(null);
 
-  // Set first conversation when data loads
+  // Derive which sources are present so we only show relevant chips
+  const presentSources = useMemo(
+    () => [...new Set(convos.filter((c) => !sourcesFilter || sourcesFilter.includes(c.source)).map((c) => c.source))],
+    [convos, sourcesFilter],
+  );
+
+  const filtered = useMemo(() => convos.filter((c) => {
+    if (sourcesFilter && !sourcesFilter.includes(c.source)) return false;
+    if (deferred && !c.subject.toLowerCase().includes(deferred.toLowerCase()) && !c.tags.some((t) => t.includes(deferred.toLowerCase()))) return false;
+    if (filterSource !== "all" && c.source !== filterSource) return false;
+    if (filterSentiment !== "all" && c.sentiment !== filterSentiment) return false;
+    if (filterUnread && !c.unread) return false;
+    return true;
+  }), [convos, sourcesFilter, deferred, filterSource, filterSentiment, filterUnread]);
+
+  // Seed selection from the filtered list so cross-source conversations never bleed through
   useEffect(() => {
-    if (convos.length > 0 && selectedConvId === null) {
-      setSelectedConvId(convos[0].id);
+    if (filtered.length > 0 && (selectedConvId === null || !filtered.find((c) => c.id === selectedConvId))) {
+      setSelectedConvId(filtered[0].id);
     }
-  }, [convos, selectedConvId]);
+    if (filtered.length === 0) setSelectedConvId(null);
+  }, [filtered, selectedConvId]);
 
   const { data: msgData, isLoading: msgsLoading } = useSupportMessages(clientId, selectedConvId);
   const messages = msgData?.messages ?? [];
@@ -1125,28 +1141,13 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
     setReplyText("");
   }, [selectedConvId]);
 
-  // Derive which sources are present so we only show relevant chips
-  const presentSources = useMemo(
-    () => [...new Set(convos.filter((c) => !sourcesFilter || sourcesFilter.includes(c.source)).map((c) => c.source))],
-    [convos, sourcesFilter],
-  );
-
-  const filtered = convos.filter((c) => {
-    if (sourcesFilter && !sourcesFilter.includes(c.source)) return false;
-    if (deferred && !c.subject.toLowerCase().includes(deferred.toLowerCase()) && !c.tags.some((t) => t.includes(deferred.toLowerCase()))) return false;
-    if (filterSource !== "all" && c.source !== filterSource) return false;
-    if (filterSentiment !== "all" && c.sentiment !== filterSentiment) return false;
-    if (filterUnread && !c.unread) return false;
-    return true;
-  });
-
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Reset to first page when filters or search changes
   useEffect(() => { setPage(0); }, [deferred, filterSource, filterSentiment, filterUnread]);
 
-  const activeConvo = convos.find((c) => c.id === selectedConvId) ?? null;
+  const activeConvo = filtered.find((c) => c.id === selectedConvId) ?? null;
 
   function handleSend() {
     const body = (draft?.status === "approved" ? draft.text : replyText).trim();
