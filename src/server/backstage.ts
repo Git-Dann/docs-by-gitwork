@@ -851,6 +851,7 @@ export async function reviewExpense(
 // ─── Team directory ──────────────────────────────────────────────────────
 
 export async function listWorkspaceMembers(user: EffectiveUser): Promise<BackstageMember[]> {
+  const now = new Date();
   const members = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: user.workspaceId,
@@ -872,6 +873,32 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
     },
     orderBy: { user: { name: "asc" } },
   });
+
+  const memberEmails = new Set(members.map((m) => m.user.email.toLowerCase()));
+  const placements = await prisma.placement.findMany({
+    where: {
+      clientId: { not: null },
+      OR: [{ endDate: null }, { endDate: { gte: now } }],
+      candidate: {
+        workspaceId: user.workspaceId,
+        email: { not: null },
+      },
+    },
+    select: {
+      clientId: true,
+      candidate: { select: { email: true } },
+    },
+  });
+
+  const placementClientIdsByEmail = new Map<string, Set<string>>();
+  for (const placement of placements) {
+    const email = placement.candidate.email?.toLowerCase();
+    if (!email || !memberEmails.has(email) || !placement.clientId) continue;
+    const ids = placementClientIdsByEmail.get(email) ?? new Set<string>();
+    ids.add(placement.clientId);
+    placementClientIdsByEmail.set(email, ids);
+  }
+
   return members.map((m) => ({
     id: m.user.id,
     name: m.user.name ?? m.user.email,
@@ -879,7 +906,12 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
     avatarUrl: m.user.avatarUrl,
     role: m.role,
     countryCode: m.countryCode,
-    assignedClientIds: m.user.clientAssignments.map((assignment) => assignment.clientId),
+    assignedClientIds: [
+      ...new Set([
+        ...m.user.clientAssignments.map((assignment) => assignment.clientId),
+        ...(placementClientIdsByEmail.get(m.user.email.toLowerCase()) ?? []),
+      ]),
+    ],
   }));
 }
 
