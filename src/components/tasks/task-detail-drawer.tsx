@@ -110,7 +110,7 @@ export function TaskDetailDrawer({
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
               {/* Status quick-select */}
               <div>
-                <p className="mb-1.5 text-xs font-medium text-[var(--text-2)]">Status</p>
+                <p className="app-eyebrow mb-2">Status</p>
                 <div className="flex flex-wrap gap-1.5">
                   {TASK_STATUSES.map((s) => (
                     <button
@@ -167,7 +167,7 @@ export function TaskDetailDrawer({
               {/* Description */}
               {task.description ? (
                 <div>
-                  <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Description</p>
+                  <p className="app-eyebrow mb-2">Description</p>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">
                     {task.description}
                   </p>
@@ -177,7 +177,7 @@ export function TaskDetailDrawer({
               {/* Acceptance criteria */}
               {task.acceptanceCriteria ? (
                 <div>
-                  <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Acceptance criteria</p>
+                  <p className="app-eyebrow mb-2">Acceptance criteria</p>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">
                     {task.acceptanceCriteria}
                   </p>
@@ -186,7 +186,7 @@ export function TaskDetailDrawer({
 
               {/* Subtasks */}
               <div>
-                <p className="mb-2 text-xs font-medium text-[var(--text-2)]">
+                <p className="app-eyebrow mb-2">
                   Subtasks{" "}
                   {task.subtasks.length > 0
                     ? `(${task.subtaskDoneCount}/${task.subtasks.length})`
@@ -245,7 +245,7 @@ export function TaskDetailDrawer({
 
               {/* Notes */}
               <div>
-                <p className="mb-2 text-xs font-medium text-[var(--text-2)]">
+                <p className="app-eyebrow mb-2">
                   Notes {task.comments.length > 0 ? `(${task.comments.length})` : ""}
                 </p>
                 <div className="space-y-2.5">

@@ -2,27 +2,36 @@
 
 import { useState, useRef, useEffect } from "react";
 import { cn, formatDate, taskRef } from "@/lib/format";
-import type { TaskDTO, TaskStatus } from "@/types/tasks";
+import type { TaskDTO, TaskStatus, TaskPriority } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
-import { ChevronDownIcon, ChevronRightIcon, CheckIcon } from "@heroicons/react/16/solid";
+import { ChevronDownIcon, ChevronRightIcon, CheckIcon, FlagIcon } from "@heroicons/react/16/solid";
 
 function isOverdue(task: TaskDTO): boolean {
   if (!task.dueDate || task.status === "DONE") return false;
   return new Date(task.dueDate).getTime() < Date.now();
 }
 
-const STATUS_STYLE: Record<TaskStatus, { border: string; dot: string; text: string; bg: string }> = {
-  BACKLOG:   { border: "border-l-zinc-300",    dot: "bg-zinc-400",    text: "text-zinc-500",    bg: "bg-zinc-50"   },
-  TODO:      { border: "border-l-sky-400",     dot: "bg-sky-500",     text: "text-sky-700",     bg: "bg-sky-50"    },
-  DOING:     { border: "border-l-amber-400",   dot: "bg-amber-500",   text: "text-amber-700",   bg: "bg-amber-50"  },
-  IN_REVIEW: { border: "border-l-blue-500",    dot: "bg-blue-500",    text: "text-blue-700",    bg: "bg-blue-50"   },
-  DONE:      { border: "border-l-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50"},
+// Restrained, on-brand: one quiet status dot per group (no rainbow fills).
+const STATUS_DOT: Record<TaskStatus, string> = {
+  BACKLOG: "bg-zinc-400",
+  TODO: "bg-sky-500",
+  DOING: "bg-amber-500",
+  IN_REVIEW: "bg-blue-500",
+  DONE: "bg-emerald-500",
+};
+
+const PRIORITY_FLAG: Record<TaskPriority, { color: string; label: string }> = {
+  HIGH: { color: "text-red-500", label: "High" },
+  MEDIUM: { color: "text-amber-400", label: "Medium" },
+  LOW: { color: "text-zinc-300", label: "Low" },
 };
 
 const VISIBLE_CAP = 8;
-const GRID = "1.5rem minmax(0,1fr) 9rem 2.25rem 5rem";
-const GRID_SEL = "1.5rem 1.5rem minmax(0,1fr) 9rem 2.25rem 5rem";
+const GRID = "1.5rem minmax(0,1fr) 8rem 3rem 5.5rem 5rem";
+const GRID_SEL = "1.5rem 1.5rem minmax(0,1fr) 8rem 3rem 5.5rem 5rem";
+const MONO = { fontFamily: "var(--font-mono)" } as const;
+const HEAD = "text-[10px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]";
 
 /** Quick "complete" circle — click to toggle the task to/from DONE. */
 function CompleteToggle({ done, onToggle }: { done: boolean; onToggle: () => void }) {
@@ -101,54 +110,64 @@ export function TaskList({
   }
 
   return (
-    <div className="space-y-2.5">
-      {selectable ? (
-        <div className="flex items-center gap-2 px-1">
-          <SelectAllBox checked={allChecked} indeterminate={someChecked && !allChecked} onChange={(c) => onToggleAll?.(c)} />
-          <span className="text-[11px] font-medium text-[var(--text-4)]">Select all</span>
-        </div>
-      ) : null}
+    <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
+      {/* Column header */}
+      <div
+        className="grid items-center border-b border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-3 py-2"
+        style={{ gridTemplateColumns: gridCols }}
+      >
+        {selectable ? (
+          <div className="flex items-center">
+            <SelectAllBox checked={allChecked} indeterminate={someChecked && !allChecked} onChange={(c) => onToggleAll?.(c)} />
+          </div>
+        ) : null}
+        <div />
+        <span className={HEAD} style={MONO}>Name</span>
+        <span className={HEAD} style={MONO}>Category</span>
+        <span className={cn(HEAD, "text-center")} style={MONO}>Who</span>
+        <span className={HEAD} style={MONO}>Priority</span>
+        <span className={cn(HEAD, "text-right")} style={MONO}>Due</span>
+      </div>
 
-      {/* One self-contained card per status group. */}
+      {/* Collapsible status groups */}
       {TASK_STATUSES.map((status) => {
         const group = grouped[status];
         const isOpen = !collapsed.has(status);
-        const style = STATUS_STYLE[status];
         const visible = showAll.has(status) ? group : group.slice(0, VISIBLE_CAP);
+        const flag = (p: TaskPriority) => PRIORITY_FLAG[p];
 
         return (
-          <section key={status} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
+          <div key={status}>
+            {/* group header */}
             <button
               type="button"
               onClick={() => toggleCollapse(status)}
-              className={cn(
-                "flex w-full items-center gap-2 border-l-[3px] px-3 py-2 text-left transition hover:brightness-95",
-                style.border, style.bg,
-              )}
+              className="flex w-full items-center gap-2 border-b border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-3 py-1.5 text-left transition hover:brightness-[0.97]"
             >
               {isOpen ? (
-                <ChevronDownIcon className={cn("h-3.5 w-3.5 shrink-0", style.text)} />
+                <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
               ) : (
-                <ChevronRightIcon className={cn("h-3.5 w-3.5 shrink-0", style.text)} />
+                <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
               )}
-              <span className={cn("h-2 w-2 shrink-0 rounded-full", style.dot)} />
-              <span className={cn("text-[11px] font-bold uppercase tracking-[0.8px]", style.text)}>
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[status])} />
+              <span className="text-[11px] font-bold uppercase tracking-[0.6px] text-[var(--text-2)]" style={MONO}>
                 {TASK_STATUS_LABELS[status]}
               </span>
-              <span className={cn("ml-0.5 text-[10px] font-semibold opacity-70", style.text)}>{group.length}</span>
+              <span className="text-[10px] font-medium text-[var(--text-4)]" style={MONO}>{group.length}</span>
             </button>
 
             {isOpen && group.length > 0 && (
-              <div className="border-t border-[rgba(0,0,0,0.06)]">
+              <div>
                 {visible.map((task) => {
                   const checked = sel.has(task.id);
                   const overdue = isOverdue(task);
+                  const f = flag(task.priority);
                   return (
                     <div
                       key={task.id}
                       onClick={() => onRowClick(task.id)}
                       className={cn(
-                        "group grid cursor-pointer items-center border-b border-[rgba(0,0,0,0.04)] px-3 py-[7px] transition last:border-b-0 hover:bg-[var(--surface-1)]",
+                        "group grid cursor-pointer items-center border-b border-[rgba(0,0,0,0.04)] px-3 py-2 transition last:border-b-0 hover:bg-[var(--surface-1)]",
                         checked && "bg-[var(--surface-brand)]",
                       )}
                       style={{ gridTemplateColumns: gridCols }}
@@ -168,40 +187,34 @@ export function TaskList({
                         </div>
                       )}
 
-                      {/* quick complete */}
+                      {/* complete */}
                       <div className="flex items-center">
                         <CompleteToggle done={task.status === "DONE"} onToggle={() => onToggleDone?.(task)} />
                       </div>
 
-                      {/* ref id + title */}
-                      <div className="flex min-w-0 flex-col">
-                        <span className="flex items-center gap-2 text-sm font-medium text-[var(--text-1)]">
-                          <span
-                            className="shrink-0 text-[10px] text-[var(--text-4)]"
-                            style={{ fontFamily: "var(--font-mono)" }}
-                          >
-                            {taskRef(task.id)}
-                          </span>
-                          <span className={cn("min-w-0 truncate", task.status === "DONE" && "text-[var(--text-4)] line-through")}>
-                            {task.title}
-                          </span>
+                      {/* name */}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-[10px] text-[var(--text-4)]" style={MONO}>{taskRef(task.id)}</span>
+                        <span
+                          className={cn(
+                            "min-w-0 truncate text-sm font-medium text-[var(--text-1)]",
+                            task.status === "DONE" && "text-[var(--text-4)] line-through",
+                          )}
+                        >
+                          {task.title}
                         </span>
-                        {(showClient || (task.subtaskCount ?? 0) > 0) && (
-                          <div className="mt-0.5 flex items-center gap-2">
-                            {showClient && (
-                              <span className="truncate text-[11px] text-[var(--text-4)]">{task.client.name}</span>
-                            )}
-                            {(task.subtaskCount ?? 0) > 0 && (
-                              <span className="text-[10px] text-[var(--text-4)]">↳ {task.subtaskCount}</span>
-                            )}
-                          </div>
-                        )}
+                        {showClient ? (
+                          <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">· {task.client.name}</span>
+                        ) : null}
+                        {(task.subtaskCount ?? 0) > 0 ? (
+                          <span className="shrink-0 text-[10px] text-[var(--text-4)]">↳ {task.subtaskCount}</span>
+                        ) : null}
                       </div>
 
                       {/* category */}
                       <div className="flex items-center">
                         {task.featureBlock ? (
-                          <span className="inline-block max-w-[8rem] truncate rounded-[4px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]">
+                          <span className="inline-block max-w-[7.5rem] truncate rounded-[4px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]">
                             {task.featureBlock.name}
                           </span>
                         ) : (
@@ -209,7 +222,7 @@ export function TaskList({
                         )}
                       </div>
 
-                      {/* assignees */}
+                      {/* who */}
                       <div className="flex items-center justify-center">
                         {task.assignees.length > 0 ? (
                           <AssigneeStack users={task.assignees} size={22} />
@@ -218,12 +231,16 @@ export function TaskList({
                         )}
                       </div>
 
+                      {/* priority */}
+                      <div className="flex items-center gap-1 text-[11px] text-[var(--text-4)]">
+                        <FlagIcon className={cn("h-3 w-3 shrink-0", f.color)} />
+                        {f.label}
+                      </div>
+
                       {/* due */}
                       <div className="flex items-center justify-end">
                         {task.dueDate ? (
-                          <span
-                            className={cn("text-[11px] tabular-nums", overdue ? "font-semibold text-red-600" : "text-[var(--text-4)]")}
-                          >
+                          <span className={cn("text-[11px] tabular-nums", overdue ? "font-semibold text-red-600" : "text-[var(--text-4)]")}>
                             {formatDate(task.dueDate)}
                           </span>
                         ) : (
@@ -237,7 +254,7 @@ export function TaskList({
                   <button
                     type="button"
                     onClick={() => toggleShowAll(status)}
-                    className="w-full px-3 py-2 text-left text-[11px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)]"
+                    className="w-full border-b border-[rgba(0,0,0,0.04)] px-3 py-2 text-left text-[11px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)]"
                   >
                     {showAll.has(status) ? "Show less" : `Show all ${group.length}`}
                   </button>
@@ -246,9 +263,9 @@ export function TaskList({
             )}
 
             {isOpen && group.length === 0 && (
-              <p className="border-t border-[rgba(0,0,0,0.06)] px-3 py-2.5 text-[12px] text-[var(--text-4)]">No tasks</p>
+              <p className="border-b border-[rgba(0,0,0,0.04)] px-9 py-2.5 text-[12px] text-[var(--text-4)]">No tasks</p>
             )}
-          </section>
+          </div>
         );
       })}
     </div>
