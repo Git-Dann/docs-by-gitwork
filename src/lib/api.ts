@@ -1698,11 +1698,13 @@ export async function updateMeetingActionItem(
 
 import type {
   BackstageMember,
+  CalendarConnectionMember,
   CalendarMonth,
   ExpenseDTO,
   LeaveAllowanceDTO,
   LeaveRequestDTO,
   StaffingAlertsResponse,
+  TeamCalendarEvent,
 } from "@/types/backstage";
 
 export type BackstageScope = "me" | "team" | "all";
@@ -1864,6 +1866,23 @@ export async function setBackstageMemberPermission(
 
 export function getBackstageCalendar(year: number, month: number): Promise<CalendarMonth> {
   return apiFetch(`/api/backstage/calendar?year=${year}&month=${month}`);
+}
+
+export function listBackstageCalendarConnections(): Promise<{
+  selfConnected: boolean;
+  members: CalendarConnectionMember[];
+}> {
+  return apiFetch("/api/backstage/calendar/connections");
+}
+
+export function getBackstageTeamCalendarEvents(
+  year: number,
+  month: number,
+  userIds: string[],
+): Promise<{ events: TeamCalendarEvent[] }> {
+  const qs = new URLSearchParams({ year: String(year), month: String(month) });
+  if (userIds.length) qs.set("userIds", userIds.join(","));
+  return apiFetch(`/api/backstage/calendar/team-events?${qs.toString()}`);
 }
 
 // ─── Tasks (Portal task tracker + standups) ────────────────────────────────
