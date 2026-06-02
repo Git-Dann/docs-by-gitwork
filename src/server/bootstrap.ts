@@ -47,6 +47,9 @@ async function ensurePortalSchema() {
     // Roles & Permissions — the role matrix + per-member override delta
     `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "rolePermissions" JSONB`,
     `ALTER TABLE "WorkspaceMember" ADD COLUMN IF NOT EXISTS "permissionOverrides" JSONB NOT NULL DEFAULT '{}'`,
+    // Read-only provider Admin keys for the Super-Admin AI Spend card
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "anthropicAdminApiKey" TEXT`,
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "openaiAdminApiKey" TEXT`,
     // Document: share token, sharing flag, document number (Sprint 1)
     `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "shareToken" TEXT`,
     `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "isShared" BOOLEAN NOT NULL DEFAULT false`,

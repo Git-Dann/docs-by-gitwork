@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -10,8 +10,7 @@ import { SettingsShell, type SettingsSectionId } from "@/components/settings/set
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { AuditLogSection } from "@/components/settings/audit-log-section";
 import { PrivacySection } from "@/components/settings/privacy-section";
-import { TeamSection } from "@/components/settings/team-section";
-import { RolesSection } from "@/components/settings/roles-section";
+import { PeopleAccess } from "@/components/settings/people-shell";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
 // Code-split the heavy (~2.3k-line) settings-panel module: each tab ships as its own
@@ -36,6 +35,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "templates",
   "content",
   "rate-card",
+  "people",
   "team",
   "roles",
   "integrations",
@@ -50,7 +50,14 @@ const VALID_SECTIONS: SettingsSectionId[] = [
 const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
-const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["team", "rate-card", "workspace"]);
+// "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
+const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-card", "workspace"]);
+
+// Old standalone routes now live under People & Access — redirect for back-compat.
+const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
+  team: "/app/settings/people",
+  roles: "/app/settings/people?tab=roles",
+};
 
 // Settings sub-sections gated by an individual matrix permission. A Super Admin can
 // grant/remove each per role; ADMIN holds them all by default (see DEFAULT_ROLE_PERMISSIONS).
@@ -95,6 +102,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Rate card",
     subtitle: "Team members and day rates used in proposal costing.",
   },
+  people: {
+    title: "People & access",
+    subtitle: "Members, roles and what each role can do.",
+  },
   team: {
     title: "Team",
     subtitle: "Invite members and manage workspace access.",
@@ -138,6 +149,11 @@ export default async function SettingsSectionPage({
   if (!VALID_SECTIONS.includes(section as SettingsSectionId)) notFound();
 
   const sectionId = section as SettingsSectionId;
+
+  // Old standalone Team / Roles routes now live under People & Access.
+  const redirectTo = PEOPLE_REDIRECTS[sectionId];
+  if (redirectTo) redirect(redirectTo);
+
   const meta = SECTION_META[sectionId];
 
   const session = await auth();
@@ -226,8 +242,7 @@ export default async function SettingsSectionPage({
         {sectionId === "content" ? <ContentTab /> : null}
         {sectionId === "templates" ? <TemplatesTab /> : null}
         {sectionId === "rate-card" ? <RateCardTab /> : null}
-        {sectionId === "team" ? <TeamSection /> : null}
-        {sectionId === "roles" ? <RolesSection /> : null}
+        {sectionId === "people" ? <PeopleAccess /> : null}
         {sectionId === "integrations" ? <IntegrationsTab /> : null}
         {sectionId === "agents-checks" ? <AgentsAndChecksTab /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}

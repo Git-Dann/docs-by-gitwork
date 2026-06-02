@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
+import { AiSpendCard } from "@/components/ai-spend-card";
 
 type NavItem = {
   href?: string;
@@ -194,6 +195,7 @@ export function AppShell({
               </nav>
             </div>
             <div className="border-t border-[var(--border-2)] px-3 py-3">
+              <AiSpendCard />
               <SidebarNavItem
                 item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
                 active={Boolean(isActivePath(pathname, "/app/settings"))}
@@ -282,12 +284,15 @@ function ExpandedRail({
           </div>
         </div>
 
-        <div className="mt-4 space-y-2">
-          <SidebarNavItem
-            item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
-            active={Boolean(isActivePath(pathname, "/app/settings"))}
-          />
-          <ProfileMenu />
+        <div className="mt-4">
+          <AiSpendCard />
+          <div className="space-y-2">
+            <SidebarNavItem
+              item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
+              active={Boolean(isActivePath(pathname, "/app/settings"))}
+            />
+            <ProfileMenu />
+          </div>
         </div>
       </div>
     </div>
