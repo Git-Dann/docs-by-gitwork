@@ -1,6 +1,6 @@
 import { ChatBubbleLeftIcon } from "@heroicons/react/24/outline";
 import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
-import { cn, formatDate } from "@/lib/format";
+import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityDot, TaskStatusBadge } from "@/components/tasks/task-badges";
@@ -52,7 +52,7 @@ export function TaskCard({
       {/* Title row */}
       <div className="flex items-start gap-2">
         <TaskPriorityDot priority={task.priority} className="mt-1.5" />
-        <p className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-[var(--text-1)]">
+        <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-snug text-[var(--text-1)]">
           {task.title}
         </p>
         <AssigneeStack users={task.assignees} size={22} />
@@ -76,6 +76,10 @@ export function TaskCard({
       {/* Footer meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
+
+        <span className="text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+          {taskRef(task.id)}
+        </span>
 
         {/* Priority flag — colored icon + muted label */}
         <span className="inline-flex items-center gap-0.5 text-[10px]">

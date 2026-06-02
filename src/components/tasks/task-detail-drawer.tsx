@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PencilIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { cn, formatDate } from "@/lib/format";
+import { cn, formatDate, taskRef } from "@/lib/format";
 import {
   useTask,
   useUpdateTask,
@@ -91,7 +91,7 @@ export function TaskDetailDrawer({
                   className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
-                  {task.client.name}
+                  {task.client.name} · {taskRef(task.id)}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold leading-snug tracking-[-0.02em] text-[var(--text-1)]">
                   {task.title}
@@ -159,7 +159,7 @@ export function TaskDetailDrawer({
                   <p className="text-sm text-[var(--text-2)]">{task.createdBy?.name ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="widget-data-label mb-1">Block</p>
+                  <p className="widget-data-label mb-1">Category</p>
                   <p className="text-sm text-[var(--text-2)]">{task.featureBlock?.name ?? "—"}</p>
                 </div>
               </div>

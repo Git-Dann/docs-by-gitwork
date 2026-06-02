@@ -74,3 +74,8 @@ export function parseNumber(value: string, fallback = 0): number {
   const parsed = Number(value.replace(/[\s,]/g, ""));
   return Number.isFinite(parsed) ? parsed : fallback;
 }
+
+/** Short, stable, human-quotable task identifier derived from its id — e.g. "#9JQ5WP". */
+export function taskRef(id: string): string {
+  return "#" + id.slice(-6).toUpperCase();
+}
