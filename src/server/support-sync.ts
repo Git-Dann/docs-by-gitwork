@@ -477,6 +477,11 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   } catch (err) {
     return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
+
+  // Build the Gmail client from the impersonated (DWD) auth. (The OAuth refactor
+  // dropped this line while removing the old token path, leaving `gmail` undefined.)
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
+
   // Query is fully optional — leave blank to pull all mail since last sync.
   // No restrictive fallback: if the client hasn't set up forwarding the `to:` filter
   // would return zero results, silently appearing to "not work".
