@@ -119,17 +119,27 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Toolbar — back-to-client · view toggle · actions (page title lives in the AppShell band) */}
+      <div className="flex flex-wrap items-center gap-2">
         <Link
           href={`/app/portal/${slug}`}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+          className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-2.5 py-2 text-xs font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
         >
-          <ArrowLeftIcon className="h-4 w-4" />
+          <ArrowLeftIcon className="h-3.5 w-3.5" />
           {client.name}
         </Link>
-        <span className="text-[var(--text-4)]">/</span>
-        <span className="text-sm font-semibold text-[var(--text-1)]">Tasks</span>
+
+        <div className="inline-flex overflow-hidden rounded-[8px] border border-[var(--border-2)]">
+          <ViewTab active={view === "board"} onClick={() => switchView("board")} icon={<Squares2X2Icon className="h-4 w-4" />}>
+            Board
+          </ViewTab>
+          <ViewTab active={view === "list"} onClick={() => switchView("list")} icon={<ListBulletIcon className="h-4 w-4" />} borderLeft>
+            List
+          </ViewTab>
+          <ViewTab active={view === "gantt"} onClick={() => switchView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
+            Gantt
+          </ViewTab>
+        </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {view === "gantt" ? (
@@ -162,19 +172,6 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             New task
           </Button>
         </div>
-      </div>
-
-      {/* View toggle */}
-      <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
-        <ViewTab active={view === "board"} onClick={() => switchView("board")} icon={<Squares2X2Icon className="h-4 w-4" />}>
-          Board
-        </ViewTab>
-        <ViewTab active={view === "list"} onClick={() => switchView("list")} icon={<ListBulletIcon className="h-4 w-4" />} borderLeft>
-          List
-        </ViewTab>
-        <ViewTab active={view === "gantt"} onClick={() => switchView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
-          Gantt
-        </ViewTab>
       </div>
 
       {/* Search + filters (board + list) */}
@@ -265,7 +262,7 @@ function ViewTab({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition",
+        "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition",
         borderLeft && "border-l border-[var(--border-2)]",
         active ? "bg-[var(--surface-brand)] text-[var(--brand-800)]" : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
       )}
