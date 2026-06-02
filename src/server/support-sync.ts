@@ -447,95 +447,36 @@ function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { dat
   return "";
 }
 
-/**
- * Resolve the Google OAuth refresh token to use for the shared Care Gmail sync.
- *
- * Order of preference:
- *   1. `workspace.googleOAuthRefreshToken` (legacy shared org token, if still set)
- *   2. An ADMIN member's `user.googleOAuthRefreshToken` — NextAuth keeps this fresh on
- *      every sign-in, so it's the reliable source now that sign-in no longer writes the
- *      workspace row.
- *
- * Both are minted by the SAME OAuth client (AUTH_GOOGLE_ID via NextAuth, or the
- * GOOGLE_CLIENT_ID "Connect Gmail" flow), so refreshing must use matching credentials —
- * see resolveGoogleOAuthClientCreds().
- */
-async function resolveGmailRefreshToken(ctx: SyncContext): Promise<string | null> {
-  // Per-connection token takes priority — set by the connector-specific Gmail OAuth flow.
-  // This lets each connector authenticate as the inbox that actually receives the emails.
-  const channelTokens = ctx.connection.channelTokens as Array<{ tokenData: unknown }>;
-  for (const ct of channelTokens) {
-    const td = ct.tokenData as Record<string, unknown>;
-    if (typeof td?.refreshToken === "string") return td.refreshToken;
-  }
-
-  if (ctx.workspace.googleOAuthRefreshToken) return ctx.workspace.googleOAuthRefreshToken;
-
-  const adminMember = await prisma.workspaceMember.findFirst({
-    where: {
-      workspaceId: ctx.workspace.id,
-      role: "ADMIN",
-      user: { googleOAuthRefreshToken: { not: null } },
-    },
-    orderBy: { user: { updatedAt: "desc" } },
-    select: { user: { select: { googleOAuthRefreshToken: true } } },
-  });
-
-  return adminMember?.user.googleOAuthRefreshToken ?? null;
-}
-
-/**
- * The Care Gmail refresh token is minted either by NextAuth (AUTH_GOOGLE_ID/SECRET) or the
- * explicit Connect-Gmail flow (GOOGLE_CLIENT_ID/SECRET). Refreshing a token with a client
- * that didn't issue it returns `unauthorized_client`, so prefer AUTH_GOOGLE_* and fall back
- * to GOOGLE_CLIENT_* — matching getUserGoogleAuth() in src/server/google-auth.ts.
- */
-function resolveGoogleOAuthClientCreds(): { clientId?: string; clientSecret?: string } {
-  return {
-    clientId: process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET,
-  };
-}
-
 async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   const { workspace, connection, client } = ctx;
 
-  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
-
-  const refreshToken = await resolveGmailRefreshToken(ctx);
-
-  if (refreshToken) {
-    const { clientId, clientSecret } = resolveGoogleOAuthClientCreds();
-    if (!clientId || !clientSecret) {
-      return { fetched: 0, ingested: 0, filtered: 0, errors: ["Google OAuth client not configured — set AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET (or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)"] };
-    }
-    const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
-    oauth2.setCredentials({ refresh_token: refreshToken });
-    gmailAuth = oauth2 as Parameters<typeof google.gmail>[0]["auth"];
-  } else if (workspace.googleServiceAccountJson) {
-    try {
-      const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
-      const auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-      });
-      const authClient = await auth.getClient();
-      if (workspace.googleSubjectEmail && "subject" in authClient) {
-        (authClient as { subject?: string }).subject = workspace.googleSubjectEmail;
-      }
-      gmailAuth = authClient as Parameters<typeof google.gmail>[0]["auth"];
-    } catch (err) {
-      return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
-    }
-  } else {
-    return { fetched: 0, ingested: 0, filtered: 0, errors: ["Gmail not connected — go to Settings → Google Workspace and click Connect Gmail"] };
+  if (!workspace.googleServiceAccountJson) {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: ["Google service account not configured — paste the JSON in Settings → Google Workspace"] };
   }
 
-  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
   const config = (connection.scraperConfig ?? {}) as RedditScraperConfig & {
     query?: string;
     intakeAddress?: string;
+    impersonateEmail?: string;
   };
+
+  const impersonateEmail = config.impersonateEmail ?? workspace.googleSubjectEmail ?? null;
+  if (!impersonateEmail) {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: ["No inbox configured — set 'Inbox to read' on this Gmail connector"] };
+  }
+
+  let gmailAuth: Parameters<typeof google.gmail>[0]["auth"];
+  try {
+    const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      clientOptions: { subject: impersonateEmail },
+    });
+    gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
+  } catch (err) {
+    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail auth failed: ${err instanceof Error ? err.message : String(err)}`] };
+  }
   // Query is fully optional — leave blank to pull all mail since last sync.
   // No restrictive fallback: if the client hasn't set up forwarding the `to:` filter
   // would return zero results, silently appearing to "not work".
@@ -626,7 +567,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 
             const msgHdrs = (msg.payload?.headers ?? []) as Array<{ name?: string | null; value?: string | null }>;
             const msgFrom = msgHdrs.find((h) => h.name === "From")?.value ?? "";
-            const isOutbound = workspace.googleSubjectEmail ? msgFrom.includes(workspace.googleSubjectEmail) : false;
+            const isOutbound = impersonateEmail ? msgFrom.includes(impersonateEmail) : false;
 
             await prisma.supportMessage.create({
               data: {
@@ -654,19 +595,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 
     return { fetched, ingested, filtered, errors };
   } catch (err) {
-    const raw = err instanceof Error ? err.message : String(err);
-    if (raw.includes("unauthorized_client") || raw.includes("invalid_grant")) {
-      return {
-        fetched: 0,
-        ingested: 0,
-        filtered: 0,
-        errors: [
-          "Gmail sync failed: Google rejected the stored refresh token (unauthorized_client). " +
-            "Reconnect Gmail in Settings → Integrations so a fresh token is issued by the current OAuth client.",
-        ],
-      };
-    }
-    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${raw}`] };
+    return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
 }
 
