@@ -915,8 +915,8 @@ export function ClientDetail({ slug }: { slug: string }) {
               </div>
             </div>
             {studies.length === 0 ? (
-              <div className="p-5">
-                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
+              <div className="p-4">
+                <div className="flex items-center justify-center rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center w-full">
                   <p className="text-sm text-[var(--text-4)]">
                     <Link
                       href={`/app/study/new?clientId=${client.id}`}
@@ -1390,18 +1390,16 @@ function ClientDevelopersSection({
   }
 
   const active = placements.filter((p) => !p.endDate);
-  const past   = placements.filter((p) => p.endDate);
 
-  function Avatar({ name, muted }: { name: string; muted?: boolean }) {
+  function Avatar({ name }: { name: string }) {
     const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     let h = 0;
     for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
     const colors = ["#1D4ED8","#0F766E","#7C3AED","#B45309","#DC2626","#16A34A"];
-    const bg = muted ? "#94A3B8" : colors[Math.abs(h) % colors.length];
     return (
       <div
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
-        style={{ background: bg, fontFamily: "var(--font-mono)" }}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+        style={{ background: colors[Math.abs(h) % colors.length], fontFamily: "var(--font-mono)" }}
       >
         {initials}
       </div>
@@ -1409,39 +1407,26 @@ function ClientDevelopersSection({
   }
 
   return (
-    <div className="p-5 space-y-4">
-      {active.length > 0 && (
-        <div>
-          <p className="widget-data-label mb-3">Active</p>
-          <div className="flex flex-wrap gap-2">
-            {active.map((p) => (
-              <Link
-                key={p.id}
-                href={`/app/codeclear/candidates/${p.candidateId}`}
-                className="flex items-center gap-2 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
-              >
-                <Avatar name={p.candidateName} />
-                {p.candidateName}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-      {past.length > 0 && (
-        <div>
-          <p className="widget-data-label mb-3">Past</p>
-          <div className="flex flex-wrap gap-2">
-            {past.map((p) => (
-              <Link
-                key={p.id}
-                href={`/app/codeclear/candidates/${p.candidateId}`}
-                className="flex items-center gap-2 rounded-[6px] border border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-3 py-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
-              >
-                <Avatar name={p.candidateName} muted />
-                {p.candidateName}
-              </Link>
-            ))}
-          </div>
+    <div className="p-5">
+      {active.length === 0 ? (
+        <p className="text-sm text-[var(--text-4)]">
+          No active developers.{" "}
+          <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
+            Assign in Code →
+          </Link>
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {active.map((p) => (
+            <Link
+              key={p.id}
+              href={`/app/codeclear/candidates/${p.candidateId}`}
+              className="flex items-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
+            >
+              <Avatar name={p.candidateName} />
+              {p.candidateName}
+            </Link>
+          ))}
         </div>
       )}
     </div>
@@ -1709,7 +1694,14 @@ function SlackActivityBody({
             })}
           </ul>
         ) : (
-          <p className="text-sm text-[var(--text-4)]">No digest yet.</p>
+          /* Only show "no digest" if the channel has literally never had messages.
+             When the channel is just quiet (reason = "empty"), hide the placeholder
+             so the cached summary from a previous session would show if present. */
+          data.reason !== "empty" && (
+            <p className="text-sm text-[var(--text-4)]">
+              Digest will appear after the first messages are posted.
+            </p>
+          )
         )}
         {data.generatedAt && (
           <p className="widget-timestamp mt-4 opacity-50">

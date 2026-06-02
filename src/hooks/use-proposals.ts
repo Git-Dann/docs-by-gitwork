@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiFetch,
   archiveProposal,
@@ -444,6 +444,9 @@ export function useClientSlackActivity(slug: string, enabled = true) {
     enabled: Boolean(slug) && enabled,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    // Keep the last successful data visible while a background refetch runs,
+    // so the digest never flashes to an empty state mid-refresh.
+    placeholderData: keepPreviousData,
   });
 }
 
