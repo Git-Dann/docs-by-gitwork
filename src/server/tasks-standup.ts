@@ -13,6 +13,7 @@ import {
   assertCanPublishTaskRollup,
 } from "@/server/auth/effective-user";
 import { listTasks } from "@/server/tasks";
+import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
   TaskDTO,
   MyDayDTO,
@@ -21,7 +22,11 @@ import type {
   RollupDevStatus,
 } from "@/types/tasks";
 
-const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
+// Roll-up denominator = workspace members on the canonical dev roster — a stable
+// count, independent of who currently holds assigned tasks.
+const DEV_EMAILS = new Set(
+  TEAM_ROSTER.filter((e) => e.kind === "dev").map((e) => e.email.toLowerCase()),
+);
 
 const WEEKDAYS = [
   "Sunday",
@@ -172,6 +177,15 @@ export async function pushDailyUpdate(
   const workDate = parseWorkDate();
   const now = new Date();
 
+  // For the EOD "all-in" nudge: was this dev's PM already in before this push?
+  const prior =
+    input.phase === "PM"
+      ? await prisma.dailyUpdate.findUnique({
+          where: { userId_workDate: { userId: user.id, workDate } },
+          select: { pmPushedAt: true },
+        })
+      : null;
+
   // Persist the push log + editable fields.
   const phaseField = input.phase === "AM" ? { amPushedAt: now } : { pmPushedAt: now };
   const row = await prisma.dailyUpdate.upsert({
@@ -195,6 +209,13 @@ export async function pushDailyUpdate(
   void postStandupToSlack(user, workDate, input).catch((err) =>
     console.error("[tasks] standup Slack post failed", err),
   );
+
+  // If this PM push is the one that completes the whole dev roster, nudge the lead once.
+  if (input.phase === "PM" && !prior?.pmPushedAt) {
+    void maybePingAllIn(user.workspaceId, workDate).catch((err) =>
+      console.error("[tasks] all-in ping failed", err),
+    );
+  }
 
   return updateToDTO(row, workDate);
 }
@@ -251,38 +272,39 @@ async function postStandupToSlack(
   }
 }
 
+/** One-off nudge to the roll-up channel the moment every dev's PM update is in. */
+async function maybePingAllIn(workspaceId: string, workDate: Date): Promise<void> {
+  const devIds = await getDeveloperUserIds(workspaceId);
+  if (devIds.length === 0) return;
+  const pushed = await prisma.dailyUpdate.count({
+    where: { workspaceId, workDate, userId: { in: devIds }, pmPushedAt: { not: null } },
+  });
+  if (pushed < devIds.length) return; // not everyone in yet
+
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { slackBotToken: true, channelRoutes: true, slackSummaryChannelId: true },
+  });
+  const botToken = ws?.slackBotToken?.trim();
+  const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
+  const channel = routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
+  if (!botToken || !channel) return;
+  await postSlack(
+    botToken,
+    channel,
+    `:tada: *All ${devIds.length} developers have posted their end-of-day update.* The daily roll-up is ready to publish.`,
+  );
+}
+
 // ─── DevOps roll-up ─────────────────────────────────────────────────────────
 
-/**
- * Active devs = workspace members (excluding the bootstrap user) who are the
- * assignee of at least one task OR have already pushed an update today. Their
- * push state gates the consolidated publish.
- */
-async function getActiveDevUserIds(workspaceId: string, workDate: Date): Promise<string[]> {
-  const [assigneeUsers, pushers, members] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        OR: [
-          { assignedTasks: { some: { workspaceId } } },
-          { tasksAssigned: { some: { workspaceId } } }, // legacy single-assignee
-        ],
-      },
-      select: { id: true },
-    }),
-    prisma.dailyUpdate.findMany({
-      where: { workspaceId, workDate },
-      select: { userId: true },
-    }),
-    prisma.workspaceMember.findMany({
-      where: { workspaceId, user: { email: { not: BOOTSTRAP_USER_EMAIL } } },
-      select: { userId: true },
-    }),
-  ]);
-  const memberIds = new Set(members.map((m) => m.userId));
-  const ids = new Set<string>();
-  for (const u of assigneeUsers) if (memberIds.has(u.id)) ids.add(u.id);
-  for (const p of pushers) if (memberIds.has(p.userId)) ids.add(p.userId);
-  return Array.from(ids);
+/** Roll-up denominator: workspace members on the dev roster (assignment-independent). */
+async function getDeveloperUserIds(workspaceId: string): Promise<string[]> {
+  const members = await prisma.workspaceMember.findMany({
+    where: { workspaceId },
+    select: { userId: true, user: { select: { email: true } } },
+  });
+  return members.filter((m) => DEV_EMAILS.has(m.user.email.toLowerCase())).map((m) => m.userId);
 }
 
 /** Tally how many of `tasks` each dev (in devIds) is assigned to (m-n + legacy). */
@@ -304,7 +326,7 @@ export async function getRollupRoster(user: EffectiveUser): Promise<RollupRoster
   assertCanPublishTaskRollup(user);
   await ensureBaseRecords();
   const workDate = parseWorkDate();
-  const devIds = await getActiveDevUserIds(user.workspaceId, workDate);
+  const devIds = await getDeveloperUserIds(user.workspaceId);
 
   if (devIds.length === 0) {
     return { date: workDate.toISOString(), allPushed: false, devs: [] };
