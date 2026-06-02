@@ -464,7 +464,7 @@ function AddConnectorModal({
   const [discordToken, setDiscordToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
   const [discordGuildName, setDiscordGuildName] = useState("");
-  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
+  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string; accessible: boolean }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [fetchingChannels, setFetchingChannels] = useState(false);
   const [channelFetchError, setChannelFetchError] = useState<string | null>(null);
@@ -492,7 +492,7 @@ function AddConnectorModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guildId, botToken }),
       });
-      const data = await res.json() as { channels?: { id: string; name: string }[]; guildName?: string; error?: string };
+      const data = await res.json() as { channels?: { id: string; name: string; accessible: boolean }[]; guildName?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to fetch channels");
       setAvailableChannels(data.channels ?? []);
       setDiscordGuildName(data.guildName ?? "");
@@ -671,7 +671,7 @@ function AddConnectorModal({
             {source === "discord" && (
               <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
                 <p className="text-[11px] text-[var(--text-4)]">
-                  Invite <span className="font-medium text-[var(--text-2)]">gitwork_support_bot</span> to the client&apos;s server with Read Messages and Send Messages permissions, then enter the bot token and Server ID below.
+                  Invite your bot to the client&apos;s server via the Discord Developer Portal, granting <span className="font-medium text-[var(--text-2)]">View Channels</span> + <span className="font-medium text-[var(--text-2)]">Read Message History</span>. Private channels need these permissions granted <span className="font-medium text-[var(--text-2)]">per-channel</span> in Discord → channel Settings → Permissions.
                 </p>
 
                 <label className="block space-y-1">
@@ -738,7 +738,11 @@ function AddConnectorModal({
                       {availableChannels.map((ch) => (
                         <label
                           key={ch.id}
-                          className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
+                          className={cn(
+                            "flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0",
+                            ch.accessible === false ? "bg-amber-50 hover:bg-amber-50" : "hover:bg-[var(--surface-1)]",
+                          )}
+                          title={ch.accessible === false ? "Bot lacks read access to this channel — grant View Channel + Read Message History in Discord channel settings" : undefined}
                         >
                           <input
                             type="checkbox"
@@ -746,10 +750,20 @@ function AddConnectorModal({
                             onChange={() => toggleChannel(ch.id)}
                             className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
                           />
-                          <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
+                          <span className={cn("text-xs", ch.accessible === false ? "text-amber-700" : "text-[var(--text-1)]")}>
+                            # {ch.name}
+                          </span>
+                          {ch.accessible === false && (
+                            <ExclamationTriangleIcon className="ml-auto h-3 w-3 shrink-0 text-amber-500" title="No read access" />
+                          )}
                         </label>
                       ))}
                     </div>
+                    {availableChannels.some((ch) => ch.accessible === false) && (
+                      <p className="mt-1.5 text-[11px] text-amber-600">
+                        Channels highlighted in amber need <strong>View Channel</strong> + <strong>Read Message History</strong> granted to the bot in Discord → channel Settings → Permissions.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1109,12 +1123,12 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
     return true;
   }), [convos, sourcesFilter, deferred, filterSource, filterSentiment, filterUnread]);
 
-  // Seed selection from the filtered list so cross-source conversations never bleed through
+  // If a selected conversation is no longer in the filtered list, clear the selection.
+  // We do NOT auto-select the first item — the user picks explicitly.
   useEffect(() => {
-    if (filtered.length > 0 && (selectedConvId === null || !filtered.find((c) => c.id === selectedConvId))) {
-      setSelectedConvId(filtered[0].id);
+    if (selectedConvId !== null && !filtered.find((c) => c.id === selectedConvId)) {
+      setSelectedConvId(null);
     }
-    if (filtered.length === 0) setSelectedConvId(null);
   }, [filtered, selectedConvId]);
 
   const { data: msgData, isLoading: msgsLoading } = useSupportMessages(clientId, selectedConvId);
@@ -1213,7 +1227,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
             {convosLoading && (
               <div className="space-y-2">
                 {[...Array(3)].map((_, i) => (
-                  <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                  <div key={i} className="h-14 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
                 ))}
               </div>
             )}
@@ -1430,25 +1444,22 @@ function ConversationCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-[10px] border p-3.5 text-left transition",
+        "w-full rounded-[10px] border px-3 py-2.5 text-left transition",
         active
           ? "border-[var(--mist-border)] bg-[var(--mist)] shadow-sm"
           : "border-[var(--border-2)] bg-white hover:border-[var(--mist-border)] hover:bg-[var(--surface-1)]",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
-            <SourceIcon source={convo.source} />
-            <span>{SOURCE_LABEL[convo.source]}</span>
-            {convo.sentiment === "negative" && (
-              <span className="h-2 w-2 rounded-full bg-red-400" title="Negative sentiment" />
-            )}
-            {convo.unread && (
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-700)]" title="Unread" />
-            )}
-          </div>
-          <h3 className="mt-1.5 truncate text-sm font-semibold text-[var(--text-1)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex items-center gap-2">
+          <SourceIcon source={convo.source} />
+          {convo.unread && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />
+          )}
+          {convo.sentiment === "negative" && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
+          )}
+          <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">
             {convo.subject}
           </h3>
         </div>
@@ -1456,19 +1467,22 @@ function ConversationCard({
           {formatShort(convo.receivedAt)}
         </span>
       </div>
-      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{convo.preview}</p>
-      {convo.tags.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1">
-          {[...new Set(convo.tags)].map((tag) => (
-            <span
-              key={tag}
-              className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]"
-            >
-              {tag.replace(/_/g, " ")}
-            </span>
-          ))}
-        </div>
-      )}
+      <p className="mt-1 line-clamp-1 text-xs text-[var(--text-3)]">{convo.preview}</p>
+      {(() => {
+        const visibleTags = [...new Set(convo.tags)].filter((t) => t !== convo.source);
+        return visibleTags.length > 0 ? (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {visibleTags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)]"
+              >
+                {tag.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : null;
+      })()}
     </button>
   );
 }
@@ -2108,7 +2122,7 @@ function EditConnectorModal({
   const [discordToken, setDiscordToken] = useState(conn.scraperConfig?.botToken ?? "");
   const [discordGuildId, setDiscordGuildId] = useState(conn.scraperConfig?.guildId ?? "");
   const [discordGuildName, setDiscordGuildName] = useState(conn.scraperConfig?.guildName ?? "");
-  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string }[]>([]);
+  const [availableChannels, setAvailableChannels] = useState<{ id: string; name: string; accessible: boolean }[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(
     new Set((conn.scraperConfig?.channels ?? []).map((c) => c.id)),
   );
@@ -2135,7 +2149,7 @@ function EditConnectorModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guildId, botToken }),
       });
-      const data = await res.json() as { channels?: { id: string; name: string }[]; guildName?: string; error?: string };
+      const data = await res.json() as { channels?: { id: string; name: string; accessible: boolean }[]; guildName?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to fetch channels");
       setAvailableChannels(data.channels ?? []);
       setDiscordGuildName(data.guildName ?? discordGuildName);
@@ -2326,22 +2340,47 @@ function EditConnectorModal({
                     Check the token to load the full channel list. Currently saved channels shown below.
                   </p>
                 )}
-                <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
-                  {(availableChannels.length > 0 ? availableChannels : existingChannels).map((ch) => (
-                    <label
-                      key={ch.id}
-                      className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-1)]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedChannelIds.has(ch.id)}
-                        onChange={() => toggleChannel(ch.id)}
-                        className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
-                      />
-                      <span className="text-xs text-[var(--text-1)]"># {ch.name}</span>
-                    </label>
-                  ))}
-                </div>
+                {(() => {
+                  const displayChannels = availableChannels.length > 0 ? availableChannels : existingChannels;
+                  const hasInaccessible = displayChannels.some((ch) => "accessible" in ch && ch.accessible === false);
+                  return (
+                    <>
+                      <div className="max-h-44 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
+                        {displayChannels.map((ch) => {
+                          const inaccessible = "accessible" in ch && ch.accessible === false;
+                          return (
+                            <label
+                              key={ch.id}
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-2)] px-3 py-2 last:border-b-0",
+                                inaccessible ? "bg-amber-50 hover:bg-amber-50" : "hover:bg-[var(--surface-1)]",
+                              )}
+                              title={inaccessible ? "Bot lacks read access — grant View Channel + Read Message History in Discord channel settings" : undefined}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedChannelIds.has(ch.id)}
+                                onChange={() => toggleChannel(ch.id)}
+                                className="h-3.5 w-3.5 shrink-0 accent-[var(--brand-700)]"
+                              />
+                              <span className={cn("text-xs", inaccessible ? "text-amber-700" : "text-[var(--text-1)]")}>
+                                # {ch.name}
+                              </span>
+                              {inaccessible && (
+                                <ExclamationTriangleIcon className="ml-auto h-3 w-3 shrink-0 text-amber-500" />
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {hasInaccessible && (
+                        <p className="mt-1.5 text-[11px] text-amber-600">
+                          Channels highlighted in amber need <strong>View Channel</strong> + <strong>Read Message History</strong> granted to the bot in Discord → channel Settings → Permissions.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 

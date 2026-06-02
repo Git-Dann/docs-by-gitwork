@@ -11,6 +11,7 @@ export interface DiscordChannel {
   id: string;
   name: string;
   type: number;
+  accessible: boolean; // false = bot cannot read messages (missing View Channel / Read Message History)
 }
 
 function authHeaders(botToken: string) {
@@ -51,6 +52,18 @@ export async function sendDiscordMessage(
   }
 }
 
+async function probeChannelAccess(channelId: string, botToken: string): Promise<boolean> {
+  const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages?limit=1`, {
+    headers: authHeaders(botToken),
+  });
+  if (res.ok) return true;
+  const body = await res.text();
+  // 50001 = Missing Access, 50013 = Missing Permissions
+  if (body.includes("50001") || body.includes("50013") || body.includes("Missing Access")) return false;
+  // Any other error (rate limit, server error) — assume accessible so we don't block the setup
+  return true;
+}
+
 export async function getGuildChannels(
   guildId: string,
   botToken: string,
@@ -69,10 +82,21 @@ export async function getGuildChannels(
     throw new Error(`Discord guilds/${guildId} → ${guildRes.status}: ${err}`);
   }
 
-  const channels = ((await chanRes.json()) as DiscordChannel[])
+  const rawChannels = ((await chanRes.json()) as Omit<DiscordChannel, "accessible">[])
     .filter((c) => c.type === 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const guild = (await guildRes.json()) as { name: string };
+
+  // Probe read access for each channel in parallel
+  const accessResults = await Promise.allSettled(
+    rawChannels.map((ch) => probeChannelAccess(ch.id, botToken)),
+  );
+
+  const channels: DiscordChannel[] = rawChannels.map((ch, i) => ({
+    ...ch,
+    accessible: accessResults[i].status === "fulfilled" ? accessResults[i].value : true,
+  }));
+
   return { channels, guildName: guild.name };
 }
