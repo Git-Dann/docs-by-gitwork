@@ -108,7 +108,7 @@ export function canManageRole(actorRole: string, targetRole: string): boolean {
 }
 
 // ── Permission catalog ─────────────────────────────────────────────────────────
-export type PermissionCategory = "module" | "feature" | "field";
+export type PermissionCategory = "module" | "feature" | "field" | "settings";
 
 export interface PermissionDef {
   id: string;
@@ -225,6 +225,69 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         label: "Publish task roll-up",
         description:
           "Publish the consolidated end-of-day task roll-up across all clients (the DevOps lead).",
+      },
+    ],
+  },
+  {
+    // Settings sub-sections — each gates one area of Settings. (Team is gated by role,
+    // and the Roles & Permissions editor is always Super-Admin-only, so neither appears
+    // here.) Default: ADMIN gets all of these, STAFF/DEVELOPER none — matching the old
+    // single "Admin" gate — but a Super Admin can now grant or remove them per role.
+    product: "Settings",
+    permissions: [
+      {
+        id: "settings.general",
+        category: "settings",
+        label: "General settings",
+        description: "Workspace proposal defaults.",
+      },
+      {
+        id: "settings.branding",
+        category: "settings",
+        label: "Branding",
+        description: "Cover assets and accents applied to every document.",
+      },
+      {
+        id: "settings.content",
+        category: "settings",
+        label: "Content",
+        description: "Confidentiality copy and reusable objective snippets.",
+      },
+      {
+        id: "settings.templates",
+        category: "settings",
+        label: "Templates",
+        description: "Document section templates.",
+      },
+      {
+        id: "settings.integrations",
+        category: "settings",
+        label: "Integrations & keys",
+        description: "AI providers, Google, Slack and email — including their API keys.",
+      },
+      {
+        id: "settings.agents",
+        category: "settings",
+        label: "Agents & checks",
+        description: "Per-agent AI prompts and Pulse check configuration.",
+      },
+      {
+        id: "settings.audit",
+        category: "settings",
+        label: "Audit log",
+        description: "Workspace settings and access history.",
+      },
+      {
+        id: "settings.developer",
+        category: "settings",
+        label: "Developer settings",
+        description: "External API key, demo cleanup, REST reference.",
+      },
+      {
+        id: "settings.privacy",
+        category: "settings",
+        label: "Privacy & data",
+        description: "Data exports, retention and workspace deletion.",
       },
     ],
   },

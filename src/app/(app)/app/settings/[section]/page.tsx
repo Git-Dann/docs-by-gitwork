@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { ensureBaseRecords } from "@/server/bootstrap";
+import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { AppShell } from "@/components/app-shell";
 import { AccountSettingsPanel } from "@/components/account-settings-panel";
 import dynamic from "next/dynamic";
@@ -46,21 +49,22 @@ const VALID_SECTIONS: SettingsSectionId[] = [
 // Sections only Super Admins may open (the role matrix editor).
 const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
 
-const ADMIN_SECTIONS = new Set<SettingsSectionId>([
-  "general",
-  "branding",
-  "templates",
-  "content",
-  "rate-card",
-  "team",
-  "roles",
-  "integrations",
-  "agents-checks",
-  "audit",
-  "developer",
-  "privacy",
-  "workspace",
-]);
+// Admin-or-above sections that are NOT per-role toggles (member management + legacy).
+const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["team", "rate-card", "workspace"]);
+
+// Settings sub-sections gated by an individual matrix permission. A Super Admin can
+// grant/remove each per role; ADMIN holds them all by default (see DEFAULT_ROLE_PERMISSIONS).
+const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = {
+  general: "settings.general",
+  branding: "settings.branding",
+  content: "settings.content",
+  templates: "settings.templates",
+  integrations: "settings.integrations",
+  "agents-checks": "settings.agents",
+  audit: "settings.audit",
+  developer: "settings.developer",
+  privacy: "settings.privacy",
+};
 
 const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string }> = {
   account: {
@@ -137,9 +141,29 @@ export default async function SettingsSectionPage({
   const meta = SECTION_META[sectionId];
 
   const session = await auth();
-  const role = session?.user?.role ?? "";
+  // Resolve role + effective permissions LIVE from the DB (the cache that reconcile +
+  // recompute keep current) rather than the JWT — so matrix edits to a Settings section
+  // take effect without forcing a re-login. ensureBaseRecords also runs the catalog
+  // reconcile so newly-added settings permissions are granted before we gate on them.
+  await ensureBaseRecords();
+  const sessionUser = session?.user;
+  const member =
+    sessionUser?.id || sessionUser?.email
+      ? await prisma.workspaceMember.findFirst({
+          where: {
+            user: sessionUser.id ? { id: sessionUser.id } : { email: sessionUser.email! },
+            workspace: { slug: DEFAULT_WORKSPACE_SLUG },
+          },
+          select: { role: true, permissions: true },
+        })
+      : null;
+  const role = member?.role ?? sessionUser?.role ?? "";
+  const permissions = Array.isArray(member?.permissions)
+    ? (member!.permissions as string[])
+    : (sessionUser?.permissions ?? []);
   const isAdmin = isAtLeast(role, "ADMIN");
   const isSuper = isSuperAdmin(role);
+  const canSetting = (id: string) => isSuper || permissions.includes(id);
 
   if (SUPER_ADMIN_SECTIONS.has(sectionId) && !isSuper) {
     return (
@@ -157,7 +181,24 @@ export default async function SettingsSectionPage({
     );
   }
 
-  if (ADMIN_SECTIONS.has(sectionId) && !isAdmin) {
+  const sectionPermission = SETTINGS_SECTION_PERMISSION[sectionId];
+  if (sectionPermission && !canSetting(sectionPermission)) {
+    return (
+      <AppShell title={meta.title} subtitle="Access required.">
+        <SettingsShell activeSection={sectionId}>
+          <div className="app-card p-6">
+            <h2 className="text-lg font-semibold text-[var(--text-1)]">No access to this setting</h2>
+            <p className="mt-2 text-sm text-[var(--text-3)]">
+              Your role doesn&apos;t include this Settings area. A Super Admin can grant it under
+              Settings → Roles &amp; permissions.
+            </p>
+          </div>
+        </SettingsShell>
+      </AppShell>
+    );
+  }
+
+  if (ADMIN_ONLY_SECTIONS.has(sectionId) && !isAdmin) {
     return (
       <AppShell title={meta.title} subtitle="Admin access required.">
         <SettingsShell activeSection={sectionId}>
