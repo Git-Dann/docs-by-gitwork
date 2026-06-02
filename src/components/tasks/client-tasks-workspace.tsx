@@ -113,9 +113,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         <span className="text-sm font-semibold text-[var(--text-1)]">Tasks</span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <TimelineShareControl slug={slug} />
           {view === "gantt" ? (
             <>
+              <TimelineShareControl slug={slug} />
               <Button
                 type="button"
                 variant="secondary"
@@ -271,7 +271,7 @@ function TimelineShareControl({ slug }: { slug: string }) {
         leadingIcon={<ShareIcon className="h-4 w-4" />}
         onClick={() => setOpen((o) => !o)}
       >
-        Share timeline
+        Share
         {enabled ? <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> : null}
       </Button>
       {open ? (
