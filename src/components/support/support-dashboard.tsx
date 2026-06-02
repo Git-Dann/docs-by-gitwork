@@ -80,6 +80,19 @@ function formatShort(iso: string) {
   });
 }
 
+function TrendBadge({ delta }: { delta: number }) {
+  if (delta === 0) return null;
+  const up = delta > 0;
+  return (
+    <span className={cn(
+      "ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+      up ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600",
+    )}>
+      {up ? "▲" : "▼"} {Math.abs(delta)}
+    </span>
+  );
+}
+
 function HighlightedText({ text, keywords }: { text: string; keywords: string[] }) {
   if (keywords.length === 0) return <>{text}</>;
   const pattern = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -1378,37 +1391,36 @@ function ConversationCard({
           : "border-[var(--border-2)] bg-white hover:border-[var(--mist-border)] hover:bg-[var(--surface-1)]",
       )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex items-center gap-2">
-          <SourceIcon source={convo.source} />
-          {convo.unread && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />
-          )}
-          {convo.sentiment === "negative" && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
-          )}
-          {(() => {
-            // For Gmail, subjects are "Type - email@example.com" — split into bold title + grey detail
-            const dashIdx = convo.source === "gmail" ? convo.subject.indexOf(" - ") : -1;
-            const subjectMain = dashIdx > -1 ? convo.subject.slice(0, dashIdx) : convo.subject;
-            const subjectDetail = dashIdx > -1 ? convo.subject.slice(dashIdx + 3) : null;
-            return (
-              <>
-                <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">{subjectMain}</h3>
-                {subjectDetail && (
-                  <p className="truncate text-[11px] text-[var(--text-4)]">{subjectDetail}</p>
-                )}
-              </>
-            );
-          })()}
-        </div>
-        <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-4)]">
-          {formatShort(convo.receivedAt)}
-        </span>
-      </div>
-      {convo.source !== "gmail" && (
-        <p className="mt-1 line-clamp-1 text-xs text-[var(--text-3)]">{convo.preview}</p>
-      )}
+      {/* Row 1: icon + dots + subject + time */}
+      {(() => {
+        const dashIdx = convo.source === "gmail" ? convo.subject.indexOf(" - ") : -1;
+        const subjectMain = dashIdx > -1 ? convo.subject.slice(0, dashIdx) : convo.subject;
+        const subjectDetail = dashIdx > -1 ? convo.subject.slice(dashIdx + 3) : null;
+        const preview = convo.source !== "gmail" ? convo.preview : null;
+        return (
+          <>
+            <div className="flex items-center gap-1.5">
+              <SourceIcon source={convo.source} />
+              {convo.unread && (
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />
+              )}
+              {convo.sentiment === "negative" && (
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
+              )}
+              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-1)]">{subjectMain}</h3>
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-4)]">
+                {formatShort(convo.receivedAt)}
+              </span>
+            </div>
+            {/* Row 2: email detail or preview */}
+            {(subjectDetail ?? preview) && (
+              <p className="mt-0.5 truncate pl-[1.375rem] text-xs text-[var(--text-4)]">
+                {subjectDetail ?? preview}
+              </p>
+            )}
+          </>
+        );
+      })()}
       {(() => {
         const kwTags = convo.tags.filter((t) => t.startsWith("kw:"));
         const visibleTags = [...new Set(convo.tags)].filter((t) => t !== convo.source && !t.startsWith("kw:"));
@@ -1641,10 +1653,14 @@ function numInput(
   value: number,
   onChange: (v: number) => void,
   prefix?: string,
+  trend?: number,
 ) {
   return (
     <div>
-      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">{label}</p>
+      <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">
+        {label}
+        {trend !== undefined && trend !== 0 && <TrendBadge delta={trend} />}
+      </p>
       <div className="flex items-center gap-1">
         {prefix && <span className="text-sm text-[var(--text-3)]">{prefix}</span>}
         <input
@@ -1710,6 +1726,8 @@ function ReportBuilder({
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [fetchingApi, setFetchingApi] = useState(false);
   const [apiMsg, setApiMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  // Month-over-month trend deltas keyed by field name (positive = growth)
+  const [trends, setTrends] = useState<Record<string, number>>({});
 
   const createReport = useCreateSupportReport(clientId);
   const updateReport = useUpdateSupportReport(clientId);
@@ -1767,29 +1785,64 @@ function ReportBuilder({
       const userData = (await userRes.json()) as UserMonthly;
 
       const prefix = `${year}-${monthPad}`;
-      const monthRows = Array.isArray(subData) ? subData.filter((r) => r.month.startsWith(prefix)) : [];
+      // Also compute the previous calendar month for trend comparison
+      const prevDate = new Date(Number(year), Number(monthPad) - 2, 1);
+      const prevPrefix = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+      const prevMonthName = prevDate.toLocaleString("en-GB", { month: "long" });
+
+      const allRows = Array.isArray(subData) ? subData : [];
+      const monthRows = allRows.filter((r) => r.month.startsWith(prefix));
+      const prevRows = allRows.filter((r) => r.month.startsWith(prevPrefix));
 
       // transaction_count = renewals + new = actual active subs for the month
-      const getActive = (platform: string, type: string) =>
-        monthRows.find((r) => r.platform === platform && r.subscription_type === type)?.transaction_count ?? 0;
+      const getActive = (rows: typeof allRows, platform: string, type: string) =>
+        rows.find((r) => r.platform === platform && r.subscription_type === type)?.transaction_count ?? 0;
       // Total activity for a platform (all subscription types)
-      const getPlatformTotal = (platform: string) =>
-        monthRows.filter((r) => r.platform === platform).reduce((s, r) => s + r.transaction_count, 0);
+      const getPlatformTotal = (rows: typeof allRows, platform: string) =>
+        rows.filter((r) => r.platform === platform).reduce((s, r) => s + r.transaction_count, 0);
       // New user registrations from the monthly users endpoint
-      const getMonthUser = (arr: Array<{ month: string; count: number }>) =>
-        arr?.find((r) => r.month.startsWith(prefix))?.count ?? 0;
+      const getMonthUser = (arr: Array<{ month: string; count: number }>, pfx: string) =>
+        arr?.find((r) => r.month.startsWith(pfx))?.count ?? 0;
+      // Trend delta: returns difference (positive = growth)
+      const delta = (cur: number, prev: number) => (prev > 0 ? cur - prev : 0);
 
-      const iosMonthlyActive = getActive("ios", "monthly_subscription");
-      const iosYearlyActive = getActive("ios", "yearly_subscription");
-      const androidMonthlyActive = getActive("android", "monthly_subscription");
-      const androidYearlyActive = getActive("android", "yearly_subscription");
-      const stripeMonthlyActive = getActive("stripe", "monthly_subscription");
-      const stripeYearlyActive = getActive("stripe", "yearly_subscription");
+      const iosMonthlyActive = getActive(monthRows, "ios", "monthly_subscription");
+      const iosYearlyActive = getActive(monthRows, "ios", "yearly_subscription");
+      const androidMonthlyActive = getActive(monthRows, "android", "monthly_subscription");
+      const androidYearlyActive = getActive(monthRows, "android", "yearly_subscription");
+      const stripeMonthlyActive = getActive(monthRows, "stripe", "monthly_subscription");
+      const stripeYearlyActive = getActive(monthRows, "stripe", "yearly_subscription");
       const totalActive = monthRows.reduce((s, r) => s + r.transaction_count, 0);
+      const prevTotalActive = prevRows.reduce((s, r) => s + r.transaction_count, 0);
 
-      const iosNewUsers = getMonthUser(userData.ios);
-      const androidNewUsers = getMonthUser(userData.android);
-      const stripeNewUsers = getMonthUser(userData.stripe);
+      const iosNewUsers = getMonthUser(userData.ios, prefix);
+      const androidNewUsers = getMonthUser(userData.android, prefix);
+      const stripeNewUsers = getMonthUser(userData.stripe, prefix);
+      const prevIosNew = getMonthUser(userData.ios, prevPrefix);
+      const prevAndroidNew = getMonthUser(userData.android, prevPrefix);
+      const prevStripeNew = getMonthUser(userData.stripe, prevPrefix);
+
+      const newTrends: Record<string, number> = {
+        usageActiveSubscriptions: delta(totalActive, prevTotalActive),
+        usageSubIosMonthly: delta(iosMonthlyActive, getActive(prevRows, "ios", "monthly_subscription")),
+        usageSubAndroidMonthly: delta(androidMonthlyActive, getActive(prevRows, "android", "monthly_subscription")),
+        usageSubStripeMonthly: delta(stripeMonthlyActive, getActive(prevRows, "stripe", "monthly_subscription")),
+        usageEventsNew: delta(
+          monthRows.reduce((s, r) => s + r.new_subscriptions, 0),
+          prevRows.reduce((s, r) => s + r.new_subscriptions, 0),
+        ),
+        usageEventsRenewals: delta(
+          monthRows.reduce((s, r) => s + r.renewals, 0),
+          prevRows.reduce((s, r) => s + r.renewals, 0),
+        ),
+        usageIosNew: delta(iosNewUsers, prevIosNew),
+        usageAndroidNew: delta(androidNewUsers, prevAndroidNew),
+        usageStripeNew: delta(stripeNewUsers, prevStripeNew),
+        usageIosTotal: delta(getPlatformTotal(monthRows, "ios"), getPlatformTotal(prevRows, "ios")),
+        usageAndroidTotal: delta(getPlatformTotal(monthRows, "android"), getPlatformTotal(prevRows, "android")),
+        usageStripeTotal: delta(getPlatformTotal(monthRows, "stripe"), getPlatformTotal(prevRows, "stripe")),
+      };
+      setTrends(newTrends);
 
       setP((prev) => ({
         ...prev,
@@ -1806,12 +1859,15 @@ function ReportBuilder({
         usageIosNew: iosNewUsers,
         usageAndroidNew: androidNewUsers,
         usageStripeNew: stripeNewUsers,
-        usageIosTotal: getPlatformTotal("ios"),
-        usageAndroidTotal: getPlatformTotal("android"),
-        usageStripeTotal: getPlatformTotal("stripe"),
+        usageIosTotal: getPlatformTotal(monthRows, "ios"),
+        usageAndroidTotal: getPlatformTotal(monthRows, "android"),
+        usageStripeTotal: getPlatformTotal(monthRows, "stripe"),
       }));
 
-      setApiMsg({ type: "ok", text: `Fetched ${monthRows.length} subscription rows for ${prefix}` });
+      const trendSummary = prevTotalActive > 0
+        ? ` (${totalActive > prevTotalActive ? "+" : ""}${totalActive - prevTotalActive} vs ${prevMonthName})`
+        : "";
+      setApiMsg({ type: "ok", text: `Fetched ${monthRows.length} subscription rows for ${prefix}${trendSummary}` });
     } catch (err) {
       setApiMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to fetch" });
     } finally {
@@ -2024,8 +2080,8 @@ function ReportBuilder({
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Active subscriptions</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {numInput("Total active", p.usageActiveSubscriptions, (v) => update("usageActiveSubscriptions", v))}
-              {numInput("iOS Monthly", p.usageSubIosMonthly, (v) => update("usageSubIosMonthly", v))}
+              {numInput("Total active", p.usageActiveSubscriptions, (v) => update("usageActiveSubscriptions", v), undefined, trends.usageActiveSubscriptions)}
+              {numInput("iOS Monthly", p.usageSubIosMonthly, (v) => update("usageSubIosMonthly", v), undefined, trends.usageSubIosMonthly)}
               {numInput("iOS Yearly", p.usageSubIosYearly, (v) => update("usageSubIosYearly", v))}
               {numInput("Android Monthly", p.usageSubAndroidMonthly, (v) => update("usageSubAndroidMonthly", v))}
               {numInput("Android Yearly", p.usageSubAndroidYearly, (v) => update("usageSubAndroidYearly", v))}
@@ -2037,19 +2093,19 @@ function ReportBuilder({
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Subscription events this month</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {numInput("Total events", p.usageEventsTotal, (v) => update("usageEventsTotal", v))}
-              {numInput("Renewals", p.usageEventsRenewals, (v) => update("usageEventsRenewals", v))}
-              {numInput("New subscriptions", p.usageEventsNew, (v) => update("usageEventsNew", v))}
+              {numInput("Renewals", p.usageEventsRenewals, (v) => update("usageEventsRenewals", v), undefined, trends.usageEventsRenewals)}
+              {numInput("New subscriptions", p.usageEventsNew, (v) => update("usageEventsNew", v), undefined, trends.usageEventsNew)}
             </div>
           </div>
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Platform activity (total / new)</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {numInput("iOS total", p.usageIosTotal, (v) => update("usageIosTotal", v))}
-              {numInput("iOS new", p.usageIosNew, (v) => update("usageIosNew", v))}
-              {numInput("Android total", p.usageAndroidTotal, (v) => update("usageAndroidTotal", v))}
-              {numInput("Android new", p.usageAndroidNew, (v) => update("usageAndroidNew", v))}
-              {numInput("Stripe total", p.usageStripeTotal, (v) => update("usageStripeTotal", v))}
-              {numInput("Stripe new", p.usageStripeNew, (v) => update("usageStripeNew", v))}
+              {numInput("iOS total", p.usageIosTotal, (v) => update("usageIosTotal", v), undefined, trends.usageIosTotal)}
+              {numInput("iOS new", p.usageIosNew, (v) => update("usageIosNew", v), undefined, trends.usageIosNew)}
+              {numInput("Android total", p.usageAndroidTotal, (v) => update("usageAndroidTotal", v), undefined, trends.usageAndroidTotal)}
+              {numInput("Android new", p.usageAndroidNew, (v) => update("usageAndroidNew", v), undefined, trends.usageAndroidNew)}
+              {numInput("Stripe total", p.usageStripeTotal, (v) => update("usageStripeTotal", v), undefined, trends.usageStripeTotal)}
+              {numInput("Stripe new", p.usageStripeNew, (v) => update("usageStripeNew", v), undefined, trends.usageStripeNew)}
             </div>
           </div>
         </div>
@@ -2737,6 +2793,16 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                     {conn.scraperConfig?.intakeAddress && (
                       <p className="mt-1 select-all font-mono text-[11px] text-[var(--brand-700)]">
                         {conn.scraperConfig.intakeAddress}
+                      </p>
+                    )}
+                    {conn.source === "gmail" && conn.scraperConfig?.query && (
+                      <p className="mt-1 font-mono text-[11px] text-[var(--text-3)]">
+                        <span className="text-[var(--text-4)]">query: </span>{conn.scraperConfig.query}
+                      </p>
+                    )}
+                    {conn.source === "gmail" && !conn.scraperConfig?.query && (
+                      <p className="mt-1 text-[11px] text-amber-600">
+                        No query set — ingesting all mail. Click Edit to add a filter.
                       </p>
                     )}
                     {conn.scraperConfig?.channels && conn.scraperConfig.channels.length > 0 && (
