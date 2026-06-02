@@ -1769,34 +1769,46 @@ function ReportBuilder({
       const prefix = `${year}-${monthPad}`;
       const monthRows = Array.isArray(subData) ? subData.filter((r) => r.month.startsWith(prefix)) : [];
 
-      const getNew = (platform: string, type: string) =>
-        monthRows.find((r) => r.platform === platform && r.subscription_type === type)?.new_subscriptions ?? 0;
+      // transaction_count = renewals + new = actual active subs for the month
+      const getActive = (platform: string, type: string) =>
+        monthRows.find((r) => r.platform === platform && r.subscription_type === type)?.transaction_count ?? 0;
+      // Total activity for a platform (all subscription types)
+      const getPlatformTotal = (platform: string) =>
+        monthRows.filter((r) => r.platform === platform).reduce((s, r) => s + r.transaction_count, 0);
+      // New user registrations from the monthly users endpoint
       const getMonthUser = (arr: Array<{ month: string; count: number }>) =>
         arr?.find((r) => r.month.startsWith(prefix))?.count ?? 0;
 
-      const iosMonthlyNew = getNew("ios", "monthly_subscription");
-      const iosYearlyNew = getNew("ios", "yearly_subscription");
-      const androidMonthlyNew = getNew("android", "monthly_subscription");
-      const androidYearlyNew = getNew("android", "yearly_subscription");
-      const stripeNew = monthRows.filter((r) => r.platform === "stripe").reduce((s, r) => s + r.new_subscriptions, 0);
+      const iosMonthlyActive = getActive("ios", "monthly_subscription");
+      const iosYearlyActive = getActive("ios", "yearly_subscription");
+      const androidMonthlyActive = getActive("android", "monthly_subscription");
+      const androidYearlyActive = getActive("android", "yearly_subscription");
+      const stripeMonthlyActive = getActive("stripe", "monthly_subscription");
+      const stripeYearlyActive = getActive("stripe", "yearly_subscription");
+      const totalActive = monthRows.reduce((s, r) => s + r.transaction_count, 0);
+
+      const iosNewUsers = getMonthUser(userData.ios);
+      const androidNewUsers = getMonthUser(userData.android);
+      const stripeNewUsers = getMonthUser(userData.stripe);
 
       setP((prev) => ({
         ...prev,
+        usageActiveSubscriptions: totalActive,
         usageEventsNew: monthRows.reduce((s, r) => s + r.new_subscriptions, 0),
         usageEventsRenewals: monthRows.reduce((s, r) => s + r.renewals, 0),
         usageEventsTotal: monthRows.reduce((s, r) => s + r.transaction_count, 0),
-        usageSubIosMonthly: iosMonthlyNew,
-        usageSubIosYearly: iosYearlyNew,
-        usageSubAndroidMonthly: androidMonthlyNew,
-        usageSubAndroidYearly: androidYearlyNew,
-        usageSubStripeMonthly: monthRows.find((r) => r.platform === "stripe" && r.subscription_type.includes("monthly"))?.new_subscriptions ?? stripeNew,
-        usageSubStripeYearly: getNew("stripe", "yearly_subscription"),
-        usageIosNew: iosMonthlyNew + iosYearlyNew,
-        usageAndroidNew: androidMonthlyNew + androidYearlyNew,
-        usageStripeNew: stripeNew,
-        usageIosTotal: getMonthUser(userData.ios),
-        usageAndroidTotal: getMonthUser(userData.android),
-        usageStripeTotal: getMonthUser(userData.stripe),
+        usageSubIosMonthly: iosMonthlyActive,
+        usageSubIosYearly: iosYearlyActive,
+        usageSubAndroidMonthly: androidMonthlyActive,
+        usageSubAndroidYearly: androidYearlyActive,
+        usageSubStripeMonthly: stripeMonthlyActive,
+        usageSubStripeYearly: stripeYearlyActive,
+        usageIosNew: iosNewUsers,
+        usageAndroidNew: androidNewUsers,
+        usageStripeNew: stripeNewUsers,
+        usageIosTotal: getPlatformTotal("ios"),
+        usageAndroidTotal: getPlatformTotal("android"),
+        usageStripeTotal: getPlatformTotal("stripe"),
       }));
 
       setApiMsg({ type: "ok", text: `Fetched ${monthRows.length} subscription rows for ${prefix}` });
