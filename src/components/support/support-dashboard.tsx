@@ -1136,12 +1136,12 @@ function SourceWatchingBar({
   onGoToConnectors?: () => void;
 }) {
   const { data } = useSupportConnections(clientId);
-  const connections = (data?.connections ?? []).filter(
-    (c) => sources.includes(c.source) && c.health === "connected",
-  );
+  // Show all connectors for these sources regardless of health — even needs_setup connectors
+  // are useful to display so the user knows what's configured and can edit them.
+  const connections = (data?.connections ?? []).filter((c) => sources.includes(c.source));
   if (connections.length === 0) return null;
   return (
-    <div className="space-y-1 border-b border-black/[0.06] px-3 py-2">
+    <div className="space-y-1.5 border-b border-black/[0.06] bg-[var(--surface-1)] px-3 py-2">
       {connections.map((conn) => {
         const cfg = conn.scraperConfig;
         let summary = "";
@@ -1156,15 +1156,19 @@ function SourceWatchingBar({
             : (cfg?.guildName ?? conn.label);
           if (cfg?.guildId) viewUrl = `https://discord.com/channels/${cfg.guildId}`;
         } else if (conn.source === "gmail") {
-          summary = cfg?.query?.trim() ? `filter: ${cfg.query}` : "no filter — all mail";
+          summary = cfg?.query?.trim() ? cfg.query : "no filter — all mail";
           viewUrl = "https://mail.google.com";
         }
+        const isError = conn.health === "error";
+        const needsSetup = conn.health === "needs_setup";
         return (
           <div key={conn.id} className="flex items-center gap-2 text-[11px]">
-            <SourceIcon source={conn.source} className="h-3 w-3 shrink-0 text-[var(--text-4)]" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[var(--text-3)]">
+            <SourceIcon source={conn.source} className={cn("h-3 w-3 shrink-0", isError ? "text-red-400" : needsSetup ? "text-amber-400" : "text-[var(--text-4)]")} />
+            <span className={cn("min-w-0 flex-1 truncate font-mono", isError ? "text-red-500" : "text-[var(--text-3)]")}>
               {summary || conn.label}
             </span>
+            {isError && <span className="shrink-0 text-[10px] font-medium text-red-500">Error</span>}
+            {needsSetup && <span className="shrink-0 text-[10px] font-medium text-amber-500">Setup needed</span>}
             {viewUrl && (
               <a
                 href={viewUrl}
@@ -1195,6 +1199,13 @@ function SourceWatchingBar({
 function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConnectors }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string; onGoToConnectors?: () => void }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
+  const syncConn = useSyncConnection(clientId);
+  const { data: connectionsData } = useSupportConnections(clientId);
+  // For the empty-state sync button: first matching connected connector
+  const matchingConn = useMemo(() => {
+    if (!sourcesFilter) return null;
+    return (connectionsData?.connections ?? []).find((c) => sourcesFilter.includes(c.source)) ?? null;
+  }, [connectionsData, sourcesFilter]);
 
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -1396,9 +1407,20 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
                 </div>
               )}
               {!msgsLoading && messages.length === 0 && (
-                <p className="py-6 text-center text-sm text-[var(--text-4)]">
-                  No messages yet. Trigger a sync to pull in the latest messages.
-                </p>
+                <div className="flex flex-col items-center gap-3 py-8 text-center">
+                  <p className="text-sm text-[var(--text-4)]">No messages yet.</p>
+                  {matchingConn && (
+                    <button
+                      type="button"
+                      onClick={() => syncConn.mutate(matchingConn.id)}
+                      disabled={syncConn.isPending}
+                      className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    >
+                      <BoltIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
+                      {syncConn.isPending ? "Syncing…" : "Sync Now to pull messages"}
+                    </button>
+                  )}
+                </div>
               )}
               {activeKeywords.length > 0 && messages.length > 0 && (
                 <div className="flex items-center gap-1.5 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
@@ -1411,25 +1433,30 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConne
               )}
               {messages.map((msg) => {
                 const hasKeyword = activeKeywords.length > 0 && activeKeywords.some((kw) =>
-                  msg.body.toLowerCase().includes(kw.toLowerCase())
+                  msg.body.toLowerCase().includes(kw.toLowerCase()),
                 );
                 return (
-                  <div
-                    key={msg.id}
-                    className={cn(
-                      "rounded-[10px] border p-3.5 text-sm leading-6",
-                      hasKeyword
-                        ? "border-amber-300 bg-amber-50 text-[var(--text-2)]"
-                        : msg.direction === "inbound"
-                          ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]"
-                          : "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]",
-                    )}
-                  >
-                    <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--text-3)]">
-                      <span>{msg.authorLabel}</span>
+                  <div key={msg.id} className={cn("flex flex-col gap-0.5", msg.direction === "outbound" ? "items-end" : "items-start")}>
+                    <div className="flex items-center gap-1.5 px-1 text-[10px] text-[var(--text-4)]">
+                      <span className="font-medium text-[var(--text-3)]">{msg.authorLabel}</span>
+                      <span>·</span>
                       <span>{formatShort(msg.createdAt)}</span>
+                      {hasKeyword && (
+                        <span className="rounded-[4px] bg-amber-100 px-1 py-px font-semibold text-amber-700">keyword</span>
+                      )}
                     </div>
-                    <HighlightedText text={msg.body} keywords={activeKeywords} />
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-[10px] border px-3.5 py-2.5 text-sm leading-relaxed",
+                        hasKeyword
+                          ? "border-amber-300 bg-amber-50 text-[var(--text-1)]"
+                          : msg.direction === "outbound"
+                            ? "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]"
+                            : "border-[var(--border-2)] bg-white text-[var(--text-2)]",
+                      )}
+                    >
+                      <HighlightedText text={msg.body} keywords={activeKeywords} />
+                    </div>
                   </div>
                 );
               })}
@@ -1522,10 +1549,281 @@ function ConversationCard({
   );
 }
 
-// ─── tickets view ────────────────────────────────────────────────────────────
+// ─── subreddit / tickets view ─────────────────────────────────────────────────
+
+function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
+  const { data: connectionsData } = useSupportConnections(clientId);
+  const { data: convoData } = useSupportConversations(clientId);
+  const syncConn = useSyncConnection(clientId);
+
+  const redditConnectors = useMemo(
+    () => (connectionsData?.connections ?? []).filter((c) => c.source === "reddit"),
+    [connectionsData],
+  );
+  const allConvos = useMemo(() => convoData?.conversations ?? [], [convoData]);
+
+  const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+
+  // Auto-select first connector when data loads
+  useEffect(() => {
+    if (redditConnectors.length > 0 && !selectedConnId) {
+      setSelectedConnId(redditConnectors[0].id);
+    }
+  }, [redditConnectors, selectedConnId]);
+
+  const selectedConn = redditConnectors.find((c) => c.id === selectedConnId) ?? null;
+  const subreddit = selectedConn?.scraperConfig?.subreddit ?? "";
+  const keywords = useMemo(() => (selectedConn?.scraperConfig?.keywords ?? []), [selectedConn]);
+
+  // Posts = conversations from this subreddit (tagged with subreddit name)
+  const posts = useMemo(
+    () => allConvos.filter((c) => c.source === "reddit" && (subreddit ? c.tags.includes(subreddit) : true)),
+    [allConvos, subreddit],
+  );
+
+  const { data: msgData, isLoading: msgsLoading } = useSupportMessages(clientId, selectedPostId);
+  const postMessages = msgData?.messages ?? [];
+  const selectedPost = posts.find((p) => p.id === selectedPostId) ?? null;
+
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
+
+        {/* ── Left: subreddit connector cards ─────────────────────────────── */}
+        <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
+          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              01 // POSTS
+            </span>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              {posts.length}
+            </span>
+          </div>
+          <div className="flex-1 space-y-2 overflow-y-auto p-3">
+            {redditConnectors.length === 0 ? (
+              <div className="py-8 text-center text-sm text-[var(--text-4)]">
+                <p>No Reddit connectors yet.</p>
+                {onGoToConnectors && (
+                  <button type="button" onClick={onGoToConnectors} className="mt-1 text-[var(--brand-700)]">
+                    Add one in Connectors →
+                  </button>
+                )}
+              </div>
+            ) : (
+              redditConnectors.map((conn) => {
+                const sub = conn.scraperConfig?.subreddit ?? "";
+                const connPosts = allConvos.filter((c) => c.source === "reddit" && c.tags.includes(sub));
+                const kwCount = (conn.scraperConfig?.keywords ?? []).length;
+                const flagged = connPosts.filter((p) =>
+                  kwCount > 0 && (conn.scraperConfig?.keywords ?? []).some((kw) =>
+                    p.subject.toLowerCase().includes(kw.toLowerCase()) || p.preview.toLowerCase().includes(kw.toLowerCase()),
+                  ),
+                ).length;
+                const isActive = conn.id === selectedConnId;
+                return (
+                  <button
+                    key={conn.id}
+                    type="button"
+                    onClick={() => { setSelectedConnId(conn.id); setSelectedPostId(null); }}
+                    className={cn(
+                      "w-full rounded-[10px] border px-3 py-2.5 text-left transition",
+                      isActive
+                        ? "border-[var(--mist-border)] bg-[var(--mist)] shadow-sm"
+                        : "border-[var(--border-2)] bg-white hover:border-[var(--mist-border)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <SourceIcon source="reddit" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-1)]">
+                        r/{sub || conn.label}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[var(--text-4)]">{connPosts.length}</span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1 pl-[1.375rem]">
+                      {kwCount > 0 && (
+                        <span className="rounded-[6px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                          {kwCount} keyword{kwCount !== 1 ? "s" : ""} watched
+                        </span>
+                      )}
+                      {flagged > 0 && (
+                        <span className="rounded-[6px] border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600">
+                          {flagged} flagged
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── Right: posts feed or post detail ─────────────────────────────── */}
+        <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
+          <div className="flex h-9 shrink-0 items-center justify-between border-b border-black/[0.06] px-4">
+            <div className="flex items-center gap-2">
+              {selectedPostId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPostId(null)}
+                  className="mr-1 text-[11px] text-[var(--text-4)] hover:text-[var(--brand-700)]"
+                >
+                  ← Back
+                </button>
+              )}
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+                {selectedPost ? selectedPost.subject.slice(0, 40) : selectedConn ? `02 // r/${subreddit}` : "02 // SUBREDDIT"}
+              </span>
+            </div>
+            {selectedConn && !selectedPostId && (
+              <div className="flex items-center gap-2">
+                <a
+                  href={`https://www.reddit.com/r/${subreddit}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] font-medium text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+                >
+                  View ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => syncConn.mutate(selectedConn.id)}
+                  disabled={syncConn.isPending}
+                  className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                >
+                  <BoltIcon className={cn("h-3 w-3", syncConn.isPending && "animate-spin")} />
+                  {syncConn.isPending ? "Syncing…" : "Sync Now"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!selectedConn ? (
+            <div className="flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
+              Select a subreddit
+            </div>
+          ) : selectedPostId && selectedPost ? (
+            /* ── Post detail view ── */
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="border-b border-[var(--border-2)] px-5 py-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
+                  <SourceIcon source="reddit" />
+                  <span>REDDIT</span>
+                  <span className="text-[var(--text-4)]">·</span>
+                  <span>{selectedPost.customerLabel}</span>
+                  <span className="text-[var(--text-4)]">·</span>
+                  <a
+                    href={`https://www.reddit.com/r/${subreddit}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--text-4)] hover:text-[var(--brand-700)]"
+                  >
+                    r/{subreddit} ↗
+                  </a>
+                </div>
+                <h2 className="mt-1 text-base font-semibold text-[var(--text-1)]">{selectedPost.subject}</h2>
+                <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{formatShort(selectedPost.receivedAt)}</p>
+              </div>
+              <div className="flex-1 space-y-3 overflow-y-auto p-5">
+                {keywords.length > 0 && postMessages.length > 0 && (
+                  <div className="flex items-center gap-1.5 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                    <span className="font-semibold">Watching:</span>
+                    {keywords.map((kw) => (
+                      <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
+                    ))}
+                  </div>
+                )}
+                {msgsLoading && <div className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />}
+                {!msgsLoading && postMessages.length === 0 && (
+                  <p className="py-6 text-center text-sm text-[var(--text-4)]">No message body synced for this post.</p>
+                )}
+                {postMessages.map((msg) => {
+                  const hasKeyword = keywords.some((kw) => msg.body.toLowerCase().includes(kw.toLowerCase()));
+                  return (
+                    <div
+                      key={msg.id}
+                      className={cn(
+                        "rounded-[10px] border p-3.5 text-sm leading-6",
+                        hasKeyword
+                          ? "border-amber-300 bg-amber-50"
+                          : "border-[var(--border-2)] bg-[var(--surface-1)]",
+                      )}
+                    >
+                      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--text-3)]">
+                        <span>{msg.authorLabel}</span>
+                        <span>{formatShort(msg.createdAt)}</span>
+                      </div>
+                      <HighlightedText text={msg.body} keywords={keywords} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* ── Posts feed ── */
+            <div className="flex-1 overflow-y-auto p-4">
+              {keywords.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                  <span className="font-semibold">Watching for:</span>
+                  {keywords.map((kw) => (
+                    <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
+                  ))}
+                  <span className="ml-1 text-amber-600">— flagged below</span>
+                </div>
+              )}
+              {posts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                  <p className="text-sm text-[var(--text-4)]">No posts synced yet for r/{subreddit}</p>
+                  <p className="text-xs text-[var(--text-4)]">Hit Sync Now above to pull the latest posts</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {posts.map((post) => {
+                    const hasKw = keywords.length > 0 && keywords.some((kw) =>
+                      post.subject.toLowerCase().includes(kw.toLowerCase()) ||
+                      post.preview.toLowerCase().includes(kw.toLowerCase()),
+                    );
+                    return (
+                      <button
+                        key={post.id}
+                        type="button"
+                        onClick={() => setSelectedPostId(post.id)}
+                        className={cn(
+                          "w-full rounded-[10px] border px-3 py-2.5 text-left transition",
+                          hasKw
+                            ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                            : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {hasKw && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" title="Keyword match" />}
+                          {post.unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />}
+                          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-1)]">
+                            {post.subject}
+                          </h3>
+                          <span className="shrink-0 text-[11px] text-[var(--text-4)]">{formatShort(post.receivedAt)}</span>
+                        </div>
+                        {post.preview && (
+                          <p className="mt-0.5 line-clamp-2 pl-[1.375rem] text-xs text-[var(--text-4)]">
+                            <HighlightedText text={post.preview} keywords={keywords} />
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TicketsView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
-  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No posts yet — go to Connectors, open your Reddit connector and hit Sync Now to pull in the latest posts." onGoToConnectors={onGoToConnectors} />;
+  return <SubredditView clientId={clientId} onGoToConnectors={onGoToConnectors} />;
 }
 
 function TicketsTableView({ clientId }: { clientId: string }) {
