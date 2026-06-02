@@ -61,7 +61,15 @@ async function fetchJson(url: string, headers: Record<string, string>): Promise<
   try {
     const res = await fetch(url, { headers, signal: controller.signal });
     if (!res.ok) {
-      throw new Error(`${res.status} ${res.statusText}`);
+      // Pull a little of the body — Anthropic/OpenAI return a JSON error message that
+      // distinguishes "not an admin key" (401/403) from a malformed request (400).
+      let detail = "";
+      try {
+        detail = (await res.text()).slice(0, 200);
+      } catch {
+        /* body unreadable — status line alone */
+      }
+      throw new Error(`${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`);
     }
     return await res.json();
   } finally {
@@ -113,7 +121,9 @@ async function anthropicCost(key: string, now: Date, modelLabel: string | null):
     }
     return base;
   } catch (err) {
-    return { ...base, status: "error", error: err instanceof Error ? err.message : "fetch failed" };
+    const message = err instanceof Error ? err.message : "fetch failed";
+    console.warn("[ai-cost] Anthropic cost_report fetch failed:", message);
+    return { ...base, status: "error", error: message };
   }
 }
 
@@ -152,7 +162,9 @@ async function openaiCost(key: string, now: Date, modelLabel: string | null): Pr
     }
     return base;
   } catch (err) {
-    return { ...base, status: "error", error: err instanceof Error ? err.message : "fetch failed" };
+    const message = err instanceof Error ? err.message : "fetch failed";
+    console.warn("[ai-cost] OpenAI costs fetch failed:", message);
+    return { ...base, status: "error", error: message };
   }
 }
 

@@ -37,6 +37,15 @@ export function AiSpendCard() {
   const label = okProviders.map((p) => PROVIDER_LABEL[p.provider] ?? p.provider).join(" · ");
   const anyConfigured = data?.configured ?? false;
 
+  // When configured but the fetch failed, surface *why* (super-admin only card). 401/403 ⇒
+  // the key isn't an Admin key — the single most common cause. Full detail on hover.
+  const erroredProvider = (data?.providers ?? []).find((p) => p.status === "error");
+  const errorDetail = erroredProvider?.error ?? "";
+  const looksLikeAuth = /\b401\b|\b403\b|authenticat|permission|admin|x-api-key|invalid/i.test(errorDetail);
+  const errorHint = looksLikeAuth
+    ? "Key rejected — use an Admin key (sk-ant-admin…)."
+    : "Couldn't load spend right now.";
+
   return (
     <div className="mb-2 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2.5">
       <div className="flex items-center justify-between">
@@ -58,8 +67,11 @@ export function AiSpendCard() {
           Not set up — add an admin key.
         </p>
       ) : isError || okProviders.length === 0 ? (
-        <p className="mt-1 text-[11px] leading-tight text-[var(--text-4)]">
-          Couldn&apos;t load spend right now.
+        <p
+          className="mt-1 text-[11px] leading-tight text-[var(--text-4)]"
+          title={errorDetail || undefined}
+        >
+          {errorHint}
         </p>
       ) : (
         <div className="mt-1 flex items-baseline justify-between gap-2">
