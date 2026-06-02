@@ -93,6 +93,7 @@ async function upsertTask(
   t: CsvTask,
   status: TaskStatus,
   parentId: string | null,
+  orderKey: number,
 ): Promise<string> {
   // Preserve the source status/priority + any names ClickUp had on the row (display-only).
   const metadata: Record<string, unknown> = {
@@ -108,6 +109,7 @@ async function upsertTask(
     dueDate: t.dueMs ? new Date(t.dueMs) : null,
     featureBlockId: blockId,
     parentId,
+    orderKey,
     metadata: metadata as Prisma.InputJsonValue,
   };
 
@@ -167,6 +169,10 @@ export async function runCsvImport(opts: CsvRunOptions = {}): Promise<ImportRepo
     clients: [],
   };
 
+  // Distinct, increasing orderKey per task so the board has a stable rank to
+  // reorder within — imported rows otherwise all share the default 0, which
+  // collapses the drag-drop midpoint maths (0 between 0 and 0 = 0).
+  let orderSeq = 0;
   for (const folder of dataset.folders) {
     report.totals.foldersSeen++;
     const nf = normalize(folder.name);
@@ -243,7 +249,7 @@ export async function runCsvImport(opts: CsvRunOptions = {}): Promise<ImportRepo
       const idByCu = new Map<string, string | null>();
 
       for (const { t, status } of top) {
-        const fid = dryRun ? null : await upsertTask(wsId, matched.id, blockId, t, status, null);
+        const fid = dryRun ? null : await upsertTask(wsId, matched.id, blockId, t, status, null, orderSeq++);
         idByCu.set(t.clickupId, fid);
         cReport.tasks++;
         lReport.activeTasks++;
@@ -251,7 +257,7 @@ export async function runCsvImport(opts: CsvRunOptions = {}): Promise<ImportRepo
       for (const { t, status } of kids) {
         const parentInSet = !!(t.parentClickupId && topIds.has(t.parentClickupId));
         const parentFid = parentInSet ? (idByCu.get(t.parentClickupId as string) ?? null) : null;
-        if (!dryRun) await upsertTask(wsId, matched.id, blockId, t, status, parentFid);
+        if (!dryRun) await upsertTask(wsId, matched.id, blockId, t, status, parentFid, orderSeq++);
         cReport.tasks++;
         if (parentInSet) {
           cReport.subtasks++;
