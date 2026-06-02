@@ -13,6 +13,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -54,6 +55,7 @@ export function TaskBoard({
 
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   // Drop an optimistic override once the refetched task matches it — keeps the
   // card from flickering back to its old column between the move and the refetch.
@@ -105,9 +107,14 @@ export function TaskBoard({
     setActiveId(String(event.active.id));
   }
 
+  function handleDragOver(event: DragOverEvent) {
+    setOverId(event.over ? String(event.over.id) : null);
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const id = String(event.active.id);
     setActiveId(null);
+    setOverId(null);
     if (!event.over) return;
 
     const overRaw = String(event.over.id);
@@ -160,8 +167,12 @@ export function TaskBoard({
       sensors={sensors}
       collisionDetection={boardCollision}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
+      onDragCancel={() => {
+        setActiveId(null);
+        setOverId(null);
+      }}
     >
       <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
         {TASK_STATUSES.map((status, i) => (
@@ -172,6 +183,8 @@ export function TaskBoard({
             tasks={byStatus.get(status) ?? []}
             showClient={showClient}
             onCardClick={onCardClick}
+            overId={overId}
+            activeId={activeId}
           />
         ))}
       </div>
@@ -189,12 +202,16 @@ function BoardColumn({
   tasks,
   showClient,
   onCardClick,
+  overId,
+  activeId,
 }: {
   status: TaskStatus;
   index: number;
   tasks: TaskDTO[];
   showClient: boolean;
   onCardClick: (taskId: string) => void;
+  overId: string | null;
+  activeId: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -218,8 +235,18 @@ function BoardColumn({
       </div>
       <div className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto p-2">
         {tasks.map((task) => (
-          <BoardCard key={task.id} task={task} showClient={showClient} onClick={() => onCardClick(task.id)} />
+          <BoardCard
+            key={task.id}
+            task={task}
+            showClient={showClient}
+            onClick={() => onCardClick(task.id)}
+            showIndicator={overId === task.id && activeId != null && activeId !== task.id}
+          />
         ))}
+        {/* Drop line when hovering the column's empty space → card appends to the end. */}
+        {activeId != null && overId === status ? (
+          <div className="h-0.5 rounded-full bg-[var(--brand-700)]" />
+        ) : null}
         {tasks.length === 0 ? (
           <p className="px-2 py-6 text-center text-[11px] text-[var(--text-4)]">Drop tasks here</p>
         ) : null}
@@ -232,10 +259,12 @@ function BoardCard({
   task,
   showClient,
   onClick,
+  showIndicator = false,
 }: {
   task: TaskDTO;
   showClient: boolean;
   onClick: () => void;
+  showIndicator?: boolean;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: task.id });
   // Also a drop target, so a card dropped onto it lands at this card's position.
@@ -247,10 +276,15 @@ function BoardCard({
   return (
     <div
       ref={setRef}
+      className="relative"
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : 1 }}
       {...listeners}
       {...attributes}
     >
+      {/* Drop indicator — a stroke in the gap above this card (we insert before it). */}
+      {showIndicator ? (
+        <div className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-[var(--brand-700)]" />
+      ) : null}
       <TaskCard task={task} showClient={showClient} onClick={onClick} />
     </div>
   );
