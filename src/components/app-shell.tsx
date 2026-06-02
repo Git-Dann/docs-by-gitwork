@@ -195,7 +195,7 @@ export function AppShell({
             </div>
             <div className="border-t border-[var(--border-2)] px-3 py-3">
               <SidebarNavItem
-                item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
+                item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
                 active={Boolean(isActivePath(pathname, "/app/settings"))}
               />
             </div>
@@ -284,7 +284,7 @@ function ExpandedRail({
 
         <div className="mt-4 space-y-2">
           <SidebarNavItem
-            item={{ href: "/app/settings", label: "Settings", icon: Cog8ToothIcon }}
+            item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
             active={Boolean(isActivePath(pathname, "/app/settings"))}
           />
           <ProfileMenu />

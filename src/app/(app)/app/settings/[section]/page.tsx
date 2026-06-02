@@ -2,16 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { AccountSettingsPanel } from "@/components/account-settings-panel";
-import {
-  GeneralTab,
-  BrandingTab,
-  ContentTab,
-  TemplatesTab,
-  RateCardTab,
-  IntegrationsTab,
-  AgentsAndChecksTab,
-  DeveloperTab,
-} from "@/components/settings-panel";
+import dynamic from "next/dynamic";
 import { SettingsShell, type SettingsSectionId } from "@/components/settings/settings-shell";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { AuditLogSection } from "@/components/settings/audit-log-section";
@@ -19,6 +10,20 @@ import { PrivacySection } from "@/components/settings/privacy-section";
 import { TeamSection } from "@/components/settings/team-section";
 import { RolesSection } from "@/components/settings/roles-section";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
+
+// Code-split the heavy (~2.3k-line) settings-panel module: each tab ships as its own
+// chunk, loaded only when that section is opened — so the default Account landing no
+// longer downloads the JS for every other tab.
+const GeneralTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.GeneralTab })));
+const BrandingTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.BrandingTab })));
+const ContentTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.ContentTab })));
+const TemplatesTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.TemplatesTab })));
+const RateCardTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.RateCardTab })));
+const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.IntegrationsTab })));
+const AgentsAndChecksTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.AgentsAndChecksTab })));
+const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
+  import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
+);
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
