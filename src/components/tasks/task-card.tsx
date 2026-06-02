@@ -38,7 +38,7 @@ export function TaskCard({
     >
       <div className="flex items-start gap-2">
         <TaskPriorityDot priority={task.priority} className="mt-1.5" />
-        <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--text-1)]">
+        <p className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-[var(--text-1)]">
           {task.title}
         </p>
         <AssigneeStack users={task.assignees} size={22} />
