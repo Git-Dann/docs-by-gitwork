@@ -116,7 +116,36 @@ export async function migratePermissionModel(workspaceId: string): Promise<void>
       data: { rolePermissions: asJson(DEFAULT_ROLE_PERMISSIONS) },
     });
     await freezeExistingMembers(workspaceId);
+  } else {
+    // Matrix already seeded — fold in any permission ids added to the catalog since
+    // (e.g. a new Settings sub-section) so they get their default-role grants.
+    await reconcileNewPermissions(workspaceId, ws.rolePermissions);
   }
+}
+
+/**
+ * When new permission ids are introduced in the catalog after a workspace's matrix was
+ * seeded, grant them to roles per DEFAULT_ROLE_PERMISSIONS so the new capability behaves
+ * like it always existed (e.g. new Settings sections default to ADMIN-only). An id is
+ * "new" only if it appears in NO stored role array — so a Super Admin's intentional
+ * removals are never silently re-added.
+ */
+async function reconcileNewPermissions(workspaceId: string, stored: unknown): Promise<void> {
+  const matrix = normalizeMatrix(stored);
+  const seen = new Set<string>([...matrix.ADMIN, ...matrix.STAFF, ...matrix.DEVELOPER]);
+  const newIds = ALL_PERMISSION_IDS.filter((id) => !seen.has(id));
+  if (newIds.length === 0) return;
+
+  for (const role of ["ADMIN", "STAFF", "DEVELOPER"] as ConfigurableRoleId[]) {
+    for (const id of newIds) {
+      if (DEFAULT_ROLE_PERMISSIONS[role].includes(id)) matrix[role].push(id);
+    }
+  }
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { rolePermissions: asJson(matrix) },
+  });
+  await recomputeAllMembers(workspaceId, matrix);
 }
 
 async function promoteKnownSuperAdmins(workspaceId: string): Promise<void> {

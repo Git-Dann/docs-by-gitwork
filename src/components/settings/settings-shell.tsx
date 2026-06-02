@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import {
   AdjustmentsHorizontalIcon,
   BellAlertIcon,
@@ -21,6 +20,7 @@ import {
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
 export type SettingsSectionId =
@@ -52,6 +52,8 @@ interface SectionDef {
   adminOnly?: boolean;
   /** Visible only to Super Admins (e.g. the role matrix editor). */
   superAdminOnly?: boolean;
+  /** Matrix permission id that gates this section (per-role). Super Admins bypass. */
+  permission?: string;
 }
 
 interface SectionGroup {
@@ -88,28 +90,28 @@ const GROUPS: SectionGroup[] = [
         label: "General",
         description: "Proposal defaults.",
         icon: AdjustmentsHorizontalIcon,
-        adminOnly: true,
+        permission: "settings.general",
       },
       {
         id: "branding",
         label: "Branding",
         description: "Logo and cover accents.",
         icon: PaintBrushIcon,
-        adminOnly: true,
+        permission: "settings.branding",
       },
       {
         id: "content",
         label: "Content",
         description: "Confidentiality + objective snippets.",
         icon: PencilSquareIcon,
-        adminOnly: true,
+        permission: "settings.content",
       },
       {
         id: "templates",
         label: "Templates",
         description: "Document section templates.",
         icon: DocumentDuplicateIcon,
-        adminOnly: true,
+        permission: "settings.templates",
       },
       // Rate card management isn't surfaced in the Settings nav anymore — it belongs alongside
       // the proposal builder where it's actually consumed. The route at
@@ -126,7 +128,6 @@ const GROUPS: SectionGroup[] = [
         label: "Roles & permissions",
         description: "Define what each role can do.",
         icon: LockClosedIcon,
-        adminOnly: true,
         superAdminOnly: true,
       },
       {
@@ -134,14 +135,14 @@ const GROUPS: SectionGroup[] = [
         label: "Integrations",
         description: "AI, Google, Slack, email.",
         icon: Squares2X2Icon,
-        adminOnly: true,
+        permission: "settings.integrations",
       },
       {
         id: "agents-checks",
         label: "Agents & checks",
         description: "AI agent prompts and Pulse checks.",
         icon: CpuChipIcon,
-        adminOnly: true,
+        permission: "settings.agents",
       },
     ],
   },
@@ -154,21 +155,21 @@ const GROUPS: SectionGroup[] = [
         label: "Audit log",
         description: "Workspace activity history.",
         icon: ClipboardDocumentListIcon,
-        adminOnly: true,
+        permission: "settings.audit",
       },
       {
         id: "developer",
         label: "Developer",
         description: "API keys, demo cleanup.",
         icon: CommandLineIcon,
-        adminOnly: true,
+        permission: "settings.developer",
       },
       {
         id: "privacy",
         label: "Privacy & data",
         description: "Exports, retention, deletion.",
         icon: ShieldCheckIcon,
-        adminOnly: true,
+        permission: "settings.privacy",
       },
     ],
   },
@@ -182,8 +183,11 @@ export function SettingsShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const role = session?.user?.role ?? "";
+  // Read role + permissions DB-fresh (via /api/account) so the rail reflects matrix
+  // edits to a Settings section without waiting for the member to re-log in.
+  const { data: account } = useAccount();
+  const role = account?.role ?? "";
+  const permissions = account?.permissions ?? [];
   const isAdmin = isAtLeast(role, "ADMIN");
   const isSuper = isSuperAdmin(role);
 
@@ -193,6 +197,7 @@ export function SettingsShell({
         {GROUPS.map((group) => {
           const visible = group.sections.filter((section) => {
             if (section.superAdminOnly) return isSuper;
+            if (section.permission) return isSuper || permissions.includes(section.permission);
             if (section.adminOnly) return isAdmin;
             return true;
           });
@@ -238,10 +243,10 @@ export function SettingsShell({
           );
         })}
 
-        {!isAdmin ? (
+        {!isAdmin && !permissions.some((p) => p.startsWith("settings.")) ? (
           <p className="px-3 text-xs text-[var(--text-4)]">
-            Workspace settings are admin-only. Ping a workspace admin if you need something
-            changed.
+            Workspace settings are managed by your admins. Ping one if you need access to a
+            section.
           </p>
         ) : null}
       </aside>
