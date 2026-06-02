@@ -22,14 +22,7 @@ export const defaultRateCardPeople: SeedRateCardPerson[] = [
     sourceCurrencyCode: "USD",
     billingPeriod: "MONTH",
   },
-  {
-    seedIdentifier: "gitwork.muneeb",
-    name: "Muneeb",
-    area: "Senior • Frontend, Backend, AI, DevOps",
-    sourceRate: 1900,
-    sourceCurrencyCode: "USD",
-    billingPeriod: "MONTH",
-  },
+  // Muneeb removed from the roster — see demo-cleanup.ts for one-shot sweep.
   {
     seedIdentifier: "gitwork.waqar",
     name: "Waqar",
@@ -86,14 +79,7 @@ export const defaultRateCardPeople: SeedRateCardPerson[] = [
     sourceCurrencyCode: "USD",
     billingPeriod: "MONTH",
   },
-  {
-    seedIdentifier: "gitwork.waqas-ali",
-    name: "Waqas Ali",
-    area: "Mid Level • Frontend, Backend, AI, DevOps",
-    sourceRate: 1500,
-    sourceCurrencyCode: "USD",
-    billingPeriod: "MONTH",
-  },
+  // Waqas Ali removed from the roster — see demo-cleanup.ts for one-shot sweep.
   {
     seedIdentifier: "gitwork.ehtasham-razzaq",
     name: "Ehtasham Razzaq",
@@ -102,14 +88,7 @@ export const defaultRateCardPeople: SeedRateCardPerson[] = [
     sourceCurrencyCode: "USD",
     billingPeriod: "MONTH",
   },
-  {
-    seedIdentifier: "gitwork.atisham-ahmed",
-    name: "Atisham Ahmed",
-    area: "Mid Level • Frontend, Backend, AI",
-    sourceRate: 1500,
-    sourceCurrencyCode: "USD",
-    billingPeriod: "MONTH",
-  },
+  // Atisham Ahmed removed from the roster — see demo-cleanup.ts for one-shot sweep.
   {
     seedIdentifier: "gitwork.liaquat",
     name: "Liaquat",

@@ -697,6 +697,7 @@ async function ensureSampleCodeClearCandidates({
   const rateCardPeople = await prisma.rateCardPerson.findMany({
     where: {
       workspaceId: workspace.id,
+      archivedAt: null,
     },
     select: {
       id: true,

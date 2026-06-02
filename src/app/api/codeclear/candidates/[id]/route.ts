@@ -175,6 +175,13 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       },
       select: {
         id: true,
+        email: true,
+        rateCardPerson: {
+          select: {
+            id: true,
+            seedIdentifier: true,
+          },
+        },
       },
     });
 
@@ -182,11 +189,28 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return apiError("Candidate not found.", 404);
     }
 
-    await prisma.candidate.delete({
-      where: {
-        id: existing.id,
-      },
-    });
+    const writes: Prisma.PrismaPromise<unknown>[] = [];
+    if (existing.rateCardPerson?.seedIdentifier?.startsWith("gitwork.")) {
+      writes.push(
+        prisma.rateCardPerson.update({
+          where: { id: existing.rateCardPerson.id },
+          data: { archivedAt: new Date() },
+        }),
+      );
+    }
+    if (existing.email?.toLowerCase().endsWith("@gitwork.co.uk")) {
+      writes.push(
+        prisma.workspaceMember.deleteMany({
+          where: {
+            workspaceId: workspace.id,
+            user: { email: existing.email },
+          },
+        }),
+      );
+    }
+    writes.push(prisma.candidate.delete({ where: { id: existing.id } }));
+
+    await prisma.$transaction(writes);
 
     return apiOk({ ok: true });
   } catch (error) {

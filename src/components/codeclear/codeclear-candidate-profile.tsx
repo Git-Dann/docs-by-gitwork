@@ -57,6 +57,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
 
   const { canViewRates } = usePermissions();
   const [showEdit, setShowEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
   const [noteBody, setNoteBody] = useState("");
 
@@ -135,9 +136,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
     setShowEdit(false);
   }
 
-  async function handleDelete() {
-    if (!candidate) return;
-    if (!window.confirm(`Delete ${candidate.name}? This can't be undone.`)) return;
+  async function confirmDelete() {
     await deleteCandidate.mutateAsync(candidateId);
     router.push("/app/codeclear/candidates");
   }
@@ -240,7 +239,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
                 variant="tertiary"
                 size="sm"
                 leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
-                onClick={handleDelete}
+                onClick={() => setShowDeleteConfirm(true)}
               >
                 Delete
               </Button>
@@ -462,6 +461,84 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           </div>
         </div>
       ) : null}
+
+      {showDeleteConfirm ? (
+        <DeleteCandidateConfirmModal
+          candidateName={candidate.name}
+          candidateEmail={candidate.email}
+          deleting={deleteCandidate.isPending}
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={confirmDelete}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DeleteCandidateConfirmModal({
+  candidateName,
+  candidateEmail,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  candidateName: string;
+  candidateEmail: string | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const removesFoundryAccess = Boolean(candidateEmail?.toLowerCase().endsWith("@gitwork.co.uk"));
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-8">
+      <button
+        type="button"
+        className="app-dialog-backdrop absolute inset-0"
+        aria-label="Cancel delete"
+        onClick={onCancel}
+        disabled={deleting}
+      />
+      <div className="app-dialog-panel relative z-10 w-full max-w-md">
+        <div className="border-b border-[var(--border-2)] px-6 py-4">
+          <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+            Delete {candidateName}?
+          </h3>
+          <p className="mt-1 text-sm text-[var(--text-4)]">
+            This removes the developer from Code and cannot be undone.
+          </p>
+        </div>
+        <div className="space-y-3 px-6 py-5">
+          {removesFoundryAccess ? (
+            // Only --danger-50 and --danger-500 are defined in globals.css —
+            // 200/700 don't exist, so we use rose-* utilities for the border
+            // and text to keep this looking like a proper warning.
+            <p className="rounded-[10px] border border-rose-200 bg-[var(--danger-50)] px-4 py-3 text-sm leading-6 text-rose-700">
+              <strong className="font-semibold">{candidateEmail}</strong> is a Gitwork
+              email address. Deleting this developer will also remove their Foundry
+              workspace access — they&apos;ll be signed out and lose access immediately.
+            </p>
+          ) : null}
+          <p className="text-sm leading-6 text-[var(--text-3)]">
+            Are you sure you want to continue?
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
+          <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
+            onClick={onConfirm}
+            loading={deleting}
+          >
+            Delete developer
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

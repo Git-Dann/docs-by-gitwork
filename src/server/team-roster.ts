@@ -36,7 +36,7 @@ export const TEAM_ROSTER: RosterEntry[] = [
   { name: "Abdul Wasey", email: "abdul@gitwork.co.uk", kind: "dev", aliases: ["Wasey"] },
   { name: "Hamza Ahmed", email: "hamza.ahmad@gitwork.co.uk", kind: "dev", aliases: ["Hamza Ahmad"] },
   { name: "Ehtasham Razzaq", email: "ehtasham@gitwork.co.uk", kind: "dev", aliases: ["Ehtasham"] },
-  { name: "Atisham Ahmed", email: "aitasham.ahmed@gitwork.co.uk", kind: "dev", aliases: ["Aitasham Ahmed"] },
+  // Atisham Ahmed removed from the roster — see demo-cleanup.ts for one-shot sweep.
   { name: "Mohammed Shahbaz", email: "mohammad.shahbaz@gitwork.co.uk", kind: "dev", aliases: ["Mohammad Shahbaz"] },
   { name: "Abdullah Irshad", email: "abdullah.irshad@gitwork.co.uk", kind: "dev", aliases: ["Abdullah irshad"] },
   { name: "Ali Sher", email: "ali.sher@gitwork.co.uk", kind: "dev" },

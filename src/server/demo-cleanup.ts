@@ -10,7 +10,10 @@ import { prisma } from "@/lib/prisma";
  * re-run; idempotent (deletes nothing on the second call).
  */
 
-// Demo candidates seeded by the old src/server/codeclear.ts.
+// Demo candidates seeded by the old src/server/codeclear.ts, plus former
+// Gitwork roster entries that have since been removed (Muneeb, Waqas Ali,
+// Atisham Ahmed — pulled from the roster June 2026). All cleared together
+// via the "Demo data cleanup" button in Settings → Developer.
 export const DEMO_CANDIDATE_NAMES = [
   "Sindre Sorhus",
   "Dan Abramov",
@@ -18,6 +21,9 @@ export const DEMO_CANDIDATE_NAMES = [
   "Evan You",
   "TJ Holowaychuk",
   "Linus Torvalds",
+  "Muneeb",
+  "Waqas Ali",
+  "Atisham Ahmed",
 ];
 
 export const DEMO_CANDIDATE_HANDLES = [
@@ -27,6 +33,9 @@ export const DEMO_CANDIDATE_HANDLES = [
   "yyx990803",
   "tj",
   "torvalds",
+  "muneeb",
+  "waqas-ali",
+  "atisham-ahmed",
 ];
 
 // Rate-card seed identifiers from the old roster that aren't in the current
@@ -40,6 +49,10 @@ export const LEGACY_RATE_CARD_SEED_IDS = [
   "gitwork.sibghatullah",
   "gitwork.m-shoaib",
   "gitwork.m-tayyab",
+  // Removed June 2026 — three Gitwork devs pulled from the roster.
+  "gitwork.muneeb",
+  "gitwork.waqas-ali",
+  "gitwork.atisham-ahmed",
 ];
 
 export interface DemoCleanupPreview {
