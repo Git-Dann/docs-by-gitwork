@@ -25,6 +25,7 @@ import {
 import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
 import { useClientList } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   CodeClearTabs,
   EmptyState,
@@ -40,6 +41,7 @@ import { ClientAvatar } from "@/components/codeclear/client-avatar";
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
+  const { canManageCode } = usePermissions();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
@@ -128,15 +130,17 @@ export function CodeClearCandidatesWorkspace() {
               className="app-input pl-9"
             />
           </label>
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-            onClick={() => setShowCreateModal(true)}
-          >
-            Add candidate
-          </Button>
+          {canManageCode ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setShowCreateModal(true)}
+            >
+              Add candidate
+            </Button>
+          ) : null}
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

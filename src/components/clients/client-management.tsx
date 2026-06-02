@@ -22,6 +22,7 @@ import {
   useDeleteOnboardingLink,
   useOnboardingLinks,
 } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import type { ClientListItem } from "@/types/client";
 import type { OnboardingLinkRecord } from "@/lib/api";
@@ -562,6 +563,7 @@ function OnboardingLinkRow({ link }: { link: OnboardingLinkRecord }) {
 // ---------------------------------------------------------------------------
 export function ClientManagement() {
   const router = useRouter();
+  const { canManageClients } = usePermissions();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("active");
   const [showCreate, setShowCreate] = useState(false);
@@ -626,15 +628,17 @@ export function ClientManagement() {
               <span className="widget-header__label--number">01</span>
               {" // PORTAL"}
             </span>
-            <Button
-              type="button"
-              variant="primary"
-              size="xs"
-              onClick={() => setShowCreate(true)}
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add client
-            </Button>
+            {canManageClients ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="xs"
+                onClick={() => setShowCreate(true)}
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+                Add client
+              </Button>
+            ) : null}
           </div>
 
           <div className="widget-body--compact">
