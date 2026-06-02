@@ -1395,6 +1395,15 @@ export async function deleteSupportConnection(
   });
 }
 
+export async function purgeConnectionConversations(
+  clientId: string,
+  connId: string,
+): Promise<{ deleted: number }> {
+  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}/purge`, {
+    method: "DELETE",
+  });
+}
+
 export async function syncSupportConnection(
   clientId: string,
   connId: string,

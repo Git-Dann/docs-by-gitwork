@@ -8,6 +8,7 @@ import {
   createSupportWorkflowRule,
   updateSupportWorkflowRule,
   deleteSupportConnection,
+  purgeConnectionConversations,
   deleteSupportReport,
   deleteSupportTicket,
   deleteSupportWorkflowRule,
@@ -201,6 +202,16 @@ export function useGenerateAiDraft(clientId: string | null) {
   return useMutation({
     mutationFn: (convId: string) =>
       generateAiDraft(clientId as string, convId),
+  });
+}
+
+export function usePurgeConversations(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (connId: string) => purgeConnectionConversations(clientId as string, connId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
   });
 }
 

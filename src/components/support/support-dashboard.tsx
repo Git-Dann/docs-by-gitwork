@@ -47,6 +47,7 @@ import {
   useCreateWorkflowRule,
   useUpdateWorkflowRule,
   useDeleteConnection,
+  usePurgeConversations,
   useDeleteSupportReport,
   useDeleteWorkflowRule,
   useGenerateAiDraft,
@@ -152,7 +153,8 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 type Tab = "inbox" | "tickets" | "conversations" | "reports";
 
 const EMAIL_SOURCES: SupportSource[] = ["gmail"];
-const CHAT_SOURCES: SupportSource[] = ["discord", "reddit", "youtube", "instagram"];
+const RSS_SOURCES: SupportSource[] = ["reddit"];
+const CHAT_SOURCES: SupportSource[] = ["discord", "youtube", "instagram"];
 
 // ─── shared modal wrapper ─────────────────────────────────────────────────────
 
@@ -1077,7 +1079,7 @@ function InboxFiltersDropdown({
   );
 }
 
-function InboxView({ clientId, sourcesFilter }: { clientId: string; sourcesFilter?: SupportSource[] }) {
+function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
 
@@ -1215,7 +1217,7 @@ function InboxView({ clientId, sourcesFilter }: { clientId: string; sourcesFilte
               </div>
             )}
             {!convosLoading && filtered.length === 0 && (
-              <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
+              <p className="py-8 text-center text-sm text-[var(--text-4)]">{emptyLabel ?? "No conversations found."}</p>
             )}
             {paginated.map((c) => (
               <ConversationCard
@@ -1410,7 +1412,7 @@ function InboxView({ clientId, sourcesFilter }: { clientId: string; sourcesFilte
 }
 
 function ConversationsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} />;
+  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
 }
 
 function ConversationCard({
@@ -1473,6 +1475,10 @@ function ConversationCard({
 // ─── tickets view ────────────────────────────────────────────────────────────
 
 function TicketsView({ clientId }: { clientId: string }) {
+  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} emptyLabel="No RSS feed items yet. Add a Reddit connector in Connectors to start pulling in posts." />;
+}
+
+function TicketsTableView({ clientId }: { clientId: string }) {
   const { data, isLoading } = useSupportTickets(clientId);
   const tickets = data?.tickets ?? [];
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -2405,6 +2411,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
+  const purgeConn = usePurgeConversations(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
@@ -2670,6 +2677,20 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       >
                         <PencilSquareIcon className="h-3 w-3" />
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Clear all conversations from "${conn.label}"? This deletes all ingested messages and cannot be undone.`)) {
+                            purgeConn.mutate(conn.id);
+                          }
+                        }}
+                        disabled={purgeConn.isPending}
+                        className="flex items-center gap-1 rounded-[6px] border border-amber-200 px-2.5 py-1 text-[11px] font-medium text-amber-600 transition hover:bg-amber-50 disabled:opacity-50"
+                        title="Delete all conversations ingested from this connector"
+                      >
+                        <ArrowPathIcon className="h-3 w-3" />
+                        {purgeConn.isPending ? "Clearing…" : "Clear inbox"}
                       </button>
                       <button
                         type="button"
