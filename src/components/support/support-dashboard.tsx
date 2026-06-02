@@ -1123,7 +1123,75 @@ function InboxFiltersDropdown({
   );
 }
 
-function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string }) {
+// ─── source watching bar ─────────────────────────────────────────────────────
+
+function SourceWatchingBar({
+  clientId,
+  sources,
+  onGoToConnectors,
+}: {
+  clientId: string;
+  sources: SupportSource[];
+  onGoToConnectors?: () => void;
+}) {
+  const { data } = useSupportConnections(clientId);
+  const connections = (data?.connections ?? []).filter(
+    (c) => sources.includes(c.source) && c.health === "connected",
+  );
+  if (connections.length === 0) return null;
+  return (
+    <div className="space-y-1 border-b border-black/[0.06] px-3 py-2">
+      {connections.map((conn) => {
+        const cfg = conn.scraperConfig;
+        let summary = "";
+        let viewUrl = "";
+        if (conn.source === "reddit" && cfg?.subreddit) {
+          summary = `r/${cfg.subreddit}`;
+          viewUrl = `https://www.reddit.com/r/${cfg.subreddit}`;
+        } else if (conn.source === "discord") {
+          const chs = cfg?.channels ?? [];
+          summary = chs.length > 0
+            ? chs.map((c) => `#${c.name}`).join(" · ")
+            : (cfg?.guildName ?? conn.label);
+          if (cfg?.guildId) viewUrl = `https://discord.com/channels/${cfg.guildId}`;
+        } else if (conn.source === "gmail") {
+          summary = cfg?.query?.trim() ? `filter: ${cfg.query}` : "no filter — all mail";
+          viewUrl = "https://mail.google.com";
+        }
+        return (
+          <div key={conn.id} className="flex items-center gap-2 text-[11px]">
+            <SourceIcon source={conn.source} className="h-3 w-3 shrink-0 text-[var(--text-4)]" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[var(--text-3)]">
+              {summary || conn.label}
+            </span>
+            {viewUrl && (
+              <a
+                href={viewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 text-[10px] font-medium text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+              >
+                View ↗
+              </a>
+            )}
+            {onGoToConnectors && (
+              <button
+                type="button"
+                onClick={onGoToConnectors}
+                className="shrink-0 rounded-[3px] border border-[var(--border-2)] px-1.5 py-px text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel, onGoToConnectors }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string; onGoToConnectors?: () => void }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
 
@@ -1228,6 +1296,13 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
               {filtered.length}
             </span>
           </div>
+          {sourcesFilter && (
+            <SourceWatchingBar
+              clientId={clientId}
+              sources={sourcesFilter}
+              onGoToConnectors={onGoToConnectors}
+            />
+          )}
           <div className="flex-1 overflow-y-auto p-3">
             <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-0.5">
             {convosLoading && (
@@ -1367,8 +1442,8 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
   );
 }
 
-function ConversationsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
+function ConversationsView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
+  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." onGoToConnectors={onGoToConnectors} />;
 }
 
 function ConversationCard({
@@ -1448,8 +1523,8 @@ function ConversationCard({
 
 // ─── tickets view ────────────────────────────────────────────────────────────
 
-function TicketsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No posts yet — go to Connectors, open your Reddit connector and hit Sync Now to pull in the latest posts." />;
+function TicketsView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
+  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No posts yet — go to Connectors, open your Reddit connector and hit Sync Now to pull in the latest posts." onGoToConnectors={onGoToConnectors} />;
 }
 
 function TicketsTableView({ clientId }: { clientId: string }) {
@@ -3816,9 +3891,9 @@ export function SupportDashboard() {
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
           {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
           {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
-          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" />}
-          {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
-          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} />}
+          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" onGoToConnectors={() => setActivePanel("connectors")} />}
+          {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} onGoToConnectors={() => setActivePanel("connectors")} />}
+          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} onGoToConnectors={() => setActivePanel("connectors")} />}
           {!activePanel && activeTab === "reports" && <ReportsView client={client} />}
         </div>
       </div>
