@@ -1,11 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, GlobeAltIcon } from "@heroicons/react/24/outline";
-import { useBackstageCalendar } from "@/hooks/use-backstage";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GlobeAltIcon,
+  UsersIcon,
+} from "@heroicons/react/24/outline";
+import {
+  useBackstageCalendar,
+  useCalendarConnections,
+  useTeamCalendarEvents,
+} from "@/hooks/use-backstage";
 import { BackstagePanel } from "@/components/backstage/panel";
 import { cn } from "@/lib/format";
-import type { CalendarDay, CalendarLeaveBar, LeaveType } from "@/types/backstage";
+import type {
+  CalendarDay,
+  CalendarLeaveBar,
+  LeaveType,
+  TeamCalendarEvent,
+} from "@/types/backstage";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "long",
@@ -42,6 +56,60 @@ function readHiddenCountries(): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+// Which colleagues' Google Calendars the viewer has chosen to overlay.
+const SELECTED_CALENDARS_KEY = "backstage:calendar:selectedCalendars";
+
+function readSelectedCalendars(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(SELECTED_CALENDARS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? new Set(arr.filter((x) => typeof x === "string")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+// Stable per-member colour for overlaid calendar events.
+const MEMBER_DOTS = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-violet-500",
+  "bg-rose-500",
+  "bg-amber-500",
+  "bg-cyan-500",
+  "bg-fuchsia-500",
+  "bg-teal-500",
+];
+
+function memberDot(userId: string): string {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0;
+  return MEMBER_DOTS[h % MEMBER_DOTS.length];
+}
+
+// The grid-day ISO keys an event covers. Google all-day `end` is exclusive.
+function eventDayKeys(ev: TeamCalendarEvent): string[] {
+  const startIso = ev.start.slice(0, 10);
+  const cur = new Date(`${startIso}T00:00:00Z`);
+  const end = new Date(`${ev.end.slice(0, 10)}T00:00:00Z`);
+  if (ev.allDay) end.setUTCDate(end.getUTCDate() - 1);
+  const keys: string[] = [];
+  let guard = 0;
+  while (cur <= end && guard < 90) {
+    keys.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    guard++;
+  }
+  return keys.length ? keys : [startIso];
+}
+
+function eventTime(ev: TeamCalendarEvent): string {
+  if (ev.allDay) return "all day";
+  const d = new Date(ev.start);
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 const LEAVE_COLOURS: Record<LeaveType, { bar: string; dot: string; label: string }> = {
@@ -99,6 +167,36 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
     });
   }
 
+  // ── Google Calendar overlay ──
+  const connections = useCalendarConnections();
+  const [selectedCalendars, setSelectedCalendars] = useState<Set<string>>(readSelectedCalendars);
+  const selectedIds = Array.from(selectedCalendars);
+  const teamEvents = useTeamCalendarEvents(year, month, selectedIds);
+
+  function toggleCalendar(userId: string) {
+    setSelectedCalendars((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(SELECTED_CALENDARS_KEY, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+  }
+
+  // Index overlaid events by the grid-day ISO they fall on.
+  const eventsByDay = new Map<string, TeamCalendarEvent[]>();
+  for (const ev of teamEvents.data?.events ?? []) {
+    for (const key of eventDayKeys(ev)) {
+      const list = eventsByDay.get(key) ?? [];
+      list.push(ev);
+      eventsByDay.set(key, list);
+    }
+  }
+
+  const connectionMembers = connections.data?.members ?? [];
+
   const monthLabel = MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
 
   return (
@@ -133,6 +231,46 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
                     />
                     <span className="flex-1 truncate">{countryName(cc)}</span>
                     <span className="text-[10px] font-medium text-[var(--text-4)]">{cc}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </details>
+          {/* Colleagues' Google Calendars */}
+          <details className="relative mr-1">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
+              <UsersIcon className="h-3.5 w-3.5 text-[var(--brand-500)]" />
+              Calendars
+              {selectedIds.length > 0 ? (
+                <span className="rounded-full bg-[var(--brand-50)] px-1.5 text-[10px] font-semibold text-[var(--brand-700)]">
+                  {selectedIds.length}
+                </span>
+              ) : null}
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white p-2 shadow-lg">
+              <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-[var(--text-3)]">
+                Overlay Google Calendars
+              </p>
+              {connectionMembers.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-[var(--text-4)]">
+                  No connected calendars yet. Teammates appear here once they sign in with Google.
+                </p>
+              ) : (
+                connectionMembers.map((m) => (
+                  <label
+                    key={m.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm text-[var(--text-1)] hover:bg-[var(--surface-1)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCalendars.has(m.id)}
+                      onChange={() => toggleCalendar(m.id)}
+                    />
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", memberDot(m.id))} />
+                    <span className="flex-1 truncate">
+                      {m.name}
+                      {m.isSelf ? " (me)" : ""}
+                    </span>
                   </label>
                 ))
               )}
@@ -212,7 +350,12 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
         ) : (
           <div className="grid grid-cols-7 gap-px border-t border-[var(--border-2)] bg-[var(--border-2)]">
             {cal.data?.weeks.flat().map((day) => (
-              <DayCell key={day.date} day={day} hiddenCountries={hiddenCountries} />
+              <DayCell
+                key={day.date}
+                day={day}
+                hiddenCountries={hiddenCountries}
+                events={eventsByDay.get(day.date) ?? []}
+              />
             ))}
           </div>
         )}
@@ -230,12 +373,22 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
   );
 }
 
-function DayCell({ day, hiddenCountries }: { day: CalendarDay; hiddenCountries: Set<string> }) {
+function DayCell({
+  day,
+  hiddenCountries,
+  events,
+}: {
+  day: CalendarDay;
+  hiddenCountries: Set<string>;
+  events: TeamCalendarEvent[];
+}) {
   const date = new Date(day.date + "T00:00:00Z");
   const dayNum = date.getUTCDate();
   const MAX_PILLS = 3;
   const overflow = day.leave.length > MAX_PILLS ? day.leave.length - MAX_PILLS : 0;
   const holidays = day.holidays.filter((h) => !hiddenCountries.has(h.country));
+  const MAX_EVENTS = 2;
+  const eventOverflow = events.length > MAX_EVENTS ? events.length - MAX_EVENTS : 0;
 
   return (
     <div
@@ -289,6 +442,25 @@ function DayCell({ day, hiddenCountries }: { day: CalendarDay; hiddenCountries: 
           <p className="px-1 text-[10px] text-[var(--text-4)]">+{overflow} more</p>
         ) : null}
       </div>
+
+      {/* Google Calendar events (selected colleagues) */}
+      {events.length > 0 ? (
+        <div className="mt-1 space-y-0.5">
+          {events.slice(0, MAX_EVENTS).map((ev) => (
+            <div
+              key={ev.id}
+              className="flex items-center gap-1 truncate text-[10px] text-[var(--text-2)]"
+              title={`${ev.userName} · ${ev.summary} · ${eventTime(ev)}`}
+            >
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", memberDot(ev.userId))} />
+              <span className="truncate">{ev.summary}</span>
+            </div>
+          ))}
+          {eventOverflow > 0 ? (
+            <p className="px-1 text-[10px] text-[var(--text-4)]">+{eventOverflow} more</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

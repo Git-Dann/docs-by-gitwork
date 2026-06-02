@@ -7,6 +7,8 @@ import {
   createBackstageExpense,
   createBackstageLeave,
   updateBackstageLeave,
+  listBackstageCalendarConnections,
+  getBackstageTeamCalendarEvents,
   getBackstageAlerts,
   getBackstageAllowance,
   getBackstageCalendar,
@@ -198,6 +200,26 @@ export function useBackstageCalendar(year: number, month: number) {
   return useQuery({
     queryKey: QK.calendar(year, month),
     queryFn: () => getBackstageCalendar(year, month),
+    staleTime: 60_000,
+  });
+}
+
+// ─── Google Calendar overlay ───────────────────────────────────────────────
+
+export function useCalendarConnections() {
+  return useQuery({
+    queryKey: ["backstage", "calendarConnections"] as const,
+    queryFn: () => listBackstageCalendarConnections(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useTeamCalendarEvents(year: number, month: number, userIds: string[]) {
+  const key = [...userIds].sort().join(",");
+  return useQuery({
+    queryKey: ["backstage", "teamCalendar", year, month, key] as const,
+    queryFn: () => getBackstageTeamCalendarEvents(year, month, userIds),
+    enabled: userIds.length > 0,
     staleTime: 60_000,
   });
 }

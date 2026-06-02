@@ -157,3 +157,25 @@ export type CalendarMonth = {
   /** ISO-3166-1 alpha-2 country codes whose holidays are included this month (workspace-wide, UK + PK by default). Drives the calendar's country toggle. */
   holidayCountries: string[];
 };
+
+// ─── Google Calendar overlay (per-user OAuth) ─────────────────────────────
+
+/** A workspace member who has connected their Google account (calendar can be overlaid). */
+export type CalendarConnectionMember = {
+  id: string;
+  name: string;
+  isSelf: boolean;
+};
+
+/** A single Google Calendar event from a connected member, for the team overlay. */
+export type TeamCalendarEvent = {
+  /** Stable key: `${userId}:${eventId}`. */
+  id: string;
+  userId: string;
+  userName: string;
+  summary: string;
+  /** ISO datetime (timed events) or YYYY-MM-DD (all-day). */
+  start: string;
+  end: string;
+  allDay: boolean;
+};
