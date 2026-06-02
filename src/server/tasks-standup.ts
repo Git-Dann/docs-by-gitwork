@@ -259,11 +259,15 @@ async function postStandupToSlack(
  * push state gates the consolidated publish.
  */
 async function getActiveDevUserIds(workspaceId: string, workDate: Date): Promise<string[]> {
-  const [assignees, pushers, members] = await Promise.all([
-    prisma.task.findMany({
-      where: { workspaceId, assigneeId: { not: null } },
-      select: { assigneeId: true },
-      distinct: ["assigneeId"],
+  const [assigneeUsers, pushers, members] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        OR: [
+          { assignedTasks: { some: { workspaceId } } },
+          { tasksAssigned: { some: { workspaceId } } }, // legacy single-assignee
+        ],
+      },
+      select: { id: true },
     }),
     prisma.dailyUpdate.findMany({
       where: { workspaceId, workDate },
@@ -276,9 +280,24 @@ async function getActiveDevUserIds(workspaceId: string, workDate: Date): Promise
   ]);
   const memberIds = new Set(members.map((m) => m.userId));
   const ids = new Set<string>();
-  for (const a of assignees) if (a.assigneeId && memberIds.has(a.assigneeId)) ids.add(a.assigneeId);
+  for (const u of assigneeUsers) if (memberIds.has(u.id)) ids.add(u.id);
   for (const p of pushers) if (memberIds.has(p.userId)) ids.add(p.userId);
   return Array.from(ids);
+}
+
+/** Tally how many of `tasks` each dev (in devIds) is assigned to (m-n + legacy). */
+function tallyByAssignee(
+  tasks: { assigneeId: string | null; assignees: { id: string }[] }[],
+  devIds: string[],
+): Map<string, number> {
+  const devSet = new Set(devIds);
+  const counts = new Map<string, number>();
+  for (const t of tasks) {
+    const ids = new Set<string>(t.assignees.map((a) => a.id));
+    if (t.assigneeId) ids.add(t.assigneeId);
+    for (const id of ids) if (devSet.has(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export async function getRollupRoster(user: EffectiveUser): Promise<RollupRosterDTO> {
@@ -291,7 +310,11 @@ export async function getRollupRoster(user: EffectiveUser): Promise<RollupRoster
     return { date: workDate.toISOString(), allPushed: false, devs: [] };
   }
 
-  const [users, updates, doingCounts, doneTasks] = await Promise.all([
+  const assigneeFilter = [
+    { assignees: { some: { id: { in: devIds } } } },
+    { assigneeId: { in: devIds } },
+  ];
+  const [users, updates, doingTasks, doneTasks] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: devIds } },
       select: { id: true, name: true, email: true, avatarUrl: true },
@@ -300,30 +323,24 @@ export async function getRollupRoster(user: EffectiveUser): Promise<RollupRoster
       where: { workspaceId: user.workspaceId, workDate, userId: { in: devIds } },
       select: { userId: true, amPushedAt: true, pmPushedAt: true },
     }),
-    prisma.task.groupBy({
-      by: ["assigneeId"],
-      where: {
-        workspaceId: user.workspaceId,
-        assigneeId: { in: devIds },
-        status: { in: ["DOING", "IN_REVIEW"] },
-      },
-      _count: { _all: true },
+    prisma.task.findMany({
+      where: { workspaceId: user.workspaceId, status: { in: ["DOING", "IN_REVIEW"] }, OR: assigneeFilter },
+      select: { assigneeId: true, assignees: { select: { id: true } } },
     }),
     prisma.task.findMany({
       where: {
         workspaceId: user.workspaceId,
-        assigneeId: { in: devIds },
         status: "DONE",
         completedAt: { gte: workDate, lt: nextUtcDay(workDate) },
+        OR: assigneeFilter,
       },
-      select: { assigneeId: true },
+      select: { assigneeId: true, assignees: { select: { id: true } } },
     }),
   ]);
 
   const updateByUser = new Map(updates.map((u) => [u.userId, u]));
-  const doingByUser = new Map(doingCounts.map((g) => [g.assigneeId, g._count._all]));
-  const doneByUser = new Map<string, number>();
-  for (const t of doneTasks) if (t.assigneeId) doneByUser.set(t.assigneeId, (doneByUser.get(t.assigneeId) ?? 0) + 1);
+  const doingByUser = tallyByAssignee(doingTasks, devIds);
+  const doneByUser = tallyByAssignee(doneTasks, devIds);
 
   const devs: RollupDevStatus[] = users
     .map((u) => {
@@ -374,13 +391,16 @@ export async function publishRollup(
     include: {
       client: { select: { name: true } },
       assignee: { select: { name: true, email: true } },
+      assignees: { select: { name: true, email: true } },
     },
     orderBy: [{ clientId: "asc" }, { completedAt: "asc" }],
   });
 
   const byClient = new Map<string, string[]>();
   for (const t of doneTasks) {
-    const who = t.assignee?.name?.trim() || t.assignee?.email || "Unassigned";
+    const names = t.assignees.map((a) => a.name?.trim() || a.email);
+    if (names.length === 0 && t.assignee) names.push(t.assignee.name?.trim() || t.assignee.email);
+    const who = names.length ? names.join(", ") : "Unassigned";
     const line = `• ${t.title} — _${who}_`;
     const arr = byClient.get(t.client.name) ?? [];
     arr.push(line);

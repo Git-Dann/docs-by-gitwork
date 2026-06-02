@@ -1879,6 +1879,7 @@ import type {
   ClientAssignmentDTO,
   FeatureBlockDTO,
   TimelineShareDTO,
+  MilestoneDTO,
 } from "@/types/tasks";
 
 export function listTasks(opts: {
@@ -1902,10 +1903,12 @@ export function createTask(input: {
   clientId: string;
   title: string;
   description?: string;
+  acceptanceCriteria?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
-  assigneeId?: string | null;
+  assigneeIds?: string[];
   featureBlockId?: string | null;
+  parentId?: string | null;
   dueDate?: string | null;
 }): Promise<TaskDTO> {
   return apiFetch("/api/tasks", {
@@ -1920,9 +1923,10 @@ export function updateTask(
   input: {
     title?: string;
     description?: string | null;
+    acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
-    assigneeId?: string | null;
+    assigneeIds?: string[];
     featureBlockId?: string | null;
     dueDate?: string | null;
   },
@@ -2016,8 +2020,8 @@ export function createFeatureBlock(input: {
   clientId: string;
   name: string;
   description?: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string | null;
+  endDate?: string | null;
   color?: string;
 }): Promise<FeatureBlockDTO> {
   return apiFetch("/api/feature-blocks", {
@@ -2032,8 +2036,8 @@ export function updateFeatureBlock(
   input: {
     name?: string;
     description?: string | null;
-    startDate?: string;
-    endDate?: string;
+    startDate?: string | null;
+    endDate?: string | null;
     color?: string | null;
     orderKey?: number;
   },
@@ -2059,5 +2063,40 @@ export function setTimelineShare(slug: string, enabled: boolean): Promise<Timeli
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
   });
+}
+
+// ─── Milestones ────────────────────────────────────────────────────────────
+
+export function listMilestones(clientId: string): Promise<MilestoneDTO[]> {
+  return apiFetch(`/api/milestones?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function createMilestone(input: {
+  clientId: string;
+  name: string;
+  date: string;
+  description?: string;
+  color?: string;
+}): Promise<MilestoneDTO> {
+  return apiFetch("/api/milestones", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateMilestone(
+  id: string,
+  input: { name?: string; date?: string; description?: string | null; color?: string | null },
+): Promise<MilestoneDTO> {
+  return apiFetch(`/api/milestones/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteMilestone(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/milestones/${id}`, { method: "DELETE" });
 }
 

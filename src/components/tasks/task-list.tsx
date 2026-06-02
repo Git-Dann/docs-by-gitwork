@@ -2,7 +2,7 @@
 
 import { cn, formatDate } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
-import { TaskAvatar } from "@/components/tasks/task-avatar";
+import { AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityDot, TaskStatusBadge } from "@/components/tasks/task-badges";
 
 function isOverdue(task: TaskDTO): boolean {
@@ -59,8 +59,12 @@ export function TaskList({
               <td className="text-[var(--text-3)]">{task.featureBlock?.name ?? "—"}</td>
               <td>
                 <div className="flex items-center gap-2">
-                  <TaskAvatar user={task.assignee} size={20} />
-                  <span className="text-[var(--text-3)]">{task.assignee?.name ?? "—"}</span>
+                  <AssigneeStack users={task.assignees} size={20} />
+                  <span className="truncate text-[var(--text-3)]">
+                    {task.assignees.length === 0
+                      ? "—"
+                      : task.assignees.map((a) => a.name).join(", ")}
+                  </span>
                 </div>
               </td>
               <td>

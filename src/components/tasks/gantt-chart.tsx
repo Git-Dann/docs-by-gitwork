@@ -14,6 +14,13 @@ export type GanttBlock = {
   tasks: { title: string; done: boolean }[];
 };
 
+export type GanttMilestone = {
+  id: string;
+  name: string;
+  date: string;
+  color?: string | null;
+};
+
 const DAY = 86_400_000;
 const RAIL_W = 240;
 const ROW_MIN_H = 52;
@@ -38,6 +45,19 @@ function tone(color?: string | null) {
   return BAR_TONE[color ?? "blue"] ?? BAR_TONE.blue;
 }
 
+// Solid hex per palette key for milestone markers (lines + diamonds).
+const MARK_COLOR: Record<string, string> = {
+  blue: "#2563eb",
+  violet: "#7c3aed",
+  emerald: "#059669",
+  amber: "#d97706",
+  rose: "#e11d48",
+  slate: "#475569",
+};
+function markColor(color?: string | null) {
+  return MARK_COLOR[color ?? "violet"] ?? MARK_COLOR.violet;
+}
+
 function startOfMonthUTC(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
@@ -50,13 +70,17 @@ function daysBetween(a: Date, b: Date): number {
 
 export function GanttChart({
   blocks,
+  milestones = [],
   initialScale = "quarter",
   onBlockClick,
+  onMilestoneClick,
   emptyHint = "No feature blocks yet — add one to start the timeline.",
 }: {
   blocks: GanttBlock[];
+  milestones?: GanttMilestone[];
   initialScale?: GanttScale;
   onBlockClick?: (blockId: string) => void;
+  onMilestoneClick?: (milestoneId: string) => void;
   emptyHint?: string;
 }) {
   const [scale, setScale] = useState<GanttScale>(initialScale);
@@ -68,6 +92,7 @@ export function GanttChart({
     for (const b of blocks) {
       stamps.push(new Date(b.startDate).getTime(), new Date(b.endDate).getTime());
     }
+    for (const m of milestones) stamps.push(new Date(m.date).getTime());
     const min = new Date(Math.min(...stamps));
     const max = new Date(Math.max(...stamps));
     // Snap to whole months, pad a month either side for breathing room.
@@ -91,7 +116,7 @@ export function GanttChart({
     }
 
     return { domainStart, totalDays, months, timelineWidth: totalDays * pxPerDay };
-  }, [blocks, pxPerDay, scale, today]);
+  }, [blocks, milestones, pxPerDay, scale, today]);
 
   const todayX = Math.min(
     Math.max(daysBetween(model.domainStart, today) * pxPerDay, 0),
@@ -126,7 +151,7 @@ export function GanttChart({
         </div>
       </div>
 
-      {blocks.length === 0 ? (
+      {blocks.length === 0 && milestones.length === 0 ? (
         <p className="px-4 py-12 text-center text-sm text-[var(--text-4)]">{emptyHint}</p>
       ) : (
         <div className="overflow-x-auto">
@@ -231,6 +256,31 @@ export function GanttChart({
                         </span>
                       </div>
                     </div>
+                  </div>
+                );
+              })}
+
+              {/* Milestone markers — dashed verticals with a diamond + label. */}
+              {milestones.map((m) => {
+                const mx = daysBetween(model.domainStart, new Date(m.date)) * pxPerDay;
+                if (mx < 0 || mx > model.timelineWidth) return null;
+                const c = markColor(m.color);
+                return (
+                  <div
+                    key={m.id}
+                    className="absolute top-0 bottom-0 z-10"
+                    style={{ left: RAIL_W + mx }}
+                  >
+                    <div className="h-full border-l border-dashed" style={{ borderColor: c }} />
+                    <button
+                      type="button"
+                      onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
+                      className="absolute left-1 top-1 inline-flex max-w-[160px] items-center gap-1 truncate rounded-[3px] px-1 py-0.5 text-[9px] font-medium text-white"
+                      style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
+                      title={`${m.name} · ${new Date(m.date).toLocaleDateString("en-GB", { timeZone: "UTC" })}`}
+                    >
+                      ◆ <span className="truncate">{m.name}</span>
+                    </button>
                   </div>
                 );
               })}

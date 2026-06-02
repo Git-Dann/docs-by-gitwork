@@ -23,8 +23,8 @@ function blockRowToDTO(row: BlockRow): FeatureBlockDTO {
     clientId: row.clientId,
     name: row.name,
     description: row.description,
-    startDate: row.startDate.toISOString(),
-    endDate: row.endDate.toISOString(),
+    startDate: row.startDate ? row.startDate.toISOString() : null,
+    endDate: row.endDate ? row.endDate.toISOString() : null,
     orderKey: row.orderKey,
     color: row.color,
     taskCount,
@@ -53,9 +53,10 @@ export async function createFeatureBlock(
     clientId: string;
     name: string;
     description?: string;
-    startDate: string;
-    endDate: string;
+    startDate?: string | null;
+    endDate?: string | null;
     color?: string;
+    clickupId?: string | null;
   },
 ): Promise<FeatureBlockDTO> {
   await ensureBaseRecords();
@@ -73,9 +74,10 @@ export async function createFeatureBlock(
       clientId: input.clientId,
       name: input.name,
       description: input.description ?? null,
-      startDate: new Date(input.startDate),
-      endDate: new Date(input.endDate),
+      startDate: input.startDate ? new Date(input.startDate) : null,
+      endDate: input.endDate ? new Date(input.endDate) : null,
       color: input.color ?? null,
+      clickupId: input.clickupId ?? null,
       orderKey: (top?.orderKey ?? 0) + 1,
     },
     include: blockInclude,
@@ -89,8 +91,8 @@ export async function updateFeatureBlock(
   input: {
     name?: string;
     description?: string | null;
-    startDate?: string;
-    endDate?: string;
+    startDate?: string | null;
+    endDate?: string | null;
     color?: string | null;
     orderKey?: number;
   },
@@ -105,8 +107,8 @@ export async function updateFeatureBlock(
   const data: Prisma.FeatureBlockUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.description !== undefined) data.description = input.description;
-  if (input.startDate !== undefined) data.startDate = new Date(input.startDate);
-  if (input.endDate !== undefined) data.endDate = new Date(input.endDate);
+  if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
+  if (input.endDate !== undefined) data.endDate = input.endDate ? new Date(input.endDate) : null;
   if (input.color !== undefined) data.color = input.color;
   if (input.orderKey !== undefined) data.orderKey = input.orderKey;
 

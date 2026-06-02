@@ -1,7 +1,7 @@
-import { ChatBubbleLeftIcon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { cn, formatDate } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
-import { TaskAvatar } from "@/components/tasks/task-avatar";
+import { AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityDot, TaskStatusBadge } from "@/components/tasks/task-badges";
 
 /** Is the due date in the past and the task still open? */
@@ -41,7 +41,7 @@ export function TaskCard({
         <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--text-1)]">
           {task.title}
         </p>
-        <TaskAvatar user={task.assignee} size={22} />
+        <AssigneeStack users={task.assignees} size={22} />
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -67,12 +67,20 @@ export function TaskCard({
             {formatDate(task.dueDate)}
           </span>
         ) : null}
-        {task.commentCount > 0 ? (
-          <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-[var(--text-4)]">
-            <ChatBubbleLeftIcon className="h-3 w-3" />
-            {task.commentCount}
-          </span>
-        ) : null}
+        <span className="ml-auto inline-flex items-center gap-2">
+          {task.subtaskCount > 0 ? (
+            <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--text-4)]">
+              <Squares2X2Icon className="h-3 w-3" />
+              {task.subtaskCount}
+            </span>
+          ) : null}
+          {task.commentCount > 0 ? (
+            <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--text-4)]">
+              <ChatBubbleLeftIcon className="h-3 w-3" />
+              {task.commentCount}
+            </span>
+          ) : null}
+        </span>
       </div>
     </div>
   );

@@ -18,18 +18,22 @@ import type {
   TaskCommentDTO,
   TaskStatus,
   TaskPriority,
+  TaskUserRef,
   ClientTaskSummary,
 } from "@/types/tasks";
 import { TASK_STATUSES } from "@/types/tasks";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
+const userSelect = { select: { id: true, name: true, email: true, avatarUrl: true } };
+
 const taskInclude = {
   client: { select: { id: true, name: true, slug: true } },
-  assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
-  createdBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  assignee: userSelect, // legacy single assignee (fallback for pre-v3 rows)
+  assignees: userSelect,
+  createdBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
-  _count: { select: { comments: true } },
+  _count: { select: { comments: true, subtasks: true } },
 } satisfies Prisma.TaskInclude;
 
 type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
@@ -42,20 +46,31 @@ function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
 }
 
-function userRef(u: { id: string; name: string | null; email: string; avatarUrl: string | null } | null) {
+function userRef(
+  u: { id: string; name: string | null; email: string; avatarUrl: string | null } | null,
+): TaskUserRef | null {
   return u ? { id: u.id, name: displayName(u), avatarUrl: u.avatarUrl } : null;
 }
 
 function taskRowToDTO(row: TaskRow): TaskDTO {
+  // Prefer the m-n assignees; fall back to the legacy single assignee for old rows.
+  const assignees =
+    row.assignees.length > 0
+      ? row.assignees.map((a) => userRef(a)).filter((x): x is TaskUserRef => x !== null)
+      : row.assignee
+        ? [userRef(row.assignee)].filter((x): x is TaskUserRef => x !== null)
+        : [];
   return {
     id: row.id,
     workspaceId: row.workspaceId,
     client: { id: row.client.id, name: row.client.name, slug: row.client.slug },
-    assignee: userRef(row.assignee),
+    assignees,
     createdBy: userRef(row.createdBy),
     featureBlock: row.featureBlock ? { id: row.featureBlock.id, name: row.featureBlock.name } : null,
+    parentId: row.parentId,
     title: row.title,
     description: row.description,
+    acceptanceCriteria: row.acceptanceCriteria,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
     orderKey: row.orderKey,
@@ -63,6 +78,9 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     commentCount: row._count.comments,
+    subtaskCount: row._count.subtasks,
+    subtaskDoneCount: 0,
+    metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -152,7 +170,12 @@ export async function listTasks(
     where.clientId = opts.clientId;
   }
   if (opts.status) where.status = opts.status;
-  if (opts.assigneeId) where.assigneeId = opts.assigneeId === "me" ? user.id : opts.assigneeId;
+  // Board / list show top-level tasks only; subtasks live in the detail drawer.
+  where.parentId = null;
+  if (opts.assigneeId) {
+    const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
+    where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];
+  }
 
   const rows = await prisma.task.findMany({
     where,
@@ -170,12 +193,23 @@ export async function getTask(user: EffectiveUser, id: string): Promise<TaskDeta
   if (!row) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, row.clientId);
 
-  const comments = await prisma.taskComment.findMany({
-    where: { taskId: id },
-    orderBy: { createdAt: "asc" },
-    include: { author: { select: { id: true, name: true, email: true, avatarUrl: true } } },
-  });
-  return { ...taskRowToDTO(row), comments: comments.map(commentRowToDTO) };
+  const [comments, subtaskRows] = await Promise.all([
+    prisma.taskComment.findMany({
+      where: { taskId: id },
+      orderBy: { createdAt: "asc" },
+      include: { author: userSelect },
+    }),
+    prisma.task.findMany({
+      where: { parentId: id },
+      orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
+      include: taskInclude,
+    }),
+  ]);
+  const subtasks = subtaskRows.map(taskRowToDTO);
+  const dto = taskRowToDTO(row);
+  dto.subtaskCount = subtasks.length;
+  dto.subtaskDoneCount = subtasks.filter((s) => s.status === "DONE").length;
+  return { ...dto, comments: comments.map(commentRowToDTO), subtasks };
 }
 
 /** Status counts for a single client — powers the compact card on client detail. */
@@ -186,7 +220,7 @@ export async function getClientTaskSummary(
   await assertClientInScope(user, clientId);
   const grouped = await prisma.task.groupBy({
     by: ["status"],
-    where: { workspaceId: user.workspaceId, clientId },
+    where: { workspaceId: user.workspaceId, clientId, parentId: null },
     _count: { _all: true },
   });
   const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
@@ -225,17 +259,28 @@ export async function createTask(
     clientId: string;
     title: string;
     description?: string;
+    acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
-    assigneeId?: string | null;
+    assigneeIds?: string[];
     featureBlockId?: string | null;
+    parentId?: string | null;
     dueDate?: string | null;
+    metadata?: Record<string, unknown> | null;
+    clickupId?: string | null;
   },
 ): Promise<TaskDTO> {
   await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
   if (input.featureBlockId) {
     await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
+  }
+  if (input.parentId) {
+    const parent = await prisma.task.findFirst({
+      where: { id: input.parentId, workspaceId: user.workspaceId, clientId: input.clientId },
+      select: { id: true },
+    });
+    if (!parent) throw new ForbiddenError("Parent task not found for this client");
   }
   const status = input.status ?? "BACKLOG";
   const ts = statusTimestamps(null, status, { startedAt: null });
@@ -245,16 +290,24 @@ export async function createTask(
       workspaceId: user.workspaceId,
       clientId: input.clientId,
       createdById: user.id,
-      assigneeId: input.assigneeId ?? null,
       featureBlockId: input.featureBlockId ?? null,
+      parentId: input.parentId ?? null,
       title: input.title,
       description: input.description ?? null,
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
       status,
       priority: input.priority ?? "MEDIUM",
       orderKey: await nextOrderKey(user.workspaceId, input.clientId, status),
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       startedAt: ts.startedAt ?? null,
       completedAt: ts.completedAt ?? null,
+      clickupId: input.clickupId ?? null,
+      ...(input.metadata !== undefined && input.metadata !== null
+        ? { metadata: input.metadata as Prisma.InputJsonValue }
+        : {}),
+      ...(input.assigneeIds && input.assigneeIds.length > 0
+        ? { assignees: { connect: input.assigneeIds.map((id) => ({ id })) } }
+        : {}),
     },
     include: taskInclude,
   });
@@ -267,11 +320,13 @@ export async function updateTask(
   input: {
     title?: string;
     description?: string | null;
+    acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
-    assigneeId?: string | null;
+    assigneeIds?: string[];
     featureBlockId?: string | null;
     dueDate?: string | null;
+    metadata?: Record<string, unknown> | null;
   },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
@@ -284,11 +339,16 @@ export async function updateTask(
   const data: Prisma.TaskUpdateInput = {};
   if (input.title !== undefined) data.title = input.title;
   if (input.description !== undefined) data.description = input.description;
+  if (input.acceptanceCriteria !== undefined) data.acceptanceCriteria = input.acceptanceCriteria;
   if (input.priority !== undefined) data.priority = input.priority;
-  if (input.assigneeId !== undefined) {
-    data.assignee = input.assigneeId
-      ? { connect: { id: input.assigneeId } }
-      : { disconnect: true };
+  if (input.metadata !== undefined && input.metadata !== null) {
+    data.metadata = input.metadata as Prisma.InputJsonValue;
+  }
+  if (input.assigneeIds !== undefined) {
+    // `set` replaces the full assignee list. Also clear the legacy single column
+    // so it can't shadow an intentional "no assignees".
+    data.assignees = { set: input.assigneeIds.map((id) => ({ id })) };
+    data.assignee = { disconnect: true };
   }
   if (input.featureBlockId !== undefined) {
     if (input.featureBlockId) {

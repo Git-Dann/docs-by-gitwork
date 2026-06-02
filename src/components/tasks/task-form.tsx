@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
+import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
@@ -41,13 +42,20 @@ export function TaskFormModal({
 
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(task?.acceptanceCriteria ?? "");
   const [clientId, setClientId] = useState(task?.client.id ?? defaultClientId ?? "");
-  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? "");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    task?.assignees.map((a) => a.id) ?? [],
+  );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
   const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+
+  function toggleAssignee(id: string) {
+    setAssigneeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   const blocksQuery = useFeatureBlocks(clientId || null);
   const blocks = blocksQuery.data ?? [];
@@ -72,9 +80,10 @@ export function TaskFormModal({
           input: {
             title: title.trim(),
             description: description.trim() || null,
+            acceptanceCriteria: acceptanceCriteria.trim() || null,
             status,
             priority,
-            assigneeId: assigneeId || null,
+            assigneeIds,
             featureBlockId: featureBlockId || null,
             dueDate: dueDate || null,
           },
@@ -85,9 +94,10 @@ export function TaskFormModal({
           clientId,
           title: title.trim(),
           description: description.trim() || undefined,
+          acceptanceCriteria: acceptanceCriteria.trim() || null,
           status,
           priority,
-          assigneeId: assigneeId || null,
+          assigneeIds,
           featureBlockId: featureBlockId || null,
           dueDate: dueDate || null,
         });
@@ -146,7 +156,20 @@ export function TaskFormModal({
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add detail, links, acceptance criteria…"
+              placeholder="Add detail, links, context…"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+              Acceptance criteria <span className="text-[var(--text-4)]">(optional)</span>
+            </label>
+            <textarea
+              className="app-textarea w-full"
+              rows={2}
+              value={acceptanceCriteria}
+              onChange={(e) => setAcceptanceCriteria(e.target.value)}
+              placeholder="What does done look like?"
             />
           </div>
 
@@ -194,31 +217,42 @@ export function TaskFormModal({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Assignee</label>
-              <select
-                className="app-select w-full"
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Assignees</label>
+            <div className="flex flex-wrap gap-1.5">
+              {members.length === 0 ? (
+                <span className="text-xs text-[var(--text-4)]">No team members yet.</span>
+              ) : (
+                members.map((m) => {
+                  const on = assigneeIds.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleAssignee(m.id)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                        on
+                          ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
+                          : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                      )}
+                    >
+                      {m.name}
+                    </button>
+                  );
+                })
+              )}
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
-              <input
-                type="date"
-                className="app-input w-full"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
+            <input
+              type="date"
+              className="app-input w-full"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
