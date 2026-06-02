@@ -194,6 +194,11 @@ async function buildSummary(ws: CostWorkspace): Promise<AiCostSummary> {
   };
 }
 
+/** A snapshot worth caching: a successful, configured fetch with no provider in error. */
+function isCacheable(s: AiCostSummary): boolean {
+  return s.configured && !s.providers.some((p) => p.status === "error");
+}
+
 /**
  * Cached AI cost summary for the workspace. Returns the cached snapshot when it's < 1h old,
  * otherwise fetches fresh from the provider Cost APIs and re-caches. Stale cache is returned
@@ -207,7 +212,11 @@ export async function getAiCostSummary(ws: CostWorkspace): Promise<AiCostSummary
   if (cached?.response) {
     const snapshot = cached.response as unknown as AiCostSummary;
     const age = Date.now() - new Date(snapshot.fetchedAt).getTime();
-    if (Number.isFinite(age) && age < CACHE_TTL_MS) return snapshot;
+    // Only trust a snapshot that represents a successful, configured fetch. A
+    // `not_configured` or errored snapshot must NEVER stick — otherwise adding the admin key
+    // (or replacing a bad one) wouldn't surface until the 1h TTL expired, which reads to the
+    // user as "I added the key but the card still says not set up".
+    if (Number.isFinite(age) && age < CACHE_TTL_MS && isCacheable(snapshot)) return snapshot;
   }
 
   let summary: AiCostSummary;
@@ -219,16 +228,21 @@ export async function getAiCostSummary(ws: CostWorkspace): Promise<AiCostSummary
     return { providers: [], configured: false, fetchedAt: new Date().toISOString() };
   }
 
-  await prisma.aiResponseCache.upsert({
-    where: { workspaceId_cacheKey: { workspaceId: ws.id, cacheKey: CACHE_KEY } },
-    update: { response: summary as unknown as Prisma.InputJsonValue, inputsHash: summary.fetchedAt },
-    create: {
-      workspaceId: ws.id,
-      cacheKey: CACHE_KEY,
-      inputsHash: summary.fetchedAt,
-      response: summary as unknown as Prisma.InputJsonValue,
-    },
-  });
+  // Cache only good snapshots (configured + every provider OK). Not-configured / errored
+  // results are returned live but never written, so the card reflects a newly-added or fixed
+  // key on the very next load instead of waiting out the TTL.
+  if (isCacheable(summary)) {
+    await prisma.aiResponseCache.upsert({
+      where: { workspaceId_cacheKey: { workspaceId: ws.id, cacheKey: CACHE_KEY } },
+      update: { response: summary as unknown as Prisma.InputJsonValue, inputsHash: summary.fetchedAt },
+      create: {
+        workspaceId: ws.id,
+        cacheKey: CACHE_KEY,
+        inputsHash: summary.fetchedAt,
+        response: summary as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
 
   return summary;
 }
