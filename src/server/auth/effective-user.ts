@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getRequestUser } from "@/server/auth/request-user";
 import {
@@ -120,6 +121,45 @@ export async function getEffectiveUserOrNull(req: Request): Promise<EffectiveUse
   } catch {
     return null;
   }
+}
+
+/**
+ * Like requireAuthedUser, but for single-operator / legacy-bearer mobile callers:
+ * when no per-user identity resolves — i.e. the app sent the shared workspace
+ * bearer (API_KEY) rather than a per-user Foundry mobile JWT — fall back to the
+ * default workspace owner instead of throwing 401. This keeps self-service
+ * features (Backstage expenses) working today, while preserving correct
+ * attribution the moment a real mobile JWT IS present (this only changes the
+ * otherwise-401 "no identity" case, never an authenticated one).
+ *
+ * Use for per-user self-service routes. Do NOT use where a specific privilege
+ * must be proven (approvals) — those keep strict requireAuthedUser + assert*.
+ */
+export async function requireAuthedUserOrDefault(req: Request): Promise<EffectiveUser> {
+  const resolved = await getEffectiveUserOrNull(req);
+  if (resolved) return resolved;
+
+  const { workspace, user } = await ensureBaseRecords();
+  const membership = await prisma.workspaceMember.findFirst({
+    where: { workspaceId: workspace.id, userId: user.id },
+    include: { workspace: { select: { rolePermissions: true } } },
+  });
+  if (!membership) throw new UnauthorizedError();
+
+  const matrix = normalizeMatrix(membership.workspace?.rolePermissions);
+  const overrides = normalizeOverrides(membership.permissionOverrides);
+  const permissions = resolveEffectivePermissions(membership.role, matrix, overrides);
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    role: membership.role,
+    permissions,
+    workspaceId: workspace.id,
+    membershipId: membership.id,
+  };
 }
 
 export function canApproveBackstage(user: EffectiveUser): boolean {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { requireAuthedUserOrDefault } from "@/server/auth/effective-user";
 import { attachReceipt, getReceiptBytes } from "@/server/backstage";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ const MAX_BYTES = 2 * 1024 * 1024; // 2MB paranoia ceiling — clients should pr
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireAuthedUser(req);
+    const user = await requireAuthedUserOrDefault(req);
     const { id } = await params;
     const form = await req.formData();
     const file = form.get("file");
@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireAuthedUser(req);
+    const user = await requireAuthedUserOrDefault(req);
     const { id } = await params;
     const result = await getReceiptBytes(user, id);
     if (!result) {

@@ -1,5 +1,5 @@
 import { apiOk, fromError } from "@/lib/api-response";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { requireAuthedUserOrDefault } from "@/server/auth/effective-user";
 import { listExpenses, createExpense } from "@/server/backstage";
 import {
   backstageListQuerySchema,
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireAuthedUser(req);
+    const user = await requireAuthedUserOrDefault(req);
     const url = new URL(req.url);
     const q = backstageListQuerySchema.parse({
       scope: url.searchParams.get("scope") ?? undefined,
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const user = await requireAuthedUser(req);
+    const user = await requireAuthedUserOrDefault(req);
     const body = expenseInputSchema.parse(await req.json());
     const created = await createExpense(user, body);
     return apiOk(created, { status: 201 });
