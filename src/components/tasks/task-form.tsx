@@ -293,7 +293,6 @@ export function TaskFormModal({
                       members={adminAssignees}
                       assigneeIds={assigneeIds}
                       onToggle={toggleAssignee}
-                      showRole
                     />
                     {hiddenSelectedAssignees.length > 0 ? (
                       <SelectedOutsideProjectGroup
@@ -370,14 +369,12 @@ function AssigneeGroup({
   members,
   assigneeIds,
   onToggle,
-  showRole = false,
 }: {
   title: string;
   empty: string;
   members: BackstageMember[];
   assigneeIds: string[];
   onToggle: (id: string) => void;
-  showRole?: boolean;
 }) {
   return (
     <section>
@@ -401,7 +398,6 @@ function AssigneeGroup({
               id={member.id}
               name={member.name}
               avatarUrl={member.avatarUrl}
-              meta={showRole ? roleDisplay(member.role) : "Project developer"}
               selected={assigneeIds.includes(member.id)}
               onToggle={onToggle}
             />
@@ -431,7 +427,6 @@ function SelectedOutsideProjectGroup({
             id={assignee.id}
             name={assignee.name}
             avatarUrl={assignee.avatarUrl}
-            meta="Outside this project list"
             selected
             onToggle={onToggle}
           />
@@ -445,14 +440,12 @@ function AssigneeButton({
   id,
   name,
   avatarUrl,
-  meta,
   selected,
   onToggle,
 }: {
   id: string;
   name: string;
   avatarUrl: string | null;
-  meta: string;
   selected: boolean;
   onToggle: (id: string) => void;
 }) {
@@ -478,7 +471,6 @@ function AssigneeButton({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[var(--text-1)]">{name}</span>
-        <span className="block truncate text-[11px] text-[var(--text-4)]">{meta}</span>
       </span>
       <span
         className={cn(
@@ -499,10 +491,4 @@ function initials(name: string): string {
   const first = parts[0]?.[0] ?? "?";
   const second = parts[1]?.[0] ?? "";
   return `${first}${second}`.toUpperCase();
-}
-
-function roleDisplay(role: string): string {
-  if (role === "SUPER_ADMIN") return "Super Admin";
-  if (role === "ADMIN") return "Admin";
-  return role;
 }
