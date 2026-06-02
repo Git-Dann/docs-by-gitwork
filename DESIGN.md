@@ -380,6 +380,13 @@ blocks + task names + progress + the today line, with no assignees/notes/interna
 per client from the Share control. Follows the public Pulse report's no-auth, `noindex` pattern;
 closes with a quiet "Powered by Gitwork" footer.
 
+**v3 additions** — **multi-assignee** (overlapping avatar stack via `AssigneeStack`, +N overflow;
+the form uses togglable name chips); **subtasks** (one level — checklist in the detail drawer, a
+`☰ N` count on the card); **acceptance criteria** (optional field shown above Notes); **milestones**
+(single-date diamond markers on the Gantt, dashed vertical + coloured label, on internal + public);
+**undated feature blocks** (board-only groupings until both dates are set, then they become bars).
+Milestone/block bar colours share one palette (blue/violet/emerald/amber/rose/slate).
+
 ---
 
 ## Do's and Don'ts

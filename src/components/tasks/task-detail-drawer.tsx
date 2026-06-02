@@ -9,13 +9,14 @@ import {
   useUpdateTask,
   useDeleteTask,
   useAddTaskComment,
+  useCreateTask,
 } from "@/hooks/use-tasks";
 import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   type TaskStatus,
 } from "@/types/tasks";
-import { TaskAvatar } from "@/components/tasks/task-avatar";
+import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityBadge } from "@/components/tasks/task-badges";
 import { TaskFormModal } from "@/components/tasks/task-form";
 
@@ -30,10 +31,27 @@ export function TaskDetailDrawer({
   const update = useUpdateTask();
   const del = useDeleteTask();
   const addComment = useAddTaskComment();
+  const createSub = useCreateTask();
 
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
+  const [subtaskTitle, setSubtaskTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function addSubtask() {
+    if (!subtaskTitle.trim() || !task) return;
+    await createSub.mutateAsync({
+      clientId: task.client.id,
+      title: subtaskTitle.trim(),
+      parentId: task.id,
+      featureBlockId: task.featureBlock?.id ?? null,
+    });
+    setSubtaskTitle("");
+  }
+
+  async function toggleSubtask(subId: string, done: boolean) {
+    await update.mutateAsync({ id: subId, input: { status: done ? "DONE" : "TODO" } });
+  }
 
   async function changeStatus(status: TaskStatus) {
     if (!task) return;
@@ -116,11 +134,13 @@ export function TaskDetailDrawer({
               {/* Meta */}
               <div className="grid grid-cols-2 gap-4 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
                 <div>
-                  <p className="widget-data-label mb-1">Assignee</p>
+                  <p className="widget-data-label mb-1">Assignees</p>
                   <div className="flex items-center gap-2">
-                    <TaskAvatar user={task.assignee} size={22} />
+                    <AssigneeStack users={task.assignees} size={22} />
                     <span className="text-sm text-[var(--text-2)]">
-                      {task.assignee?.name ?? "Unassigned"}
+                      {task.assignees.length
+                        ? task.assignees.map((a) => a.name).join(", ")
+                        : "Unassigned"}
                     </span>
                   </div>
                 </div>
@@ -153,6 +173,75 @@ export function TaskDetailDrawer({
                   </p>
                 </div>
               ) : null}
+
+              {/* Acceptance criteria */}
+              {task.acceptanceCriteria ? (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Acceptance criteria</p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">
+                    {task.acceptanceCriteria}
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Subtasks */}
+              <div>
+                <p className="mb-2 text-xs font-medium text-[var(--text-2)]">
+                  Subtasks{" "}
+                  {task.subtasks.length > 0
+                    ? `(${task.subtaskDoneCount}/${task.subtasks.length})`
+                    : ""}
+                </p>
+                <div className="space-y-1.5">
+                  {task.subtasks.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={s.status === "DONE"}
+                        disabled={update.isPending}
+                        onChange={(e) => toggleSubtask(s.id, e.target.checked)}
+                      />
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-sm",
+                          s.status === "DONE"
+                            ? "text-[var(--text-4)] line-through"
+                            : "text-[var(--text-1)]",
+                        )}
+                      >
+                        {s.title}
+                      </span>
+                      <AssigneeStack users={s.assignees} size={18} />
+                    </div>
+                  ))}
+                  {task.subtasks.length === 0 ? (
+                    <p className="text-xs text-[var(--text-4)]">No subtasks.</p>
+                  ) : null}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    className="app-input flex-1"
+                    value={subtaskTitle}
+                    onChange={(e) => setSubtaskTitle(e.target.value)}
+                    placeholder="Add a subtask…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void addSubtask();
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={addSubtask}
+                    loading={createSub.isPending}
+                    disabled={!subtaskTitle.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
 
               {/* Notes */}
               <div>

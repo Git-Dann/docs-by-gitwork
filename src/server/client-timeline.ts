@@ -79,24 +79,39 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
     },
   });
 
-  const publicBlocks: PublicTimelineBlock[] = blocks.map((b) => {
-    const taskCount = b.tasks.length;
-    const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
-    return {
-      id: b.id,
-      name: b.name,
-      description: b.description,
-      startDate: b.startDate.toISOString(),
-      endDate: b.endDate.toISOString(),
-      color: b.color,
-      progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
-      tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
-    };
+  // Only dated blocks render as bars on the public timeline.
+  const publicBlocks: PublicTimelineBlock[] = blocks
+    .filter((b) => b.startDate && b.endDate)
+    .map((b) => {
+      const taskCount = b.tasks.length;
+      const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
+      return {
+        id: b.id,
+        name: b.name,
+        description: b.description,
+        startDate: b.startDate!.toISOString(),
+        endDate: b.endDate!.toISOString(),
+        color: b.color,
+        progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
+        tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+      };
+    });
+
+  const milestoneRows = await prisma.milestone.findMany({
+    where: { clientId: client.id },
+    orderBy: { date: "asc" },
+    select: { id: true, name: true, date: true, color: true },
   });
 
   return {
     clientName: client.name,
     generatedAt: new Date().toISOString(),
     blocks: publicBlocks,
+    milestones: milestoneRows.map((m) => ({
+      id: m.id,
+      name: m.name,
+      date: m.date.toISOString(),
+      color: m.color,
+    })),
   };
 }

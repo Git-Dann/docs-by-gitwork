@@ -40,11 +40,13 @@ export type TaskDTO = {
   id: string;
   workspaceId: string;
   client: TaskClientRef;
-  assignee: TaskUserRef | null;
+  assignees: TaskUserRef[];
   createdBy: TaskUserRef | null;
   featureBlock: TaskBlockRef | null;
+  parentId: string | null;
   title: string;
   description: string | null;
+  acceptanceCriteria: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   orderKey: number;
@@ -52,6 +54,9 @@ export type TaskDTO = {
   startedAt: string | null;
   completedAt: string | null;
   commentCount: number;
+  subtaskCount: number;
+  subtaskDoneCount: number;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -64,7 +69,10 @@ export type TaskCommentDTO = {
   createdAt: string;
 };
 
-export type TaskDetailDTO = TaskDTO & { comments: TaskCommentDTO[] };
+export type TaskDetailDTO = TaskDTO & {
+  comments: TaskCommentDTO[];
+  subtasks: TaskDTO[];
+};
 
 /** Per-dev/day standup record. `id` is null before the first push of the day. */
 export type DailyUpdateDTO = {
@@ -140,8 +148,9 @@ export type FeatureBlockDTO = {
   clientId: string;
   name: string;
   description: string | null;
-  startDate: string;
-  endDate: string;
+  /** Null until dated. A block with both dates renders as a Gantt bar. */
+  startDate: string | null;
+  endDate: string | null;
   orderKey: number;
   color: string | null;
   /** Total tasks in the block. */
@@ -150,6 +159,15 @@ export type FeatureBlockDTO = {
   doneCount: number;
   /** 0–100, rounded. */
   progress: number;
+};
+
+export type MilestoneDTO = {
+  id: string;
+  clientId: string;
+  name: string;
+  date: string;
+  description: string | null;
+  color: string | null;
 };
 
 /** Gantt zoom levels. */
@@ -183,8 +201,16 @@ export type PublicTimelineBlock = {
   tasks: { title: string; done: boolean }[];
 };
 
+export type PublicTimelineMilestone = {
+  id: string;
+  name: string;
+  date: string;
+  color: string | null;
+};
+
 export type PublicTimelineDTO = {
   clientName: string;
   generatedAt: string;
   blocks: PublicTimelineBlock[];
+  milestones: PublicTimelineMilestone[];
 };

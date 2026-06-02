@@ -182,6 +182,7 @@ const clientContactFields = {
   legalCompanyName: z.string().trim().optional(),
   companyNumber: z.string().trim().optional(),
   vatNumber: z.string().trim().optional(),
+  retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
 };
 
 export const clientCreateSchema = z.object({
@@ -780,20 +781,23 @@ export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 export const taskInputSchema = z.object({
   clientId: z.string().cuid(),
   title: z.string().min(1).max(200),
-  description: z.string().max(5000).optional(),
+  description: z.string().max(10000).optional(),
+  acceptanceCriteria: z.string().max(10000).nullable().optional(),
   status: taskStatusSchema.optional().default("BACKLOG"),
   priority: taskPrioritySchema.optional().default("MEDIUM"),
-  assigneeId: z.string().cuid().nullable().optional(),
+  assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
+  parentId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
 });
 
 export const taskUpdateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  description: z.string().max(5000).nullable().optional(),
+  description: z.string().max(10000).nullable().optional(),
+  acceptanceCriteria: z.string().max(10000).nullable().optional(),
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
-  assigneeId: z.string().cuid().nullable().optional(),
+  assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
 });
@@ -836,11 +840,12 @@ export const featureBlockInputSchema = z
     clientId: z.string().cuid(),
     name: z.string().min(1).max(160),
     description: z.string().max(2000).optional(),
-    startDate: isoDateString,
-    endDate: isoDateString,
+    // Optional — a block becomes a Gantt bar only once both dates are set.
+    startDate: isoDateString.nullable().optional(),
+    endDate: isoDateString.nullable().optional(),
     color: z.string().max(20).optional(),
   })
-  .refine((v) => new Date(v.endDate) >= new Date(v.startDate), {
+  .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
     message: "endDate must be on or after startDate",
     path: ["endDate"],
   });
@@ -848,14 +853,31 @@ export const featureBlockInputSchema = z
 export const featureBlockUpdateSchema = z.object({
   name: z.string().min(1).max(160).optional(),
   description: z.string().max(2000).nullable().optional(),
-  startDate: isoDateString.optional(),
-  endDate: isoDateString.optional(),
+  startDate: isoDateString.nullable().optional(),
+  endDate: isoDateString.nullable().optional(),
   color: z.string().max(20).nullable().optional(),
   orderKey: z.number().finite().optional(),
 });
 
 export const timelineShareSchema = z.object({
   enabled: z.boolean(),
+});
+
+// ── Milestones (single-date timeline markers) ───────────────────────────
+
+export const milestoneInputSchema = z.object({
+  clientId: z.string().cuid(),
+  name: z.string().min(1).max(160),
+  date: isoDateString,
+  description: z.string().max(2000).optional(),
+  color: z.string().max(20).optional(),
+});
+
+export const milestoneUpdateSchema = z.object({
+  name: z.string().min(1).max(160).optional(),
+  date: isoDateString.optional(),
+  description: z.string().max(2000).nullable().optional(),
+  color: z.string().max(20).nullable().optional(),
 });
 
 // ── Scribe (meeting notes) ───────────────────────────────────────────────

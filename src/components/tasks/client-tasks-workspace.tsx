@@ -18,16 +18,18 @@ import { useClientDetail } from "@/hooks/use-proposals";
 import {
   useTasks,
   useFeatureBlocks,
+  useMilestones,
   useTimelineShare,
   useSetTimelineShare,
 } from "@/hooks/use-tasks";
-import type { FeatureBlockDTO } from "@/types/tasks";
+import type { FeatureBlockDTO, MilestoneDTO } from "@/types/tasks";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskList } from "@/components/tasks/task-list";
-import { GanttChart, type GanttBlock } from "@/components/tasks/gantt-chart";
+import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
 import { TaskFormModal } from "@/components/tasks/task-form";
 import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
+import { MilestoneFormModal } from "@/components/tasks/milestone-form";
 
 type View = "board" | "list" | "gantt";
 
@@ -43,24 +45,37 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     open: false,
     block: null,
   });
+  const [milestoneModal, setMilestoneModal] = useState<{ open: boolean; milestone: MilestoneDTO | null }>({
+    open: false,
+    milestone: null,
+  });
 
   const { data: tasks = [], isPending: tasksLoading } = useTasks({ clientId: clientId ?? undefined });
   const { data: blocks = [] } = useFeatureBlocks(clientId);
+  const { data: milestones = [] } = useMilestones(clientId);
 
+  // Only dated blocks become Gantt bars; undated ones are board-only groupings.
   const ganttBlocks: GanttBlock[] = useMemo(
     () =>
-      blocks.map((b) => ({
-        id: b.id,
-        name: b.name,
-        startDate: b.startDate,
-        endDate: b.endDate,
-        color: b.color,
-        progress: b.progress,
-        tasks: tasks
-          .filter((t) => t.featureBlock?.id === b.id)
-          .map((t) => ({ title: t.title, done: t.status === "DONE" })),
-      })),
+      blocks
+        .filter((b) => b.startDate && b.endDate)
+        .map((b) => ({
+          id: b.id,
+          name: b.name,
+          startDate: b.startDate as string,
+          endDate: b.endDate as string,
+          color: b.color,
+          progress: b.progress,
+          tasks: tasks
+            .filter((t) => t.featureBlock?.id === b.id)
+            .map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        })),
     [blocks, tasks],
+  );
+
+  const ganttMilestones: GanttMilestone[] = useMemo(
+    () => milestones.map((m) => ({ id: m.id, name: m.name, date: m.date, color: m.color })),
+    [milestones],
   );
 
   if (clientLoading || !client) {
@@ -84,14 +99,24 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <TimelineShareControl slug={slug} />
           {view === "gantt" ? (
-            <Button
-              type="button"
-              variant="secondary"
-              leadingIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setBlockModal({ open: true, block: null })}
-            >
-              New block
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setMilestoneModal({ open: true, milestone: null })}
+              >
+                New milestone
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setBlockModal({ open: true, block: null })}
+              >
+                New block
+              </Button>
+            </>
           ) : null}
           <Button
             type="button"
@@ -125,10 +150,19 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : view === "list" ? (
         <TaskList tasks={tasks} showClient={false} onRowClick={setOpenTaskId} />
       ) : (
-        <GanttChart blocks={ganttBlocks} onBlockClick={(id) => {
-          const block = blocks.find((b) => b.id === id) ?? null;
-          setBlockModal({ open: true, block });
-        }} />
+        <GanttChart
+          blocks={ganttBlocks}
+          milestones={ganttMilestones}
+          onBlockClick={(id) => {
+            const block = blocks.find((b) => b.id === id) ?? null;
+            setBlockModal({ open: true, block });
+          }}
+          onMilestoneClick={(id) => {
+            const milestone = milestones.find((m) => m.id === id) ?? null;
+            setMilestoneModal({ open: true, milestone });
+          }}
+          emptyHint="No timeline yet — add a milestone or give a feature block start/end dates."
+        />
       )}
 
       {creatingTask ? (
@@ -140,6 +174,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           block={blockModal.block}
           clientId={clientId}
           onClose={() => setBlockModal({ open: false, block: null })}
+        />
+      ) : null}
+      {milestoneModal.open && clientId ? (
+        <MilestoneFormModal
+          milestone={milestoneModal.milestone}
+          clientId={clientId}
+          onClose={() => setMilestoneModal({ open: false, milestone: null })}
         />
       ) : null}
     </div>

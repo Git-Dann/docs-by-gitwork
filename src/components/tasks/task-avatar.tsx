@@ -61,3 +61,34 @@ export function TaskAvatar({
     </span>
   );
 }
+
+/** Overlapping avatars for multi-assignee, with a +N overflow chip. */
+export function AssigneeStack({
+  users,
+  size = 22,
+  max = 3,
+}: {
+  users: TaskUserRef[];
+  size?: number;
+  max?: number;
+}) {
+  if (users.length === 0) return <TaskAvatar user={null} size={size} />;
+  const shown = users.slice(0, max);
+  const extra = users.length - shown.length;
+  return (
+    <span className="inline-flex items-center">
+      {shown.map((u, i) => (
+        <span
+          key={u.id}
+          className="rounded-full ring-2 ring-white"
+          style={{ marginLeft: i === 0 ? 0 : -size * 0.3, zIndex: max - i }}
+        >
+          <TaskAvatar user={u} size={size} />
+        </span>
+      ))}
+      {extra > 0 ? (
+        <span className="ml-1 text-[10px] font-medium text-[var(--text-4)]">+{extra}</span>
+      ) : null}
+    </span>
+  );
+}

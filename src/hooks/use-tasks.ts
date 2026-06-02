@@ -22,6 +22,10 @@ import {
   deleteFeatureBlock,
   getTimelineShare,
   setTimelineShare,
+  listMilestones,
+  createMilestone,
+  updateMilestone,
+  deleteMilestone,
 } from "@/lib/api";
 import type { TaskStatus } from "@/types/tasks";
 
@@ -36,6 +40,7 @@ const QK = {
   roster: ["tasks", "rollup"] as const,
   memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
   blocks: (clientId: string) => ["tasks", "blocks", clientId] as const,
+  milestones: (clientId: string) => ["tasks", "milestones", clientId] as const,
   share: (slug: string) => ["tasks", "share", slug] as const,
 };
 
@@ -233,5 +238,41 @@ export function useSetTimelineShare(slug: string) {
   return useMutation({
     mutationFn: (enabled: boolean) => setTimelineShare(slug, enabled),
     onSuccess: (data) => qc.setQueryData(QK.share(slug), data),
+  });
+}
+
+// ─── Milestones ──────────────────────────────────────────────────────────────
+
+export function useMilestones(clientId: string | null) {
+  return useQuery({
+    queryKey: QK.milestones(clientId ?? ""),
+    queryFn: () => listMilestones(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateMilestone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createMilestone>[0]) => createMilestone(input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useUpdateMilestone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateMilestone>[1] }) =>
+      updateMilestone(id, input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useDeleteMilestone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteMilestone(id),
+    onSuccess: () => invalidateAll(qc),
   });
 }
