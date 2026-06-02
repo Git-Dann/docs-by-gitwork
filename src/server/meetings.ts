@@ -372,21 +372,29 @@ export async function listRecentMeetCalls(client: OAuth2Client, days = 30): Prom
 }
 
 /**
- * Recent past calls that involve a given client (an attendee on one of the client's domains).
- * Used by the per-client "Recent calls" list in Portal.
+ * Recent past calls that involve a given client. A call matches if an attendee is on one of the
+ * client's domains OR the meeting title contains the client's name (e.g. "Speakify x Gitwork",
+ * "Echo Team"). The name fallback matters because partner/agency calls often have attendees on a
+ * different domain than the client record — without it the per-client "Recent calls" list comes
+ * up empty even though the call (and its Gemini notes) exist.
  */
 export async function findPastClientCalls(
   client: OAuth2Client,
-  clientDomains: string[],
+  match: { domains: string[]; name?: string | null },
   days = 30,
 ): Promise<CalendarCandidate[]> {
-  if (clientDomains.length === 0) return [];
-  const domainSet = new Set(clientDomains);
+  const domainSet = new Set(match.domains);
+  const name = match.name?.trim().toLowerCase();
+  const nameUsable = !!name && name.length >= 3; // avoid noisy matches on 1–2 char names
+  if (domainSet.size === 0 && !nameUsable) return [];
+
   const calls = await listRecentMeetCalls(client, days);
-  return calls.filter((c) =>
-    c.attendees.some((e) => {
+  return calls.filter((c) => {
+    const byDomain = c.attendees.some((e) => {
       const at = e.lastIndexOf("@");
       return at !== -1 && domainSet.has(e.slice(at + 1).toLowerCase());
-    }),
-  );
+    });
+    const byName = nameUsable && c.title.toLowerCase().includes(name!);
+    return byDomain || byName;
+  });
 }

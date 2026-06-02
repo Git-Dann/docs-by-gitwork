@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     const client = await prisma.workspaceClient.findFirst({
       where: { slug, workspaceId: workspace.id },
-      select: { id: true, website: true, primaryContactEmail: true },
+      select: { id: true, name: true, website: true, primaryContactEmail: true },
     });
     if (!client) return apiError("Client not found", 404);
 
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
           const ingestedEventIds = new Set(
             meetings.map((m: { calendarEventId: string | null }) => m.calendarEventId).filter(Boolean),
           );
-          const found = await findPastClientCalls(auth.client, domains);
+          const found = await findPastClientCalls(auth.client, { domains, name: client.name });
           candidates = found.filter((c) => !ingestedEventIds.has(c.calendarEventId));
         } catch {
           // Calendar unavailable — keep the stored meetings, drop candidates.
