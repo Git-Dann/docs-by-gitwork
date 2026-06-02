@@ -2599,7 +2599,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                         {menuOpen && (
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                            <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
+                            <div className="absolute right-0 bottom-full z-20 mb-1 w-44 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
                               <button
                                 type="button"
                                 onClick={() => { setOpenMenuId(null); void handleSync(conn.id, true); }}
