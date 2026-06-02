@@ -4,6 +4,12 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalCostingSchema } from "@/server/validators";
+import {
+  assertCan,
+  canManageDocs,
+  canViewCosts,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -11,6 +17,10 @@ interface RouteContext {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    // Editing costs requires both managing docs and being allowed to see costs.
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "edit documents");
+    assertCan(actor, canViewCosts, "edit costs");
     const { id } = await context.params;
     const payload = proposalCostingSchema.parse(await request.json());
 

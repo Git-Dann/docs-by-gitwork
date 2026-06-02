@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlusIcon, BeakerIcon, BuildingOffice2Icon, TrashIcon } from "@heroicons/react/24/outline";
 import { useStudyList, useStudyPersonas, useDeleteStudy, useLoadStudyDemo } from "@/hooks/use-study";
+import { usePermissions } from "@/hooks/use-permissions";
 import { PERSONA_COLORS } from "@/config/study-personas";
 import { cn, formatDate } from "@/lib/format";
 import { Button, buttonStyles } from "@/components/ui/button";
@@ -159,6 +160,7 @@ function StudyCard({
 
 export function StudyList() {
   const router = useRouter();
+  const { canManageStudy } = usePermissions();
   const { data: studies, isLoading } = useStudyList();
   const { data: personas } = useStudyPersonas();
   const { mutate: deleteStudy } = useDeleteStudy();
@@ -246,13 +248,15 @@ export function StudyList() {
             >
               {loadingDemo ? "Loading…" : "Load demo"}
             </Button>
-            <Link
-              href="/app/study/new"
-              className={buttonStyles({ variant: "primary", size: "sm" })}
-            >
-              <PlusIcon className="h-4 w-4" />
-              New study
-            </Link>
+            {canManageStudy ? (
+              <Link
+                href="/app/study/new"
+                className={buttonStyles({ variant: "primary", size: "sm" })}
+              >
+                <PlusIcon className="h-4 w-4" />
+                New study
+              </Link>
+            ) : null}
           </div>
         </div>
       </section>
@@ -296,13 +300,15 @@ export function StudyList() {
                   >
                     {loadingDemo ? "Loading…" : "Load demo study"}
                   </Button>
-                  <Link
-                    href="/app/study/new"
-                    className={buttonStyles({ variant: "primary", size: "md" })}
-                  >
-                    <PlusIcon className="h-4 w-4" />
-                    New study
-                  </Link>
+                  {canManageStudy ? (
+                    <Link
+                      href="/app/study/new"
+                      className={buttonStyles({ variant: "primary", size: "md" })}
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      New study
+                    </Link>
+                  ) : null}
                 </div>
               </>
             )}

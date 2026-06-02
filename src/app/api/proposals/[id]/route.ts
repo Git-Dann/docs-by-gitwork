@@ -5,13 +5,18 @@ import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalUpdateSchema } from "@/server/validators";
-import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  assertCan,
+  canManageDocs,
+  canViewCosts,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
@@ -27,7 +32,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return apiError("Proposal not found", 404);
     }
 
-    return apiOk({ proposal: serializeProposal(document) });
+    // Field gate: blank costs/margins for users without docs.viewCosts (API-key → full).
+    const user = await getEffectiveUserOrNull(request);
+    const showCosts = user ? canViewCosts(user) : true;
+    return apiOk({ proposal: serializeProposal(document, { canViewCosts: showCosts }) });
   } catch (error) {
     return fromError(error);
   }
@@ -35,7 +43,12 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "edit documents");
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "edit documents");
+    // Cost write-protection: a user without docs.viewCosts edits non-cost parts of the
+    // proposal but must NOT be able to wipe costs (their read is blanked). We ignore their
+    // costLineItems and restore the real costing section on save.
+    const showCosts = actor ? canViewCosts(actor) : true;
     const { id } = await context.params;
     const payload = proposalUpdateSchema.parse(await request.json());
 
@@ -108,6 +121,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       });
 
       if (payload.sections) {
+        // For a no-viewCosts editor, keep the real costing section instead of their
+        // blanked copy — they can't see costs, so they can't be allowed to overwrite them.
+        const existingCosting = existing.sections.find((s) => s.key === "costing");
         await tx.documentSection.deleteMany({ where: { documentId: id } });
         await tx.documentSection.createMany({
           data: payload.sections.map((section, index) => ({
@@ -117,12 +133,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             description: section.description,
             sortOrder: section.sortOrder ?? index,
             isVisible: section.isVisible,
-            data: section.data as unknown as Prisma.InputJsonValue,
+            data:
+              !showCosts && section.key === "costing" && existingCosting
+                ? (existingCosting.data as Prisma.InputJsonValue)
+                : (section.data as unknown as Prisma.InputJsonValue),
           })),
         });
       }
 
-      if (payload.costLineItems) {
+      if (payload.costLineItems && showCosts) {
         await tx.costLineItem.deleteMany({ where: { documentId: id } });
         await tx.costLineItem.createMany({
           data: payload.costLineItems.map((item, index) => ({

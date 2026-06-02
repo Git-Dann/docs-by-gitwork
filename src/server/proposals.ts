@@ -113,7 +113,32 @@ function decimalToNumber(value: Prisma.Decimal): number {
   return Number(value.toString());
 }
 
-export function serializeProposal(document: ProposalDocumentRecord): ProposalDocument {
+export interface SerializeProposalOptions {
+  /** When false, cost line items + the costing section's monetary fields are blanked —
+   *  the caller lacks `docs.viewCosts`. Defaults to visible. */
+  canViewCosts?: boolean;
+}
+
+/** Blank the money out of the costing section's data (keeps narrative copy + currency). */
+function blankCostingData(data: unknown): unknown {
+  if (!data || typeof data !== "object") return data;
+  return {
+    ...(data as Record<string, unknown>),
+    discount: 0,
+    taxRate: 0,
+    teamAllocations: [],
+    paymentSchedule: [],
+    monthlyCostSummary: "",
+    totalCostLabel: "",
+  };
+}
+
+export function serializeProposal(
+  document: ProposalDocumentRecord,
+  opts?: SerializeProposalOptions,
+): ProposalDocument {
+  const hideCosts = opts?.canViewCosts === false;
+  const sections = normalizeSections(document.sections);
   return {
     id: document.id,
     workspaceId: document.workspaceId,
@@ -136,18 +161,24 @@ export function serializeProposal(document: ProposalDocumentRecord): ProposalDoc
     exportSettings: asJson<Record<string, unknown>>(document.exportSettings, {}),
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
-    sections: normalizeSections(document.sections),
-    costLineItems: document.costLineItems.map((item) => ({
-      id: item.id,
-      category: item.category,
-      itemName: item.itemName,
-      description: item.description ?? "",
-      quantity: decimalToNumber(item.quantity),
-      unitCost: decimalToNumber(item.unitCost),
-      subtotal: decimalToNumber(item.subtotal),
-      costKind: item.costKind,
-      sortOrder: item.sortOrder,
-    })),
+    sections: hideCosts
+      ? sections.map((s) =>
+          s.key === "costing" ? { ...s, data: blankCostingData(s.data) as typeof s.data } : s,
+        )
+      : sections,
+    costLineItems: hideCosts
+      ? []
+      : document.costLineItems.map((item) => ({
+          id: item.id,
+          category: item.category,
+          itemName: item.itemName,
+          description: item.description ?? "",
+          quantity: decimalToNumber(item.quantity),
+          unitCost: decimalToNumber(item.unitCost),
+          subtotal: decimalToNumber(item.subtotal),
+          costKind: item.costKind,
+          sortOrder: item.sortOrder,
+        })),
     timelinePhases: document.timelinePhases.map((phase) => ({
       id: phase.id,
       name: phase.name,

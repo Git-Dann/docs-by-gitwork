@@ -30,6 +30,7 @@ import {
   useDuplicateProposal,
   useProposalList,
 } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
 import type { DocumentType } from "@/types/proposal";
@@ -87,6 +88,7 @@ const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
 
 export function ProposalList() {
   const router = useRouter();
+  const { canManageDocs } = usePermissions();
   const searchParams = useSearchParams();
   const clientFilter = searchParams.get("client")?.trim() ?? "";
   const openCreate = searchParams.get("new") === "1";
@@ -295,15 +297,17 @@ export function ProposalList() {
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                onClick={() => setShowCreate(true)}
-                leadingIcon={<PlusIcon className="h-4 w-4" />}
-              >
-                Create your first document
-              </Button>
+              {canManageDocs ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  onClick={() => setShowCreate(true)}
+                  leadingIcon={<PlusIcon className="h-4 w-4" />}
+                >
+                  Create your first document
+                </Button>
+              ) : null}
               <button
                 type="button"
                 onClick={dismissOnboarding}
@@ -357,15 +361,17 @@ export function ProposalList() {
             </p>
           </div>
 
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={() => setShowCreate(true)}
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-          >
-            New document
-          </Button>
+          {canManageDocs ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={() => setShowCreate(true)}
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+            >
+              New document
+            </Button>
+          ) : null}
         </div>
 
         {/* Doc-type filter chip row. Scoped to the table only — stat tiles stay over the
