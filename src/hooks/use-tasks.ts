@@ -8,6 +8,8 @@ import {
   updateTask,
   moveTask,
   deleteTask,
+  batchUpdateTasks,
+  batchDeleteTasks,
   addTaskComment,
   getClientTaskSummary,
   getMyDay,
@@ -109,6 +111,23 @@ export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteTask(id),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useBatchUpdateTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, patch }: { ids: string[]; patch: Parameters<typeof batchUpdateTasks>[1] }) =>
+      batchUpdateTasks(ids, patch),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useBatchDeleteTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => batchDeleteTasks(ids),
     onSuccess: () => invalidateAll(qc),
   });
 }

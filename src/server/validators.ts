@@ -823,6 +823,24 @@ export const taskListQuerySchema = z.object({
   assigneeId: z.string().optional(),
 });
 
+/** Bulk edit — apply one patch (any subset of fields) to many tasks at once. */
+export const taskBatchUpdateSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(1000),
+  patch: z
+    .object({
+      status: taskStatusSchema.optional(),
+      priority: taskPrioritySchema.optional(),
+      assigneeIds: z.array(z.string().cuid()).optional(),
+      featureBlockId: z.string().cuid().nullable().optional(),
+      dueDate: isoDateString.nullable().optional(),
+    })
+    .refine((p) => Object.keys(p).length > 0, { message: "Patch must set at least one field" }),
+});
+
+export const taskBatchDeleteSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(1000),
+});
+
 export const dailyUpdatePushSchema = z.object({
   phase: z.enum(["AM", "PM"]),
   weekPlan: z.string().max(5000).optional(),
