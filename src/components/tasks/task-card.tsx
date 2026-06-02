@@ -1,4 +1,5 @@
-import { ChatBubbleLeftIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftIcon } from "@heroicons/react/24/outline";
+import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
@@ -9,6 +10,12 @@ function isOverdue(task: TaskDTO): boolean {
   if (!task.dueDate || task.status === "DONE") return false;
   return new Date(task.dueDate).getTime() < Date.now();
 }
+
+const PRIORITY_FLAG: Record<string, { iconColor: string; label: string }> = {
+  HIGH:   { iconColor: "text-red-500",   label: "High" },
+  MEDIUM: { iconColor: "text-amber-400", label: "Medium" },
+  LOW:    { iconColor: "text-zinc-300",  label: "Low" },
+};
 
 export function TaskCard({
   task,
@@ -26,6 +33,12 @@ export function TaskCard({
   dragging?: boolean;
 }) {
   const overdue = isOverdue(task);
+  const flag = PRIORITY_FLAG[task.priority] ?? PRIORITY_FLAG.LOW;
+  const subtaskPct =
+    task.subtaskCount > 0
+      ? Math.round((task.subtaskDoneCount / task.subtaskCount) * 100)
+      : 0;
+
   return (
     <div
       onClick={onClick}
@@ -36,6 +49,7 @@ export function TaskCard({
         className,
       )}
     >
+      {/* Title row */}
       <div className="flex items-start gap-2">
         <TaskPriorityDot priority={task.priority} className="mt-1.5" />
         <p className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-[var(--text-1)]">
@@ -44,36 +58,61 @@ export function TaskCard({
         <AssigneeStack users={task.assignees} size={22} />
       </div>
 
+      {/* Subtask progress bar */}
+      {task.subtaskCount > 0 ? (
+        <div className="mt-2">
+          <p className="mb-0.5 text-[10px] text-[var(--text-4)]">
+            {task.subtaskDoneCount}/{task.subtaskCount} subtask{task.subtaskCount === 1 ? "" : "s"}
+          </p>
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--surface-1)]">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${subtaskPct}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Footer meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
+
+        {/* Priority flag — colored icon + muted label */}
+        <span className="inline-flex items-center gap-0.5 text-[10px]">
+          <FlagIcon className={cn("h-3 w-3", flag.iconColor)} />
+          <span className="text-[var(--text-4)]">{flag.label}</span>
+        </span>
+
         {showClient ? (
           <span className="inline-flex max-w-[140px] items-center truncate rounded-[4px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
             {task.client.name}
           </span>
         ) : null}
+
         {task.featureBlock ? (
           <span className="inline-flex max-w-[140px] items-center truncate rounded-[4px] bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
             {task.featureBlock.name}
           </span>
         ) : null}
+
+        {/* Date: range (startedAt – dueDate) or single due date, with calendar icon */}
         {task.dueDate ? (
           <span
             className={cn(
-              "text-[11px]",
+              "inline-flex items-center gap-0.5 text-[11px]",
               overdue ? "font-medium text-red-600" : "text-[var(--text-4)]",
             )}
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            {formatDate(task.dueDate)}
+            <CalendarDaysIcon className="h-3 w-3 shrink-0" />
+            {task.startedAt
+              ? `${formatDate(task.startedAt)} – ${formatDate(task.dueDate)}`
+              : formatDate(task.dueDate)}
           </span>
         ) : null}
+
+        {/* Comment count pushed to the right */}
         <span className="ml-auto inline-flex items-center gap-2">
-          {task.subtaskCount > 0 ? (
-            <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--text-4)]">
-              <Squares2X2Icon className="h-3 w-3" />
-              {task.subtaskCount}
-            </span>
-          ) : null}
           {task.commentCount > 0 ? (
             <span className="inline-flex items-center gap-0.5 text-[11px] text-[var(--text-4)]">
               <ChatBubbleLeftIcon className="h-3 w-3" />

@@ -1449,7 +1449,7 @@ function ConversationCard({
 // ─── tickets view ────────────────────────────────────────────────────────────
 
 function TicketsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No RSS feed items yet. Add a Reddit connector in Connectors to start pulling in posts." />;
+  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No posts yet — go to Connectors, open your Reddit connector and hit Sync Now to pull in the latest posts." />;
 }
 
 function TicketsTableView({ clientId }: { clientId: string }) {
@@ -2795,15 +2795,28 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                         {conn.scraperConfig.intakeAddress}
                       </p>
                     )}
-                    {conn.source === "gmail" && conn.scraperConfig?.query && (
-                      <p className="mt-1 font-mono text-[11px] text-[var(--text-3)]">
-                        <span className="text-[var(--text-4)]">query: </span>{conn.scraperConfig.query}
-                      </p>
-                    )}
-                    {conn.source === "gmail" && !conn.scraperConfig?.query && (
-                      <p className="mt-1 text-[11px] text-amber-600">
-                        No query set — ingesting all mail. Click Edit to add a filter.
-                      </p>
+                    {conn.source === "gmail" && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          {conn.scraperConfig?.query?.trim() ? (
+                            <p className="break-all font-mono text-[11px] text-[var(--text-3)]">
+                              <span className="text-[var(--text-4)]">filter: </span>
+                              {conn.scraperConfig.query}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-amber-600">
+                              No filter set — ingesting all mail
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingConn(conn)}
+                          className="shrink-0 rounded-[4px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+                        >
+                          Edit filter
+                        </button>
+                      </div>
                     )}
                     {conn.scraperConfig?.channels && conn.scraperConfig.channels.length > 0 && (
                       <p className="mt-1 text-[11px] text-[var(--text-4)]">
