@@ -11,6 +11,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -26,6 +27,15 @@ import {
 import { TaskCard } from "@/components/tasks/task-card";
 
 type Override = { status: TaskStatus; orderKey: number };
+
+// Both columns AND cards are droppable. When the pointer is within a card, prefer
+// it over its column container so the drop lands at that card's position rather
+// than always at the column's end.
+const boardCollision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  const card = hits.find((h) => !(TASK_STATUSES as string[]).includes(String(h.id)));
+  return card ? [card] : hits;
+};
 
 export function TaskBoard({
   tasks,
@@ -55,7 +65,7 @@ export function TaskBoard({
       const next = { ...prev };
       for (const t of tasks) {
         const o = next[t.id];
-        if (o && o.status === t.status) {
+        if (o && o.status === t.status && o.orderKey === t.orderKey) {
           delete next[t.id];
           changed = true;
         }
@@ -101,18 +111,35 @@ export function TaskBoard({
     if (!event.over) return;
 
     const overRaw = String(event.over.id);
-    const targetStatus = (TASK_STATUSES as string[]).includes(overRaw)
-      ? (overRaw as TaskStatus)
-      : statusByTaskId.get(overRaw);
+    if (overRaw === id) return; // dropped on itself — no-op
+
+    const overIsStatus = (TASK_STATUSES as string[]).includes(overRaw);
+    const targetStatus = overIsStatus ? (overRaw as TaskStatus) : statusByTaskId.get(overRaw);
     if (!targetStatus) return;
 
-    const current = statusByTaskId.get(id);
-    if (current === targetStatus) return;
+    // Target column, sorted, minus the card being dragged.
+    const col = (byStatus.get(targetStatus) ?? []).filter((t) => t.id !== id);
 
-    // Append to the end of the target column.
-    const colTasks = byStatus.get(targetStatus) ?? [];
-    const maxKey = colTasks.reduce((max, t) => Math.max(max, t.orderKey), 0);
-    const orderKey = maxKey + 1;
+    // Land just before the card we dropped onto; if dropped on the column itself,
+    // append to the end.
+    let index = col.length;
+    if (!overIsStatus) {
+      const i = col.findIndex((t) => t.id === overRaw);
+      if (i !== -1) index = i;
+    }
+
+    // Fractional key = midpoint between the neighbours at the drop position.
+    const before = index > 0 ? col[index - 1].orderKey : null;
+    const after = index < col.length ? col[index].orderKey : null;
+    let orderKey: number;
+    if (before !== null && after !== null) orderKey = (before + after) / 2;
+    else if (before !== null) orderKey = before + 1;
+    else if (after !== null) orderKey = after - 1;
+    else orderKey = 1;
+
+    const current = statusByTaskId.get(id);
+    const currentKey = merged.find((t) => t.id === id)?.orderKey;
+    if (current === targetStatus && currentKey === orderKey) return; // no change
 
     setOverrides((prev) => ({ ...prev, [id]: { status: targetStatus, orderKey } }));
     try {
@@ -131,7 +158,7 @@ export function TaskBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={boardCollision}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
@@ -210,10 +237,16 @@ function BoardCard({
   showClient: boolean;
   onClick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: task.id });
+  // Also a drop target, so a card dropped onto it lands at this card's position.
+  const { setNodeRef: setDropRef } = useDroppable({ id: task.id });
+  const setRef = (node: HTMLElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  };
   return (
     <div
-      ref={setNodeRef}
+      ref={setRef}
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : 1 }}
       {...listeners}
       {...attributes}
