@@ -3,6 +3,7 @@
 import {
   ArrowPathIcon,
   BoltIcon,
+  ChartBarIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   ChevronDoubleLeftIcon,
@@ -66,7 +67,7 @@ import {
   useSupportAuditLogs,
   useSyncConnection,
 } from "@/hooks/use-support";
-import type { SupportReport, SupportReportPayload } from "@/types/support";
+import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -115,6 +116,8 @@ function SourceIcon({ source, className }: { source: SupportSource; className?: 
       return <KeyIcon className={cls} />;
     case "clickup":
       return <ClipboardDocumentListIcon className={cls} />;
+    case "analytics":
+      return <ChartBarIcon className={cls} />;
     default:
       return <BoltIcon className={cls} />;
   }
@@ -128,20 +131,29 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   discord: "Discord",
   clickup: "ClickUp",
   stripe: "Stripe",
+  analytics: "Analytics API",
 };
 
-const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit"];
+const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "analytics"];
 const COMING_SOON_SOURCES: SupportSource[] = ["youtube", "instagram", "clickup", "stripe"];
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
   discord: "Monitor channels on a client's server",
   reddit: "Watch public subreddits for mentions",
+  analytics: "Pull product metrics into monthly reports",
   youtube: "Comments from videos — coming soon",
   instagram: "DMs & comments — coming soon",
   clickup: "Sync tasks and comments",
   stripe: "Disputes & payment events via webhook",
 };
+
+// Mirrors the server-side registry in src/server/support-analytics/index.ts
+const ANALYTICS_ADAPTERS: { key: string; label: string; defaultBaseUrl: string; requiresToken: boolean; hint: string }[] = [
+  { key: "fellas", label: "Fellas Loaded", defaultBaseUrl: "https://api.fellasloaded.com", requiresToken: true, hint: "Subscription & user analytics — paste the Fellas API JWT." },
+  { key: "bigwedge", label: "Big Wedge Golf", defaultBaseUrl: "https://apiv1.bigwedgegolf.com", requiresToken: true, hint: "Golf analytics — paste an admin JWT. Rounds played is month-scoped for trends." },
+  { key: "generic", label: "Generic JSON API", defaultBaseUrl: "", requiresToken: false, hint: "Enter the full endpoint URL — every numeric field becomes a metric." },
+];
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   open: "Open",
@@ -491,6 +503,12 @@ function AddConnectorModal({
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
 
+  // Analytics API fields
+  const [analyticsAdapter, setAnalyticsAdapter] = useState(ANALYTICS_ADAPTERS[0].key);
+  const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(ANALYTICS_ADAPTERS[0].defaultBaseUrl);
+  const [analyticsToken, setAnalyticsToken] = useState("");
+  const selectedAdapter = ANALYTICS_ADAPTERS.find((a) => a.key === analyticsAdapter) ?? ANALYTICS_ADAPTERS[0];
+
   // Shared filters (keywords, exclude, lookback, max, ignore-bots)
   const [filters, setFilters] = useState<FilterState>(() => initFilterState(undefined));
 
@@ -550,17 +568,34 @@ function AddConnectorModal({
     if (source === "reddit") {
       return { subreddit: redditSubreddit.trim(), ...f };
     }
+    if (source === "analytics") {
+      return {
+        adapter: analyticsAdapter,
+        baseUrl: analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl,
+        apiToken: analyticsToken.trim() || undefined,
+      };
+    }
     return undefined;
   }
 
   function initialHealth(): "connected" | "needs_setup" {
     if (source === "discord") return selectedChannelIds.size > 0 ? "connected" : "needs_setup";
+    if (source === "analytics") {
+      const hasBase = Boolean(analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl);
+      const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
+      return hasBase && hasToken ? "connected" : "needs_setup";
+    }
     return source === "gmail" || source === "reddit" ? "connected" : "needs_setup";
   }
 
   function isSubmitDisabled() {
     if (createConnection.isPending) return true;
     if (source === "discord") return !discordToken.trim() || !discordGuildId.trim() || selectedChannelIds.size === 0;
+    if (source === "analytics") {
+      const hasBase = Boolean(analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl);
+      const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
+      return !hasBase || !hasToken;
+    }
     return false;
   }
 
@@ -805,8 +840,60 @@ function AddConnectorModal({
               </div>
             )}
 
-            {/* Shared filters */}
-            {LIVE_SOURCES.includes(source) && (
+            {/* Analytics API config */}
+            {source === "analytics" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="text-[11px] text-[var(--text-4)]">
+                  Connect the client&apos;s product API so their monthly report auto-fills usage metrics with month-over-month trends.
+                </p>
+                <label className="block space-y-1">
+                  <span className="app-field-label">Analytics source</span>
+                  <select
+                    value={analyticsAdapter}
+                    onChange={(e) => {
+                      const next = ANALYTICS_ADAPTERS.find((a) => a.key === e.target.value) ?? ANALYTICS_ADAPTERS[0];
+                      setAnalyticsAdapter(next.key);
+                      setAnalyticsBaseUrl(next.defaultBaseUrl);
+                    }}
+                    className="app-select w-full"
+                  >
+                    {ANALYTICS_ADAPTERS.map((a) => (
+                      <option key={a.key} value={a.key}>{a.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">
+                    {analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}
+                  </span>
+                  <input
+                    value={analyticsBaseUrl}
+                    onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder={analyticsAdapter === "generic" ? "https://api.example.com/v1/metrics/" : selectedAdapter.defaultBaseUrl}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">
+                    API token (bearer){selectedAdapter.requiresToken ? "" : " — optional"}
+                  </span>
+                  <input
+                    type="password"
+                    value={analyticsToken}
+                    onChange={(e) => setAnalyticsToken(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder="eyJ… (stored securely on the connection)"
+                    autoComplete="off"
+                  />
+                </label>
+                {selectedAdapter.hint && (
+                  <p className="text-[11px] text-[var(--text-4)]">{selectedAdapter.hint}</p>
+                )}
+              </div>
+            )}
+
+            {/* Shared filters — ingestion sources only (analytics has none) */}
+            {LIVE_SOURCES.includes(source) && source !== "analytics" && (
               <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
             )}
 
@@ -1576,6 +1663,22 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
 // ─── reports view ────────────────────────────────────────────────────────────
 
+function TrendBadge({ delta }: { delta: number }) {
+  if (!delta) return null;
+  const up = delta > 0;
+  return (
+    <span
+      className={cn(
+        "ml-1 inline-flex items-center gap-0.5 rounded-[4px] px-1 py-px text-[10px] font-semibold",
+        up ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-600",
+      )}
+      title={`${up ? "+" : ""}${delta.toLocaleString()} vs last month`}
+    >
+      {up ? "▲" : "▼"} {Math.abs(delta).toLocaleString()}
+    </span>
+  );
+}
+
 function emptyPayload(author: string, forMonth?: Date): SupportReportPayload {
   // Default to previous month — when creating in June you're reporting on May
   const ref = forMonth ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; })();
@@ -1601,24 +1704,7 @@ function emptyPayload(author: string, forMonth?: Date): SupportReportPayload {
     refundsProcessed: 0,
     refundTotalValue: 0,
     refundNotes: "",
-    usageTotalUsers: 0,
-    usageVerifiedUsers: 0,
-    usageActiveSubscriptions: 0,
-    usageSubIosMonthly: 0,
-    usageSubIosYearly: 0,
-    usageSubAndroidMonthly: 0,
-    usageSubAndroidYearly: 0,
-    usageSubStripeMonthly: 0,
-    usageSubStripeYearly: 0,
-    usageEventsTotal: 0,
-    usageEventsRenewals: 0,
-    usageEventsNew: 0,
-    usageIosTotal: 0,
-    usageIosNew: 0,
-    usageAndroidTotal: 0,
-    usageAndroidNew: 0,
-    usageStripeTotal: 0,
-    usageStripeNew: 0,
+    metrics: [],
     summaryText: "",
   };
 }
@@ -1690,13 +1776,17 @@ function ReportBuilder({
     report?.payload ?? emptyPayload(authorDefault),
   );
 
-  // Fellas API import
-  const [apiToken, setApiToken] = useState(() => {
-    try { return localStorage.getItem("fellas-api-token") ?? ""; } catch { return ""; }
-  });
-  const [showTokenInput, setShowTokenInput] = useState(false);
+  // Analytics API import — driven by the client's analytics connection (token lives
+  // server-side on the connection, no more localStorage).
+  const { data: connectionsData } = useSupportConnections(clientId);
+  const analyticsConn = useMemo(
+    () => (connectionsData?.connections ?? []).find((c) => c.source === "analytics") ?? null,
+    [connectionsData],
+  );
   const [fetchingApi, setFetchingApi] = useState(false);
   const [apiMsg, setApiMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const metrics = p.metrics ?? [];
 
   const createReport = useCreateSupportReport(clientId);
   const updateReport = useUpdateSupportReport(clientId);
@@ -1704,6 +1794,25 @@ function ReportBuilder({
 
   function update<K extends keyof SupportReportPayload>(key: K, val: SupportReportPayload[K]) {
     setP((prev) => ({ ...prev, [key]: val }));
+  }
+
+  function updateMetric(index: number, patch: Partial<AnalyticsReportMetric>) {
+    setP((prev) => {
+      const next = [...(prev.metrics ?? [])];
+      next[index] = { ...next[index], ...patch };
+      return { ...prev, metrics: next };
+    });
+  }
+
+  function addMetric() {
+    setP((prev) => ({
+      ...prev,
+      metrics: [...(prev.metrics ?? []), { key: `m${Date.now()}`, label: "", value: 0, group: "Custom" }],
+    }));
+  }
+
+  function removeMetric(index: number) {
+    setP((prev) => ({ ...prev, metrics: (prev.metrics ?? []).filter((_, i) => i !== index) }));
   }
 
   function applyMonth(yyyyMm: string) {
@@ -1723,62 +1832,31 @@ function ReportBuilder({
     setFetchingApi(true);
     setApiMsg(null);
     try {
-      if (apiToken.trim()) {
-        try { localStorage.setItem("fellas-api-token", apiToken.trim()); } catch { /* ignore */ }
+      const month = p.periodStart.slice(0, 7); // YYYY-MM
+      const res = await fetch(`/api/support/clients/${clientId}/analytics?month=${month}`);
+      const json = await res.json().catch(() => ({})) as
+        { data?: { periodLabel?: string; metrics?: AnalyticsReportMetric[] }; error?: string };
+      if (!res.ok) throw new Error(json.error ?? `Analytics API: ${res.status}`);
+
+      const fetched = json.data?.metrics ?? [];
+      if (fetched.length === 0) {
+        setApiMsg({ type: "ok", text: `No metrics returned for ${month}. Check the connection in Connectors.` });
+        return;
       }
-      const year = p.periodStart.slice(0, 4);
-      const monthPad = p.periodStart.slice(5, 7);
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiToken.trim()) headers["Authorization"] = `Bearer ${apiToken.trim()}`;
 
-      const [subRes, userRes] = await Promise.all([
-        fetch(`https://api.fellasloaded.com/api/analytics/subscriptions/transactions/monthly_summary/?year=${year}`, { headers }),
-        fetch(`https://api.fellasloaded.com/api/analytics/users/monthly/`, { headers }),
-      ]);
+      // Merge by key — keep manual overrides for keys not in the fetch, replace the rest.
+      setP((prev) => {
+        const existing = prev.metrics ?? [];
+        const byKey = new Map(existing.map((m) => [m.key, m]));
+        for (const m of fetched) byKey.set(m.key, m);
+        return { ...prev, metrics: Array.from(byKey.values()) };
+      });
 
-      if (!subRes.ok) throw new Error(`Subscriptions API: ${subRes.status}`);
-      if (!userRes.ok) throw new Error(`Users API: ${userRes.status}`);
-
-      type SubRow = { platform: string; subscription_type: string; month: string; transaction_count: number; new_subscriptions: number; renewals: number };
-      type UserMonthly = { stripe: Array<{ month: string; count: number }>; ios: Array<{ month: string; count: number }>; android: Array<{ month: string; count: number }> };
-
-      const subData = (await subRes.json()) as SubRow[];
-      const userData = (await userRes.json()) as UserMonthly;
-
-      const prefix = `${year}-${monthPad}`;
-      const monthRows = Array.isArray(subData) ? subData.filter((r) => r.month.startsWith(prefix)) : [];
-
-      const getNew = (platform: string, type: string) =>
-        monthRows.find((r) => r.platform === platform && r.subscription_type === type)?.new_subscriptions ?? 0;
-      const getMonthUser = (arr: Array<{ month: string; count: number }>) =>
-        arr?.find((r) => r.month.startsWith(prefix))?.count ?? 0;
-
-      const iosMonthlyNew = getNew("ios", "monthly_subscription");
-      const iosYearlyNew = getNew("ios", "yearly_subscription");
-      const androidMonthlyNew = getNew("android", "monthly_subscription");
-      const androidYearlyNew = getNew("android", "yearly_subscription");
-      const stripeNew = monthRows.filter((r) => r.platform === "stripe").reduce((s, r) => s + r.new_subscriptions, 0);
-
-      setP((prev) => ({
-        ...prev,
-        usageEventsNew: monthRows.reduce((s, r) => s + r.new_subscriptions, 0),
-        usageEventsRenewals: monthRows.reduce((s, r) => s + r.renewals, 0),
-        usageEventsTotal: monthRows.reduce((s, r) => s + r.transaction_count, 0),
-        usageSubIosMonthly: iosMonthlyNew,
-        usageSubIosYearly: iosYearlyNew,
-        usageSubAndroidMonthly: androidMonthlyNew,
-        usageSubAndroidYearly: androidYearlyNew,
-        usageSubStripeMonthly: monthRows.find((r) => r.platform === "stripe" && r.subscription_type.includes("monthly"))?.new_subscriptions ?? stripeNew,
-        usageSubStripeYearly: getNew("stripe", "yearly_subscription"),
-        usageIosNew: iosMonthlyNew + iosYearlyNew,
-        usageAndroidNew: androidMonthlyNew + androidYearlyNew,
-        usageStripeNew: stripeNew,
-        usageIosTotal: getMonthUser(userData.ios),
-        usageAndroidTotal: getMonthUser(userData.android),
-        usageStripeTotal: getMonthUser(userData.stripe),
-      }));
-
-      setApiMsg({ type: "ok", text: `Fetched ${monthRows.length} subscription rows for ${prefix}` });
+      const changed = fetched.filter((m) => typeof m.previous === "number" && m.value !== m.previous).length;
+      setApiMsg({
+        type: "ok",
+        text: `Fetched ${fetched.length} metric${fetched.length === 1 ? "" : "s"} for ${month}${changed > 0 ? ` · ${changed} changed vs last month` : ""}.`,
+      });
     } catch (err) {
       setApiMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to fetch" });
     } finally {
@@ -1933,92 +2011,106 @@ function ReportBuilder({
         </div>
       </div>
 
-      {/* 06 // USAGE & SUBSCRIPTIONS */}
+      {/* 06 // ANALYTICS */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("06", "USAGE & SUBSCRIPTIONS", (
+        {widgetHeader("06", "ANALYTICS", (
+          analyticsConn ? (
+            <button
+              type="button"
+              onClick={() => void handleFetchFromApi()}
+              disabled={fetchingApi}
+              className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)] disabled:opacity-50"
+            >
+              {fetchingApi ? (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+              ) : (
+                <ArrowPathIcon className="h-3 w-3" />
+              )}
+              {fetchingApi ? "Fetching…" : `Fetch ${p.periodStart.slice(0, 7)}`}
+            </button>
+          ) : null
+        ))}
+
+        {/* connection status / hint */}
+        <div className="border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-3 space-y-1.5">
+          {analyticsConn ? (
+            <p className="text-[11px] text-[var(--text-3)]">
+              Pulling from <span className="font-semibold text-[var(--text-1)]">{analyticsConn.label}</span> for{" "}
+              <span className="font-mono">{p.periodStart.slice(0, 7)}</span>. Use the month picker above to change the period —
+              trends compare against the previous month automatically.
+            </p>
+          ) : (
+            <p className="text-[11px] text-[var(--text-4)]">
+              No analytics API connected. Add an <span className="font-medium text-[var(--text-3)]">Analytics API</span> connector
+              in <span className="font-medium text-[var(--text-3)]">Connectors</span> to auto-fill these figures, or add metrics manually below.
+            </p>
+          )}
+          {apiMsg && (
+            <p className={`text-[11px] ${apiMsg.type === "ok" ? "text-emerald-600" : "text-red-500"}`}>
+              {apiMsg.type === "ok" ? "✓" : "✗"} {apiMsg.text}
+            </p>
+          )}
+        </div>
+
+        <div className="p-5 space-y-5">
+          {metrics.length === 0 && (
+            <p className="text-xs text-[var(--text-4)]">
+              No metrics yet. {analyticsConn ? "Click “Fetch” above" : "Add one manually"} to populate this section.
+            </p>
+          )}
+
+          {/* grouped metric cards */}
+          {Array.from(new Set(metrics.map((m) => m.group ?? "Metrics"))).map((groupName) => (
+            <div key={groupName}>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">{groupName}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {metrics.map((m, i) => (m.group ?? "Metrics") !== groupName ? null : (
+                  <div key={m.key} className="group relative">
+                    <div className="mb-1 flex items-center gap-1">
+                      <input
+                        value={m.label}
+                        onChange={(e) => updateMetric(i, { label: e.target.value })}
+                        placeholder="Metric label"
+                        className="min-w-0 flex-1 bg-transparent text-[11px] font-medium text-[var(--text-3)] outline-none focus:text-[var(--text-1)]"
+                      />
+                      {typeof m.previous === "number" && m.value !== m.previous && (
+                        <TrendBadge delta={m.value - m.previous} />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeMetric(i)}
+                        className="shrink-0 text-[var(--text-4)] opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                        title="Remove metric"
+                      >
+                        <XMarkIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {m.unit && <span className="text-sm text-[var(--text-3)]">{m.unit}</span>}
+                      <input
+                        type="number"
+                        value={m.value || ""}
+                        onChange={(e) => updateMetric(i, { value: Number(e.target.value) || 0 })}
+                        className="h-8 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+                      />
+                    </div>
+                    {typeof m.previous === "number" && (
+                      <p className="mt-0.5 text-[10px] text-[var(--text-4)]">prev: {m.previous.toLocaleString()}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
           <button
             type="button"
-            onClick={() => setShowTokenInput((v) => !v)}
-            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+            onClick={addMetric}
+            className="flex items-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
           >
-            <ArrowPathIcon className="h-3 w-3" />
-            Fetch from API
+            <PlusIcon className="h-3.5 w-3.5" />
+            Add metric
           </button>
-        ))}
-        {/* Fellas API import panel */}
-        {showTokenInput && (
-          <div className="border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-3 space-y-2">
-            <p className="text-[11px] font-semibold text-[var(--text-3)]">Fellas Loaded API token (JWT)</p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiToken}
-                onChange={(e) => setApiToken(e.target.value)}
-                placeholder="eyJ… (optional for public endpoints)"
-                className="h-8 flex-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 font-mono text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={() => void handleFetchFromApi()}
-                disabled={fetchingApi}
-                className="flex h-8 items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                {fetchingApi ? (
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                ) : (
-                  <ArrowPathIcon className="h-3.5 w-3.5" />
-                )}
-                {fetchingApi ? "Fetching…" : `Fetch ${p.periodStart.slice(0, 7)}`}
-              </button>
-            </div>
-            {apiMsg && (
-              <p className={`text-[11px] ${apiMsg.type === "ok" ? "text-emerald-600" : "text-red-500"}`}>
-                {apiMsg.type === "ok" ? "✓" : "✗"} {apiMsg.text}
-              </p>
-            )}
-            <p className="text-[11px] text-[var(--text-4)]">Populates all subscription & platform activity fields for {p.periodStart.slice(0, 7)}. Token saved to browser.</p>
-          </div>
-        )}
-        <div className="p-5 space-y-5">
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">User base (all-time)</p>
-            <div className="grid grid-cols-2 gap-3">
-              {numInput("Total users", p.usageTotalUsers, (v) => update("usageTotalUsers", v))}
-              {numInput("Verified users", p.usageVerifiedUsers, (v) => update("usageVerifiedUsers", v))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Active subscriptions</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {numInput("Total active", p.usageActiveSubscriptions, (v) => update("usageActiveSubscriptions", v))}
-              {numInput("iOS Monthly", p.usageSubIosMonthly, (v) => update("usageSubIosMonthly", v))}
-              {numInput("iOS Yearly", p.usageSubIosYearly, (v) => update("usageSubIosYearly", v))}
-              {numInput("Android Monthly", p.usageSubAndroidMonthly, (v) => update("usageSubAndroidMonthly", v))}
-              {numInput("Android Yearly", p.usageSubAndroidYearly, (v) => update("usageSubAndroidYearly", v))}
-              {numInput("Stripe Monthly", p.usageSubStripeMonthly, (v) => update("usageSubStripeMonthly", v))}
-              {numInput("Stripe Yearly", p.usageSubStripeYearly, (v) => update("usageSubStripeYearly", v))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Subscription events this month</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {numInput("Total events", p.usageEventsTotal, (v) => update("usageEventsTotal", v))}
-              {numInput("Renewals", p.usageEventsRenewals, (v) => update("usageEventsRenewals", v))}
-              {numInput("New subscriptions", p.usageEventsNew, (v) => update("usageEventsNew", v))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">Platform activity (total / new)</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {numInput("iOS total", p.usageIosTotal, (v) => update("usageIosTotal", v))}
-              {numInput("iOS new", p.usageIosNew, (v) => update("usageIosNew", v))}
-              {numInput("Android total", p.usageAndroidTotal, (v) => update("usageAndroidTotal", v))}
-              {numInput("Android new", p.usageAndroidNew, (v) => update("usageAndroidNew", v))}
-              {numInput("Stripe total", p.usageStripeTotal, (v) => update("usageStripeTotal", v))}
-              {numInput("Stripe new", p.usageStripeNew, (v) => update("usageStripeNew", v))}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -2219,6 +2311,12 @@ function EditConnectorModal({
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
 
+  // Analytics API
+  const [analyticsAdapter, setAnalyticsAdapter] = useState(conn.scraperConfig?.adapter ?? ANALYTICS_ADAPTERS[0].key);
+  const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(conn.scraperConfig?.baseUrl ?? "");
+  const [analyticsToken, setAnalyticsToken] = useState(conn.scraperConfig?.apiToken ?? "");
+  const editSelectedAdapter = ANALYTICS_ADAPTERS.find((a) => a.key === analyticsAdapter) ?? ANALYTICS_ADAPTERS[0];
+
   // Shared filters (keywords, exclude, lookback, max, ignore-bots)
   const [filters, setFilters] = useState<FilterState>(() => initFilterState(conn.scraperConfig));
 
@@ -2289,6 +2387,14 @@ function EditConnectorModal({
         ...conn.scraperConfig,
         subreddit: redditSubreddit.trim(),
         ...f,
+      };
+    }
+    if (conn.source === "analytics") {
+      return {
+        ...conn.scraperConfig,
+        adapter: analyticsAdapter,
+        baseUrl: analyticsBaseUrl.trim() || editSelectedAdapter.defaultBaseUrl,
+        apiToken: analyticsToken.trim() || undefined,
       };
     }
     return conn.scraperConfig;
@@ -2483,8 +2589,51 @@ function EditConnectorModal({
           </div>
         )}
 
-        {/* Shared filters — live sources only */}
-        {LIVE_SOURCES.includes(conn.source) && (
+        {/* Analytics API config */}
+        {conn.source === "analytics" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <label className="block space-y-1">
+              <span className="app-field-label">Analytics source</span>
+              <select
+                value={analyticsAdapter}
+                onChange={(e) => {
+                  const next = ANALYTICS_ADAPTERS.find((a) => a.key === e.target.value) ?? ANALYTICS_ADAPTERS[0];
+                  setAnalyticsAdapter(next.key);
+                  if (!analyticsBaseUrl.trim()) setAnalyticsBaseUrl(next.defaultBaseUrl);
+                }}
+                className="app-select w-full"
+              >
+                {ANALYTICS_ADAPTERS.map((a) => (
+                  <option key={a.key} value={a.key}>{a.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">{analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}</span>
+              <input
+                value={analyticsBaseUrl}
+                onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder={editSelectedAdapter.defaultBaseUrl || "https://api.example.com/v1/metrics/"}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">API token (bearer){editSelectedAdapter.requiresToken ? "" : " — optional"}</span>
+              <input
+                type="password"
+                value={analyticsToken}
+                onChange={(e) => setAnalyticsToken(e.target.value)}
+                className="app-input w-full font-mono text-xs"
+                placeholder="Leave blank to keep the existing token"
+                autoComplete="off"
+              />
+            </label>
+            {editSelectedAdapter.hint && <p className="text-[11px] text-[var(--text-4)]">{editSelectedAdapter.hint}</p>}
+          </div>
+        )}
+
+        {/* Shared filters — ingestion sources only (analytics has none) */}
+        {LIVE_SOURCES.includes(conn.source) && conn.source !== "analytics" && (
           <ConnectorFilterFields source={conn.source} filters={filters} setFilters={setFilters} />
         )}
 

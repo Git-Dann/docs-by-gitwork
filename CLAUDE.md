@@ -96,6 +96,10 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 CLICKUP_TOKEN=""
 ```
 
+> **Care analytics tokens are NOT env vars.** Each Care client's product-analytics API
+> token is stored per-connection (on the `AccountConnection.scraperConfig`), set in the
+> Care **Connectors** tab via the "Analytics API" connector — see §15.
+
 ---
 
 ## 4. Module Map
@@ -452,3 +456,35 @@ In the last session, the following was completed:
    - **Mapping** (per `docs/clickup-import-plan.md`): folder→`WorkspaceClient` (normalized-name match + `FOLDER_ALIASES`), list→`FeatureBlock` (undated), `Milestones` list→`Milestone` (all, dated only), task→`Task` (**active only**), subtask→`Task.parentId` (one level, deeper flattened), urgent→HIGH, multi-assignee via native assignees + custom "Assignee" label resolved through `team-roster`, custom fields→`Task.metadata`, and `ClientAssignment` derived where a dev holds ≥1 task. Skips Support/Feedback/Course-request/`{{Legacy}}` lists; **keeps** Retainer lists (surfaced in the dry-run).
    - **"Active" is status-based, not `include_closed`** — ClickUp's "complete" is a *custom* status (`type !== "closed"`), so `include_closed=false` still returns finished work. The importer fetches everything and excludes any status that maps to DONE (`done/complete/closed/archived/cancelled/live/shipped/merged` + structural closed/done type).
    - **How to run**: set `CLICKUP_TOKEN` in Vercel env → `POST /api/dev/import-clickup` (admin only) defaults to **`dryRun: true`** and returns per-client counts (blocks / milestones / active tasks / subtasks) + `unmatchedFolders` / `unmatchedAssignees` / `knownButMissingUsers`, writing nothing. Review, optionally pilot one client with `{"clientSlug":"…"}`, then re-POST `{"dryRun": false}` to commit. Re-runnable (keyed on `clickupId`). **Prerequisite**: run `POST /api/dev/seed-team` first so the dev roster exists as Foundry Users (else assignees land in `knownButMissingUsers`).
+
+## 15. Recent Changes (June 2026) — Care analytics connectors (multi-client reporting)
+
+The monthly Care report's usage section is now **API-driven per client**, replacing the
+hard-coded Fellas-only fetch. Each Care client can connect their product-analytics API and
+the report auto-fills metrics with **month-over-month trends**.
+
+- **New connector** — "Analytics API" source (`SupportSource.ANALYTICS`, added to the enum).
+  Set up in Care → **Connectors** → pick an adapter, paste the API base URL + bearer token.
+  Stored on `AccountConnection.scraperConfig` as `{ adapter, baseUrl, apiToken }` (token is
+  server-side, no longer in `localStorage`). Editable later via the Edit connector modal.
+- **Adapter framework** — `src/server/support-analytics/`: `types.ts` (`AnalyticsMetric`,
+  `AnalyticsSnapshot`, `AnalyticsAdapter`, `getJson`), `fellas.ts` (subscription/user metrics —
+  ported from the old client-side transform), `bigwedge.ts` (Big Wedge Golf — month-scoped
+  rounds-played via `/api/v1/rounds/?date_from&date_to`, plus best-effort flattened
+  `analytics/overall-report` + `feedback/stats`), `generic.ts` (`flattenMetrics` helper + a
+  "Generic JSON API" adapter that turns any numeric field into a metric), `index.ts` (registry
+  + `runAnalytics()` which fetches the target month **and** the previous month, merging
+  previous values by metric `key` for trends). **Add a new client = add one adapter + register
+  it.**
+- **Route** — `GET /api/support/clients/[clientId]/analytics?month=YYYY-MM` finds the client's
+  ANALYTICS connection, runs the adapter (current + previous month), returns a normalised
+  snapshot. Replaces the deleted hard-coded `/api/support/fellas-proxy`.
+- **Report payload** — `SupportReportPayload.metrics: AnalyticsReportMetric[]` (flexible
+  `{ key, label, value, previous?, unit?, group? }`) replaced the rigid `usage*` fields. The
+  builder's section 06 ("ANALYTICS") renders fetched metrics grouped, editable, with
+  `TrendBadge`s, plus manual "Add metric". Month is driven by the existing month picker. The
+  printable report (`/app/support/reports/[id]`) renders the metrics array with trend deltas.
+  Old reports keep their JSON (payload is loose, un-Zod'd) — just re-fetch to populate metrics.
+- **Caveat** — the Big Wedge adapter's `overall-report`/`feedback/stats` shapes are undocumented
+  in their OpenAPI spec, so those metrics are flattened best-effort and may want refining once a
+  live admin token + sample response are available. Rounds-played is clean and month-scoped.

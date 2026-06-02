@@ -142,41 +142,44 @@ function SupportReportDocument({ period, payload: p }: { period: string; payload
           </section>
         )}
 
-        {/* 05 — Usage & Subscriptions */}
-        {(p.usageTotalUsers > 0 || p.usageActiveSubscriptions > 0 || p.usageEventsTotal > 0) && (
-          <section className="proposal-block-avoid space-y-4 border-b border-[var(--border-2)] pb-10 last:border-0 last:pb-0 print:pb-8">
-            <p className="app-eyebrow">05 // Usage &amp; Subscriptions</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {[
-                { label: "Total users", value: p.usageTotalUsers },
-                { label: "Verified users", value: p.usageVerifiedUsers },
-                { label: "Active subs", value: p.usageActiveSubscriptions },
-                { label: "iOS monthly", value: p.usageSubIosMonthly },
-                { label: "iOS yearly", value: p.usageSubIosYearly },
-                { label: "Android monthly", value: p.usageSubAndroidMonthly },
-                { label: "Android yearly", value: p.usageSubAndroidYearly },
-                { label: "Stripe monthly", value: p.usageSubStripeMonthly },
-                { label: "Stripe yearly", value: p.usageSubStripeYearly },
-                { label: "Events total", value: p.usageEventsTotal },
-                { label: "Renewals", value: p.usageEventsRenewals },
-                { label: "New events", value: p.usageEventsNew },
-                { label: "iOS total", value: p.usageIosTotal },
-                { label: "iOS new", value: p.usageIosNew },
-                { label: "Android total", value: p.usageAndroidTotal },
-                { label: "Android new", value: p.usageAndroidNew },
-                { label: "Stripe total", value: p.usageStripeTotal },
-                { label: "Stripe new", value: p.usageStripeNew },
-              ]
-                .filter((s) => (s.value ?? 0) > 0)
-                .map((s) => (
-                  <div key={s.label} className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">{s.label}</p>
-                    <p className="mt-1 text-xl font-semibold text-[var(--text-1)]">{s.value ?? 0}</p>
+        {/* 05 — Analytics */}
+        {(() => {
+          const metrics = (p.metrics ?? []).filter((m) => m.label.trim() && (m.value ?? 0) !== 0);
+          if (metrics.length === 0) return null;
+          const groups = Array.from(new Set(metrics.map((m) => m.group ?? "Metrics")));
+          return (
+            <section className="proposal-block-avoid space-y-5 border-b border-[var(--border-2)] pb-10 last:border-0 last:pb-0 print:pb-8">
+              <p className="app-eyebrow">05 // Analytics</p>
+              {groups.map((groupName) => (
+                <div key={groupName} className="space-y-2">
+                  {groups.length > 1 && (
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{groupName}</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {metrics
+                      .filter((m) => (m.group ?? "Metrics") === groupName)
+                      .map((m) => {
+                        const delta = typeof m.previous === "number" ? m.value - m.previous : null;
+                        return (
+                          <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">{m.label}</p>
+                            <p className="mt-1 text-xl font-semibold text-[var(--text-1)]">
+                              {m.unit ?? ""}{m.value.toLocaleString()}
+                            </p>
+                            {delta !== null && delta !== 0 && (
+                              <p className={`mt-0.5 text-[11px] font-medium ${delta > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last month
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
-                ))}
-            </div>
-          </section>
-        )}
+                </div>
+              ))}
+            </section>
+          );
+        })()}
 
         {/* 06 — Summary */}
         {p.summaryText && (
