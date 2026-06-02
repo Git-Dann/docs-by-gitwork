@@ -3,20 +3,22 @@
 import { useState } from "react";
 import { cn } from "@/lib/format";
 import { OverviewTab } from "@/components/backstage/overview-tab";
+import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
 import { ApprovalsTab } from "@/components/backstage/approvals-tab";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-type Tab = "overview" | "leave" | "expenses" | "approvals";
+export type BackstageTab = "overview" | "calendar" | "leave" | "expenses" | "approvals";
 
 export function BackstageWorkspace() {
   const { canApprove, canManageExpenses } = useBackstageAccess();
 
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<BackstageTab>("overview");
 
-  const tabs: Array<{ key: Tab; label: string; visible: boolean }> = [
+  const tabs: Array<{ key: BackstageTab; label: string; visible: boolean }> = [
     { key: "overview", label: "Overview", visible: true },
+    { key: "calendar", label: "Calendar", visible: true },
     { key: "leave", label: "Leave", visible: true },
     { key: "expenses", label: "Expenses", visible: canManageExpenses },
     { key: "approvals", label: "Approvals", visible: canApprove },
@@ -45,7 +47,8 @@ export function BackstageWorkspace() {
       </div>
 
       <div className="min-h-0">
-        {tab === "overview" ? <OverviewTab /> : null}
+        {tab === "overview" ? <OverviewTab onNavigate={setTab} /> : null}
+        {tab === "calendar" ? <CalendarTab /> : null}
         {tab === "leave" ? <LeaveTab /> : null}
         {tab === "expenses" && canManageExpenses ? <ExpensesTab /> : null}
         {tab === "approvals" && canApprove ? <ApprovalsTab /> : null}
