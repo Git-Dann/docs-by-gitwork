@@ -36,3 +36,20 @@ export async function getUserGoogleAuth(): Promise<UserGoogleAuthResult> {
 
   return { ok: true, client, email: user.googleOAuthEmail };
 }
+
+/**
+ * Build an OAuth2 client directly from a stored per-user refresh token — no session required.
+ * For background jobs (e.g. the Scribe transcript cron) that act on behalf of users without a
+ * request context. Returns null when the Google client env vars aren't configured.
+ */
+export function googleClientForRefreshToken(
+  refreshToken: string,
+): InstanceType<typeof google.auth.OAuth2> | null {
+  const clientId = process.env.AUTH_GOOGLE_ID ?? process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.AUTH_GOOGLE_SECRET ?? process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  const client = new google.auth.OAuth2(clientId, clientSecret);
+  client.setCredentials({ refresh_token: refreshToken });
+  return client;
+}

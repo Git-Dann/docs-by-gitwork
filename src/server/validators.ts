@@ -857,3 +857,24 @@ export const featureBlockUpdateSchema = z.object({
 export const timelineShareSchema = z.object({
   enabled: z.boolean(),
 });
+
+// ── Scribe (meeting notes) ───────────────────────────────────────────────
+export const meetingIngestSchema = z.object({
+  calendarEventId: z.string().min(1),
+  meetingCode: z.string().min(1), // bare code or full Meet URL
+  title: z.string().min(1),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  attendees: z.array(z.string()).optional(),
+});
+
+export const meetingUpdateSchema = z
+  .object({
+    actionItemId: z.string().optional(),
+    done: z.boolean().optional(),
+    clientId: z.string().nullable().optional(),
+  })
+  .refine(
+    (v) => (v.actionItemId !== undefined && v.done !== undefined) || v.clientId !== undefined,
+    { message: "Provide actionItemId + done to toggle an item, or clientId to reassign." },
+  );

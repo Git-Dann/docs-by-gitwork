@@ -11,11 +11,13 @@ import {
   EyeIcon,
   EyeSlashIcon,
   GlobeAltIcon,
+  MagnifyingGlassIcon,
   PencilIcon,
   PlusIcon,
   SignalIcon,
   SparklesIcon,
   TrashIcon,
+  VideoCameraIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
@@ -28,7 +30,10 @@ import { ClientPlatformFormModal } from "@/components/clients/client-platform-fo
 import { StatusBadge } from "@/components/status-badge";
 import {
   useClientDetail,
+  useClientMeetings,
   useClientSlackActivity,
+  useIngestClientMeeting,
+  useToggleMeetingActionItem,
   useCreateClientDesign,
   useCreateClientPlatform,
   useDeleteClientDesign,
@@ -41,7 +46,7 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
-import { fetchSlackChannels, type SlackAvailableChannel } from "@/lib/api";
+import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -635,7 +640,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 11 // DESIGNS ── */}
+      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side) ── */}
+      <div className="grid grid-cols-2 gap-4">
+      {/* 11 // DESIGNS */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
@@ -670,7 +677,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {designs.map((design) => (
                 <DesignCard
                   key={design.id}
@@ -685,12 +692,18 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 12 // NOTES ── */}
+      {/* 12 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
+      <section className="widget-card">
+        <MeetingNotesSection slug={slug} />
+      </section>
+      </div>
+
+      {/* ── 13 // NOTES ── */}
       {client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">12</span>
+              <span className="widget-header__label--number">13</span>
               {" // NOTES"}
             </span>
           </div>
@@ -706,11 +719,11 @@ export function ClientDetail({ slug }: { slug: string }) {
       {/* Row 1: Documents + Pulse */}
       <div className="grid grid-cols-2 gap-4">
 
-        {/* 13 // DOCUMENTS */}
+        {/* 14 // DOCUMENTS */}
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">13</span>
+              <span className="widget-header__label--number">14</span>
               {" // DOCUMENTS"}
             </span>
             <span className="widget-header__status">
@@ -763,11 +776,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
 
 
-        {/* 14 // PULSE SCANS */}
+        {/* 15 // PULSE SCANS */}
         <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">14</span>
+                <span className="widget-header__label--number">15</span>
                 {" // PULSE SCANS"}
               </span>
               {pulseScans.length > 0 && (
@@ -846,11 +859,11 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {/* Row 2: Developers + Studies */}
       <div className="grid grid-cols-2 gap-4">
-        {/* 15 // DEVELOPERS */}
+        {/* 16 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">15</span>
+              <span className="widget-header__label--number">16</span>
               {" // DEVELOPERS"}
             </span>
             {placements && placements.length > 0 ? (
@@ -876,12 +889,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
 
 
-        {/* 16 // STUDIES */}
+        {/* 17 // STUDIES */}
         {!isSuggested && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">16</span>
+                <span className="widget-header__label--number">17</span>
                 {" // STUDIES"}
               </span>
               <div className="flex items-center gap-2">
@@ -986,16 +999,15 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-
       </div>
 
       {/* Full-width optionals */}
-        {/* 17 // PROOF DOCUMENTS */}
+        {/* 18 // PROOF DOCUMENTS */}
         {proofDocuments.length > 0 && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">17</span>
+                <span className="widget-header__label--number">18</span>
                 {" // PROOF DOCUMENTS"}
               </span>
             </div>
@@ -1075,6 +1087,257 @@ export function ClientDetail({ slug }: { slug: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// MeetingNotesSection — Scribe: client-scoped Google Meet notes, surfaced quietly here.
+function meetingStatusChip(status: ScribeMeeting["status"]): { label: string; cls: string } {
+  switch (status) {
+    case "SUMMARISED":
+      return { label: "Ready", cls: "bg-emerald-50 text-emerald-700" };
+    case "TRANSCRIBED":
+      return { label: "Summarising", cls: "bg-amber-50 text-amber-700" };
+    case "AWAITING_TRANSCRIPT":
+      return { label: "Awaiting", cls: "bg-[var(--surface-1)] text-[var(--text-3)]" };
+    case "ERROR":
+      return { label: "Error", cls: "bg-red-50 text-red-700" };
+    default:
+      return { label: "No notes", cls: "bg-[var(--surface-1)] text-[var(--text-3)]" };
+  }
+}
+
+function MeetingNotesSection({ slug }: { slug: string }) {
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
+  // Debounce so we search as the user pauses, not on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(input.trim()), 350);
+    return () => clearTimeout(t);
+  }, [input]);
+
+  const { data, isLoading } = useClientMeetings(slug, true, query);
+  const ingest = useIngestClientMeeting(slug);
+  const toggle = useToggleMeetingActionItem(slug);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const meetings = data?.meetings ?? [];
+  const candidates = data?.candidates ?? [];
+  const showSearch = Boolean(data) && (meetings.length > 0 || query.length > 0);
+
+  async function fetchNotes(args: {
+    calendarEventId: string;
+    meetingCode: string | null;
+    title: string;
+    start?: string;
+    end?: string;
+    attendees?: string[];
+  }) {
+    if (!args.meetingCode) return;
+    setBusyId(args.calendarEventId);
+    try {
+      await ingest.mutateAsync({
+        calendarEventId: args.calendarEventId,
+        meetingCode: args.meetingCode,
+        title: args.title,
+        start: args.start,
+        end: args.end,
+        attendees: args.attendees,
+      });
+    } catch {
+      /* error surfaced via ingest.isError */
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <>
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">12</span>
+          {" // MEETING NOTES"}
+        </span>
+        <span className="widget-header__status">
+          <VideoCameraIcon className="h-3 w-3" />
+          Scribe
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-4 p-5">
+        {showSearch && (
+          <div className="relative">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Search meeting notes…"
+              className="w-full rounded-[6px] border border-[var(--border-2)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--accent)] focus:outline-none"
+            />
+          </div>
+        )}
+
+        {isLoading ? (
+          <p className="widget-data-label animate-pulse">Loading…</p>
+        ) : (
+          <>
+            {meetings.length === 0 && candidates.length === 0 &&
+              (query ? (
+                <p className="py-6 text-center text-sm text-[var(--text-4)]">
+                  No notes match “{query}”.
+                </p>
+              ) : (
+                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-8 text-center">
+                  <p className="text-sm text-[var(--text-4)]">
+                    {data?.calendarConnected
+                      ? "No recent Google Meet calls with this client."
+                      : "Connect Google (sign out and back in) to let Scribe capture notes from your Meet calls."}
+                  </p>
+                </div>
+              ))}
+
+            {candidates.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-[var(--text-3)]">Recent calls</p>
+                {candidates.map((c) => (
+                  <div
+                    key={c.calendarEventId}
+                    className="flex items-center justify-between gap-3 rounded-[6px] border border-[var(--border-1)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{c.title}</p>
+                      <p className="text-xs text-[var(--text-3)]">{formatDate(c.start)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busyId === c.calendarEventId}
+                      onClick={() => void fetchNotes(c)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                      {busyId === c.calendarEventId ? (
+                        <>
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Fetching
+                        </>
+                      ) : (
+                        <>
+                          <SparklesIcon className="h-3 w-3" />
+                          Fetch notes
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {ingest.isError && (
+              <p className="text-xs text-rose-600">
+                {(ingest.error as Error)?.message ?? "Couldn't fetch notes."}
+              </p>
+            )}
+
+            {meetings.map((m) => {
+              const chip = meetingStatusChip(m.status);
+              const decisions = Array.isArray(m.decisions) ? m.decisions : [];
+              const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
+              return (
+                <div key={m.id} className="rounded-[8px] border border-[var(--border-1)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-[var(--text-1)]">{m.title}</p>
+                      <p className="text-xs text-[var(--text-3)]">
+                        {formatDate(m.startedAt ?? m.createdAt)}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                        chip.cls,
+                      )}
+                    >
+                      {chip.label}
+                    </span>
+                  </div>
+
+                  {m.summary && (
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
+                      {m.summary}
+                    </p>
+                  )}
+
+                  {decisions.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
+                        Decisions
+                      </p>
+                      <ul className="mt-1 list-disc pl-5 text-sm text-[var(--text-2)]">
+                        {decisions.map((d, i) => (
+                          <li key={i}>{d}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {m.actionItems.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
+                        Action items
+                      </p>
+                      <ul className="mt-1 flex flex-col gap-1">
+                        {m.actionItems.map((a) => (
+                          <li key={a.id} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                            <input
+                              type="checkbox"
+                              checked={a.done}
+                              onChange={() => toggle.mutate({ meetingId: m.id, actionItemId: a.id, done: !a.done })}
+                              className="mt-0.5"
+                            />
+                            <span className={a.done ? "text-[var(--text-4)] line-through" : ""}>
+                              {a.text}
+                              {a.owner ? <span className="text-[var(--text-4)]"> — {a.owner}</span> : null}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {retryable && (
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-xs text-[var(--text-4)]">
+                        {m.status === "NO_TRANSCRIPT"
+                          ? "No notes yet — Gemini notes may not be ready for this call, or weren't generated."
+                          : "Summarising failed."}
+                      </p>
+                      {m.calendarEventId && m.meetingCode && (
+                        <button
+                          type="button"
+                          disabled={busyId === m.calendarEventId}
+                          onClick={() =>
+                            void fetchNotes({
+                              calendarEventId: m.calendarEventId!,
+                              meetingCode: m.meetingCode,
+                              title: m.title,
+                              start: m.startedAt ?? undefined,
+                              end: m.endedAt ?? undefined,
+                              attendees: m.attendees,
+                            })
+                          }
+                          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+                        >
+                          {busyId === m.calendarEventId ? "Retrying" : "Retry"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ClientDevelopersSection — compact name roster, Portal read-only view
 // ---------------------------------------------------------------------------
 function ClientDevelopersSection({

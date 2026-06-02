@@ -176,6 +176,7 @@ model User {
   notificationPreference    NotificationPreference?
   auditLogEntries           AuditLog[]
   meetingSummariesGenerated MeetingSummary[]        @relation("MeetingSummaryGenerator")
+  meetingsOwned             Meeting[]               @relation("MeetingOwner")
   leaveRequests             LeaveRequest[]          @relation("LeaveRequester")
   leaveRequestsApproved     LeaveRequest[]          @relation("LeaveApprover")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
@@ -283,6 +284,7 @@ model Workspace {
   slackWebhooks            SlackWebhookSubscription[]
   auditLogs                AuditLog[]
   meetingSummaries         MeetingSummary[]
+  meetings                 Meeting[]
   aiResponseCache          AiResponseCache[]
   leaveRequests            LeaveRequest[]
   expenses                 Expense[]
@@ -791,6 +793,7 @@ model WorkspaceClient {
   supportClients       SupportClient[]
   placements           Placement[]
   studies              Study[]
+  meetings             Meeting[]
   bankAccount          ClientBankAccount?
   onboarding           ClientOnboarding?
   assignments          ClientAssignment[]
@@ -1944,6 +1947,69 @@ model MeetingSummary {
 
   @@unique([workspaceId, eventId])
   @@index([workspaceId, updatedAt])
+}
+
+// ── Scribe (client-scoped AI notetaker) ─────────────────────────────────
+// Scribe turns Google Meet's native transcripts into client-scoped meeting
+// records: transcript + AI summary + decisions + action items. Surfaced
+// quietly on the client detail page in Portal. Capture is offloaded to
+// Google Meet (no long-running compute here) — see src/server/google-meet.ts.
+enum MeetingNoteStatus {
+  AWAITING_TRANSCRIPT // calendar event known, transcript not yet fetched
+  TRANSCRIBED // transcript pulled, summary pending
+  SUMMARISED // summary + decisions + action items ready
+  NO_TRANSCRIPT // meeting had no transcript available
+  ERROR // ingest/summarise failed
+}
+
+model Meeting {
+  id                   String            @id @default(cuid())
+  workspaceId          String
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  // Attributed client. Scribe is client-scoped; unattributed meetings are not shown in Portal.
+  clientId             String?
+  client               WorkspaceClient?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // Google Calendar event id + Meet meeting code (from hangoutLink, e.g. "abc-defg-hij").
+  calendarEventId      String?
+  meetingCode          String?
+  // Meet API resource name "conferenceRecords/{id}" — the natural idempotency key per session.
+  conferenceRecordName String?
+  title                String
+  startedAt            DateTime?
+  endedAt              DateTime?
+  attendees            String[]          @default([]) // attendee emails
+  status               MeetingNoteStatus @default(AWAITING_TRANSCRIPT)
+  transcriptText       String?           @db.Text // flattened "Speaker: text" transcript
+  transcriptData       Json? // structured entries [{ speaker, text, startTime }]
+  summary              String?           @db.Text
+  decisions            Json? // string[]
+  modelUsed            String?
+  // Whose Google account surfaced the transcript (per-user OAuth).
+  ownerUserId          String?
+  owner                User?             @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  actionItems          MeetingActionItem[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  // Idempotency: manual + cron ingest upsert by calendar event; conference record is the
+  // secondary natural key once a session is matched. Both columns are nullable (Postgres
+  // permits multiple NULLs), so rows without one don't collide.
+  @@unique([workspaceId, calendarEventId])
+  @@unique([workspaceId, conferenceRecordName])
+  @@index([clientId, startedAt])
+  @@index([workspaceId, status])
+}
+
+model MeetingActionItem {
+  id        String   @id @default(cuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  text      String
+  owner     String? // free-text owner name/email pulled from the transcript
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([meetingId])
 }
 
 // ── Backstage (internal ops): leave + expenses ──────────────────────────

@@ -1601,6 +1601,98 @@ export async function generateMeetingSummary(data: {
   });
 }
 
+// ─── Scribe (client meeting notes) ─────────────────────────────────────────
+
+export type ScribeMeetingStatus =
+  | "AWAITING_TRANSCRIPT"
+  | "TRANSCRIBED"
+  | "SUMMARISED"
+  | "NO_TRANSCRIPT"
+  | "ERROR";
+
+export interface ScribeActionItem {
+  id: string;
+  text: string;
+  owner: string | null;
+  done: boolean;
+}
+
+export interface ScribeMeeting {
+  id: string;
+  clientId: string | null;
+  calendarEventId: string | null;
+  meetingCode: string | null;
+  title: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  attendees: string[];
+  status: ScribeMeetingStatus;
+  summary: string | null;
+  decisions: string[] | null;
+  modelUsed: string | null;
+  createdAt: string;
+  updatedAt: string;
+  actionItems: ScribeActionItem[];
+  // Present only on the detail endpoint.
+  transcriptText?: string | null;
+}
+
+export interface ScribeCandidate {
+  calendarEventId: string;
+  title: string;
+  start: string;
+  end: string;
+  meetingCode: string | null;
+  attendees: string[];
+}
+
+export interface ClientMeetingsResponse {
+  meetings: ScribeMeeting[];
+  candidates: ScribeCandidate[];
+  calendarConnected: boolean;
+  query?: string | null;
+}
+
+export async function getClientMeetings(slug: string, q?: string): Promise<ClientMeetingsResponse> {
+  const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  return apiFetch(`/api/clients/${slug}/meetings${qs}`);
+}
+
+export async function ingestClientMeeting(
+  slug: string,
+  body: {
+    calendarEventId: string;
+    meetingCode: string;
+    title: string;
+    start?: string;
+    end?: string;
+    attendees?: string[];
+  },
+): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getClientMeeting(slug: string, id: string): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/${id}`);
+}
+
+export async function updateMeetingActionItem(
+  slug: string,
+  meetingId: string,
+  body: { actionItemId: string; done: boolean },
+): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/${meetingId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+
 // ─── Backstage (internal ops) ──────────────────────────────────────────────
 
 import type {

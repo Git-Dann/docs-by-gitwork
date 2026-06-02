@@ -16,13 +16,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // (separate from GOOGLE_CLIENT_ID/SECRET used by the Care Gmail connector)
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-      // Request Gmail + Calendar read access so dashboard widgets work
+      // Request Gmail + Calendar read access so dashboard widgets work, plus
+      // Drive read access so Scribe can read Google Meet's "Notes by Gemini" docs.
       authorization: {
         params: {
           scope:
             "openid email profile " +
             "https://www.googleapis.com/auth/gmail.readonly " +
-            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/calendar.readonly " +
+            "https://www.googleapis.com/auth/drive.readonly",
           access_type: "offline",
           // Force the consent prompt every sign-in so Google always returns a refresh_token.
           // Without this, Google only returns refresh_token on the *first* consent — which
