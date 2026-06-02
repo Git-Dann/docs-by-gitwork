@@ -227,6 +227,11 @@ model Workspace {
   geminiModel              String?
   localLlmUrl              String?
   localLlmModel            String?
+  /// Read-only org Admin API keys used ONLY by the Super-Admin AI Spend card to read
+  /// billed cost from the provider Cost APIs. Distinct from the workspace API keys above.
+  /// Env vars ANTHROPIC_ADMIN_KEY / OPENAI_ADMIN_KEY take precedence when set.
+  anthropicAdminApiKey     String?
+  openaiAdminApiKey        String?
   externalApiKey           String?
   googleServiceAccountJson String?
   googleSubjectEmail       String?

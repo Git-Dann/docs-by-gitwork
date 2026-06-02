@@ -234,43 +234,66 @@ export function TeamSection() {
 
       {/* Members */}
       <section>
-        <h2 className="app-eyebrow mb-3">Members</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="app-eyebrow">Members</h2>
+          <span className="text-xs text-[var(--text-4)]">{members.length} people</span>
+        </div>
         {loading ? (
           <p className="text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
-          <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
-            {members.map((m) => (
-              <div key={m.id} className="flex items-center gap-4 px-5 py-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
-                  {(m.user.name ?? m.user.email)[0].toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[var(--text-1)]">
-                    {m.user.name ?? m.user.email}
-                  </p>
-                  <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    isAtLeast(m.role, "ADMIN")
-                      ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                      : "bg-[var(--surface-2)] text-[var(--text-3)]"
-                  }`}
+          <div className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
+            {/* Header row */}
+            <div className="hidden items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_64px]">
+              <span className="app-eyebrow">Member</span>
+              <span className="app-eyebrow">Role</span>
+              <span className="app-eyebrow">Access</span>
+              <span />
+            </div>
+            <div className="divide-y divide-[var(--border-2)]">
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-3.5 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_64px]"
                 >
-                  {roleLabel(m.role)}
-                </span>
-                {canManageRole(sessionRole, m.role) ? (
-                  <button
-                    onClick={() => setAccessMember(m)}
-                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                    title="Edit access"
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
+                      {(m.user.name ?? m.user.email)[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]">
+                        {m.user.name ?? m.user.email}
+                      </p>
+                      <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "hidden w-fit rounded-full px-2 py-0.5 text-xs font-medium sm:inline-block",
+                      isAtLeast(m.role, "ADMIN")
+                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                        : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                    )}
                   >
-                    <PencilIcon className="h-3.5 w-3.5" />
-                    Edit
-                  </button>
-                ) : null}
-              </div>
-            ))}
+                    {roleLabel(m.role)}
+                  </span>
+                  <span className="hidden truncate text-xs text-[var(--text-4)] sm:block">
+                    {accessSummary(m.role, m.permissions)}
+                  </span>
+                  {canManageRole(sessionRole, m.role) ? (
+                    <button
+                      onClick={() => setAccessMember(m)}
+                      className="flex items-center gap-1.5 justify-self-end rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      title="Edit access"
+                    >
+                      <PencilIcon className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </button>
+                  ) : (
+                    <span className="hidden sm:block" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </section>
@@ -352,6 +375,20 @@ const CATEGORY_CHIP: Record<PermissionCategory, string> = {
   settings: "bg-violet-50 text-violet-700",
   action: "bg-sky-50 text-sky-700",
 };
+
+const ALL_MODULE_IDS = PERMISSION_CATALOG.flatMap((g) => g.permissions)
+  .filter((p) => p.category === "module")
+  .map((p) => p.id);
+
+/** One-line summary of a member's effective access for the members table. */
+function accessSummary(role: string, permissions: string[]): string {
+  if (isAtLeast(role, "ADMIN")) return "Full access";
+  const moduleCount = ALL_MODULE_IDS.filter((id) => permissions.includes(id)).length;
+  const parts = [`${moduleCount} module${moduleCount === 1 ? "" : "s"}`];
+  parts.push(permissions.includes("seeAllClients") ? "all clients" : "scoped");
+  if (!permissions.includes("code.viewRates")) parts.push("no rates");
+  return parts.join(" · ");
+}
 
 function MemberAccessModal({
   member,

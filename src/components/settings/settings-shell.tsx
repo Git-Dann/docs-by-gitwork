@@ -11,7 +11,6 @@ import {
   CommandLineIcon,
   CpuChipIcon,
   DocumentDuplicateIcon,
-  LockClosedIcon,
   PaintBrushIcon,
   PencilSquareIcon,
   ShieldCheckIcon,
@@ -33,6 +32,7 @@ export type SettingsSectionId =
   | "templates"
   | "content"
   | "rate-card"
+  | "people"
   | "team"
   | "roles"
   | "integrations"
@@ -117,18 +117,11 @@ const GROUPS: SectionGroup[] = [
       // the proposal builder where it's actually consumed. The route at
       // /app/settings/rate-card still resolves for legacy bookmarks.
       {
-        id: "team",
-        label: "Team",
-        description: "Invite teammates.",
+        id: "people",
+        label: "People & access",
+        description: "Members, roles & permissions.",
         icon: UserGroupIcon,
         adminOnly: true,
-      },
-      {
-        id: "roles",
-        label: "Roles & permissions",
-        description: "Define what each role can do.",
-        icon: LockClosedIcon,
-        superAdminOnly: true,
       },
       {
         id: "integrations",
