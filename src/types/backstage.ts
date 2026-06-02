@@ -28,6 +28,7 @@ export type BackstageMember = {
   avatarUrl: string | null;
   role: string;
   countryCode: string;
+  assignedClientIds: string[];
 };
 
 export type LeaveRequestDTO = {

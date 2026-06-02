@@ -857,7 +857,18 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
       user: { email: { not: BOOTSTRAP_USER_EMAIL } },
     },
     include: {
-      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          clientAssignments: {
+            where: { workspaceId: user.workspaceId },
+            select: { clientId: true },
+          },
+        },
+      },
     },
     orderBy: { user: { name: "asc" } },
   });
@@ -868,6 +879,7 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
     avatarUrl: m.user.avatarUrl,
     role: m.role,
     countryCode: m.countryCode,
+    assignedClientIds: m.user.clientAssignments.map((assignment) => assignment.clientId),
   }));
 }
 
@@ -1178,6 +1190,7 @@ export async function getCalendarMonth(
     avatarUrl: m.user.avatarUrl,
     role: m.role,
     countryCode: m.countryCode,
+    assignedClientIds: [],
   }));
 
   return {
