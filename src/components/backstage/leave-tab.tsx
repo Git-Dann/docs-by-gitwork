@@ -4,12 +4,14 @@ import { useState } from "react";
 import { CalendarDaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import {
   useCancelLeaveRequest,
+  useLeaveAllowance,
   useLeaveRequests,
 } from "@/hooks/use-backstage";
 import { LeaveRequestForm } from "@/components/backstage/leave-request-form";
 import { StatusPill } from "@/components/backstage/status-pill";
 import { BackstagePanel, PanelAction } from "@/components/backstage/panel";
 import { ScopeToggle } from "@/components/backstage/scope-toggle";
+import { Stat } from "@/components/backstage/stat";
 import { useBackstageAccess } from "@/components/backstage/access";
 import { formatDateRange, formatRelative } from "@/components/backstage/format";
 import type { LeaveRequestDTO } from "@/types/backstage";
@@ -21,6 +23,7 @@ export function LeaveTab() {
   // Approvers (admin/HR) can switch to the whole team to view + edit anyone's leave.
   const [scope, setScope] = useState<"me" | "all">("me");
   const requests = useLeaveRequests(canApprove ? scope : "me");
+  const allowance = useLeaveAllowance();
   const cancelMut = useCancelLeaveRequest();
 
   function closeForm() {
@@ -30,6 +33,15 @@ export function LeaveTab() {
 
   return (
     <div className="space-y-6">
+      <BackstagePanel number="01" title="MY ALLOWANCE">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Stat label="Allocated" value={allowance.data?.allocated ?? "—"} suffix="days/yr" />
+          <Stat label="Used" value={allowance.data?.used ?? "—"} suffix="days" />
+          <Stat label="Pending" value={allowance.data?.pending ?? "—"} suffix="days" />
+          <Stat label="Remaining" value={allowance.data?.remaining ?? "—"} suffix="days" accent />
+        </div>
+      </BackstagePanel>
+
       {showForm || editing ? (
         <LeaveRequestForm
           editing={editing ?? undefined}
@@ -40,7 +52,7 @@ export function LeaveTab() {
 
       {/* Requests list */}
       <BackstagePanel
-        number="01"
+        number="02"
         title={canApprove && scope === "all" ? "TEAM LEAVE" : "MY LEAVE"}
         bodyClassName="p-0"
         action={

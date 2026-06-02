@@ -1,58 +1,52 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/format";
-import { OverviewTab } from "@/components/backstage/overview-tab";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { BackstageOverview, type BackstageArea } from "@/components/backstage/backstage-overview";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
 import { ApprovalsTab } from "@/components/backstage/approvals-tab";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-export type BackstageTab = "overview" | "calendar" | "leave" | "expenses" | "approvals";
+const AREA_LABEL: Record<BackstageArea, string> = {
+  calendar: "Calendar",
+  leave: "Leave",
+  expenses: "Expenses",
+  approvals: "Approvals",
+};
 
 export function BackstageWorkspace() {
   const { canApprove, canManageExpenses } = useBackstageAccess();
+  const [area, setArea] = useState<BackstageArea | null>(null);
 
-  const [tab, setTab] = useState<BackstageTab>("overview");
+  // Landing: the bento card grid (HQ pattern). Cards open their area.
+  if (!area) {
+    return <BackstageOverview onOpen={setArea} />;
+  }
 
-  const tabs: Array<{ key: BackstageTab; label: string; visible: boolean }> = [
-    { key: "overview", label: "Overview", visible: true },
-    { key: "calendar", label: "Calendar", visible: true },
-    { key: "leave", label: "Leave", visible: true },
-    { key: "expenses", label: "Expenses", visible: canManageExpenses },
-    { key: "approvals", label: "Approvals", visible: canApprove },
-  ];
+  // Guard: if a non-permitted area is somehow selected, fall back to overview.
+  if ((area === "expenses" && !canManageExpenses) || (area === "approvals" && !canApprove)) {
+    setArea(null);
+    return null;
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="border-b border-[var(--border-2)]">
-        <nav className="-mb-px flex flex-wrap gap-0">
-          {tabs.filter((t) => t.visible).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={cn(
-                "px-4 pb-3 pt-1 text-sm font-semibold transition",
-                tab === t.key
-                  ? "border-b-2 border-[var(--brand-600)] text-[var(--brand-700)]"
-                  : "border-b-2 border-transparent text-[var(--text-3)] hover:text-[var(--text-2)]",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={() => setArea(null)}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
+        Backstage
+        <span className="text-[var(--text-4)]">/ {AREA_LABEL[area]}</span>
+      </button>
 
-      <div className="min-h-0">
-        {tab === "overview" ? <OverviewTab onNavigate={setTab} /> : null}
-        {tab === "calendar" ? <CalendarTab /> : null}
-        {tab === "leave" ? <LeaveTab /> : null}
-        {tab === "expenses" && canManageExpenses ? <ExpensesTab /> : null}
-        {tab === "approvals" && canApprove ? <ApprovalsTab /> : null}
-      </div>
+      {area === "calendar" ? <CalendarTab /> : null}
+      {area === "leave" ? <LeaveTab /> : null}
+      {area === "expenses" ? <ExpensesTab /> : null}
+      {area === "approvals" ? <ApprovalsTab /> : null}
     </div>
   );
 }
