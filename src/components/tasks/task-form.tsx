@@ -247,14 +247,14 @@ export function TaskFormModal({
             {blocks.length > 0 ? (
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
-                  Feature block <span className="text-[var(--text-4)]">(list)</span>
+                  Category
                 </label>
                 <select
                   className="app-select w-full"
                   value={featureBlockId}
                   onChange={(e) => setFeatureBlockId(e.target.value)}
                 >
-                  <option value="">No block</option>
+                  <option value="">No category</option>
                   {blocks.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name}

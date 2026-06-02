@@ -12,7 +12,7 @@ import {
   CheckIcon,
   ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
-import { cn } from "@/lib/format";
+import { cn, taskRef } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useClientDetail } from "@/hooks/use-proposals";
@@ -33,6 +33,7 @@ import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
 import { MilestoneFormModal } from "@/components/tasks/milestone-form";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
+import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 
 type View = "board" | "list" | "gantt";
 
@@ -42,6 +43,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const clientId = client?.id ?? null;
 
   const [view, setView] = useState<View>("board");
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -58,6 +60,21 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
+
+  // Board + List honour the search/filter bar; Gantt always shows everything.
+  const filtered = useMemo(() => {
+    const q = filters.q.trim().toLowerCase();
+    const cat = new Set(filters.categoryIds);
+    const asg = new Set(filters.assigneeIds);
+    const pri = new Set(filters.priorities);
+    return tasks.filter((t) => {
+      if (q && !(t.title.toLowerCase().includes(q) || taskRef(t.id).toLowerCase().includes(q))) return false;
+      if (cat.size && !cat.has(t.featureBlock?.id ?? "none")) return false;
+      if (asg.size && !t.assignees.some((a) => asg.has(a.id))) return false;
+      if (pri.size && !pri.has(t.priority)) return false;
+      return true;
+    });
+  }, [tasks, filters]);
 
   // Only dated blocks become Gantt bars; undated ones are board-only groupings.
   const ganttBlocks: GanttBlock[] = useMemo(
@@ -132,7 +149,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
                 onClick={() => setBlockModal({ open: true, block: null })}
               >
-                New block
+                New category
               </Button>
             </>
           ) : null}
@@ -160,11 +177,16 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         </ViewTab>
       </div>
 
+      {/* Search + filters (board + list) */}
+      {view !== "gantt" ? (
+        <TaskFilterBar tasks={tasks} categories={blocks} value={filters} onChange={setFilters} />
+      ) : null}
+
       {/* Content */}
       {tasksLoading && view !== "gantt" ? (
         <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
       ) : view === "board" ? (
-        <TaskBoard tasks={tasks} showClient={false} onCardClick={setOpenTaskId} />
+        <TaskBoard tasks={filtered} showClient={false} onCardClick={setOpenTaskId} />
       ) : view === "list" ? (
         <div className="space-y-3">
           {selected.size > 0 ? (
@@ -175,13 +197,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             />
           ) : null}
           <TaskList
-            tasks={tasks}
+            tasks={filtered}
             showClient={false}
             onRowClick={setOpenTaskId}
             selectable
             selectedIds={selected}
             onToggleSelect={toggleSelect}
-            onToggleAll={(checked) => setSelected(checked ? new Set(tasks.map((t) => t.id)) : new Set())}
+            onToggleAll={(checked) => setSelected(checked ? new Set(filtered.map((t) => t.id)) : new Set())}
             onToggleDone={(task) =>
               updateTask.mutate({ id: task.id, input: { status: task.status === "DONE" ? "TODO" : "DONE" } })
             }
