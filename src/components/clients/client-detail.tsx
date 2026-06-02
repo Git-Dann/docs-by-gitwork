@@ -45,6 +45,7 @@ import {
   useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
+import { useCreateTask } from "@/hooks/use-tasks";
 import { cn, formatDate } from "@/lib/format";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
 import type {
@@ -1115,7 +1116,23 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const { data, isLoading } = useClientMeetings(slug, true, query);
   const ingest = useIngestClientMeeting(slug);
   const toggle = useToggleMeetingActionItem(slug);
+  const createTask = useCreateTask();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
+  const [addedTaskIds, setAddedTaskIds] = useState<Record<string, boolean>>({});
+
+  // Push a meeting action item into the client's task board (lands in Backlog).
+  async function addActionItemAsTask(clientId: string, itemId: string, text: string) {
+    setAddingTaskId(itemId);
+    try {
+      await createTask.mutateAsync({ clientId, title: text });
+      setAddedTaskIds((s) => ({ ...s, [itemId]: true }));
+    } catch {
+      /* swallow — button just won't flip to "Added" */
+    } finally {
+      setAddingTaskId(null);
+    }
+  }
 
   const meetings = data?.meetings ?? [];
   const candidates = data?.candidates ?? [];
@@ -1294,6 +1311,17 @@ function MeetingNotesSection({ slug }: { slug: string }) {
                               {a.text}
                               {a.owner ? <span className="text-[var(--text-4)]"> — {a.owner}</span> : null}
                             </span>
+                            {m.clientId && (
+                              <button
+                                type="button"
+                                disabled={addingTaskId === a.id || addedTaskIds[a.id]}
+                                onClick={() => void addActionItemAsTask(m.clientId!, a.id, a.text)}
+                                className="ml-auto shrink-0 rounded-[4px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+                                title="Add to this client's task board"
+                              >
+                                {addingTaskId === a.id ? "Adding…" : addedTaskIds[a.id] ? "Added ✓" : "+ Task"}
+                              </button>
+                            )}
                           </li>
                         ))}
                       </ul>
