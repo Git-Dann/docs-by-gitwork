@@ -324,9 +324,17 @@ export type CodeClearDetailCandidateRecord = Prisma.CandidateGetPayload<{
   include: typeof codeClearDetailInclude;
 }>;
 
+/** Options shared by the candidate serializers. */
+export interface SerializeCandidateOptions {
+  /** When false, financial fields (hourlyRate, currency) are blanked — the caller
+   *  lacks the `code.viewRates` permission. Defaults to visible. */
+  canViewRates?: boolean;
+}
+
 /** Shape shared by both list and detail serializers. Keeps the new validation
  *  fields in one place so we never miss one when adding to the other. */
-function commonCandidateFields(candidate: {
+function commonCandidateFields(
+  candidate: {
   id: string;
   workspaceId: string;
   rateCardPersonId: string | null;
@@ -355,7 +363,10 @@ function commonCandidateFields(candidate: {
   recheckDueAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-}) {
+  },
+  opts?: SerializeCandidateOptions,
+) {
+  const hideRates = opts?.canViewRates === false;
   return {
     id: candidate.id,
     workspaceId: candidate.workspaceId,
@@ -381,8 +392,8 @@ function commonCandidateFields(candidate: {
     cvUrl: candidate.cvUrl ?? null,
     portfolioUrl: candidate.portfolioUrl ?? null,
     yearsExperience: candidate.yearsExperience ?? null,
-    hourlyRate: candidate.hourlyRate ? Number(candidate.hourlyRate.toString()) : null,
-    currency: candidate.currency ?? null,
+    hourlyRate: hideRates ? null : candidate.hourlyRate ? Number(candidate.hourlyRate.toString()) : null,
+    currency: hideRates ? null : candidate.currency ?? null,
     timezone: candidate.timezone ?? null,
     availability: candidate.availability ?? null,
     recheckDueAt: toIsoString(candidate.recheckDueAt),
@@ -393,6 +404,7 @@ function commonCandidateFields(candidate: {
 
 export function serializeCandidateListItem(
   candidate: CodeClearListCandidateRecord,
+  opts?: SerializeCandidateOptions,
 ): CodeClearCandidateListItem {
   const latestGitHubAnalysis = candidate.githubAnalysisRuns[0]
     ? normalizeGitHubAnalysisRun(candidate.githubAnalysisRuns[0])
@@ -415,7 +427,7 @@ export function serializeCandidateListItem(
   currentClients.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
-    ...commonCandidateFields(candidate),
+    ...commonCandidateFields(candidate, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -426,6 +438,7 @@ export function serializeCandidateListItem(
 
 export function serializeCandidateDetails(
   candidate: CodeClearDetailCandidateRecord,
+  opts?: SerializeCandidateOptions,
 ): CodeClearCandidateDetail {
   const githubAnalysisRuns = candidate.githubAnalysisRuns.map((run) =>
     normalizeGitHubAnalysisRun(run),
@@ -459,7 +472,7 @@ export function serializeCandidateDetails(
   currentClients.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
-    ...commonCandidateFields(candidate),
+    ...commonCandidateFields(candidate, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,

@@ -4,13 +4,14 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { candidateBulkImportSchema } from "@/server/validators";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
 async function requireAdminSession() {
   const session = await auth();
   if (!session?.user) return null;
-  if (session.user.role !== "ADMIN") return null;
+  if (!isAtLeast(session.user.role, "ADMIN")) return null;
   return session;
 }
 

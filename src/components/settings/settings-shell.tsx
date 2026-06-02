@@ -12,6 +12,7 @@ import {
   CommandLineIcon,
   CpuChipIcon,
   DocumentDuplicateIcon,
+  LockClosedIcon,
   PaintBrushIcon,
   PencilSquareIcon,
   ShieldCheckIcon,
@@ -20,6 +21,7 @@ import {
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
 export type SettingsSectionId =
   // My account
@@ -32,6 +34,7 @@ export type SettingsSectionId =
   | "content"
   | "rate-card"
   | "team"
+  | "roles"
   | "integrations"
   | "agents-checks"
   // System
@@ -47,6 +50,8 @@ interface SectionDef {
   description: string;
   icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
   adminOnly?: boolean;
+  /** Visible only to Super Admins (e.g. the role matrix editor). */
+  superAdminOnly?: boolean;
 }
 
 interface SectionGroup {
@@ -117,6 +122,14 @@ const GROUPS: SectionGroup[] = [
         adminOnly: true,
       },
       {
+        id: "roles",
+        label: "Roles & permissions",
+        description: "Define what each role can do.",
+        icon: LockClosedIcon,
+        adminOnly: true,
+        superAdminOnly: true,
+      },
+      {
         id: "integrations",
         label: "Integrations",
         description: "AI, Google, Slack, email.",
@@ -170,13 +183,19 @@ export function SettingsShell({
 }) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const role = session?.user?.role ?? "";
+  const isAdmin = isAtLeast(role, "ADMIN");
+  const isSuper = isSuperAdmin(role);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="space-y-4">
         {GROUPS.map((group) => {
-          const visible = group.sections.filter((section) => !section.adminOnly || isAdmin);
+          const visible = group.sections.filter((section) => {
+            if (section.superAdminOnly) return isSuper;
+            if (section.adminOnly) return isAdmin;
+            return true;
+          });
           if (visible.length === 0) return null;
           return (
             <div key={group.id}>

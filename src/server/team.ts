@@ -1,5 +1,9 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { ForbiddenError } from "@/server/auth/effective-user";
+import { recomputeMember } from "@/server/permissions";
+import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 
 export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
@@ -28,53 +32,106 @@ export async function listMembers() {
   }));
 }
 
-export async function removeMember(memberId: string) {
+/**
+ * Removes a member. Guardrail: the actor can only remove members below their own
+ * role, and the last Super Admin can never be removed (workspace lock-out).
+ */
+export async function removeMember(memberId: string, actorRole: string) {
+  const existing = await prisma.workspaceMember.findUnique({
+    where: { id: memberId },
+    select: { id: true, workspaceId: true, role: true },
+  });
+  if (!existing) return;
+
+  if (!canManageRole(actorRole, existing.role)) {
+    throw new ForbiddenError("You can't remove a member at or above your own role.");
+  }
+  if (existing.role === "SUPER_ADMIN") {
+    await assertNotLastSuperAdmin(existing.workspaceId, memberId);
+  }
+
   return prisma.workspaceMember.delete({ where: { id: memberId } });
 }
 
 export interface UpdateMemberInput {
-  role?: "ADMIN" | "STAFF";
-  permissions?: string[];
+  role?: RoleId;
+  permissionOverrides?: PermissionOverrides;
 }
 
 /**
- * Updates a member's role and/or permissions.
+ * Updates a member's role and/or per-person permission overrides, then recomputes
+ * their cached effective permissions from the role matrix.
  *
- * Safety: refuses to demote the *last* admin to avoid lock-out. If a workspace has only
- * one admin and the caller tries to make them STAFF, throws. The Team UI consults this
- * before showing the action so the user gets a clear error rather than a silent failure.
+ * Guardrails (see canManageRole in src/types/auth.ts):
+ *  • You can only manage a member whose current role is below your own — so only a
+ *    Super Admin can edit Admins/Super Admins; an Admin manages Staff & Developers.
+ *  • You can't assign a role at or above your own (no self-escalation).
+ *  • The last Super Admin can't be demoted (workspace lock-out protection).
+ * Changing a member's role clears their overrides (clean slate for the new role)
+ * unless explicit overrides are supplied in the same call.
  */
-export async function updateMember(memberId: string, input: UpdateMemberInput) {
-  if (input.role === "STAFF") {
-    const existing = await prisma.workspaceMember.findUnique({
-      where: { id: memberId },
-      select: { workspaceId: true, role: true },
-    });
-    if (existing?.role === "ADMIN") {
-      const remainingAdmins = await prisma.workspaceMember.count({
-        where: {
-          workspaceId: existing.workspaceId,
-          role: "ADMIN",
-          id: { not: memberId },
-          user: { email: { not: BOOTSTRAP_USER_EMAIL } },
-        },
-      });
-      if (remainingAdmins === 0) {
-        throw new Error(
-          "Can't demote the last admin — promote someone else first or this workspace becomes uneditable.",
-        );
-      }
+export async function updateMember(memberId: string, input: UpdateMemberInput, actorRole: string) {
+  const existing = await prisma.workspaceMember.findUnique({
+    where: { id: memberId },
+    select: { id: true, workspaceId: true, role: true },
+  });
+  if (!existing) throw new Error("Member not found");
+
+  if (!canManageRole(actorRole, existing.role)) {
+    throw new ForbiddenError("You can't manage a member at or above your own role.");
+  }
+
+  const roleChanged = input.role !== undefined && input.role !== existing.role;
+  if (input.role !== undefined && roleChanged) {
+    if (!canManageRole(actorRole, input.role)) {
+      throw new ForbiddenError("You can't assign a role at or above your own.");
+    }
+    if (existing.role === "SUPER_ADMIN" && input.role !== "SUPER_ADMIN") {
+      await assertNotLastSuperAdmin(existing.workspaceId, memberId);
     }
   }
 
-  return prisma.workspaceMember.update({
+  const overrides =
+    input.permissionOverrides !== undefined
+      ? normalizeOverrides(input.permissionOverrides)
+      : roleChanged
+        ? { grant: [], revoke: [] } // reset overrides on a role change
+        : undefined;
+
+  await prisma.workspaceMember.update({
     where: { id: memberId },
     data: {
       ...(input.role !== undefined ? { role: input.role } : {}),
-      ...(input.permissions !== undefined ? { permissions: input.permissions } : {}),
+      ...(overrides !== undefined
+        ? { permissionOverrides: overrides as unknown as Prisma.InputJsonValue }
+        : {}),
     },
+  });
+
+  // Refresh the cached resolved `permissions` so middleware/JWT and every reader stay in sync.
+  await recomputeMember(memberId);
+
+  return prisma.workspaceMember.findUniqueOrThrow({
+    where: { id: memberId },
     include: { user: { select: { id: true, name: true, email: true } } },
   });
+}
+
+/** Throws if `memberId` is the only remaining (non-bootstrap) Super Admin. */
+async function assertNotLastSuperAdmin(workspaceId: string, memberId: string) {
+  const others = await prisma.workspaceMember.count({
+    where: {
+      workspaceId,
+      role: "SUPER_ADMIN",
+      id: { not: memberId },
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
+  });
+  if (others === 0) {
+    throw new Error(
+      "Can't remove the last Super Admin — promote someone else first or this workspace becomes uneditable.",
+    );
+  }
 }
 
 /**

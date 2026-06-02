@@ -10,6 +10,7 @@ import { CurrencyField } from "@/components/proposals/currency-field";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { listRateCardPeople } from "@/lib/api";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, parseNumber } from "@/lib/format";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 import type {
@@ -163,13 +164,32 @@ function createRowId(prefix: string) {
   return `${prefix}-${generated}`;
 }
 
-export function CostBreakdownTable({
-  value,
-  onChange,
-}: {
+interface CostBreakdownTableProps {
   value: CostBreakdownValue;
   onChange: (value: CostBreakdownValue) => void;
-}) {
+}
+
+// Field gate: the whole costing breakdown is hidden for users without
+// `docs.viewCosts`. The wrapper swaps in a clean placeholder card rather than
+// gutting individual cells, so the surrounding proposal layout never breaks.
+export function CostBreakdownTable(props: CostBreakdownTableProps) {
+  const { canViewCosts, isPending } = usePermissions();
+  if (isPending) return null;
+  if (!canViewCosts) {
+    return (
+      <div className="rounded-[12px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-6 py-8 text-center">
+        <p className="text-sm font-medium text-[var(--text-2)]">Costs hidden</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs text-[var(--text-4)]">
+          You don&apos;t have permission to view costs and margins. Ask a workspace admin if you
+          need access.
+        </p>
+      </div>
+    );
+  }
+  return <CostBreakdownTableInner {...props} />;
+}
+
+function CostBreakdownTableInner({ value, onChange }: CostBreakdownTableProps) {
   const [rateCardPeople, setRateCardPeople] = useState<RateCardPersonRecord[]>([]);
   const [rateCardLoading, setRateCardLoading] = useState(true);
   const [rateCardError, setRateCardError] = useState<string | null>(null);

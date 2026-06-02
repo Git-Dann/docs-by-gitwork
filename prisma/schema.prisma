@@ -263,6 +263,14 @@ model Workspace {
   /// team calendar for EVERYONE (workspace-wide), independent of where each member
   /// is based. Defaults to UK + Pakistan; admins can extend to other countries.
   holidayCountries         Json                       @default("[\"GB\", \"PK\"]")
+  // ── Roles & Permissions ─────────────────────────────────────────────
+  /// The role permission matrix — source of truth for what each configurable role
+  /// (ADMIN/STAFF/DEVELOPER) can do. Shape: { ADMIN: string[], STAFF: string[], DEVELOPER: string[] }
+  /// where each string is a permission id from PERMISSION_CATALOG (src/types/auth.ts).
+  /// SUPER_ADMIN is implicit-all and never stored here. Null → DEFAULT_ROLE_PERMISSIONS.
+  /// Edited only by Super Admins via /app/settings/roles. A member's resolved
+  /// `WorkspaceMember.permissions` is recomputed from this matrix + their overrides.
+  rolePermissions          Json?
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
   members                  WorkspaceMember[]
@@ -301,7 +309,16 @@ model WorkspaceMember {
   workspaceId     String
   userId          String
   role            String    @default("STAFF")
+  /// Resolved effective permission ids (a cache). Recomputed from the workspace
+  /// role matrix (Workspace.rolePermissions) + this member's permissionOverrides
+  /// whenever the matrix, their role, or their overrides change. Every existing
+  /// consumer (middleware JWT, requireAuthedUser, hasFeature, canSeeAllClients)
+  /// reads this list, so it must always hold the fully-resolved set.
   permissions     Json      @default("[]")
+  /// Per-person delta on top of the role matrix. Shape: { grant: string[], revoke: string[] }.
+  /// Lets a Super Admin make exceptions (e.g. give one developer code.viewRates)
+  /// without changing the whole role. Empty object → pure role inheritance.
+  permissionOverrides Json  @default("{}")
   // ── Backstage (internal ops) ───────────────────────────────────────
   countryCode     String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
   annualLeaveDays Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays

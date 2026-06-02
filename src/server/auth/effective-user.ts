@@ -2,6 +2,12 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getRequestUser } from "@/server/auth/request-user";
+import {
+  isSuperAdmin,
+  normalizeMatrix,
+  normalizeOverrides,
+  resolveEffectivePermissions,
+} from "@/types/auth";
 
 export type EffectiveUser = {
   id: string;
@@ -66,6 +72,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
       memberships: {
         where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
         take: 1,
+        include: { workspace: { select: { rolePermissions: true } } },
       },
     },
   });
@@ -75,9 +82,14 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   }
 
   const membership = dbUser.memberships[0];
-  const permissions = Array.isArray(membership.permissions)
-    ? (membership.permissions as string[])
-    : [];
+  // Resolve effective permissions LIVE from the role matrix + this member's
+  // overrides — independent of the cached `permissions` column and the JWT. This
+  // makes every server-side check (the can* helpers below, field gating) correct
+  // the instant a Super Admin edits the matrix, with no re-login and no dependence
+  // on migration timing.
+  const matrix = normalizeMatrix(membership.workspace?.rolePermissions);
+  const overrides = normalizeOverrides(membership.permissionOverrides);
+  const permissions = resolveEffectivePermissions(membership.role, matrix, overrides);
 
   return {
     id: dbUser.id,
@@ -91,8 +103,27 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   };
 }
 
+// All permission checks below follow one rule: SUPER_ADMIN bypasses; everyone else
+// (including ADMIN) is governed by their resolved permissions, which come from the
+// role matrix + per-person overrides. The default matrix grants ADMIN everything,
+// so admins keep full access out of the box — but a Super Admin can now narrow any
+// role, including Admin, via the Roles & Permissions matrix.
+/**
+ * Like requireAuthedUser but returns null instead of throwing when no per-user
+ * identity can be resolved (e.g. an external API_KEY-only call with no session or
+ * mobile JWT). Lets read routes apply field gating when a user is known, while
+ * still serving trusted workspace-key callers.
+ */
+export async function getEffectiveUserOrNull(req: Request): Promise<EffectiveUser | null> {
+  try {
+    return await requireAuthedUser(req);
+  } catch {
+    return null;
+  }
+}
+
 export function canApproveBackstage(user: EffectiveUser): boolean {
-  return user.role === "ADMIN" || user.permissions.includes("backstage.approve");
+  return isSuperAdmin(user.role) || user.permissions.includes("backstage.approve");
 }
 
 export function assertCanApproveBackstage(user: EffectiveUser): void {
@@ -101,16 +132,15 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
   }
 }
 
-// Expenses are opt-in per account (decoupled from role): the `backstage.expenses`
-// feature flag. Admins bypass (consistent with every other permission check), so
-// the flag is the way to grant HR/finance access WITHOUT making them an Admin.
+// Expenses are opt-in per account (the `backstage.expenses` flag) so HR/finance can
+// get access without becoming an Admin.
 export function canManageExpenses(user: EffectiveUser): boolean {
-  return user.role === "ADMIN" || user.permissions.includes("backstage.expenses");
+  return isSuperAdmin(user.role) || user.permissions.includes("backstage.expenses");
 }
 
-/** DevOps lead: may publish the consolidated end-of-day task roll-up. Admins bypass. */
+/** DevOps lead: may publish the consolidated end-of-day task roll-up. */
 export function canPublishTaskRollup(user: EffectiveUser): boolean {
-  return user.role === "ADMIN" || user.permissions.includes("tasks.publish");
+  return isSuperAdmin(user.role) || user.permissions.includes("tasks.publish");
 }
 
 export function assertCanPublishTaskRollup(user: EffectiveUser): void {
@@ -121,9 +151,28 @@ export function assertCanPublishTaskRollup(user: EffectiveUser): void {
 
 /**
  * Does this user see every client, or only the ones they're explicitly assigned?
- * Admins and anyone holding the `seeAllClients` feature flag see all; restricted
- * developers (preset has the flag off) are scoped to their ClientAssignment rows.
+ * Holders of the `seeAllClients` flag (and Super Admins) see all; restricted
+ * developers are scoped to their ClientAssignment rows.
  */
 export function canSeeAllClients(user: EffectiveUser): boolean {
-  return user.role === "ADMIN" || user.permissions.includes("seeAllClients");
+  return isSuperAdmin(user.role) || user.permissions.includes("seeAllClients");
+}
+
+// ── Field-level visibility ──────────────────────────────────────────────────
+// Granular, per-product data gates. Enforced server-side (the value is blanked in
+// the response), so toggling them in the matrix takes effect without a re-login.
+
+/** Candidate hourly rate + tier rate defaults inside Code. Off for developer accounts. */
+export function canViewRates(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes("code.viewRates");
+}
+
+/** Cost line-item totals and margins on the proposal Costing breakdown (Docs). */
+export function canViewCosts(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes("docs.viewCosts");
+}
+
+/** The Rate Card (people + day rates) and the day rates pulled into proposal costing. */
+export function canViewRateCard(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes("rateCard.view");
 }

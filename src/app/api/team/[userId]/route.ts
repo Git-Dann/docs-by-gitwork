@@ -4,17 +4,18 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { isAtLeast } from "@/types/auth";
 
 const UpdateMemberSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.enum(["ADMIN", "STAFF"]).optional(),
+  role: z.enum(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]).optional(),
   permissions: z.array(z.string()).optional(),
 });
 
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user) return null;
-  if (session.user.role !== "ADMIN") return null;
+  if (!isAtLeast(session.user.role, "ADMIN")) return null;
   return session;
 }
 

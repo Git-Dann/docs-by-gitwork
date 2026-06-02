@@ -17,6 +17,8 @@ import { NotificationsSection } from "@/components/settings/notifications-sectio
 import { AuditLogSection } from "@/components/settings/audit-log-section";
 import { PrivacySection } from "@/components/settings/privacy-section";
 import { TeamSection } from "@/components/settings/team-section";
+import { RolesSection } from "@/components/settings/roles-section";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
@@ -27,6 +29,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "content",
   "rate-card",
   "team",
+  "roles",
   "integrations",
   "agents-checks",
   "audit",
@@ -35,6 +38,9 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "workspace", // legacy
 ];
 
+// Sections only Super Admins may open (the role matrix editor).
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
+
 const ADMIN_SECTIONS = new Set<SettingsSectionId>([
   "general",
   "branding",
@@ -42,6 +48,7 @@ const ADMIN_SECTIONS = new Set<SettingsSectionId>([
   "content",
   "rate-card",
   "team",
+  "roles",
   "integrations",
   "agents-checks",
   "audit",
@@ -83,6 +90,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Team",
     subtitle: "Invite members and manage workspace access.",
   },
+  roles: {
+    title: "Roles & permissions",
+    subtitle: "Define what each role can see and do across every product.",
+  },
   integrations: {
     title: "Integrations",
     subtitle: "AI providers, Google, Slack, email.",
@@ -121,8 +132,25 @@ export default async function SettingsSectionPage({
   const meta = SECTION_META[sectionId];
 
   const session = await auth();
-  const isAdmin = session?.user?.role === "ADMIN";
-  const userId = session?.user?.id ?? "";
+  const role = session?.user?.role ?? "";
+  const isAdmin = isAtLeast(role, "ADMIN");
+  const isSuper = isSuperAdmin(role);
+
+  if (SUPER_ADMIN_SECTIONS.has(sectionId) && !isSuper) {
+    return (
+      <AppShell title={meta.title} subtitle="Super Admin access required.">
+        <SettingsShell activeSection={sectionId}>
+          <div className="app-card p-6">
+            <h2 className="text-lg font-semibold text-[var(--text-1)]">Super Admins only</h2>
+            <p className="mt-2 text-sm text-[var(--text-3)]">
+              Editing the role matrix is restricted to Super Admins. Ask a Super Admin if you need
+              a role or permission changed.
+            </p>
+          </div>
+        </SettingsShell>
+      </AppShell>
+    );
+  }
 
   if (ADMIN_SECTIONS.has(sectionId) && !isAdmin) {
     return (
@@ -153,6 +181,7 @@ export default async function SettingsSectionPage({
         {sectionId === "templates" ? <TemplatesTab /> : null}
         {sectionId === "rate-card" ? <RateCardTab /> : null}
         {sectionId === "team" ? <TeamSection /> : null}
+        {sectionId === "roles" ? <RolesSection /> : null}
         {sectionId === "integrations" ? <IntegrationsTab /> : null}
         {sectionId === "agents-checks" ? <AgentsAndChecksTab /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}

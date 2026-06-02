@@ -19,6 +19,7 @@ import {
 } from "@/server/proposals";
 import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
+import { migratePermissionModel } from "@/server/permissions";
 
 // Adds columns/tables introduced by the Portal schema extension that
 // prisma db push may not apply reliably through a pooler connection.
@@ -43,6 +44,9 @@ async function ensurePortalSchema() {
     // Workspace: Slack channels + branding (multi-channel Slack + Sprint 1)
     `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "slackChannels" JSONB`,
     `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "branding" JSONB`,
+    // Roles & Permissions — the role matrix + per-member override delta
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "rolePermissions" JSONB`,
+    `ALTER TABLE "WorkspaceMember" ADD COLUMN IF NOT EXISTS "permissionOverrides" JSONB NOT NULL DEFAULT '{}'`,
     // Document: share token, sharing flag, document number (Sprint 1)
     `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "shareToken" TEXT`,
     `ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "isShared" BOOLEAN NOT NULL DEFAULT false`,
@@ -205,6 +209,10 @@ async function _ensureBaseRecords() {
 
   // Create the initial admin account from env vars on first run
   await ensureInitialAdmin(workspace.id);
+
+  // Roles & Permissions — seed the role matrix and bring existing members onto the
+  // matrix model without changing anyone's effective access (idempotent).
+  await migratePermissionModel(workspace.id);
 
   const template = await prisma.documentTemplate.upsert({
     where: {

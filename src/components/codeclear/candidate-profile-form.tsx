@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTechStacks } from "@/hooks/use-codeclear";
 import { useClientList } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import {
   TECH_STACK_OPTIONS,
@@ -86,6 +87,7 @@ export function CandidateProfileForm({
   showClientsPicker?: boolean;
 }) {
   const stacksQuery = useTechStacks();
+  const { canViewRates } = usePermissions();
   const stackOptions =
     stacksQuery.data?.stacks.map((stack) => stack.name) ?? TECH_STACK_OPTIONS;
 
@@ -231,37 +233,37 @@ export function CandidateProfileForm({
           />
         </Field>
         {/* Hourly rate: explicit grid track for the currency (110px) + 1fr
-            for the number input. `flex-1` on the input wasn't winning
-            against the `app-input` class's intrinsic sizing — using a CSS
-            grid with a fixed first track is unambiguous. USD sits on the
-            left, the number on the right. */}
-        <Field label="Hourly rate" span="full">
-          <div className="grid grid-cols-[110px_1fr] gap-1.5">
-            <select
-              value={value.currency}
-              onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-              // `app-select` reserves ~38px on the right for the chevron icon;
-              // explicit `pr-9` keeps the 3-letter ISO code clear of it.
-              className="app-select pr-9"
-              aria-label="Currency"
-            >
-              {COMMON_CURRENCIES.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={value.hourlyRate}
-              onChange={(event) => patch("hourlyRate", event.target.value)}
-              className="app-input w-full"
-              placeholder="0"
-            />
-          </div>
-        </Field>
+            for the number input. Hidden for users without `code.viewRates` — the
+            field simply drops out of the stack, which reflows cleanly. */}
+        {canViewRates ? (
+          <Field label="Hourly rate" span="full">
+            <div className="grid grid-cols-[110px_1fr] gap-1.5">
+              <select
+                value={value.currency}
+                onChange={(event) => patch("currency", event.target.value.toUpperCase())}
+                // `app-select` reserves ~38px on the right for the chevron icon;
+                // explicit `pr-9` keeps the 3-letter ISO code clear of it.
+                className="app-select pr-9"
+                aria-label="Currency"
+              >
+                {COMMON_CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={value.hourlyRate}
+                onChange={(event) => patch("hourlyRate", event.target.value)}
+                className="app-input w-full"
+                placeholder="0"
+              />
+            </div>
+          </Field>
+        ) : null}
         {/* Full-width so "Auto (from placements)" never truncates behind the
             chevron — the placeholder was getting clipped to "Auto (from placem…". */}
         <Field label="Availability" span="full">

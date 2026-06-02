@@ -20,12 +20,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useClientList } from "@/hooks/use-proposals";
-import { listMemberClients, setMemberClients } from "@/lib/api";
+import { getRolePermissions, listMemberClients, setMemberClients } from "@/lib/api";
 import {
-  FEATURE_PERMISSIONS,
-  MODULE_PERMISSIONS,
+  ALL_PERMISSION_IDS,
+  PERMISSION_CATALOG,
   PERMISSION_PRESETS,
+  ROLES,
+  canManageRole,
+  isAtLeast,
+  isSuperAdmin,
+  roleLabel,
+  type ConfigurableRoleId,
+  type PermissionCategory,
   type PermissionPresetId,
+  type RoleId,
+  type RoleMatrix,
 } from "@/types/auth";
 
 interface Invite {
@@ -48,7 +57,8 @@ interface Member {
 
 export function TeamSection() {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const sessionRole = session?.user?.role ?? "";
+  const isAdmin = isAtLeast(sessionRole, "ADMIN");
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -242,14 +252,14 @@ export function TeamSection() {
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    m.role === "ADMIN"
+                    isAtLeast(m.role, "ADMIN")
                       ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
                       : "bg-[var(--surface-2)] text-[var(--text-3)]"
                   }`}
                 >
-                  {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
+                  {roleLabel(m.role)}
                 </span>
-                {isAdmin ? (
+                {canManageRole(sessionRole, m.role) ? (
                   <button
                     onClick={() => setAccessMember(m)}
                     className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
@@ -309,6 +319,7 @@ export function TeamSection() {
       {accessMember ? (
         <MemberAccessModal
           member={accessMember}
+          actorRole={sessionRole}
           onClose={() => setAccessMember(null)}
           onSaved={async () => {
             setAccessMember(null);
@@ -321,35 +332,78 @@ export function TeamSection() {
 }
 
 // ── Member edit modal ────────────────────────────────────────────────────────
-// Two-column layout. Left: role + modules. Right: features + danger zone (delete).
-// Delete is gated behind a confirmation step inside the modal so it can't fire by
-// accident. Save call hits PATCH /api/team/members/[id]; delete hits DELETE.
+// Pick a role (gated so you can't assign at/above your own), then optionally tweak
+// individual permissions as per-person overrides on top of that role. The role
+// matrix (fetched here) provides each role's defaults so we can show what's
+// inherited vs overridden and compute the override delta on save. Save → PATCH
+// /api/team/members/[id]; delete → DELETE.
+
+const CATEGORY_LABEL: Record<PermissionCategory, string> = {
+  module: "Module",
+  field: "Field",
+  feature: "Feature",
+};
+const CATEGORY_CHIP: Record<PermissionCategory, string> = {
+  module: "bg-[var(--brand-50)] text-[var(--brand-700)]",
+  field: "bg-amber-50 text-amber-700",
+  feature: "bg-[var(--surface-2)] text-[var(--text-3)]",
+};
+
 function MemberAccessModal({
   member,
+  actorRole,
   onClose,
   onSaved,
 }: {
   member: Member;
+  actorRole: string;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
   const { data: session } = useSession();
   const isSelf = member.user.email === session?.user?.email;
 
-  const [role, setRole] = useState<"ADMIN" | "STAFF">(
-    member.role === "ADMIN" ? "ADMIN" : "STAFF",
-  );
-  const [perms, setPerms] = useState<Set<string>>(new Set(member.permissions ?? []));
+  const [role, setRole] = useState<RoleId>((member.role as RoleId) ?? "STAFF");
+  // The member's effective (resolved) permission set — what they can actually do.
+  const [effective, setEffective] = useState<Set<string>>(new Set(member.permissions ?? []));
+  const [matrix, setMatrix] = useState<RoleMatrix | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Client assignments — only relevant when "See all clients" is off. Loaded
-  // lazily so the modal opens instantly.
+  const isSuper = isSuperAdmin(role);
+  // Roles this actor may assign (never at or above their own).
+  const assignableRoles = ROLES.filter((r) => canManageRole(actorRole, r.id));
+
+  // Fetch the role matrix so we can show inheritance and compute the override delta.
+  useEffect(() => {
+    let cancelled = false;
+    getRolePermissions()
+      .then(({ matrix }) => {
+        if (!cancelled) setMatrix(matrix);
+      })
+      .catch(() => {
+        /* leave null — UI shows a loading note and disables save */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** The permissions a role grants by default (Super Admin = everything). */
+  const roleDefault = useCallback(
+    (r: RoleId): Set<string> =>
+      r === "SUPER_ADMIN"
+        ? new Set(ALL_PERMISSION_IDS)
+        : new Set(matrix ? matrix[r as ConfigurableRoleId] : []),
+    [matrix],
+  );
+
+  // Client assignments — only relevant when "See all clients" is off.
   const clientsQuery = useClientList();
   const workspaceClients = clientsQuery.data?.clients ?? [];
   const [clientIds, setClientIds] = useState<Set<string>>(new Set());
   const [clientsLoaded, setClientsLoaded] = useState(false);
-  const restrictedToClients = !perms.has("seeAllClients") && role !== "ADMIN";
+  const restrictedToClients = !isSuper && !effective.has("seeAllClients");
 
   useEffect(() => {
     let cancelled = false;
@@ -378,13 +432,13 @@ function MemberAccessModal({
   }
 
   // Two-step delete: first click reveals the confirm strip, second click does it.
-  // Prevents accidental removal in the middle of editing permissions.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  function toggle(id: string) {
-    setPerms((prev) => {
+  function togglePermission(id: string) {
+    if (isSuper) return; // Super Admin always has everything.
+    setEffective((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -392,27 +446,42 @@ function MemberAccessModal({
     });
   }
 
+  // Changing the role resets the permission ticks to that role's defaults (a clean
+  // slate); the admin can then re-tweak individual permissions as overrides.
+  function changeRole(next: RoleId) {
+    setRole(next);
+    setEffective(next === "SUPER_ADMIN" ? new Set(ALL_PERMISSION_IDS) : roleDefault(next));
+  }
+
   function applyPreset(presetId: PermissionPresetId) {
     const preset = PERMISSION_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     setRole(preset.role);
-    setPerms(new Set(preset.permissions));
+    setEffective(new Set(preset.permissions));
   }
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
+      // Overrides = the delta between the chosen effective set and the role's defaults.
+      const base = roleDefault(role);
+      const overrides = isSuper
+        ? { grant: [], revoke: [] }
+        : {
+            grant: [...effective].filter((id) => !base.has(id)),
+            revoke: [...base].filter((id) => !effective.has(id)),
+          };
+
       const res = await fetch(`/api/team/members/${member.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, permissions: Array.from(perms) }),
+        body: JSON.stringify({ role, permissionOverrides: overrides }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? `Save failed (${res.status})`);
       }
-      // Persist client assignments when this member is scoped to specific clients.
       if (restrictedToClients) {
         await setMemberClients(member.id, Array.from(clientIds));
       }
@@ -440,9 +509,7 @@ function MemberAccessModal({
     }
   }
 
-  // ADMIN role bypasses all permission checks server-side. We grey out the module/feature
-  // toggles to make that obvious — they have no effect for admins.
-  const adminBypass = role === "ADMIN";
+  const base = roleDefault(role);
 
   return (
     <div
@@ -450,7 +517,7 @@ function MemberAccessModal({
       onClick={onClose}
     >
       <div
-        className="proposal-form-theme w-full max-w-4xl rounded-[14px] bg-white shadow-2xl"
+        className="proposal-form-theme w-full max-w-3xl rounded-[14px] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -476,11 +543,11 @@ function MemberAccessModal({
           </button>
         </div>
 
-        {/* Presets — full width, sits above the two columns. */}
+        {/* Presets */}
         <div className="border-b border-[var(--border-2)] px-6 py-4">
           <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Quick presets</p>
           <div className="grid gap-2 sm:grid-cols-3">
-            {PERMISSION_PRESETS.map((preset) => (
+            {PERMISSION_PRESETS.filter((p) => canManageRole(actorRole, p.role)).map((preset) => (
               <button
                 key={preset.id}
                 type="button"
@@ -497,167 +564,109 @@ function MemberAccessModal({
           </div>
         </div>
 
-        {/* Two-column body */}
-        <div className="grid gap-0 md:grid-cols-2 md:divide-x md:divide-[var(--border-2)]">
-          {/* Left: Role + Modules */}
-          <div className="space-y-5 px-6 py-5">
-            <div>
-              <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Role</p>
-              <div className="flex flex-col gap-2">
-                {(["ADMIN", "STAFF"] as const).map((r) => (
-                  <label
-                    key={r}
-                    className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-[10px] border px-3 py-2.5",
-                      role === r
-                        ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
-                        : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      checked={role === r}
-                      onChange={() => setRole(r)}
-                      className="mt-0.5"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-[var(--text-1)]">
-                        {r === "ADMIN" ? "Admin" : "Staff"}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                        {r === "ADMIN"
-                          ? "Full workspace access including Team, Developer, integrations."
-                          : "Module-level access controlled below."}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Modules</p>
-              <p className="mb-2 text-[11px] text-[var(--text-4)]">
-                {adminBypass
-                  ? "Admins implicitly have every module — toggles are ignored."
-                  : "Areas this user can reach inside the app."}
-              </p>
-              <div className={cn("space-y-1.5", adminBypass && "opacity-50")}>
-                {MODULE_PERMISSIONS.map((mod) => (
-                  <label
-                    key={mod.id}
-                    className="flex items-start gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={perms.has(mod.id)}
-                      onChange={() => toggle(mod.id)}
-                      disabled={adminBypass}
-                    />
-                    <span className="min-w-0">
-                      <span className="block font-medium text-[var(--text-1)]">{mod.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                        {mod.description}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Features + Danger zone */}
-          <div className="flex flex-col gap-5 px-6 py-5">
-            <div>
-              <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Feature access</p>
-              <p className="mb-2 text-[11px] text-[var(--text-4)]">
-                Cross-cutting visibility flags. Enforcement rolls out per-feature.
-              </p>
-              <div className={cn("space-y-1.5", adminBypass && "opacity-50")}>
-                {FEATURE_PERMISSIONS.map((flag) => (
-                  <label
-                    key={flag.id}
-                    className="flex items-start gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={perms.has(flag.id)}
-                      onChange={() => toggle(flag.id)}
-                      disabled={adminBypass}
-                    />
-                    <span className="min-w-0">
-                      <span className="block font-medium text-[var(--text-1)]">{flag.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                        {flag.description}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Danger zone — only shown for non-self rows. Two-click confirmation. */}
-            {!isSelf ? (
-              <div className="mt-auto rounded-[10px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--danger-700)]">
-                  Danger zone
-                </p>
-                <p className="mt-1 text-[11px] leading-tight text-[var(--text-3)]">
-                  Removes the member from this workspace. Their Foundry sign-in stops working
-                  on the next request. Reversible only by sending a new invite.
-                </p>
-
-                {!confirmingDelete ? (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(true)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--danger-300)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--danger-700)] transition hover:bg-[var(--danger-100)]"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                    Remove from workspace…
-                  </button>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs font-semibold text-[var(--danger-700)]">
-                      Remove {member.user.name ?? member.user.email}?
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="danger"
-                        size="sm"
-                        onClick={confirmDelete}
-                        loading={deleting}
-                      >
-                        Yes, remove
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setConfirmingDelete(false);
-                          setDeleteError(null);
-                        }}
-                        disabled={deleting}
-                      >
-                        Keep
-                      </Button>
-                    </div>
-                    {deleteError ? (
-                      <p className="text-xs text-[var(--danger-500)]">{deleteError}</p>
-                    ) : null}
-                  </div>
+        {/* Role */}
+        <div className="border-b border-[var(--border-2)] px-6 py-5">
+          <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Role</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {assignableRoles.map((r) => (
+              <label
+                key={r.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-[10px] border px-3 py-2.5",
+                  role === r.id
+                    ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
+                    : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
                 )}
-              </div>
+              >
+                <input
+                  type="radio"
+                  checked={role === r.id}
+                  onChange={() => changeRole(r.id)}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-[var(--text-1)]">{r.label}</span>
+                  <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
+                    {r.description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Permissions (effective, with per-person override badges) */}
+        <div className="px-6 py-5">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-[var(--text-2)]">Permissions</p>
+            {isSuper ? (
+              <span className="text-[11px] text-[var(--text-4)]">
+                Super Admins have everything — can&apos;t be limited.
+              </span>
             ) : (
-              <p className="mt-auto rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-[11px] text-[var(--text-4)]">
-                You can&apos;t remove your own membership. Another admin needs to do that.
-              </p>
+              <span className="text-[11px] text-[var(--text-4)]">
+                Ticked = allowed. Differences from the role default are shown as overrides.
+              </span>
             )}
           </div>
+
+          {!matrix && !isSuper ? (
+            <p className="text-xs text-[var(--text-4)]">Loading role defaults…</p>
+          ) : (
+            <div className="space-y-4">
+              {PERMISSION_CATALOG.map((group) => (
+                <div key={group.product}>
+                  <p className="app-eyebrow mb-1.5">{group.product}</p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {group.permissions.map((perm) => {
+                      const checked = isSuper || effective.has(perm.id);
+                      const inDefault = base.has(perm.id);
+                      const overridden = !isSuper && checked !== inDefault;
+                      return (
+                        <label
+                          key={perm.id}
+                          className={cn(
+                            "flex items-start gap-2 rounded-[8px] border bg-white px-3 py-2 text-sm",
+                            overridden ? "border-[var(--brand-400)]" : "border-[var(--border-3)]",
+                            isSuper && "opacity-60",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 accent-[var(--brand-700)]"
+                            checked={checked}
+                            onChange={() => togglePermission(perm.id)}
+                            disabled={isSuper}
+                          />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-medium text-[var(--text-1)]">{perm.label}</span>
+                              <span
+                                className={cn(
+                                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                                  CATEGORY_CHIP[perm.category],
+                                )}
+                              >
+                                {CATEGORY_LABEL[perm.category]}
+                              </span>
+                              {overridden ? (
+                                <span className="rounded-full bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
+                                  {checked ? "+ added" : "− removed"}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
+                              {perm.description}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Assigned clients — shown when scoped to specific clients (See all clients off). */}
@@ -692,6 +701,55 @@ function MemberAccessModal({
           </div>
         ) : null}
 
+        {/* Danger zone */}
+        {!isSelf ? (
+          <div className="border-t border-[var(--border-2)] px-6 py-5">
+            <div className="rounded-[10px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--danger-700)]">
+                Danger zone
+              </p>
+              <p className="mt-1 text-[11px] leading-tight text-[var(--text-3)]">
+                Removes the member from this workspace. Their Foundry sign-in stops working on the
+                next request. Reversible only by sending a new invite.
+              </p>
+              {!confirmingDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--danger-300)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--danger-700)] transition hover:bg-[var(--danger-100)]"
+                >
+                  <TrashIcon className="h-3.5 w-3.5" />
+                  Remove from workspace…
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-semibold text-[var(--danger-700)]">
+                    Remove {member.user.name ?? member.user.email}?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="danger" size="sm" onClick={confirmDelete} loading={deleting}>
+                      Yes, remove
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setConfirmingDelete(false);
+                        setDeleteError(null);
+                      }}
+                      disabled={deleting}
+                    >
+                      Keep
+                    </Button>
+                  </div>
+                  {deleteError ? <p className="text-xs text-[var(--danger-500)]">{deleteError}</p> : null}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {error ? (
           <p className="border-t border-[var(--border-2)] px-6 py-3 text-sm text-[var(--danger-500)]">
             {error}
@@ -703,7 +761,7 @@ function MemberAccessModal({
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={save} loading={saving}>
+          <Button type="button" variant="primary" onClick={save} loading={saving} disabled={!matrix && !isSuper}>
             Save changes
           </Button>
         </div>

@@ -16,7 +16,11 @@ const SESSION_MAX_AGE = 8 * 60 * 60;            // 8 hours (no remember me)
 //       gets captured on the next sign-in.
 //   3 — Scribe: added the Google Drive (drive.readonly) scope so Scribe can read Google
 //       Meet's "Notes by Gemini" docs. Bumping forces re-consent so the scope is granted.
-export const SESSION_VERSION = 3;
+//   4 — Roles & Permissions module: the role ladder gained SUPER_ADMIN/DEVELOPER and
+//       permissions are now resolved from the role matrix. Bumping re-issues every JWT
+//       with the correct role + resolved permissions (so e.g. the owner's session
+//       carries SUPER_ADMIN and can reach the Roles & Permissions matrix immediately).
+export const SESSION_VERSION = 4;
 
 export const authConfig = {
   session: { strategy: "jwt" as const, maxAge: REMEMBER_ME_MAX_AGE },

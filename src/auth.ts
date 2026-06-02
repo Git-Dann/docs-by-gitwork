@@ -4,6 +4,7 @@ import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
+import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -59,17 +60,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           },
         });
 
-        // Check if any real admin exists (excluding bootstrap placeholder)
-        const realAdminCount = await prisma.workspaceMember.count({
+        // A known owner email is always a Super Admin; and the very first real member
+        // (no Admin/Super Admin exists yet) bootstraps as Super Admin so the workspace
+        // is never left without one who can edit the role matrix.
+        const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(user.email);
+        const adminOrAboveCount = await prisma.workspaceMember.count({
           where: {
             workspace: { slug: DEFAULT_WORKSPACE_SLUG },
-            role: "ADMIN",
+            role: { in: ["ADMIN", "SUPER_ADMIN"] },
             user: { email: { not: BOOTSTRAP_USER_EMAIL } },
           },
         });
-        const shouldBeAdmin = realAdminCount === 0;
+        const shouldBeSuperAdmin = isKnownSuperAdmin || adminOrAboveCount === 0;
 
-        // Auto-provision new Gitwork team members
+        // Auto-provision new Gitwork team members. New members default to STAFF (whose
+        // access is whatever the role matrix grants); a Super Admin can refine their role.
         if (!dbUser) {
           dbUser = await prisma.user.create({
             data: {
@@ -77,10 +82,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               name: user.name ?? user.email.split("@")[0],
               memberships: {
                 create: {
-                  role: shouldBeAdmin ? "ADMIN" : "STAFF",
-                  // Every newly-provisioned Gitwork staff gets access to Backstage
-                  // (leave + expenses are self-serve from day one).
-                  permissions: ["backstage"],
+                  role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+                  permissions: [],
                   workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
                 },
               },
@@ -92,19 +95,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               },
             },
           });
-        } else if (shouldBeAdmin && dbUser.memberships[0]?.role === "STAFF") {
-          // Promote existing STAFF user to ADMIN when no real admin exists yet
+        } else if (
+          shouldBeSuperAdmin &&
+          dbUser.memberships[0] &&
+          dbUser.memberships[0].role !== "SUPER_ADMIN"
+        ) {
+          // Promote an existing member to Super Admin (known owner, or first-admin bootstrap).
           await prisma.workspaceMember.update({
             where: { id: dbUser.memberships[0].id },
-            data: { role: "ADMIN" },
+            data: { role: "SUPER_ADMIN" },
           });
-          dbUser.memberships[0].role = "ADMIN";
+          dbUser.memberships[0].role = "SUPER_ADMIN";
         }
 
         const membership = dbUser.memberships[0];
         token.id = dbUser.id;
         token.role = membership?.role ?? "STAFF";
-        token.permissions = (membership?.permissions as string[]) ?? [];
+        // Resolve + persist the member's effective permissions from the role matrix so
+        // the JWT carries the live set (and the cached column stays in sync).
+        token.permissions = membership ? await recomputeMember(membership.id) : [];
         // Stamp this fresh sign-in with the current SESSION_VERSION. The `authorized`
         // callback rejects tokens with an older value, forcing teammates with stale
         // sessions to sign in again so their per-user Google refresh token gets captured.

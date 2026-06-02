@@ -4,6 +4,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { codeClearDetailInclude, serializeCandidateDetails } from "@/server/codeclear";
+import { canViewRates, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { candidateUpdateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { id } = await context.params;
@@ -28,7 +29,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return apiError("Candidate not found.", 404);
     }
 
-    return apiOk({ candidate: serializeCandidateDetails(candidate) });
+    // Field gate: blank rates for users without `code.viewRates` (API_KEY-only → full).
+    const user = await getEffectiveUserOrNull(request);
+    const showRates = user ? canViewRates(user) : true;
+    return apiOk({ candidate: serializeCandidateDetails(candidate, { canViewRates: showRates }) });
   } catch (error) {
     return fromError(error);
   }

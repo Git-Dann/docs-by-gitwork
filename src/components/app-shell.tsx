@@ -21,6 +21,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
+import { isAtLeast } from "@/types/auth";
 
 type NavItem = {
   href?: string;
@@ -49,7 +50,7 @@ export function AppShell({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const account = useAccount();
-  const isAdmin = account.data?.role === "ADMIN";
+  const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
 
   // Close drawer on route change
   useEffect(() => {

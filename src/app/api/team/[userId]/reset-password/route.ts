@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { isAtLeast } from "@/types/auth";
 
 const ResetPasswordSchema = z.object({
   newPassword: z.string().min(8, "Password must be at least 8 characters"),
@@ -15,7 +16,7 @@ export async function POST(
 ) {
   const session = await auth();
   if (!session?.user) return apiError("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return apiError("Forbidden", 403);
+  if (!isAtLeast(session.user.role, "ADMIN")) return apiError("Forbidden", 403);
 
   try {
     const { userId } = await params;
