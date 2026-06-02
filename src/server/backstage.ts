@@ -95,6 +95,12 @@ function displayName(u: { name: string | null; email: string }): string {
 // UK + Pakistan when unset or malformed.
 const DEFAULT_HOLIDAY_COUNTRIES = ["GB", "PK"];
 
+// Legacy pre-auth seed account ("Foundry Owner"). Kept in the DB (it owns sample
+// content) but excluded from every team-facing list — same pattern as team.ts /
+// auth.ts. Without this it leaks into the leave/expense member picker, the
+// calendar legend, and staffing alerts.
+const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
+
 function parseHolidayCountries(raw: unknown): string[] {
   if (Array.isArray(raw)) {
     const codes = raw
@@ -844,7 +850,10 @@ export async function reviewExpense(
 
 export async function listWorkspaceMembers(user: EffectiveUser): Promise<BackstageMember[]> {
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: user.workspaceId },
+    where: {
+      workspaceId: user.workspaceId,
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
     include: {
       user: { select: { id: true, name: true, email: true, avatarUrl: true } },
     },
@@ -877,7 +886,10 @@ export async function getStaffingAlerts(
 
   const [members, approvedLeave] = await Promise.all([
     prisma.workspaceMember.findMany({
-      where: { workspaceId: user.workspaceId },
+      where: {
+        workspaceId: user.workspaceId,
+        user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+      },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
     prisma.leaveRequest.findMany({
@@ -1038,7 +1050,10 @@ export async function getCalendarMonth(
 
   const [members, leave, holidayCountries] = await Promise.all([
     prisma.workspaceMember.findMany({
-      where: { workspaceId: user.workspaceId },
+      where: {
+        workspaceId: user.workspaceId,
+        user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+      },
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
       },
