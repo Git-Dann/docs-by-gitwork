@@ -637,41 +637,45 @@ export function ProposalList() {
                           >
                             <PencilSquareIcon className="h-4 w-4" />
                           </Link>
-                          <Button
-                            type="button"
-                            onClick={() => duplicateMutation.mutate(proposal.id)}
-                            variant="utility"
-                            size="icon-md"
-                            aria-label={`Duplicate ${proposal.title}`}
-                            title="Duplicate"
-                          >
-                            <DocumentDuplicateIcon className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => archiveMutation.mutate(proposal.id)}
-                            variant="utility"
-                            size="icon-md"
-                            aria-label={`Archive ${proposal.title}`}
-                            title="Archive"
-                          >
-                            <ArchiveBoxIcon className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm("Delete this proposal permanently?")) {
-                                deleteMutation.mutate(proposal.id);
-                              }
-                            }}
-                            variant="utility"
-                            size="icon-md"
-                            className="text-rose-600 hover:text-rose-700"
-                            aria-label={`Delete ${proposal.title}`}
-                            title="Delete"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </Button>
+                          {canManageDocs ? (
+                            <>
+                              <Button
+                                type="button"
+                                onClick={() => duplicateMutation.mutate(proposal.id)}
+                                variant="utility"
+                                size="icon-md"
+                                aria-label={`Duplicate ${proposal.title}`}
+                                title="Duplicate"
+                              >
+                                <DocumentDuplicateIcon className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => archiveMutation.mutate(proposal.id)}
+                                variant="utility"
+                                size="icon-md"
+                                aria-label={`Archive ${proposal.title}`}
+                                title="Archive"
+                              >
+                                <ArchiveBoxIcon className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm("Delete this proposal permanently?")) {
+                                    deleteMutation.mutate(proposal.id);
+                                  }
+                                }}
+                                variant="utility"
+                                size="icon-md"
+                                className="text-rose-600 hover:text-rose-700"
+                                aria-label={`Delete ${proposal.title}`}
+                                title="Delete"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

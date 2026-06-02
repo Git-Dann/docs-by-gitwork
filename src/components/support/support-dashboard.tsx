@@ -68,6 +68,7 @@ import {
 } from "@/hooks/use-support";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -2693,6 +2694,7 @@ function EditConnectorModal({
 // ─── connectors view ─────────────────────────────────────────────────────────
 
 function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug: string }) {
+  const { canManageSupport } = usePermissions();
   const { data, isLoading } = useSupportConnections(clientId);
   // Memoise so the effect below doesn't reset its setInterval timer on every render when data is
   // a fresh undefined.
@@ -2793,15 +2795,17 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => void handleSyncAll()}
-              disabled={syncConn.isPending}
-              className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-            >
-              <ArrowPathIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
-              {syncConn.isPending ? "Syncing…" : "Refresh now"}
-            </button>
+            {canManageSupport ? (
+              <button
+                type="button"
+                onClick={() => void handleSyncAll()}
+                disabled={syncConn.isPending}
+                className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+              >
+                <ArrowPathIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
+                {syncConn.isPending ? "Syncing…" : "Refresh now"}
+              </button>
+            ) : null}
           </div>
         </div>
       )}
@@ -2961,6 +2965,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                           Needs setup
                         </span>
                       )}
+                      {canManageSupport ? (
                       <button
                         type="button"
                         onClick={() => handleSync(conn.id)}
@@ -2970,7 +2975,9 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                         <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
                         {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
                       </button>
+                      ) : null}
                       {/* kebab menu */}
+                      {canManageSupport ? (
                       <div className="relative">
                         <button
                           type="button"
@@ -3019,6 +3026,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                           </>
                         )}
                       </div>
+                      ) : null}
                     </div>
                   );
                 })()}
@@ -3028,14 +3036,16 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setShowAddModal(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
-      >
-        <PlusIcon className="h-4 w-4" />
-        Add connector
-      </button>
+      {canManageSupport ? (
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] py-3 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]"
+        >
+          <PlusIcon className="h-4 w-4" />
+          Add connector
+        </button>
+      ) : null}
 
       {agentLogs.length > 0 && (
         <div className="app-card overflow-hidden p-0">
@@ -3465,6 +3475,7 @@ function AgentsView({ clientId }: { clientId: string }) {
 // ─── settings view ───────────────────────────────────────────────────────────
 
 function SettingsView({ clientId }: { clientId: string }) {
+  const { canManageSupport } = usePermissions();
   const { data: rulesData, isLoading: rulesLoading } = useSupportWorkflowRules(clientId);
   const { data: clientData } = useSupportClients();
   const deleteRule = useDeleteWorkflowRule(clientId);
@@ -3542,14 +3553,16 @@ function SettingsView({ clientId }: { clientId: string }) {
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
               01 // WORKFLOW RULES
             </span>
-            <button
-              type="button"
-              onClick={() => setShowAddRule(true)}
-              className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
-            >
-              <PlusIcon className="h-3 w-3" />
-              Add rule
-            </button>
+            {canManageSupport ? (
+              <button
+                type="button"
+                onClick={() => setShowAddRule(true)}
+                className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+              >
+                <PlusIcon className="h-3 w-3" />
+                Add rule
+              </button>
+            ) : null}
           </div>
           {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
           {!rulesLoading && rules.length === 0 && (
@@ -3586,25 +3599,27 @@ function SettingsView({ clientId }: { clientId: string }) {
                     </p>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditingRule(rule)}
-                    className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
-                    title="Edit rule"
-                  >
-                    <PencilSquareIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteRule.mutate(rule.id)}
-                    disabled={deleteRule.isPending}
-                    className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
-                    title="Delete rule"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                {canManageSupport ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingRule(rule)}
+                      className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
+                      title="Edit rule"
+                    >
+                      <PencilSquareIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteRule.mutate(rule.id)}
+                      disabled={deleteRule.isPending}
+                      className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+                      title="Delete rule"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
