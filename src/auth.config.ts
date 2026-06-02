@@ -14,7 +14,9 @@ const SESSION_MAX_AGE = 8 * 60 * 60;            // 8 hours (no remember me)
 //   2 — per-user Google OAuth migration: existing sessions still pointed at a shared
 //       workspace token; bumping forces sign-out so each user's personal refresh token
 //       gets captured on the next sign-in.
-export const SESSION_VERSION = 2;
+//   3 — Scribe: added the Google Drive (drive.readonly) scope so Scribe can read Google
+//       Meet's "Notes by Gemini" docs. Bumping forces re-consent so the scope is granted.
+export const SESSION_VERSION = 3;
 
 export const authConfig = {
   session: { strategy: "jwt" as const, maxAge: REMEMBER_ME_MAX_AGE },

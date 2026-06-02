@@ -16,6 +16,9 @@ import {
   deleteProposal,
   duplicateProposal,
   getClientDetail,
+  getClientMeetings,
+  ingestClientMeeting,
+  updateMeetingActionItem,
   getProposal,
   listClients,
   listOnboardingLinks,
@@ -441,6 +444,48 @@ export function useClientSlackActivity(slug: string, enabled = true) {
     enabled: Boolean(slug) && enabled,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+// ─── Scribe (client meeting notes) ─────────────────────────────────────────
+
+export function useClientMeetings(slug: string, enabled = true, q = "") {
+  return useQuery({
+    queryKey: ["client-meetings", slug, q],
+    queryFn: () => getClientMeetings(slug, q),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    // Keep showing the previous results while a new search query loads — no flicker.
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useIngestClientMeeting(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      calendarEventId: string;
+      meetingCode: string;
+      title: string;
+      start?: string;
+      end?: string;
+      attendees?: string[];
+    }) => ingestClientMeeting(slug, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
+    },
+  });
+}
+
+export function useToggleMeetingActionItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meetingId, actionItemId, done }: { meetingId: string; actionItemId: string; done: boolean }) =>
+      updateMeetingActionItem(slug, meetingId, { actionItemId, done }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
+    },
   });
 }
 
