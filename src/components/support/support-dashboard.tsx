@@ -1532,10 +1532,11 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
 // ─── reports view ────────────────────────────────────────────────────────────
 
-function emptyPayload(author: string): SupportReportPayload {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+function emptyPayload(author: string, forMonth?: Date): SupportReportPayload {
+  // Default to previous month — when creating in June you're reporting on May
+  const ref = forMonth ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; })();
+  const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
   return {
     author,
     periodStart: start.toISOString().slice(0, 10),
@@ -1636,12 +1637,22 @@ function ReportBuilder({
   const { data: session } = useSession();
   const authorDefault = session?.user?.name ?? "";
 
+  // Default period is previous month (May when viewing in June)
+  const defaultMonthDate = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; })();
   const [period, setPeriod] = useState(
-    report?.period ?? new Date().toLocaleString("en-GB", { month: "long", year: "numeric" }),
+    report?.period ?? defaultMonthDate.toLocaleString("en-GB", { month: "long", year: "numeric" }),
   );
   const [p, setP] = useState<SupportReportPayload>(
     report?.payload ?? emptyPayload(authorDefault),
   );
+
+  // Fellas API import
+  const [apiToken, setApiToken] = useState(() => {
+    try { return localStorage.getItem("fellas-api-token") ?? ""; } catch { return ""; }
+  });
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [fetchingApi, setFetchingApi] = useState(false);
+  const [apiMsg, setApiMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const createReport = useCreateSupportReport(clientId);
   const updateReport = useUpdateSupportReport(clientId);
@@ -1649,6 +1660,86 @@ function ReportBuilder({
 
   function update<K extends keyof SupportReportPayload>(key: K, val: SupportReportPayload[K]) {
     setP((prev) => ({ ...prev, [key]: val }));
+  }
+
+  function applyMonth(yyyyMm: string) {
+    const [y, m] = yyyyMm.split("-").map(Number);
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0);
+    const label = start.toLocaleString("en-GB", { month: "long", year: "numeric" });
+    setPeriod(label);
+    setP((prev) => ({
+      ...prev,
+      periodStart: start.toISOString().slice(0, 10),
+      periodEnd: end.toISOString().slice(0, 10),
+    }));
+  }
+
+  async function handleFetchFromApi() {
+    setFetchingApi(true);
+    setApiMsg(null);
+    try {
+      if (apiToken.trim()) {
+        try { localStorage.setItem("fellas-api-token", apiToken.trim()); } catch { /* ignore */ }
+      }
+      const year = p.periodStart.slice(0, 4);
+      const monthPad = p.periodStart.slice(5, 7);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiToken.trim()) headers["Authorization"] = `Bearer ${apiToken.trim()}`;
+
+      const [subRes, userRes] = await Promise.all([
+        fetch(`https://api.fellasloaded.com/api/analytics/subscriptions/transactions/monthly_summary/?year=${year}`, { headers }),
+        fetch(`https://api.fellasloaded.com/api/analytics/users/monthly/`, { headers }),
+      ]);
+
+      if (!subRes.ok) throw new Error(`Subscriptions API: ${subRes.status}`);
+      if (!userRes.ok) throw new Error(`Users API: ${userRes.status}`);
+
+      type SubRow = { platform: string; subscription_type: string; month: string; transaction_count: number; new_subscriptions: number; renewals: number };
+      type UserMonthly = { stripe: Array<{ month: string; count: number }>; ios: Array<{ month: string; count: number }>; android: Array<{ month: string; count: number }> };
+
+      const subData = (await subRes.json()) as SubRow[];
+      const userData = (await userRes.json()) as UserMonthly;
+
+      const prefix = `${year}-${monthPad}`;
+      const monthRows = Array.isArray(subData) ? subData.filter((r) => r.month.startsWith(prefix)) : [];
+
+      const getNew = (platform: string, type: string) =>
+        monthRows.find((r) => r.platform === platform && r.subscription_type === type)?.new_subscriptions ?? 0;
+      const getMonthUser = (arr: Array<{ month: string; count: number }>) =>
+        arr?.find((r) => r.month.startsWith(prefix))?.count ?? 0;
+
+      const iosMonthlyNew = getNew("ios", "monthly_subscription");
+      const iosYearlyNew = getNew("ios", "yearly_subscription");
+      const androidMonthlyNew = getNew("android", "monthly_subscription");
+      const androidYearlyNew = getNew("android", "yearly_subscription");
+      const stripeNew = monthRows.filter((r) => r.platform === "stripe").reduce((s, r) => s + r.new_subscriptions, 0);
+
+      setP((prev) => ({
+        ...prev,
+        usageEventsNew: monthRows.reduce((s, r) => s + r.new_subscriptions, 0),
+        usageEventsRenewals: monthRows.reduce((s, r) => s + r.renewals, 0),
+        usageEventsTotal: monthRows.reduce((s, r) => s + r.transaction_count, 0),
+        usageSubIosMonthly: iosMonthlyNew,
+        usageSubIosYearly: iosYearlyNew,
+        usageSubAndroidMonthly: androidMonthlyNew,
+        usageSubAndroidYearly: androidYearlyNew,
+        usageSubStripeMonthly: monthRows.find((r) => r.platform === "stripe" && r.subscription_type.includes("monthly"))?.new_subscriptions ?? stripeNew,
+        usageSubStripeYearly: getNew("stripe", "yearly_subscription"),
+        usageIosNew: iosMonthlyNew + iosYearlyNew,
+        usageAndroidNew: androidMonthlyNew + androidYearlyNew,
+        usageStripeNew: stripeNew,
+        usageIosTotal: getMonthUser(userData.ios),
+        usageAndroidTotal: getMonthUser(userData.android),
+        usageStripeTotal: getMonthUser(userData.stripe),
+      }));
+
+      setApiMsg({ type: "ok", text: `Fetched ${monthRows.length} subscription rows for ${prefix}` });
+    } catch (err) {
+      setApiMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to fetch" });
+    } finally {
+      setFetchingApi(false);
+    }
   }
 
   async function handleSave() {
@@ -1691,6 +1782,23 @@ function ReportBuilder({
       {/* 01 // PERIOD & AUTHOR */}
       <div className="app-card overflow-hidden p-0">
         {widgetHeader("01", "PERIOD & AUTHOR")}
+        {/* Month quick-pick */}
+        <div className="flex items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-2.5">
+          <span className="text-[11px] font-medium text-[var(--text-3)]">Quick-select month</span>
+          <select
+            value={`${p.periodStart.slice(0, 7)}`}
+            onChange={(e) => applyMonth(e.target.value)}
+            className="h-7 rounded-[6px] border border-[var(--border-2)] bg-white px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
+          >
+            {Array.from({ length: 12 }, (_, i) => {
+              const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = d.toLocaleString("en-GB", { month: "long", year: "numeric" });
+              return <option key={val} value={val}>{label}</option>;
+            })}
+          </select>
+          <span className="text-[11px] text-[var(--text-4)]">Sets all date fields + label below</span>
+        </div>
         <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3">
           <div className="col-span-2 sm:col-span-1">
             <p className="mb-1 text-[11px] font-medium text-[var(--text-3)]">Period label</p>
@@ -1783,7 +1891,51 @@ function ReportBuilder({
 
       {/* 06 // USAGE & SUBSCRIPTIONS */}
       <div className="app-card overflow-hidden p-0">
-        {widgetHeader("06", "USAGE & SUBSCRIPTIONS")}
+        {widgetHeader("06", "USAGE & SUBSCRIPTIONS", (
+          <button
+            type="button"
+            onClick={() => setShowTokenInput((v) => !v)}
+            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+          >
+            <ArrowPathIcon className="h-3 w-3" />
+            Fetch from API
+          </button>
+        ))}
+        {/* Fellas API import panel */}
+        {showTokenInput && (
+          <div className="border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-3 space-y-2">
+            <p className="text-[11px] font-semibold text-[var(--text-3)]">Fellas Loaded API token (JWT)</p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
+                placeholder="eyJ… (optional for public endpoints)"
+                className="h-8 flex-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 font-mono text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => void handleFetchFromApi()}
+                disabled={fetchingApi}
+                className="flex h-8 items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {fetchingApi ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <ArrowPathIcon className="h-3.5 w-3.5" />
+                )}
+                {fetchingApi ? "Fetching…" : `Fetch ${p.periodStart.slice(0, 7)}`}
+              </button>
+            </div>
+            {apiMsg && (
+              <p className={`text-[11px] ${apiMsg.type === "ok" ? "text-emerald-600" : "text-red-500"}`}>
+                {apiMsg.type === "ok" ? "✓" : "✗"} {apiMsg.text}
+              </p>
+            )}
+            <p className="text-[11px] text-[var(--text-4)]">Populates all subscription & platform activity fields for {p.periodStart.slice(0, 7)}. Token saved to browser.</p>
+          </div>
+        )}
         <div className="p-5 space-y-5">
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-4)]">User base (all-time)</p>
