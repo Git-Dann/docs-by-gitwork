@@ -53,7 +53,10 @@ interface CsvDataset {
 const dataset = datasetJson as unknown as CsvDataset;
 
 /** Normalized ClickUp folder name → WorkspaceClient slug, for any name mismatches. */
-const FOLDER_ALIASES: Record<string, string> = {};
+const FOLDER_ALIASES: Record<string, string> = {
+  // ClickUp folder name (normalized) → Portal client slug, where the names diverge.
+  "big wedge": "wedge",
+};
 
 // ── Writers (find-then-write, keyed on clickupId) ────────────────────────────
 
@@ -145,9 +148,12 @@ export async function runCsvImport(opts: CsvRunOptions = {}): Promise<ImportRepo
   });
   const byName = new Map<string, (typeof clients)[number]>();
   const bySlug = new Map<string, (typeof clients)[number]>();
+  // Space-insensitive key so a folder like "AfterDesk" matches a client "After Desk".
+  const byCompact = new Map<string, (typeof clients)[number]>();
   for (const c of clients) {
     byName.set(normalize(c.name), c);
     bySlug.set(c.slug, c);
+    byCompact.set(normalize(c.name).replace(/\s+/g, ""), c);
   }
 
   const report: ImportReport = {
@@ -163,8 +169,13 @@ export async function runCsvImport(opts: CsvRunOptions = {}): Promise<ImportRepo
 
   for (const folder of dataset.folders) {
     report.totals.foldersSeen++;
-    const aliasSlug = FOLDER_ALIASES[normalize(folder.name)];
-    const matched = aliasSlug ? bySlug.get(aliasSlug) : byName.get(normalize(folder.name));
+    const nf = normalize(folder.name);
+    const aliasSlug = FOLDER_ALIASES[nf];
+    const matched =
+      (aliasSlug ? bySlug.get(aliasSlug) : undefined) ??
+      byName.get(nf) ??
+      byCompact.get(nf.replace(/\s+/g, "")) ?? // "after desk" → "afterdesk"
+      bySlug.get(nf.replace(/\s+/g, "-")); // "after desk" → "after-desk"
     if (!matched) {
       report.unmatchedFolders.push(folder.name);
       continue;
