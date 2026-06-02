@@ -1110,7 +1110,7 @@ function InboxFiltersDropdown({
   );
 }
 
-function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string }) {
+function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
 
@@ -1209,7 +1209,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
           {/* widget header */}
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-              02 // CONVERSATIONS
+              01 // {listLabel ?? "CONVERSATIONS"}
             </span>
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
               {filtered.length}
@@ -1265,7 +1265,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
         {/* widget header */}
         <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
           <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-            01 // CONVERSATION
+            02 // CONVERSATION
           </span>
           {activeConvo && (
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
@@ -1355,7 +1355,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
 }
 
 function ConversationsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
+  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
 }
 
 function ConversationCard({
@@ -1387,15 +1387,28 @@ function ConversationCard({
           {convo.sentiment === "negative" && (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
           )}
-          <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">
-            {convo.subject}
-          </h3>
+          {(() => {
+            // For Gmail, subjects are "Type - email@example.com" — split into bold title + grey detail
+            const dashIdx = convo.source === "gmail" ? convo.subject.indexOf(" - ") : -1;
+            const subjectMain = dashIdx > -1 ? convo.subject.slice(0, dashIdx) : convo.subject;
+            const subjectDetail = dashIdx > -1 ? convo.subject.slice(dashIdx + 3) : null;
+            return (
+              <>
+                <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">{subjectMain}</h3>
+                {subjectDetail && (
+                  <p className="truncate text-[11px] text-[var(--text-4)]">{subjectDetail}</p>
+                )}
+              </>
+            );
+          })()}
         </div>
         <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-4)]">
           {formatShort(convo.receivedAt)}
         </span>
       </div>
-      <p className="mt-1 line-clamp-1 text-xs text-[var(--text-3)]">{convo.preview}</p>
+      {convo.source !== "gmail" && (
+        <p className="mt-1 line-clamp-1 text-xs text-[var(--text-3)]">{convo.preview}</p>
+      )}
       {(() => {
         const kwTags = convo.tags.filter((t) => t.startsWith("kw:"));
         const visibleTags = [...new Set(convo.tags)].filter((t) => t !== convo.source && !t.startsWith("kw:"));
@@ -1424,7 +1437,7 @@ function ConversationCard({
 // ─── tickets view ────────────────────────────────────────────────────────────
 
 function TicketsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} emptyLabel="No RSS feed items yet. Add a Reddit connector in Connectors to start pulling in posts." />;
+  return <InboxView clientId={clientId} sourcesFilter={RSS_SOURCES} listLabel="POSTS" emptyLabel="No RSS feed items yet. Add a Reddit connector in Connectors to start pulling in posts." />;
 }
 
 function TicketsTableView({ clientId }: { clientId: string }) {
@@ -1728,16 +1741,24 @@ function ReportBuilder({
       }
       const year = p.periodStart.slice(0, 4);
       const monthPad = p.periodStart.slice(5, 7);
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (apiToken.trim()) headers["Authorization"] = `Bearer ${apiToken.trim()}`;
+
+      // Proxy through our API to avoid CORS — browser can't call api.fellasloaded.com directly
+      const proxyHeaders: Record<string, string> = {};
+      if (apiToken.trim()) proxyHeaders["x-fellas-token"] = apiToken.trim();
 
       const [subRes, userRes] = await Promise.all([
-        fetch(`https://api.fellasloaded.com/api/analytics/subscriptions/transactions/monthly_summary/?year=${year}`, { headers }),
-        fetch(`https://api.fellasloaded.com/api/analytics/users/monthly/`, { headers }),
+        fetch(`/api/support/fellas-proxy?endpoint=/api/analytics/subscriptions/transactions/monthly_summary/&qs=year=${year}`, { headers: proxyHeaders }),
+        fetch(`/api/support/fellas-proxy?endpoint=/api/analytics/users/monthly/`, { headers: proxyHeaders }),
       ]);
 
-      if (!subRes.ok) throw new Error(`Subscriptions API: ${subRes.status}`);
-      if (!userRes.ok) throw new Error(`Users API: ${userRes.status}`);
+      if (!subRes.ok) {
+        const msg = await subRes.json().catch(() => ({ error: subRes.statusText })) as { error?: string };
+        throw new Error(msg.error ?? `Subscriptions API: ${subRes.status}`);
+      }
+      if (!userRes.ok) {
+        const msg = await userRes.json().catch(() => ({ error: userRes.statusText })) as { error?: string };
+        throw new Error(msg.error ?? `Users API: ${userRes.status}`);
+      }
 
       type SubRow = { platform: string; subscription_type: string; month: string; transaction_count: number; new_subscriptions: number; renewals: number };
       type UserMonthly = { stripe: Array<{ month: string; count: number }>; ios: Array<{ month: string; count: number }>; android: Array<{ month: string; count: number }> };
@@ -3704,7 +3725,7 @@ export function SupportDashboard() {
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
           {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
           {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
-          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} />}
+          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" />}
           {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} />}
           {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} />}
           {!activePanel && activeTab === "reports" && <ReportsView client={client} />}
