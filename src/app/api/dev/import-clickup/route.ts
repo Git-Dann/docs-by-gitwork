@@ -22,6 +22,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { runClickupImport } from "@/server/clickup-import";
 import { runCsvImport } from "@/server/clickup-csv-import";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 // Importing ~1k tasks (or paginating ~80 ClickUp lists) can take a while.
@@ -30,7 +31,8 @@ export const maxDuration = 300;
 export async function POST(req: Request) {
   try {
     const user = await requireAuthedUser(req);
-    if (user.role !== "ADMIN") return apiError("Admin only", 403);
+    // Admins AND Super Admins (Dan) — isAtLeast, not a strict equality.
+    if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
 
     const body = (await req.json().catch(() => ({}))) as {
       dryRun?: boolean;
