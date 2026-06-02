@@ -12,7 +12,7 @@ function isOverdue(task: TaskDTO): boolean {
   return new Date(task.dueDate).getTime() < Date.now();
 }
 
-// Restrained, on-brand: one quiet status dot per group (no rainbow fills).
+// Restrained, on-brand: one quiet labelled status dot per group (no rainbow fills).
 const STATUS_DOT: Record<TaskStatus, string> = {
   BACKLOG: "bg-zinc-400",
   TODO: "bg-sky-500",
@@ -110,12 +110,9 @@ export function TaskList({
   }
 
   return (
-    <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
-      {/* Column header */}
-      <div
-        className="grid items-center border-b border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-3 py-2"
-        style={{ gridTemplateColumns: gridCols }}
-      >
+    <div className="space-y-2.5">
+      {/* Shared column headings (sit above the separate section cards). */}
+      <div className="grid items-center px-4" style={{ gridTemplateColumns: gridCols }}>
         {selectable ? (
           <div className="flex items-center">
             <SelectAllBox checked={allChecked} indeterminate={someChecked && !allChecked} onChange={(c) => onToggleAll?.(c)} />
@@ -129,20 +126,18 @@ export function TaskList({
         <span className={cn(HEAD, "text-right")} style={MONO}>Due</span>
       </div>
 
-      {/* Collapsible status groups */}
+      {/* Each status group is its own separated card. */}
       {TASK_STATUSES.map((status) => {
         const group = grouped[status];
         const isOpen = !collapsed.has(status);
         const visible = showAll.has(status) ? group : group.slice(0, VISIBLE_CAP);
-        const flag = (p: TaskPriority) => PRIORITY_FLAG[p];
 
         return (
-          <div key={status}>
-            {/* group header */}
+          <section key={status} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
             <button
               type="button"
               onClick={() => toggleCollapse(status)}
-              className="flex w-full items-center gap-2 border-b border-[rgba(0,0,0,0.06)] bg-[var(--surface-1)] px-3 py-1.5 text-left transition hover:brightness-[0.97]"
+              className="flex w-full items-center gap-2 bg-[var(--surface-1)] px-3 py-2 text-left transition hover:brightness-[0.97]"
             >
               {isOpen ? (
                 <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
@@ -157,11 +152,11 @@ export function TaskList({
             </button>
 
             {isOpen && group.length > 0 && (
-              <div>
+              <div className="border-t border-[rgba(0,0,0,0.06)]">
                 {visible.map((task) => {
                   const checked = sel.has(task.id);
                   const overdue = isOverdue(task);
-                  const f = flag(task.priority);
+                  const f = PRIORITY_FLAG[task.priority];
                   return (
                     <div
                       key={task.id}
@@ -254,7 +249,7 @@ export function TaskList({
                   <button
                     type="button"
                     onClick={() => toggleShowAll(status)}
-                    className="w-full border-b border-[rgba(0,0,0,0.04)] px-3 py-2 text-left text-[11px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)]"
+                    className="w-full px-3 py-2 text-left text-[11px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)]"
                   >
                     {showAll.has(status) ? "Show less" : `Show all ${group.length}`}
                   </button>
@@ -263,9 +258,9 @@ export function TaskList({
             )}
 
             {isOpen && group.length === 0 && (
-              <p className="border-b border-[rgba(0,0,0,0.04)] px-9 py-2.5 text-[12px] text-[var(--text-4)]">No tasks</p>
+              <p className="border-t border-[rgba(0,0,0,0.06)] px-3 py-2.5 text-[12px] text-[var(--text-4)]">No tasks</p>
             )}
-          </div>
+          </section>
         );
       })}
     </div>
