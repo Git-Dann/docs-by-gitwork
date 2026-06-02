@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import {
   ArrowRightIcon,
   BanknotesIcon,
-  CalendarDaysIcon,
   CheckCircleIcon,
   ClockIcon,
 } from "@heroicons/react/24/outline";
@@ -13,13 +12,14 @@ import {
   useLeaveAllowance,
   useLeaveRequests,
 } from "@/hooks/use-backstage";
+import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-export type BackstageArea = "calendar" | "leave" | "expenses" | "approvals";
+export type BackstageArea = "leave" | "expenses" | "approvals";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
-// see app-overview.tsx + DESIGN.md). Each card shows a headline figure and opens
-// its area on click. No tabs.
+// see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
+// headline figure and open their area on click; the calendar stays visible. No tabs.
 export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) => void }) {
   const { canApprove, canManageExpenses } = useBackstageAccess();
 
@@ -27,11 +27,13 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
   const num = () => String(++n).padStart(2, "0");
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <CalendarCard number={num()} onOpen={onOpen} />
-      <LeaveCard number={num()} onOpen={onOpen} />
-      {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
-      {canApprove ? <ApprovalsCard number={num()} onOpen={onOpen} /> : null}
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <LeaveCard number={num()} onOpen={onOpen} />
+        {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
+        {canApprove ? <ApprovalsCard number={num()} onOpen={onOpen} /> : null}
+      </div>
+      <CalendarTab number={num()} />
     </div>
   );
 }
@@ -82,16 +84,6 @@ function Figure({ value, unit }: { value: number | string; unit: string }) {
 }
 
 // ── Cards ───────────────────────────────────────────────────────────────────
-function CalendarCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
-  return (
-    <Card number={number} title="CALENDAR" area="calendar" onOpen={onOpen}>
-      <CalendarDaysIcon className="h-7 w-7 text-[var(--brand-500)]" />
-      <p className="mt-1 text-sm font-medium text-[var(--text-1)]">Team availability</p>
-      <p className="text-xs text-[var(--text-3)]">Holidays, leave &amp; cover at a glance</p>
-    </Card>
-  );
-}
-
 function LeaveCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
   const allowance = useLeaveAllowance();
   const pending = allowance.data?.pending ?? 0;
