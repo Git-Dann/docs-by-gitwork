@@ -10,6 +10,7 @@ import {
   ClipboardDocumentListIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
+  EllipsisVerticalIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   EyeIcon,
@@ -1104,8 +1105,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
   const [filterUnread, setFilterUnread] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 15;
-  const [replyText, setReplyText] = useState("");
-  const [draft, setDraft] = useState<DraftState>(null);
 
   // Derive which sources are present so we only show relevant chips
   const presentSources = useMemo(
@@ -1134,8 +1133,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
   const messages = msgData?.messages ?? [];
 
   const updateConversation = useUpdateConversation(clientId);
-  const sendMessage = useSendMessage(clientId, selectedConvId);
-  const generateDraft = useGenerateAiDraft(clientId);
 
   // Mark conversation as read when opened
   const markedReadRef = useRef<Set<string>>(new Set());
@@ -1148,11 +1145,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
     }
   }, [selectedConvId, convos, updateConversation]);
 
-  // Clear draft when switching conversations
-  useEffect(() => {
-    setDraft(null);
-    setReplyText("");
-  }, [selectedConvId]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -1162,26 +1154,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
 
   const activeConvo = filtered.find((c) => c.id === selectedConvId) ?? null;
 
-  function handleSend() {
-    const body = (draft?.status === "approved" ? draft.text : replyText).trim();
-    if (!body || !selectedConvId) return;
-    sendMessage.mutate(
-      { direction: "outbound", authorLabel: "Support", body },
-      {
-        onSuccess: () => {
-          setReplyText("");
-          setDraft(null);
-        },
-      },
-    );
-  }
-
-  function handleGenerateDraft() {
-    if (!selectedConvId) return;
-    generateDraft.mutate(selectedConvId, {
-      onSuccess: (res) => setDraft({ text: res.draft, status: "draft" }),
-    });
-  }
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -1298,22 +1270,9 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
                   {activeConvo.subject}
                 </h2>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="text-[11px] text-[var(--text-4)]">
-                  {formatShort(activeConvo.receivedAt)}
-                </span>
-                {activeConvo.source !== "gmail" && (
-                  <button
-                    type="button"
-                    onClick={handleGenerateDraft}
-                    disabled={generateDraft.isPending}
-                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--mist)] hover:border-[var(--mist-border)] hover:text-[var(--brand-700)] disabled:opacity-50"
-                  >
-                    <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
-                    {generateDraft.isPending ? "Generating…" : "Draft AI reply"}
-                  </button>
-                )}
-              </div>
+              <span className="shrink-0 text-[11px] text-[var(--text-4)]">
+                {formatShort(activeConvo.receivedAt)}
+              </span>
             </div>
 
             {/* messages */}
@@ -1324,6 +1283,11 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
                     <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
                   ))}
                 </div>
+              )}
+              {!msgsLoading && messages.length === 0 && (
+                <p className="py-6 text-center text-sm text-[var(--text-4)]">
+                  No messages matched your keyword filter. Edit the connector to broaden or clear the Include keywords.
+                </p>
               )}
               {messages.map((msg) => (
                 <div
@@ -1344,79 +1308,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
               ))}
             </div>
 
-            {/* AI draft panel */}
-            {draft && activeConvo.source !== "gmail" && (
-              <div className="border-t border-[var(--mist-border)] bg-[var(--mist)] p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-                    <span className="text-xs font-semibold text-[var(--brand-700)]">AI draft</span>
-                    {draft.status === "approved" && (
-                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                        Approved
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDraft(null)}
-                    className="text-[var(--text-4)] hover:text-[var(--text-2)]"
-                  >
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                <textarea
-                  rows={5}
-                  value={draft.text}
-                  onChange={(e) => setDraft({ text: e.target.value, status: "draft" })}
-                  className="w-full resize-none rounded-[6px] border border-[var(--mist-border)] bg-white p-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
-                />
-                <div className="mt-2 flex items-center justify-end gap-2">
-                  {draft.status === "draft" ? (
-                    <button
-                      type="button"
-                      onClick={() => setDraft({ text: draft.text, status: "approved" })}
-                      className="flex items-center gap-1.5 rounded-[6px] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                    >
-                      <CheckCircleIcon className="h-4 w-4" />
-                      Approve draft
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={sendMessage.isPending}
-                      className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
-                    >
-                      {sendMessage.isPending ? "Sending…" : "Send reply"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* manual reply box (only when no draft, and source supports replies) */}
-            {!draft && activeConvo.source !== "gmail" && (
-              <div className="border-t border-[var(--border-2)] p-4">
-                <textarea
-                  rows={3}
-                  className="w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
-                  placeholder="Write a reply…"
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                />
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={sendMessage.isPending || !replyText.trim()}
-                    className="rounded-[6px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-                  >
-                    {sendMessage.isPending ? "Sending…" : "Send reply"}
-                  </button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -2448,6 +2339,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const connections = useMemo(() => data?.connections ?? [], [data?.connections]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
@@ -2667,6 +2559,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   const isThisPending = pendingConnId === conn.id;
                   const isSyncPending = isThisPending && !pendingResync;
                   const isResyncPending = isThisPending && pendingResync;
+                  const menuOpen = openMenuId === conn.id;
                   return (
                     <div className="flex items-center gap-2">
                       {conn.health === "connected" ? (
@@ -2692,39 +2585,57 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                         className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                       >
                         <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
-                        {isSyncPending ? "Syncing…" : "Sync now"}
+                        {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSync(conn.id, true)}
-                        disabled={isThisPending}
-                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                        title="Clear last-synced timestamp and pull the last 30 days of history"
-                      >
-                        <ArrowPathIcon className={cn("h-3 w-3", isResyncPending && "animate-spin")} />
-                        {isResyncPending ? "Syncing…" : "Re-sync history"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingConn(conn)}
-                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                      >
-                        <PencilSquareIcon className="h-3 w-3" />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
-                            deleteConn.mutate(conn.id);
-                          }
-                        }}
-                        disabled={deleteConn.isPending}
-                        className="flex items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50"
-                      >
-                        <TrashIcon className="h-3 w-3" />
-                        Delete
-                      </button>
+                      {/* kebab menu */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuId(menuOpen ? null : conn.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+                        >
+                          <EllipsisVerticalIcon className="h-4 w-4" />
+                        </button>
+                        {menuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                            <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => { setOpenMenuId(null); void handleSync(conn.id, true); }}
+                                disabled={isThisPending}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                              >
+                                <ArrowPathIcon className="h-3.5 w-3.5 shrink-0" />
+                                Re-sync history
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setOpenMenuId(null); setEditingConn(conn); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                              >
+                                <PencilSquareIcon className="h-3.5 w-3.5 shrink-0" />
+                                Edit connector
+                              </button>
+                              <div className="border-t border-[var(--border-2)]" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
+                                    deleteConn.mutate(conn.id);
+                                  }
+                                }}
+                                disabled={deleteConn.isPending}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500 transition hover:bg-red-50 disabled:opacity-50"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5 shrink-0" />
+                                Delete connector
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
