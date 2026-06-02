@@ -47,7 +47,6 @@ import {
   useCreateWorkflowRule,
   useUpdateWorkflowRule,
   useDeleteConnection,
-  usePurgeConversations,
   useDeleteSupportReport,
   useDeleteWorkflowRule,
   useGenerateAiDraft,
@@ -2451,7 +2450,6 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const [editingConn, setEditingConn] = useState<Connection | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
-  const purgeConn = usePurgeConversations(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
@@ -2663,12 +2661,12 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                 </div>
 
                 {(() => {
-                  const pendingConnId = syncConn.isPending
-                    ? typeof syncConn.variables === "string"
-                      ? syncConn.variables
-                      : syncConn.variables?.connId
-                    : null;
+                  const pendingVars = syncConn.isPending ? syncConn.variables : null;
+                  const pendingConnId = typeof pendingVars === "string" ? pendingVars : pendingVars?.connId;
+                  const pendingResync = typeof pendingVars === "string" ? false : (pendingVars?.resync ?? false);
                   const isThisPending = pendingConnId === conn.id;
+                  const isSyncPending = isThisPending && !pendingResync;
+                  const isResyncPending = isThisPending && pendingResync;
                   return (
                     <div className="flex items-center gap-2">
                       {conn.health === "connected" ? (
@@ -2693,22 +2691,18 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                         disabled={isThisPending}
                         className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                       >
-                        <BoltIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
-                        {isThisPending ? "Syncing…" : "Sync now"}
+                        <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
+                        {isSyncPending ? "Syncing…" : "Sync now"}
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm("Re-sync 30 days of history? This may take a moment.")) {
-                            void handleSync(conn.id, true);
-                          }
-                        }}
+                        onClick={() => void handleSync(conn.id, true)}
                         disabled={isThisPending}
                         className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                         title="Clear last-synced timestamp and pull the last 30 days of history"
                       >
-                        <ArrowPathIcon className={cn("h-3 w-3", isThisPending && "animate-spin")} />
-                        Re-sync history
+                        <ArrowPathIcon className={cn("h-3 w-3", isResyncPending && "animate-spin")} />
+                        {isResyncPending ? "Syncing…" : "Re-sync history"}
                       </button>
                       <button
                         type="button"
@@ -2717,20 +2711,6 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       >
                         <PencilSquareIcon className="h-3 w-3" />
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Clear all conversations from "${conn.label}"? This deletes all ingested messages and cannot be undone.`)) {
-                            purgeConn.mutate(conn.id);
-                          }
-                        }}
-                        disabled={purgeConn.isPending}
-                        className="flex items-center gap-1 rounded-[6px] border border-amber-200 px-2.5 py-1 text-[11px] font-medium text-amber-600 transition hover:bg-amber-50 disabled:opacity-50"
-                        title="Delete all conversations ingested from this connector"
-                      >
-                        <ArrowPathIcon className="h-3 w-3" />
-                        {purgeConn.isPending ? "Clearing…" : "Clear inbox"}
                       </button>
                       <button
                         type="button"
