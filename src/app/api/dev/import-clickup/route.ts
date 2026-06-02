@@ -1,0 +1,52 @@
+/**
+ * POST /api/dev/import-clickup — one-time ClickUp migration, admin-only.
+ *
+ * Requires the CLICKUP_TOKEN env var (a ClickUp personal token, `pk_…`).
+ *
+ * Body (all optional):
+ *   { "dryRun": true,  "clientSlug": "ace-grading" }
+ *
+ * dryRun DEFAULTS TO TRUE — the first call reads the whole ClickUp hierarchy and
+ * returns per-client counts (blocks / milestones / active tasks / subtasks) plus
+ * the assignee-match report, writing NOTHING. Review that, then re-POST with
+ * { "dryRun": false } to commit. Idempotent (keyed on clickupId) — safe to re-run.
+ *
+ * Optionally pass clientSlug to pilot a single client first.
+ *
+ * Prerequisite: run /api/dev/seed-team once so the dev roster exists as Foundry
+ * Users — otherwise assignees resolve to "knownButMissingUsers" and tasks import
+ * unassigned.
+ */
+
+import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { requireAuthedUser } from "@/server/auth/effective-user";
+import { runClickupImport } from "@/server/clickup-import";
+
+export const dynamic = "force-dynamic";
+// ClickUp pagination across ~80 lists can take a while — give it room.
+export const maxDuration = 300;
+
+export async function POST(req: Request) {
+  try {
+    const user = await requireAuthedUser(req);
+    if (user.role !== "ADMIN") return apiError("Admin only", 403);
+
+    if (!process.env.CLICKUP_TOKEN) {
+      return apiError("CLICKUP_TOKEN env var is not set", 400);
+    }
+
+    const body = (await req.json().catch(() => ({}))) as {
+      dryRun?: boolean;
+      clientSlug?: string;
+    };
+
+    const report = await runClickupImport({
+      dryRun: body.dryRun !== false, // default true unless explicitly false
+      clientSlug: typeof body.clientSlug === "string" ? body.clientSlug : undefined,
+    });
+
+    return apiOk(report);
+  } catch (e) {
+    return fromError(e);
+  }
+}

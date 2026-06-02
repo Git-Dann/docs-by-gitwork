@@ -90,3 +90,27 @@
 - Active-only volume still unknown until the dry-run — that's the gate.
 - Keep `clickupId` **indexed, not unique** (a unique-add would make `prisma db push` skip the whole migration).
 - Assignee name variants need a normalisation/alias table.
+
+---
+
+## Phase 2 — IMPLEMENTED (June 2026)
+
+Importer shipped as `src/server/clickup-import.ts` + `POST /api/dev/import-clickup`
+(admin-only, `dynamic`, `maxDuration=300`). Token-based (no MCP) — see CLAUDE.md §13.8
+for the full rationale and field mapping.
+
+**Run order:**
+1. Add `CLICKUP_TOKEN` (a `pk_…` ClickUp personal token) to Vercel env.
+2. `POST /api/dev/seed-team` (once) — seeds the dev roster as Foundry Users so
+   assignees resolve. Without it, knowns land in `knownButMissingUsers`.
+3. `POST /api/dev/import-clickup` with no body (or `{"dryRun":true}`) — **dry-run**.
+   Returns per-client counts + `unmatchedFolders` / `unmatchedAssignees` /
+   `knownButMissingUsers`. **Nothing is written.** This is the review gate.
+4. (Optional) pilot one client: `{"dryRun":false,"clientSlug":"ace-grading"}`.
+5. Go live: `{"dryRun":false}`. Idempotent — re-running reconciles (keyed on `clickupId`).
+6. Remove `CLICKUP_TOKEN` from the env once done.
+
+**If the dry-run shows unmatched folders/assignees:** add the folder→slug entry to
+`FOLDER_ALIASES`, or a name alias to `TEAM_ROSTER` in `team-roster.ts`, and re-run the
+dry-run. Retainer lists are imported (not skipped) — eyeball their counts in the dry-run
+and tell me to skip if noisy.

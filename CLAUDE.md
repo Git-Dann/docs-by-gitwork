@@ -89,6 +89,11 @@ GITHUB_TOKEN=""        # PAT with repo + metadata read permissions
 # at rest (AES-256-GCM via src/lib/encryption.ts). Generate with:
 #   openssl rand -base64 32
 ENCRYPTION_KEY=""      # 32-byte base64 secret
+
+# ClickUp — ONLY for the one-time migration (POST /api/dev/import-clickup).
+# A ClickUp personal token (Settings → Apps → API Token, starts "pk_").
+# Safe to remove from the env after the import is done.
+CLICKUP_TOKEN=""
 ```
 
 ---
@@ -440,3 +445,10 @@ In the last session, the following was completed:
    - **Milestones** — new `Milestone` model (single date) + `src/server/milestones.ts`, `/api/milestones(/[id])`, hooks, `milestone-form.tsx`. Render as diamond markers on the Gantt (internal + public) via `GanttChart`'s `milestones` prop.
    - **Optional block dates** — `FeatureBlock.startDate/endDate` now nullable; a block is a Gantt bar only when both are set, else board-only. `Task.metadata` (Json) + `clickupId` (indexed, not unique) on Task/FeatureBlock/Milestone for the importer.
    - **Deferred**: `WorkspaceClient.retainerDays` exists (schema + validator) but its display/persistence through the verbose clients aggregate module isn't wired yet — small follow-up.
+
+8. **Tasks v3 — Phase 2: the ClickUp importer** (`src/server/clickup-import.ts` + `POST /api/dev/import-clickup`):
+   - **Token-based, server-side, idempotent.** Self-discovers the ClickUp tree from just `CLICKUP_TOKEN` (env): team → "Clients" space → folders → lists → tasks. Subtasks, custom fields and markdown descriptions arrive **inline** on the Get-Tasks endpoint, so there are **no per-task fetches** (stays inside the rate limit; one pass, paginated, with 429/5xx backoff).
+   - **Why a token** (vs the no-token MCP path): the live ClickUp connector handles per-list reads but **times out on bulk pulls**, and the list summaries omit descriptions/subtasks/the custom 28-name "Assignee" field — a faithful, reproducible migration needs server-side detail fetches. Dan provided a token. The token is migration-only and safe to delete from the env afterwards.
+   - **Mapping** (per `docs/clickup-import-plan.md`): folder→`WorkspaceClient` (normalized-name match + `FOLDER_ALIASES`), list→`FeatureBlock` (undated), `Milestones` list→`Milestone` (all, dated only), task→`Task` (**active only**), subtask→`Task.parentId` (one level, deeper flattened), urgent→HIGH, multi-assignee via native assignees + custom "Assignee" label resolved through `team-roster`, custom fields→`Task.metadata`, and `ClientAssignment` derived where a dev holds ≥1 task. Skips Support/Feedback/Course-request/`{{Legacy}}` lists; **keeps** Retainer lists (surfaced in the dry-run).
+   - **"Active" is status-based, not `include_closed`** — ClickUp's "complete" is a *custom* status (`type !== "closed"`), so `include_closed=false` still returns finished work. The importer fetches everything and excludes any status that maps to DONE (`done/complete/closed/archived/cancelled/live/shipped/merged` + structural closed/done type).
+   - **How to run**: set `CLICKUP_TOKEN` in Vercel env → `POST /api/dev/import-clickup` (admin only) defaults to **`dryRun: true`** and returns per-client counts (blocks / milestones / active tasks / subtasks) + `unmatchedFolders` / `unmatchedAssignees` / `knownButMissingUsers`, writing nothing. Review, optionally pilot one client with `{"clientSlug":"…"}`, then re-POST `{"dryRun": false}` to commit. Re-runnable (keyed on `clickupId`). **Prerequisite**: run `POST /api/dev/seed-team` first so the dev roster exists as Foundry Users (else assignees land in `knownButMissingUsers`).
