@@ -513,15 +513,15 @@ function MemberAccessModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4"
       onClick={onClose}
     >
       <div
-        className="proposal-form-theme w-full max-w-3xl rounded-[14px] bg-white shadow-2xl"
+        className="proposal-form-theme flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[14px] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-sm font-semibold text-[var(--brand-700)]">
               {(member.user.name ?? member.user.email)[0].toUpperCase()}
@@ -543,20 +543,20 @@ function MemberAccessModal({
           </button>
         </div>
 
-        {/* Presets */}
-        <div className="border-b border-[var(--border-2)] px-6 py-4">
+        {/* Presets — equal-height, top-aligned cards */}
+        <div className="shrink-0 border-b border-[var(--border-2)] px-6 py-4">
           <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Quick presets</p>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid items-stretch gap-2 sm:grid-cols-3">
             {PERMISSION_PRESETS.filter((p) => canManageRole(actorRole, p.role)).map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => applyPreset(preset.id)}
-                className="rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-left text-xs transition hover:bg-[var(--surface-1)]"
+                className="flex h-full flex-col rounded-[10px] border border-[var(--border-2)] px-3 py-2.5 text-left text-xs transition hover:bg-[var(--surface-1)]"
                 title={preset.description}
               >
-                <span className="block font-semibold text-[var(--text-1)]">{preset.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
+                <span className="font-semibold text-[var(--text-1)]">{preset.label}</span>
+                <span className="mt-1 text-[11px] leading-tight text-[var(--text-4)]">
                   {preset.description}
                 </span>
               </button>
@@ -564,200 +564,201 @@ function MemberAccessModal({
           </div>
         </div>
 
-        {/* Role */}
-        <div className="border-b border-[var(--border-2)] px-6 py-5">
-          <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Role</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {assignableRoles.map((r) => (
-              <label
-                key={r.id}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-[10px] border px-3 py-2.5",
-                  role === r.id
-                    ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
-                    : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
-                )}
-              >
-                <input
-                  type="radio"
-                  checked={role === r.id}
-                  onChange={() => changeRole(r.id)}
-                  className="mt-0.5"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-[var(--text-1)]">{r.label}</span>
-                  <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                    {r.description}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Permissions (effective, with per-person override badges) */}
-        <div className="px-6 py-5">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-medium text-[var(--text-2)]">Permissions</p>
-            {isSuper ? (
-              <span className="text-[11px] text-[var(--text-4)]">
-                Super Admins have everything — can&apos;t be limited.
-              </span>
-            ) : (
-              <span className="text-[11px] text-[var(--text-4)]">
-                Ticked = allowed. Differences from the role default are shown as overrides.
-              </span>
-            )}
-          </div>
-
-          {!matrix && !isSuper ? (
-            <p className="text-xs text-[var(--text-4)]">Loading role defaults…</p>
-          ) : (
-            <div className="space-y-4">
-              {PERMISSION_CATALOG.map((group) => (
-                <div key={group.product}>
-                  <p className="app-eyebrow mb-1.5">{group.product}</p>
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {group.permissions.map((perm) => {
-                      const checked = isSuper || effective.has(perm.id);
-                      const inDefault = base.has(perm.id);
-                      const overridden = !isSuper && checked !== inDefault;
-                      return (
-                        <label
-                          key={perm.id}
-                          className={cn(
-                            "flex items-start gap-2 rounded-[8px] border bg-white px-3 py-2 text-sm",
-                            overridden ? "border-[var(--brand-400)]" : "border-[var(--border-3)]",
-                            isSuper && "opacity-60",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 accent-[var(--brand-700)]"
-                            checked={checked}
-                            onChange={() => togglePermission(perm.id)}
-                            disabled={isSuper}
-                          />
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-1.5">
-                              <span className="font-medium text-[var(--text-1)]">{perm.label}</span>
-                              <span
-                                className={cn(
-                                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                                  CATEGORY_CHIP[perm.category],
-                                )}
-                              >
-                                {CATEGORY_LABEL[perm.category]}
-                              </span>
-                              {overridden ? (
-                                <span className="rounded-full bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
-                                  {checked ? "+ added" : "− removed"}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                              {perm.description}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Assigned clients — shown when scoped to specific clients (See all clients off). */}
-        {restrictedToClients ? (
-          <div className="border-t border-[var(--border-2)] px-6 py-5">
-            <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Assigned clients</p>
-            <p className="mb-2 text-[11px] text-[var(--text-4)]">
-              With “See all clients” off, this member only sees these clients across Portal and the
-              task board.
-            </p>
-            {clientsQuery.isPending || !clientsLoaded ? (
-              <p className="text-xs text-[var(--text-4)]">Loading clients…</p>
-            ) : workspaceClients.length === 0 ? (
-              <p className="text-xs text-[var(--text-4)]">No clients in the workspace yet.</p>
-            ) : (
-              <div className="grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
-                {workspaceClients.map((c) => (
+        {/* Body — fixed height, two independently-scrolling columns */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:divide-x md:divide-[var(--border-2)] md:overflow-hidden">
+          {/* Left column: Role + assigned clients + danger zone */}
+          <div className="shrink-0 space-y-5 border-b border-[var(--border-2)] px-6 py-5 md:w-[340px] md:overflow-y-auto md:border-b-0">
+            <div>
+              <p className="mb-2 text-xs font-medium text-[var(--text-2)]">Role</p>
+              <div className="space-y-2">
+                {assignableRoles.map((r) => (
                   <label
-                    key={c.id}
-                    className="flex items-center gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
+                    key={r.id}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-[10px] border px-3 py-2.5",
+                      role === r.id
+                        ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
+                        : "border-[var(--border-2)] bg-white hover:bg-[var(--surface-1)]",
+                    )}
                   >
                     <input
-                      type="checkbox"
-                      checked={clientIds.has(c.id)}
-                      onChange={() => toggleClient(c.id)}
+                      type="radio"
+                      checked={role === r.id}
+                      onChange={() => changeRole(r.id)}
+                      className="mt-0.5"
                     />
-                    <span className="min-w-0 truncate text-[var(--text-1)]">{c.name}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[var(--text-1)]">{r.label}</span>
+                      <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
+                        {r.description}
+                      </span>
+                    </span>
                   </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Assigned clients — shown when scoped to specific clients (See all clients off). */}
+            {restrictedToClients ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-[var(--text-2)]">Assigned clients</p>
+                <p className="mb-2 text-[11px] text-[var(--text-4)]">
+                  With “See all clients” off, this member only sees these clients across Portal and
+                  the task board.
+                </p>
+                {clientsQuery.isPending || !clientsLoaded ? (
+                  <p className="text-xs text-[var(--text-4)]">Loading clients…</p>
+                ) : workspaceClients.length === 0 ? (
+                  <p className="text-xs text-[var(--text-4)]">No clients in the workspace yet.</p>
+                ) : (
+                  <div className="grid gap-1.5">
+                    {workspaceClients.map((c) => (
+                      <label
+                        key={c.id}
+                        className="flex items-center gap-2 rounded-[8px] border border-[var(--border-3)] bg-white px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={clientIds.has(c.id)}
+                          onChange={() => toggleClient(c.id)}
+                        />
+                        <span className="min-w-0 truncate text-[var(--text-1)]">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* Danger zone */}
+            {!isSelf ? (
+              <div className="rounded-[10px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--danger-700)]">
+                  Danger zone
+                </p>
+                <p className="mt-1 text-[11px] leading-tight text-[var(--text-3)]">
+                  Removes the member from this workspace. Their Foundry sign-in stops working on the
+                  next request. Reversible only by sending a new invite.
+                </p>
+                {!confirmingDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(true)}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--danger-300)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--danger-700)] transition hover:bg-[var(--danger-100)]"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                    Remove from workspace…
+                  </button>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-[var(--danger-700)]">
+                      Remove {member.user.name ?? member.user.email}?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="danger" size="sm" onClick={confirmDelete} loading={deleting}>
+                        Yes, remove
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setConfirmingDelete(false);
+                          setDeleteError(null);
+                        }}
+                        disabled={deleting}
+                      >
+                        Keep
+                      </Button>
+                    </div>
+                    {deleteError ? <p className="text-xs text-[var(--danger-500)]">{deleteError}</p> : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Right column: Permissions (effective, with per-person override badges) */}
+          <div className="min-h-0 flex-1 px-6 py-5 md:overflow-y-auto">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-[var(--text-2)]">Permissions</p>
+              {isSuper ? (
+                <span className="text-[11px] text-[var(--text-4)]">
+                  Super Admins have everything — can&apos;t be limited.
+                </span>
+              ) : (
+                <span className="text-[11px] text-[var(--text-4)]">Ticked = allowed · outlined = override</span>
+              )}
+            </div>
+
+            {!matrix && !isSuper ? (
+              <p className="text-xs text-[var(--text-4)]">Loading role defaults…</p>
+            ) : (
+              <div className="space-y-4">
+                {PERMISSION_CATALOG.map((group) => (
+                  <div key={group.product}>
+                    <p className="app-eyebrow mb-1.5">{group.product}</p>
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {group.permissions.map((perm) => {
+                        const checked = isSuper || effective.has(perm.id);
+                        const inDefault = base.has(perm.id);
+                        const overridden = !isSuper && checked !== inDefault;
+                        return (
+                          <label
+                            key={perm.id}
+                            className={cn(
+                              "flex items-start gap-2 rounded-[8px] border bg-white px-3 py-2 text-sm",
+                              overridden ? "border-[var(--brand-400)]" : "border-[var(--border-3)]",
+                              isSuper && "opacity-60",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 accent-[var(--brand-700)]"
+                              checked={checked}
+                              onChange={() => togglePermission(perm.id)}
+                              disabled={isSuper}
+                            />
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-medium text-[var(--text-1)]">{perm.label}</span>
+                                <span
+                                  className={cn(
+                                    "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                                    CATEGORY_CHIP[perm.category],
+                                  )}
+                                >
+                                  {CATEGORY_LABEL[perm.category]}
+                                </span>
+                                {overridden ? (
+                                  <span className="rounded-full bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
+                                    {checked ? "+ added" : "− removed"}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
+                                {perm.description}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </div>
-        ) : null}
-
-        {/* Danger zone */}
-        {!isSelf ? (
-          <div className="border-t border-[var(--border-2)] px-6 py-5">
-            <div className="rounded-[10px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--danger-700)]">
-                Danger zone
-              </p>
-              <p className="mt-1 text-[11px] leading-tight text-[var(--text-3)]">
-                Removes the member from this workspace. Their Foundry sign-in stops working on the
-                next request. Reversible only by sending a new invite.
-              </p>
-              {!confirmingDelete ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--danger-300)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--danger-700)] transition hover:bg-[var(--danger-100)]"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                  Remove from workspace…
-                </button>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-[var(--danger-700)]">
-                    Remove {member.user.name ?? member.user.email}?
-                  </p>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="danger" size="sm" onClick={confirmDelete} loading={deleting}>
-                      Yes, remove
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setConfirmingDelete(false);
-                        setDeleteError(null);
-                      }}
-                      disabled={deleting}
-                    >
-                      Keep
-                    </Button>
-                  </div>
-                  {deleteError ? <p className="text-xs text-[var(--danger-500)]">{deleteError}</p> : null}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
+        </div>
 
         {error ? (
-          <p className="border-t border-[var(--border-2)] px-6 py-3 text-sm text-[var(--danger-500)]">
+          <p className="shrink-0 border-t border-[var(--border-2)] px-6 py-3 text-sm text-[var(--danger-500)]">
             {error}
           </p>
         ) : null}
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
