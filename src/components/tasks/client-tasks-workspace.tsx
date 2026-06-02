@@ -18,6 +18,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useClientDetail } from "@/hooks/use-proposals";
 import {
   useTasks,
+  useUpdateTask,
   useFeatureBlocks,
   useMilestones,
   useTimelineShare,
@@ -54,6 +55,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   });
 
   const { data: tasks = [], isPending: tasksLoading } = useTasks({ clientId: clientId ?? undefined });
+  const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
 
@@ -180,6 +182,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             selectedIds={selected}
             onToggleSelect={toggleSelect}
             onToggleAll={(checked) => setSelected(checked ? new Set(tasks.map((t) => t.id)) : new Set())}
+            onToggleDone={(task) =>
+              updateTask.mutate({ id: task.id, input: { status: task.status === "DONE" ? "TODO" : "DONE" } })
+            }
           />
         </div>
       ) : (

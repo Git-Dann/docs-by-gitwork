@@ -6,7 +6,7 @@ import type { TaskDTO, TaskStatus } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityDot } from "@/components/tasks/task-badges";
-import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/16/solid";
+import { ChevronDownIcon, ChevronRightIcon, CheckIcon } from "@heroicons/react/16/solid";
 
 function isOverdue(task: TaskDTO): boolean {
   if (!task.dueDate || task.status === "DONE") return false;
@@ -20,6 +20,27 @@ const STATUS_STYLE: Record<TaskStatus, { border: string; dot: string; text: stri
   IN_REVIEW: { border: "border-l-blue-500",    dot: "bg-blue-500",    text: "text-blue-700",    bg: "bg-blue-50"   },
   DONE:      { border: "border-l-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50"},
 };
+
+const VISIBLE_CAP = 8;
+
+/** Quick "complete" circle — click to toggle the task to/from DONE. */
+function CompleteToggle({ done, onToggle }: { done: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      aria-label={done ? "Mark not done" : "Mark done"}
+      className={cn(
+        "flex h-[18px] w-[18px] items-center justify-center rounded-full border transition",
+        done
+          ? "border-emerald-500 bg-emerald-500 text-white"
+          : "border-[rgba(0,0,0,0.25)] text-transparent hover:border-emerald-500 hover:text-emerald-500",
+      )}
+    >
+      <CheckIcon className="h-3 w-3" />
+    </button>
+  );
+}
 
 function SelectAllBox({ checked, indeterminate, onChange }: { checked: boolean; indeterminate: boolean; onChange: (v: boolean) => void }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -39,6 +60,7 @@ export function TaskList({
   selectedIds,
   onToggleSelect,
   onToggleAll,
+  onToggleDone,
 }: {
   tasks: TaskDTO[];
   showClient?: boolean;
@@ -47,11 +69,16 @@ export function TaskList({
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleAll?: (checked: boolean) => void;
+  onToggleDone?: (task: TaskDTO) => void;
 }) {
-  // Which status groups are collapsed — default all open
-  const [collapsed, setCollapsed] = useState<Set<TaskStatus>>(new Set());
+  // Status groups: DONE starts collapsed to keep the page compact.
+  const [collapsed, setCollapsed] = useState<Set<TaskStatus>>(new Set(["DONE"]));
   const toggleCollapse = (s: TaskStatus) =>
-    setCollapsed((prev) => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });
+    setCollapsed((prev) => { const next = new Set(prev); if (next.has(s)) next.delete(s); else next.add(s); return next; });
+  // Each group caps at VISIBLE_CAP rows until "show all" is toggled for it.
+  const [showAll, setShowAll] = useState<Set<TaskStatus>>(new Set());
+  const toggleShowAll = (s: TaskStatus) =>
+    setShowAll((prev) => { const next = new Set(prev); if (next.has(s)) next.delete(s); else next.add(s); return next; });
 
   const grouped = TASK_STATUSES.reduce<Record<TaskStatus, TaskDTO[]>>(
     (acc, s) => { acc[s] = tasks.filter((t) => t.status === s); return acc; },
@@ -61,6 +88,7 @@ export function TaskList({
   const sel = selectedIds ?? new Set<string>();
   const allChecked = selectable && tasks.length > 0 && tasks.every((t) => sel.has(t.id));
   const someChecked = selectable && tasks.some((t) => sel.has(t.id));
+  const selectionActive = sel.size > 0;
 
   if (tasks.length === 0) {
     return (
@@ -92,6 +120,7 @@ export function TaskList({
         const group = grouped[status];
         const isOpen = !collapsed.has(status);
         const style = STATUS_STYLE[status];
+        const visible = showAll.has(status) ? group : group.slice(0, VISIBLE_CAP);
 
         return (
           <div key={status} className="border-b border-[rgba(0,0,0,0.05)] last:border-b-0">
@@ -120,7 +149,7 @@ export function TaskList({
             {/* task rows */}
             {isOpen && group.length > 0 && (
               <div>
-                {group.map((task) => {
+                {visible.map((task) => {
                   const checked = sel.has(task.id);
                   const overdue = isOverdue(task);
                   return (
@@ -140,21 +169,26 @@ export function TaskList({
                             type="checkbox" checked={checked}
                             onChange={() => onToggleSelect?.(task.id)}
                             aria-label={`Select ${task.title}`}
-                            className="h-3.5 w-3.5 cursor-pointer accent-[var(--brand-700)] opacity-0 transition group-hover:opacity-100 data-[checked]:opacity-100"
-                            data-checked={checked || undefined}
+                            className={cn(
+                              "h-3.5 w-3.5 cursor-pointer accent-[var(--brand-700)] transition",
+                              checked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                            )}
                           />
                         </div>
                       )}
 
-                      {/* priority dot */}
+                      {/* quick complete */}
                       <div className="flex items-center">
-                        <TaskPriorityDot priority={task.priority} className="h-1.5 w-1.5" />
+                        <CompleteToggle done={task.status === "DONE"} onToggle={() => onToggleDone?.(task)} />
                       </div>
 
                       {/* task name + subtask count + client */}
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm font-medium text-[var(--text-1)]">
-                          {task.title}
+                        <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--text-1)]">
+                          <TaskPriorityDot priority={task.priority} className="h-1.5 w-1.5 shrink-0" />
+                          <span className={cn("min-w-0 truncate", task.status === "DONE" && "text-[var(--text-4)] line-through")}>
+                            {task.title}
+                          </span>
                         </span>
                         {(showClient || (task.subtaskCount ?? 0) > 0) && (
                           <div className="mt-0.5 flex items-center gap-2">
@@ -207,6 +241,15 @@ export function TaskList({
                     </div>
                   );
                 })}
+                {group.length > VISIBLE_CAP && (
+                  <button
+                    type="button"
+                    onClick={() => toggleShowAll(status)}
+                    className="w-full px-9 py-2 text-left text-[11px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)]"
+                  >
+                    {showAll.has(status) ? "Show less" : `Show all ${group.length}`}
+                  </button>
+                )}
               </div>
             )}
 
