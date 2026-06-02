@@ -136,7 +136,7 @@ export function TaskBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <div className="grid auto-cols-[300px] grid-flow-col gap-3 overflow-x-auto pb-3">
+      <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
         {TASK_STATUSES.map((status, i) => (
           <BoardColumn
             key={status}
