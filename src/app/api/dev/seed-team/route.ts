@@ -9,13 +9,15 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { seedGitworkTeam } from "@/server/team-roster";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
     const user = await requireAuthedUser(req);
-    if (user.role !== "ADMIN") return apiError("Admin only", 403);
+    // Admins AND Super Admins (Dan) — isAtLeast, not a strict equality.
+    if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
     const report = await seedGitworkTeam();
     return apiOk(report);
   } catch (e) {
