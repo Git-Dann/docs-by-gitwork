@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isAtLeast } from "@/types/auth";
 
 // Thin Resend wrapper. Reads workspace email config from the DB on each send —
 // configuration is small and infrequent, so no cache. Returns silently on
@@ -85,7 +86,7 @@ export async function listBackstageApproverEmails(
   return members
     .filter((m) => {
       if (excludeUserId && m.user.id === excludeUserId) return false;
-      if (m.role === "ADMIN") return true;
+      if (isAtLeast(m.role, "ADMIN")) return true;
       const perms = Array.isArray(m.permissions) ? (m.permissions as string[]) : [];
       return perms.includes("backstage.approve");
     })

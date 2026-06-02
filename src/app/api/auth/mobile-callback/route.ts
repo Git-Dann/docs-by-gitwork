@@ -21,6 +21,7 @@ import {
 } from "@/server/auth/google-id-token";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 
 const WORKSPACE_DOMAIN = "gitwork.co.uk";
 // Placeholder user created by bootstrap — never a real human team member.
@@ -66,15 +67,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // First real human to sign in becomes the admin.
-    const realAdminCount = await prisma.workspaceMember.count({
+    // A known owner email is always Super Admin; the first real member bootstraps as
+    // Super Admin. Mirrors src/auth.ts.
+    const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(profile.email);
+    const adminOrAboveCount = await prisma.workspaceMember.count({
       where: {
         workspace: { slug: DEFAULT_WORKSPACE_SLUG },
-        role: "ADMIN",
+        role: { in: ["ADMIN", "SUPER_ADMIN"] },
         user: { email: { not: BOOTSTRAP_USER_EMAIL } },
       },
     });
-    const shouldBeAdmin = realAdminCount === 0;
+    const shouldBeSuperAdmin = isKnownSuperAdmin || adminOrAboveCount === 0;
 
     if (!dbUser) {
       dbUser = await prisma.user.create({
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
           name: profile.name ?? profile.email.split("@")[0],
           memberships: {
             create: {
-              role: shouldBeAdmin ? "ADMIN" : "STAFF",
+              role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
               permissions: [],
               workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
             },
@@ -96,17 +99,22 @@ export async function POST(request: NextRequest) {
           },
         },
       });
-    } else if (shouldBeAdmin && dbUser.memberships[0]?.role === "STAFF") {
+    } else if (
+      shouldBeSuperAdmin &&
+      dbUser.memberships[0] &&
+      dbUser.memberships[0].role !== "SUPER_ADMIN"
+    ) {
       await prisma.workspaceMember.update({
         where: { id: dbUser.memberships[0].id },
-        data: { role: "ADMIN" },
+        data: { role: "SUPER_ADMIN" },
       });
-      dbUser.memberships[0].role = "ADMIN";
+      dbUser.memberships[0].role = "SUPER_ADMIN";
     }
 
     const membership = dbUser.memberships[0];
     const role = membership?.role ?? "STAFF";
-    const permissions = (membership?.permissions as string[]) ?? [];
+    // Resolve + persist effective permissions from the role matrix.
+    const permissions = membership ? await recomputeMember(membership.id) : [];
 
     const token = await signMobileToken({
       sub: dbUser.id,

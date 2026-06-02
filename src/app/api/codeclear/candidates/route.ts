@@ -9,6 +9,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { buildCodeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
+import { canViewRates, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   candidateBulkUpdateSchema,
   candidateCreateSchema,
@@ -185,6 +186,10 @@ function buildCandidateOrderBy(
 export async function GET(request: NextRequest) {
   try {
     const { workspace } = await ensureBaseRecords();
+    // Field gate: blank candidate rates for users without `code.viewRates`.
+    // A trusted API_KEY-only call (no user identity) keeps full visibility.
+    const user = await getEffectiveUserOrNull(request);
+    const showRates = user ? canViewRates(user) : true;
     const searchParams = request.nextUrl.searchParams;
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 20);
@@ -220,7 +225,7 @@ export async function GET(request: NextRequest) {
     )].sort((a, b) => a.localeCompare(b));
 
     return apiOk({
-      items: items.map((candidate) => serializeCandidateListItem(candidate)),
+      items: items.map((candidate) => serializeCandidateListItem(candidate, { canViewRates: showRates })),
       meta: {
         page,
         pageSize,

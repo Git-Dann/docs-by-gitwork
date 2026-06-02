@@ -31,7 +31,7 @@ import { useUpdateWorkspaceDefaults, useWorkspaceDefaults } from "@/hooks/use-wo
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
-import { MODULE_PERMISSIONS } from "@/types/auth";
+import { MODULE_PERMISSIONS, isAtLeast, type RoleId } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
 import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
@@ -75,7 +75,7 @@ export function SettingsPanel({
   apiKeyConfigured: boolean;
 }) {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const isAdmin = isAtLeast(session?.user?.role ?? "", "ADMIN");
   const [activeTab, setActiveTab] = useState<TabId>("general");
 
   const visibleTabs = TABS.filter((tab) => !tab.adminOnly || isAdmin);
@@ -1560,7 +1560,7 @@ function EditMemberModal({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(member.name ?? "");
-  const [role, setRole] = useState<"ADMIN" | "STAFF">(member.role);
+  const [role, setRole] = useState<RoleId>(member.role);
   const [permissions, setPermissions] = useState<string[]>(member.permissions);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

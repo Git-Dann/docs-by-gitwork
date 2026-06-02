@@ -5,19 +5,21 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { isAtLeast } from "@/types/auth";
+import { recomputeMember } from "@/server/permissions";
 
 const CreateMemberSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(["ADMIN", "STAFF"]),
+  role: z.enum(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]),
   permissions: z.array(z.string()).default([]),
 });
 
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user) return null;
-  if (session.user.role !== "ADMIN") return null;
+  if (!isAtLeast(session.user.role, "ADMIN")) return null;
   return session;
 }
 
@@ -79,6 +81,9 @@ export async function POST(req: NextRequest) {
         permissions: body.permissions,
       },
     });
+    // Resolve the cached effective permissions from the role matrix (new member →
+    // empty overrides → role defaults). Keeps `permissions` consistent with the model.
+    await recomputeMember(member.id);
 
     return apiOk({
       userId: user.id,

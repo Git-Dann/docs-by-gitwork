@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig, SESSION_VERSION } from "@/auth.config";
 import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-jwt";
+import { isAtLeast } from "@/types/auth";
 
 const { auth } = NextAuth(authConfig);
 
@@ -187,8 +188,11 @@ export default auth(async (req) => {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Staff permission check — admins have full access
-    if (req.auth.user.role !== "ADMIN") {
+    // Module gate — Admins and Super Admins reach every module (nav safety: never lock
+    // an admin out on a stale token). Staff and Developers are scoped to the modules in
+    // their resolved permissions (baked into the JWT at sign-in). Matrix changes to a
+    // module apply on their next sign-in; field/data gates are enforced live server-side.
+    if (!isAtLeast(req.auth.user.role, "ADMIN")) {
       const permissions = req.auth.user.permissions ?? [];
       if (!hasModuleAccess(pathname, permissions)) {
         return NextResponse.redirect(new URL("/app", req.url));

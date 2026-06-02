@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
+import { roleLabel } from "@/types/auth";
 
 export function AccountSettingsPanel() {
   const { data: session } = useSession();
@@ -121,7 +122,7 @@ export function AccountSettingsPanel() {
             {profile ? (
               <ReadOnlyField
                 label="Role"
-                value={profile.role === "ADMIN" ? "Admin" : "Staff"}
+                value={roleLabel(profile.role)}
                 hint="Workspace admins set roles in Settings → Team."
               />
             ) : null}

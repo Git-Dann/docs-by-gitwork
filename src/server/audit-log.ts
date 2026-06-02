@@ -23,6 +23,7 @@ export type AuditAction =
   | "team.member.role_changed"
   | "team.member.removed"
   | "team.password.reset"
+  | "roles.matrix.updated"
   // Integrations
   | "integration.google.connected"
   | "integration.google.disconnected"

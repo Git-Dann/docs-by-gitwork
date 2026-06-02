@@ -5,12 +5,20 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { serializeRateCardPerson } from "@/server/rate-card";
 import { rateCardPersonCreateSchema } from "@/server/validators";
+import { canViewRateCard, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     const { workspace } = await ensureBaseRecords();
+
+    // Field gate: users without `rateCard.view` get no rate-card people (this also
+    // blanks the day-rate options pulled into proposal costing). API_KEY-only → full.
+    const user = await getEffectiveUserOrNull(request);
+    if (user && !canViewRateCard(user)) {
+      return apiOk({ people: [] });
+    }
 
     const search = request.nextUrl.searchParams.get("search")?.trim();
     const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";

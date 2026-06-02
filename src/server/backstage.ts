@@ -7,6 +7,8 @@ import {
   canApproveBackstage,
   canManageExpenses,
 } from "@/server/auth/effective-user";
+import { isAtLeast, normalizeOverrides } from "@/types/auth";
+import { recomputeMember } from "@/server/permissions";
 import { isNonWorkingDay, getHolidaysForCountry } from "@/server/backstage-holidays";
 import {
   sendWorkspaceEmail,
@@ -977,7 +979,7 @@ export async function setBackstageApprover(
   targetUserId: string,
   canApprove: boolean,
 ): Promise<void> {
-  if (user.role !== "ADMIN") {
+  if (!isAtLeast(user.role, "ADMIN")) {
     throw new ForbiddenError("Only admins can change Backstage approver status");
   }
   const member = await prisma.workspaceMember.findFirst({
@@ -985,17 +987,30 @@ export async function setBackstageApprover(
   });
   if (!member) throw new ForbiddenError("Member not found");
 
-  const current = Array.isArray(member.permissions)
-    ? (member.permissions as string[])
-    : [];
-  const next = canApprove
-    ? Array.from(new Set([...current, "backstage.approve"]))
-    : current.filter((p) => p !== "backstage.approve");
+  // Force the desired state through the per-person override delta (grant wins it on,
+  // revoke forces it off regardless of what the member's role grants), then refresh
+  // the resolved permission cache.
+  const overrides = normalizeOverrides(member.permissionOverrides);
+  const grant = new Set(overrides.grant);
+  const revoke = new Set(overrides.revoke);
+  if (canApprove) {
+    grant.add("backstage.approve");
+    revoke.delete("backstage.approve");
+  } else {
+    revoke.add("backstage.approve");
+    grant.delete("backstage.approve");
+  }
 
   await prisma.workspaceMember.update({
     where: { id: member.id },
-    data: { permissions: next },
+    data: {
+      permissionOverrides: {
+        grant: [...grant],
+        revoke: [...revoke],
+      } as unknown as Prisma.InputJsonValue,
+    },
   });
+  await recomputeMember(member.id);
 }
 
 // ─── Calendar (Timetastic-style month grid) ──────────────────────────────

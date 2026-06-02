@@ -14,7 +14,11 @@ const SESSION_MAX_AGE = 8 * 60 * 60;            // 8 hours (no remember me)
 //   2 — per-user Google OAuth migration: existing sessions still pointed at a shared
 //       workspace token; bumping forces sign-out so each user's personal refresh token
 //       gets captured on the next sign-in.
-export const SESSION_VERSION = 2;
+//   3 — Roles & Permissions module: the role ladder gained SUPER_ADMIN/DEVELOPER and
+//       permissions are now resolved from the role matrix. Bumping re-issues every JWT
+//       with the correct role + resolved permissions (so e.g. the owner's session
+//       carries SUPER_ADMIN and can reach the Roles & Permissions matrix immediately).
+export const SESSION_VERSION = 3;
 
 export const authConfig = {
   session: { strategy: "jwt" as const, maxAge: REMEMBER_ME_MAX_AGE },

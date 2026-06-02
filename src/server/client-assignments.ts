@@ -7,13 +7,14 @@
 
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
+import { isAtLeast } from "@/types/auth";
 import type { ClientAssignmentDTO } from "@/types/tasks";
 
 export async function listAssignmentsForMember(
   user: EffectiveUser,
   memberUserId: string,
 ): Promise<ClientAssignmentDTO[]> {
-  if (user.role !== "ADMIN") throw new ForbiddenError("Admin only");
+  if (!isAtLeast(user.role, "ADMIN")) throw new ForbiddenError("Admin only");
   const rows = await prisma.clientAssignment.findMany({
     where: { workspaceId: user.workspaceId, userId: memberUserId },
     include: { client: { select: { id: true, name: true, slug: true } } },
@@ -32,7 +33,7 @@ export async function setAssignments(
   memberUserId: string,
   clientIds: string[],
 ): Promise<ClientAssignmentDTO[]> {
-  if (user.role !== "ADMIN") throw new ForbiddenError("Admin only");
+  if (!isAtLeast(user.role, "ADMIN")) throw new ForbiddenError("Admin only");
 
   // Only persist clients that actually belong to this workspace.
   const clients = await prisma.workspaceClient.findMany({

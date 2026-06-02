@@ -44,6 +44,7 @@ import type {
   ProposalListItem,
   TemplateSummary,
 } from "@/types/proposal";
+import type { RoleId, RoleMatrix } from "@/types/auth";
 import type {
   RateBillingPeriod,
   RateCardPeopleResponse,
@@ -1491,7 +1492,7 @@ export interface TeamMember {
   memberId: string;
   name: string | null;
   email: string;
-  role: "ADMIN" | "STAFF";
+  role: RoleId;
   permissions: string[];
   createdAt?: string;
 }
@@ -1504,7 +1505,7 @@ export async function createTeamMember(data: {
   name: string;
   email: string;
   password: string;
-  role: "ADMIN" | "STAFF";
+  role: RoleId;
   permissions: string[];
 }): Promise<TeamMember> {
   return apiFetch("/api/team", {
@@ -1516,7 +1517,7 @@ export async function createTeamMember(data: {
 
 export async function updateTeamMember(
   userId: string,
-  data: { name?: string; role?: "ADMIN" | "STAFF"; permissions?: string[] },
+  data: { name?: string; role?: RoleId; permissions?: string[] },
 ): Promise<TeamMember> {
   return apiFetch(`/api/team/${userId}`, {
     method: "PATCH",
@@ -1902,6 +1903,19 @@ export function setMemberClients(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientIds }),
+  });
+}
+
+// ─── Roles & Permissions matrix ─────────────────────────────────────────────
+export function getRolePermissions(): Promise<{ matrix: RoleMatrix }> {
+  return apiFetch("/api/roles/permissions");
+}
+
+export function updateRolePermissions(matrix: RoleMatrix): Promise<{ matrix: RoleMatrix }> {
+  return apiFetch("/api/roles/permissions", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(matrix),
   });
 }
 

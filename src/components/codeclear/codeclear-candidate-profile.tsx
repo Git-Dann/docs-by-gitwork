@@ -21,6 +21,7 @@ import {
 } from "@/hooks/use-codeclear";
 import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
 import { useClientList } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import { type CandidateAvailability } from "@/types/codeclear";
 import {
@@ -54,6 +55,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const candidate = candidateQuery.data?.candidate ?? null;
   const clients = clientsQuery.data?.clients ?? [];
 
+  const { canViewRates } = usePermissions();
   const [showEdit, setShowEdit] = useState(false);
   const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
   const [noteBody, setNoteBody] = useState("");
@@ -246,8 +248,15 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           </div>
         </div>
 
-        {/* Stats strip + current client */}
-        <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Stats strip + current client. Hourly rate is hidden for users without
+            `code.viewRates` — the grid column count follows the visible count so the
+            row always fills evenly (no empty cell). */}
+        <div
+          className={cn(
+            "grid gap-0",
+            canViewRates ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3",
+          )}
+        >
           <HeroStat
             label="Calibre"
             value={
@@ -260,14 +269,16 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
             sub="/ 100"
           />
           <HeroStat label="Tier" value={candidate.effectiveTier.replace("TIER_", "T")} />
-          <HeroStat
-            label="Hourly rate"
-            value={
-              candidate.hourlyRate != null
-                ? `${candidate.currency ?? ""} ${candidate.hourlyRate}`.trim()
-                : "—"
-            }
-          />
+          {canViewRates ? (
+            <HeroStat
+              label="Hourly rate"
+              value={
+                candidate.hourlyRate != null
+                  ? `${candidate.currency ?? ""} ${candidate.hourlyRate}`.trim()
+                  : "—"
+              }
+            />
+          ) : null}
           <HeroStat
             label="Experience"
             value={

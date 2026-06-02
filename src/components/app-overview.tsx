@@ -13,6 +13,7 @@ import TasksWidget from "@/components/dashboard/tasks-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { DailyRollup } from "@/components/tasks/daily-rollup";
 import { useAccount } from "@/hooks/use-account";
+import { isAtLeast } from "@/types/auth";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -49,9 +50,9 @@ export function AppOverview() {
 
   const role = account.data?.role;
   const permissions = account.data?.permissions ?? [];
-  const isAdmin = role === "ADMIN";
-  // A restricted developer = STAFF without "see all clients" (the Developer preset).
-  const isDeveloper = !isAdmin && !permissions.includes("seeAllClients");
+  const isAdmin = isAtLeast(role ?? "", "ADMIN");
+  // A restricted developer = the Developer role, or anyone without "see all clients".
+  const isDeveloper = !isAdmin && (role === "DEVELOPER" || !permissions.includes("seeAllClients"));
   const canPublishRollup = isAdmin || permissions.includes("tasks.publish");
 
   if (isDeveloper) {

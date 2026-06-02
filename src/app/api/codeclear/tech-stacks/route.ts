@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { TECH_STACK_OPTIONS } from "@/types/codeclear";
 import { techStackCreateSchema } from "@/server/validators";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function GET() {
 async function requireAdminSession() {
   const session = await auth();
   if (!session?.user) return null;
-  if (session.user.role !== "ADMIN") return null;
+  if (!isAtLeast(session.user.role, "ADMIN")) return null;
   return session;
 }
 
