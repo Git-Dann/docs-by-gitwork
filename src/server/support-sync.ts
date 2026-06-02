@@ -360,10 +360,15 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     for (const post of posts) {
       if (maxItems && ingested >= maxItems) break;
 
-      // Include / exclude keyword filters on title + body
-      if (!passesKeywordFilters(`${post.title} ${post.body}`, include, exclude)) { filtered++; continue; }
-
       if (!post.title.trim()) { filtered++; continue; }
+
+      // Exclude keywords: skip posts matching any exclude term
+      if (exclude.length > 0 && !passesKeywordFilters(`${post.title} ${post.body}`, [], exclude)) { filtered++; continue; }
+
+      // Include keywords: ingest everything, tag matches (same pattern as Discord — no filtering)
+      const text = `${post.title} ${post.body}`.toLowerCase();
+      const matchedKws = include.filter((kw) => text.includes(kw.toLowerCase()));
+      const convTags = ["reddit", subreddit, ...matchedKws.map((k) => `kw:${k}`)];
 
       const externalId = `reddit:${post.id}`;
 
@@ -383,7 +388,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
             preview: (post.body || post.title).slice(0, 150),
             receivedAt: new Date(post.created_utc * 1000),
             unread: true,
-            tags: ["reddit", subreddit],
+            tags: convTags,
           },
         });
 
@@ -492,13 +497,13 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
     ? Math.floor(lastSyncedAt.getTime() / 1000)
     : lookbackSeconds(config.lookbackDays, 30);
 
-  // Push keyword filters into the Gmail query itself (server-side, most efficient).
+  // Include keywords are used for flagging only — ingest all mail matching the base query.
+  // Exclude keywords go into the API query for server-side efficiency.
   const include = normalizeKeywords(config.keywords);
   const exclude = normalizeKeywords(config.excludeKeywords);
-  const includeClause = include.length > 0 ? `(${include.map((k) => `"${k}"`).join(" OR ")})` : "";
   const excludeClause = exclude.map((k) => `-"${k}"`).join(" ");
   const maxResults = config.maxItems && config.maxItems > 0 ? Math.min(config.maxItems, 100) : 50;
-  const fullQuery = [queryBase, includeClause, excludeClause, `after:${afterSeconds}`]
+  const fullQuery = [queryBase, excludeClause, `after:${afterSeconds}`]
     .filter(Boolean)
     .join(" ");
 
@@ -540,6 +545,11 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
         });
 
         if (!conv) {
+          // Tag conversations where the subject matches any include keywords
+          const subjectLower = subject.toLowerCase();
+          const matchedKws = include.filter((kw) => subjectLower.includes(kw.toLowerCase()));
+          const gmailTags = ["gmail", ...matchedKws.map((k) => `kw:${k}`)];
+
           conv = await prisma.supportConversation.create({
             data: {
               clientId: client.id,
@@ -550,7 +560,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
               preview: subject,
               receivedAt,
               unread: true,
-              tags: ["gmail"],
+              tags: gmailTags,
             },
           });
           ingested++;
