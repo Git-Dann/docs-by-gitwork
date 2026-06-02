@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listStudies, createStudy } from "@/server/study";
+import { assertCan, canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageStudy, "create studies");
     const body = await request.json();
     const rawClientId = typeof body.workspaceClientId === "string" ? body.workspaceClientId.trim() : null;
     const study = await createStudy({

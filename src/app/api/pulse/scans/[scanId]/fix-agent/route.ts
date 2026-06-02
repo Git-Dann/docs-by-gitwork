@@ -3,15 +3,18 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan } from "@/server/pulse";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { runFixAgent } from "@/server/pulse-agents/fix-agent";
+import { assertCan, canRunFixAgent, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
+    // High-risk: opens GitHub PRs. Gate on `pulse.fixAgent` (Admin-only by default).
+    assertCan(await getEffectiveUserOrNull(request), canRunFixAgent, "run the fix-agent");
     const { scanId } = await params;
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);

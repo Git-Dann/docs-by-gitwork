@@ -1,5 +1,5 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { assertCan, canShareClientTimeline, requireAuthedUser } from "@/server/auth/effective-user";
 import { getTimelineShare, setTimelineShare } from "@/server/client-timeline";
 import { timelineShareSchema } from "@/server/validators";
 import { prisma } from "@/lib/prisma";
@@ -29,6 +29,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 export async function PUT(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const user = await requireAuthedUser(req);
+    // High-risk: publishes a public, no-login client timeline. Gate on clients.shareTimeline.
+    assertCan(user, canShareClientTimeline, "share client timelines");
     const { slug } = await params;
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);

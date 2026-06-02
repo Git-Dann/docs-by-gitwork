@@ -4,7 +4,12 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { codeClearDetailInclude, serializeCandidateDetails } from "@/server/codeclear";
-import { canViewRates, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  assertCan,
+  canManageCode,
+  canViewRates,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import { candidateUpdateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "edit candidates");
     const { workspace, user } = await ensureBaseRecords();
     const { id } = await context.params;
     const body = candidateUpdateSchema.parse(await request.json());
@@ -164,8 +170,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "delete candidates");
     const { workspace } = await ensureBaseRecords();
     const { id } = await context.params;
     const existing = await prisma.candidate.findFirst({

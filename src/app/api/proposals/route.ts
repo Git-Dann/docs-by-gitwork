@@ -7,6 +7,7 @@ import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templ
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -112,6 +113,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "create documents");
     const body = proposalCreateSchema.parse(await request.json());
     const { workspace, user, template } = await ensureBaseRecords();
 

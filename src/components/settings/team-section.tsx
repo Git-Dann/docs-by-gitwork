@@ -343,12 +343,14 @@ const CATEGORY_LABEL: Record<PermissionCategory, string> = {
   field: "Field",
   feature: "Feature",
   settings: "Settings",
+  action: "Action",
 };
 const CATEGORY_CHIP: Record<PermissionCategory, string> = {
   module: "bg-[var(--brand-50)] text-[var(--brand-700)]",
   field: "bg-amber-50 text-amber-700",
   feature: "bg-[var(--surface-2)] text-[var(--text-3)]",
   settings: "bg-violet-50 text-violet-700",
+  action: "bg-sky-50 text-sky-700",
 };
 
 function MemberAccessModal({

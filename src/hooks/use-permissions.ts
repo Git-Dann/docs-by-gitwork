@@ -24,5 +24,14 @@ export function usePermissions() {
     canViewRates: can("code.viewRates"),
     canViewCosts: can("docs.viewCosts"),
     canViewRateCard: can("rateCard.view"),
+    // Action gates (view vs manage + high-risk)
+    canRunFixAgent: can("pulse.fixAgent"),
+    canManageCode: can("code.manage"),
+    canManageDocs: can("docs.manage"),
+    canShareDocs: can("docs.share"),
+    canManageClients: can("clients.manage"),
+    canShareClientTimeline: can("clients.shareTimeline"),
+    canManageSupport: can("support.manage"),
+    canManageStudy: can("study.manage"),
   };
 }

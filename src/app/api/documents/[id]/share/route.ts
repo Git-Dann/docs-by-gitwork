@@ -14,13 +14,16 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { disableDocumentShare, enableDocumentShare } from "@/server/documents";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function POST(_request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    // High-risk: mints a public, no-login share link. Gate on docs.share.
+    assertCan(await getEffectiveUserOrNull(request), canShareDocs, "share documents publicly");
     const { id } = await context.params;
     if (!id) return apiError("Missing document id", 400);
 
@@ -54,8 +57,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canShareDocs, "manage document sharing");
     const { id } = await context.params;
     if (!id) return apiError("Missing document id", 400);
 

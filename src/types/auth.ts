@@ -108,13 +108,16 @@ export function canManageRole(actorRole: string, targetRole: string): boolean {
 }
 
 // ── Permission catalog ─────────────────────────────────────────────────────────
-export type PermissionCategory = "module" | "feature" | "field" | "settings";
+export type PermissionCategory = "module" | "feature" | "field" | "settings" | "action";
 
 export interface PermissionDef {
   id: string;
   label: string;
   description: string;
   category: PermissionCategory;
+  /** Dangerous/irreversible or externally-visible action — flagged in the matrix UI
+   *  and defaulted to Admin-only (never granted to STAFF/DEVELOPER out of the box). */
+  highRisk?: boolean;
 }
 
 export interface ProductPermissions {
@@ -133,12 +136,25 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     product: "Pulse",
     permissions: [
       { id: "pulse", category: "module", label: "Pulse", description: "Health and delivery tracking." },
+      {
+        id: "pulse.fixAgent",
+        category: "action",
+        label: "Run fix-agent",
+        description: "Trigger the auto-fix agent, which opens pull requests on the client's GitHub repo.",
+        highRisk: true,
+      },
     ],
   },
   {
     product: "Code",
     permissions: [
       { id: "codeclear", category: "module", label: "Code", description: "Developer review and validation." },
+      {
+        id: "code.manage",
+        category: "action",
+        label: "Manage candidates",
+        description: "Add, edit and delete candidates and run analysis. Without it, Code is view-only.",
+      },
       {
         id: "code.viewRates",
         category: "field",
@@ -152,6 +168,19 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     product: "Docs",
     permissions: [
       { id: "proposals", category: "module", label: "Docs", description: "Proposals and client documents." },
+      {
+        id: "docs.manage",
+        category: "action",
+        label: "Manage documents",
+        description: "Create, edit and delete documents. Without it, Docs is view-only.",
+      },
+      {
+        id: "docs.share",
+        category: "action",
+        label: "Share documents publicly",
+        description: "Generate public share links for documents (anyone with the link can view).",
+        highRisk: true,
+      },
       {
         id: "docs.viewCosts",
         category: "field",
@@ -171,6 +200,19 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     permissions: [
       { id: "clients", category: "module", label: "Portal", description: "Client management." },
       {
+        id: "clients.manage",
+        category: "action",
+        label: "Manage clients",
+        description: "Create, edit and delete clients and their details. Without it, Portal is view-only.",
+      },
+      {
+        id: "clients.shareTimeline",
+        category: "action",
+        label: "Share client timelines",
+        description: "Publish a public, no-login timeline link for a client.",
+        highRisk: true,
+      },
+      {
         id: "seeAllClients",
         category: "feature",
         label: "See all clients",
@@ -183,12 +225,24 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     product: "Care",
     permissions: [
       { id: "support", category: "module", label: "Care", description: "Support and aftercare." },
+      {
+        id: "support.manage",
+        category: "action",
+        label: "Manage Care setup",
+        description: "Connect/disconnect channels and edit workflow rules. Without it, Care is view-only.",
+      },
     ],
   },
   {
     product: "Study",
     permissions: [
       { id: "study", category: "module", label: "Study", description: "AI-powered user research." },
+      {
+        id: "study.manage",
+        category: "action",
+        label: "Create & run studies",
+        description: "Create studies and launch interview runs. Without it, Study is view-only.",
+      },
     ],
   },
   {
@@ -337,7 +391,20 @@ const MODULE_IDS = MODULE_PERMISSIONS.map((m) => m.id);
  */
 export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
   ADMIN: [...ALL_PERMISSION_IDS],
-  STAFF: [...MODULE_IDS, "seeAllClients", "code.viewRates", "docs.viewCosts", "rateCard.view"],
+  STAFF: [
+    ...MODULE_IDS,
+    "seeAllClients",
+    "code.viewRates",
+    "docs.viewCosts",
+    "rateCard.view",
+    // Staff can manage (create/edit/delete) within their products by default — but NOT
+    // the high-risk actions (fix-agent PRs, public sharing), which stay Admin-only.
+    "code.manage",
+    "docs.manage",
+    "clients.manage",
+    "support.manage",
+    "study.manage",
+  ],
   DEVELOPER: ["clients", "support", "pulse", "backstage"],
 };
 

@@ -3,7 +3,13 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { createClientRecord, listDerivedClients } from "@/server/clients";
 import { clientCreateSchema } from "@/server/validators";
 import type { WorkspaceClientStatus } from "@/types/client";
-import { requireAuthedUser, canSeeAllClients } from "@/server/auth/effective-user";
+import {
+  requireAuthedUser,
+  canSeeAllClients,
+  assertCan,
+  canManageClients,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +52,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "create clients");
     const body = clientCreateSchema.parse(await request.json());
     const client = await createClientRecord(body);
     return apiOk({ client }, { status: 201 });
