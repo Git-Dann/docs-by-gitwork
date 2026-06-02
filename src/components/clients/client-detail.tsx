@@ -10,6 +10,7 @@ import {
   CodeBracketIcon,
   EyeIcon,
   EyeSlashIcon,
+  ArrowUpRightIcon,
   GlobeAltIcon,
   MagnifyingGlassIcon,
   PencilIcon,
@@ -1104,6 +1105,18 @@ function meetingStatusChip(status: ScribeMeeting["status"]): { label: string; cl
   }
 }
 
+function formatTimeRange(startISO?: string | null, endISO?: string | null): string {
+  if (!startISO) return "";
+  try {
+    const opts = { hour: "2-digit", minute: "2-digit", hour12: false } as const;
+    const s = new Date(startISO).toLocaleTimeString("en-GB", opts);
+    const e = endISO ? new Date(endISO).toLocaleTimeString("en-GB", opts) : "";
+    return e ? `${s}–${e}` : s;
+  } catch {
+    return "";
+  }
+}
+
 function MeetingNotesSection({ slug }: { slug: string }) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
@@ -1120,6 +1133,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
   const [addedTaskIds, setAddedTaskIds] = useState<Record<string, boolean>>({});
+  const [viewing, setViewing] = useState<ScribeMeeting | null>(null);
 
   // Push a meeting action item into the client's task board (lands in Backlog).
   async function addActionItemAsTask(clientId: string, itemId: string, text: string) {
@@ -1251,118 +1265,205 @@ function MeetingNotesSection({ slug }: { slug: string }) {
               </p>
             )}
 
-            {meetings.map((m) => {
-              const chip = meetingStatusChip(m.status);
-              const decisions = Array.isArray(m.decisions) ? m.decisions : [];
-              const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
-              return (
-                <div key={m.id} className="rounded-[8px] border border-[var(--border-1)] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--text-1)]">{m.title}</p>
-                      <p className="text-xs text-[var(--text-3)]">
-                        {formatDate(m.startedAt ?? m.createdAt)}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "inline-flex shrink-0 items-center rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
-                        chip.cls,
-                      )}
+            {meetings.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {candidates.length > 0 && (
+                  <p className="text-xs font-medium text-[var(--text-3)]">Captured notes</p>
+                )}
+                {meetings.map((m) => {
+                  const chip = meetingStatusChip(m.status);
+                  const ready = m.status === "SUMMARISED";
+                  const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-3 rounded-[6px] border border-[var(--border-1)] px-3 py-2"
                     >
-                      {chip.label}
-                    </span>
-                  </div>
-
-                  {m.summary && (
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
-                      {m.summary}
-                    </p>
-                  )}
-
-                  {decisions.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
-                        Decisions
-                      </p>
-                      <ul className="mt-1 list-disc pl-5 text-sm text-[var(--text-2)]">
-                        {decisions.map((d, i) => (
-                          <li key={i}>{d}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {m.actionItems.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
-                        Action items
-                      </p>
-                      <ul className="mt-1 flex flex-col gap-1">
-                        {m.actionItems.map((a) => (
-                          <li key={a.id} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                            <input
-                              type="checkbox"
-                              checked={a.done}
-                              onChange={() => toggle.mutate({ meetingId: m.id, actionItemId: a.id, done: !a.done })}
-                              className="mt-0.5"
-                            />
-                            <span className={a.done ? "text-[var(--text-4)] line-through" : ""}>
-                              {a.text}
-                              {a.owner ? <span className="text-[var(--text-4)]"> — {a.owner}</span> : null}
-                            </span>
-                            {m.clientId && (
-                              <button
-                                type="button"
-                                disabled={addingTaskId === a.id || addedTaskIds[a.id]}
-                                onClick={() => void addActionItemAsTask(m.clientId!, a.id, a.text)}
-                                className="ml-auto shrink-0 rounded-[4px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
-                                title="Add to this client's task board"
-                              >
-                                {addingTaskId === a.id ? "Adding…" : addedTaskIds[a.id] ? "Added ✓" : "+ Task"}
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {retryable && (
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <p className="text-xs text-[var(--text-4)]">
-                        {m.status === "NO_TRANSCRIPT"
-                          ? "No notes yet — Gemini notes may not be ready for this call, or weren't generated."
-                          : "Summarising failed."}
-                      </p>
-                      {m.calendarEventId && m.meetingCode && (
-                        <button
-                          type="button"
-                          disabled={busyId === m.calendarEventId}
-                          onClick={() =>
-                            void fetchNotes({
-                              calendarEventId: m.calendarEventId!,
-                              meetingCode: m.meetingCode,
-                              title: m.title,
-                              start: m.startedAt ?? undefined,
-                              end: m.endedAt ?? undefined,
-                              attendees: m.attendees,
-                            })
-                          }
-                          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.title}</p>
+                        <p className="text-xs text-[var(--text-3)]">{formatDate(m.startedAt ?? m.createdAt)}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                            chip.cls,
+                          )}
                         >
-                          {busyId === m.calendarEventId ? "Retrying" : "Retry"}
-                        </button>
-                      )}
+                          {chip.label}
+                        </span>
+                        {ready ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewing(m)}
+                            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                          >
+                            View
+                            <ArrowUpRightIcon className="h-3 w-3" />
+                          </button>
+                        ) : retryable && m.calendarEventId && m.meetingCode ? (
+                          <button
+                            type="button"
+                            disabled={busyId === m.calendarEventId}
+                            onClick={() =>
+                              void fetchNotes({
+                                calendarEventId: m.calendarEventId!,
+                                meetingCode: m.meetingCode,
+                                title: m.title,
+                                start: m.startedAt ?? undefined,
+                                end: m.endedAt ?? undefined,
+                                attendees: m.attendees,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+                          >
+                            {busyId === m.calendarEventId ? "Retrying" : "Retry"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {viewing && (
+        <MeetingNotesModal
+          meeting={viewing}
+          onClose={() => setViewing(null)}
+          onToggleItem={(itemId, done) => toggle.mutate({ meetingId: viewing.id, actionItemId: itemId, done })}
+          onAddTask={addActionItemAsTask}
+          addingTaskId={addingTaskId}
+          addedTaskIds={addedTaskIds}
+        />
+      )}
     </>
+  );
+}
+
+// MeetingNotesModal — full notes for one meeting: title/attendees/time header,
+// notes on the left, decisions + action items on the right.
+function MeetingNotesModal({
+  meeting,
+  onClose,
+  onToggleItem,
+  onAddTask,
+  addingTaskId,
+  addedTaskIds,
+}: {
+  meeting: ScribeMeeting;
+  onClose: () => void;
+  onToggleItem: (itemId: string, done: boolean) => void;
+  onAddTask: (clientId: string, itemId: string, text: string) => void;
+  addingTaskId: string | null;
+  addedTaskIds: Record<string, boolean>;
+}) {
+  const decisions = Array.isArray(meeting.decisions) ? meeting.decisions : [];
+  const when = [formatDate(meeting.startedAt ?? meeting.createdAt), formatTimeRange(meeting.startedAt, meeting.endedAt)]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div
+      className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="app-dialog-panel flex h-[80vh] max-h-[680px] w-full max-w-4xl flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header — title top-left, time + attendees beneath */}
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-6 py-4">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              {meeting.title}
+            </h3>
+            {when && <p className="mt-1 text-xs text-[var(--text-3)]">{when}</p>}
+            {meeting.attendees.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {meeting.attendees.map((a) => (
+                  <span
+                    key={a}
+                    className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] text-[var(--text-3)]"
+                  >
+                    {a}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+            title="Close"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body — 2 columns, each scrolls independently */}
+        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-[var(--border-1)] overflow-hidden">
+          <div className="min-h-0 overflow-y-auto p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Notes</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
+              {meeting.summary || "No summary captured."}
+            </p>
+          </div>
+
+          <div className="min-h-0 space-y-5 overflow-y-auto p-6">
+            {decisions.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Decisions</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[var(--text-2)]">
+                  {decisions.map((d, i) => (
+                    <li key={i}>{d}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">Action items</p>
+              {meeting.actionItems.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--text-4)]">None.</p>
+              ) : (
+                <ul className="mt-2 flex flex-col gap-2">
+                  {meeting.actionItems.map((a) => (
+                    <li key={a.id} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                      <input
+                        type="checkbox"
+                        checked={a.done}
+                        onChange={() => onToggleItem(a.id, !a.done)}
+                        className="mt-0.5"
+                      />
+                      <span className={a.done ? "text-[var(--text-4)] line-through" : ""}>
+                        {a.text}
+                        {a.owner ? <span className="text-[var(--text-4)]"> — {a.owner}</span> : null}
+                      </span>
+                      {meeting.clientId && (
+                        <button
+                          type="button"
+                          disabled={addingTaskId === a.id || addedTaskIds[a.id]}
+                          onClick={() => onAddTask(meeting.clientId!, a.id, a.text)}
+                          className="ml-auto shrink-0 rounded-[4px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+                          title="Add to this client's task board"
+                        >
+                          {addingTaskId === a.id ? "Adding…" : addedTaskIds[a.id] ? "Added ✓" : "+ Task"}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
