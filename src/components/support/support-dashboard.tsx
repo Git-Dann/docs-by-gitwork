@@ -50,7 +50,6 @@ import {
   useDeleteConnection,
   useDeleteSupportReport,
   useDeleteWorkflowRule,
-  useGenerateAiDraft,
   useSeedDefaultRules,
   useSupportClients,
   useSupportConversations,
@@ -58,7 +57,6 @@ import {
   useSupportReports,
   useUpdateConversation,
   useUpdateConnection,
-  useSendMessage,
   useSupportTickets,
   useUpdateSupportClient,
   useUpdateSupportReport,
@@ -80,6 +78,26 @@ function formatShort(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function HighlightedText({ text, keywords }: { text: string; keywords: string[] }) {
+  if (keywords.length === 0) return <>{text}</>;
+  const pattern = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const regex = new RegExp(`(${pattern})`, "gi");
+  const parts = text.split(regex);
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="rounded bg-amber-200 px-0.5 text-amber-900">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  );
 }
 
 function SourceIcon({ source, className }: { source: SupportSource; className?: string }) {
@@ -950,7 +968,6 @@ function AddRuleModal({ clientId, onClose }: { clientId: string; onClose: () => 
 
 // ─── inbox view ──────────────────────────────────────────────────────────────
 
-type DraftState = { text: string; status: "draft" | "approved" } | null;
 
 // ─── inbox filter dropdown ────────────────────────────────────────────────────
 
@@ -1154,6 +1171,11 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
 
   const activeConvo = filtered.find((c) => c.id === selectedConvId) ?? null;
 
+  // Keywords stored in conversation tags as "kw:<term>" by Discord sync
+  const activeKeywords = useMemo(
+    () => (activeConvo?.tags ?? []).filter((t) => t.startsWith("kw:")).map((t) => t.slice(3)),
+    [activeConvo],
+  );
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -1286,26 +1308,42 @@ function InboxView({ clientId, sourcesFilter, emptyLabel }: { clientId: string; 
               )}
               {!msgsLoading && messages.length === 0 && (
                 <p className="py-6 text-center text-sm text-[var(--text-4)]">
-                  No messages matched your keyword filter. Edit the connector to broaden or clear the Include keywords.
+                  No messages yet. Trigger a sync to pull in the latest messages.
                 </p>
               )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "rounded-[10px] border p-3.5 text-sm leading-6",
-                    msg.direction === "inbound"
-                      ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]"
-                      : "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]",
-                  )}
-                >
-                  <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--text-3)]">
-                    <span>{msg.authorLabel}</span>
-                    <span>{formatShort(msg.createdAt)}</span>
-                  </div>
-                  {msg.body}
+              {activeKeywords.length > 0 && messages.length > 0 && (
+                <div className="flex items-center gap-1.5 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                  <span className="font-semibold">Watching:</span>
+                  {activeKeywords.map((kw) => (
+                    <span key={kw} className="rounded bg-amber-200 px-1.5 py-0.5 font-medium text-amber-900">{kw}</span>
+                  ))}
+                  <span className="ml-1 text-amber-600">— highlighted below</span>
                 </div>
-              ))}
+              )}
+              {messages.map((msg) => {
+                const hasKeyword = activeKeywords.length > 0 && activeKeywords.some((kw) =>
+                  msg.body.toLowerCase().includes(kw.toLowerCase())
+                );
+                return (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "rounded-[10px] border p-3.5 text-sm leading-6",
+                      hasKeyword
+                        ? "border-amber-300 bg-amber-50 text-[var(--text-2)]"
+                        : msg.direction === "inbound"
+                          ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]"
+                          : "border-[var(--mist-border)] bg-[var(--mist)] text-[var(--text-1)]",
+                    )}
+                  >
+                    <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--text-3)]">
+                      <span>{msg.authorLabel}</span>
+                      <span>{formatShort(msg.createdAt)}</span>
+                    </div>
+                    <HighlightedText text={msg.body} keywords={activeKeywords} />
+                  </div>
+                );
+              })}
             </div>
 
           </>
@@ -1359,8 +1397,9 @@ function ConversationCard({
       </div>
       <p className="mt-1 line-clamp-1 text-xs text-[var(--text-3)]">{convo.preview}</p>
       {(() => {
-        const visibleTags = [...new Set(convo.tags)].filter((t) => t !== convo.source);
-        return visibleTags.length > 0 ? (
+        const kwTags = convo.tags.filter((t) => t.startsWith("kw:"));
+        const visibleTags = [...new Set(convo.tags)].filter((t) => t !== convo.source && !t.startsWith("kw:"));
+        return (visibleTags.length > 0 || kwTags.length > 0) ? (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {visibleTags.map((tag) => (
               <span
@@ -1370,6 +1409,11 @@ function ConversationCard({
                 {tag.replace(/_/g, " ")}
               </span>
             ))}
+            {kwTags.length > 0 && (
+              <span className="rounded-[6px] border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                {kwTags.length === 1 ? kwTags[0].slice(3) : `${kwTags.length} keywords`} watched
+              </span>
+            )}
           </div>
         ) : null;
       })()}
@@ -3518,9 +3562,9 @@ export function SupportDashboard() {
                 )}>
                   {initial}
                 </span>
-                {inboxUnread > 0 && isActive && (
+                {(c.unreadCount ?? 0) > 0 && (
                   <span className="absolute right-1.5 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                    {inboxUnread > 9 ? "9+" : inboxUnread}
+                    {(c.unreadCount ?? 0) > 9 ? "9+" : c.unreadCount}
                   </span>
                 )}
               </button>
@@ -3543,9 +3587,9 @@ export function SupportDashboard() {
                   {initial}
                 </span>
                 <span className="flex-1 truncate font-medium">{c.name}</span>
-                {inboxUnread > 0 && isActive && (
+                {(c.unreadCount ?? 0) > 0 && (
                   <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {inboxUnread}
+                    {(c.unreadCount ?? 0) > 9 ? "9+" : c.unreadCount}
                   </span>
                 )}
               </button>

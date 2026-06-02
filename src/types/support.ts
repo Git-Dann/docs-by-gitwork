@@ -25,6 +25,7 @@ export interface SupportClient {
   reportingRecipient?: string;
   reportDueDay?: number;
   workspaceClientId?: string;
+  unreadCount?: number;
 }
 
 export interface SupportUser {

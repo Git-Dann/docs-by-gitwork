@@ -167,6 +167,7 @@ export function serializeSupportClient(row: {
   reportingRecipient: string | null;
   reportDueDay: number | null;
   workspaceClientId?: string | null;
+  _count?: { conversations?: number };
 }): SupportClient {
   return {
     id: row.id,
@@ -178,6 +179,7 @@ export function serializeSupportClient(row: {
     reportingRecipient: row.reportingRecipient ?? undefined,
     reportDueDay: row.reportDueDay ?? undefined,
     workspaceClientId: row.workspaceClientId ?? undefined,
+    unreadCount: row._count?.conversations ?? 0,
   };
 }
 
@@ -366,6 +368,9 @@ export async function listSupportClients(): Promise<SupportClient[]> {
   const rows = await prisma.supportClient.findMany({
     where: { workspaceId },
     orderBy: { name: "asc" },
+    include: {
+      _count: { select: { conversations: { where: { unread: true } } } },
+    },
   });
   return rows.map(serializeSupportClient);
 }

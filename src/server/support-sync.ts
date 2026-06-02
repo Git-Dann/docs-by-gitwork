@@ -195,9 +195,6 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   const errors: string[] = [];
   const updatedChannels = [...channels];
 
-  // ── Filters ──
-  const include = normalizeKeywords(config.keywords);
-  const exclude = normalizeKeywords(config.excludeKeywords);
   const ignoreBots = config.ignoreBots ?? true;
   const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
   // firstSyncAfter: used both for first-time syncs AND when lastSyncedAt has been cleared
@@ -208,6 +205,10 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   // Treat lastSyncedAt === null as "start fresh" — covers both first sync and manual re-sync.
   // This ensures re-sync actually goes back to the lookback window instead of being a no-op.
   const isFirstOrResync = !ctx.connection.lastSyncedAt;
+  // Keywords stored as "kw:<term>" tags on the conversation for UI-side highlighting.
+  // Discord ingests ALL messages — keyword filtering happens at display time, not here.
+  const keywords = (config.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
+  const convTags = ["discord", ...keywords.map((k) => `kw:${k}`)];
 
   for (let i = 0; i < channels.length; i++) {
     const ch = channels[i];
@@ -233,8 +234,14 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
             preview: messages[0].content.slice(0, 150),
             receivedAt: new Date(messages[0].timestamp),
             unread: true,
-            tags: ["discord"],
+            tags: convTags,
           },
+        });
+      } else {
+        // Keep keyword tags in sync with current connector config on every sync
+        await prisma.supportConversation.update({
+          where: { id: conv.id },
+          data: { tags: convTags },
         });
       }
 
@@ -251,9 +258,6 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
         if (ignoreBots && msg.author.bot) { filtered++; continue; }
         if (!msg.content.trim()) { filtered++; continue; }
-
-        // Include / exclude keyword filters
-        if (!passesKeywordFilters(msg.content, include, exclude)) { filtered++; continue; }
 
         // Skip already-ingested messages (guards against partial sync failures)
         const already = await prisma.supportMessage.findFirst({
