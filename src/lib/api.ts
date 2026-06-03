@@ -55,6 +55,12 @@ import type {
   RateCardPeopleResponse,
   RateCardPersonRecord,
 } from "@/types/rate-card";
+import type {
+  DesignSystemDTO,
+  DesignSystemShareInfo,
+  DesignSystemStatus,
+  DesignTokens,
+} from "@/types/design-tokens";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -2230,5 +2236,33 @@ export function updateMilestone(
 
 export function deleteMilestone(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/milestones/${id}`, { method: "DELETE" });
+}
+
+// ── Per-client design system (brand tokens) ──────────────────────────────────
+
+export async function getClientDesignSystem(slug: string): Promise<DesignSystemDTO> {
+  return apiFetch<DesignSystemDTO>(`/api/clients/${slug}/design-system`);
+}
+
+export async function saveClientDesignSystem(
+  slug: string,
+  input: { tokens: DesignTokens; status?: DesignSystemStatus },
+): Promise<DesignSystemDTO> {
+  return apiFetch<DesignSystemDTO>(`/api/clients/${slug}/design-system`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function setClientDesignSystemShare(
+  slug: string,
+  enabled: boolean,
+): Promise<DesignSystemShareInfo> {
+  return apiFetch<DesignSystemShareInfo>(`/api/clients/${slug}/design-system/share`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
 }
 

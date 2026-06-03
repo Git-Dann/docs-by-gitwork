@@ -650,16 +650,25 @@ export function ClientDetail({ slug }: { slug: string }) {
             <span className="widget-header__label--number">11</span>
             {" // DESIGNS"}
           </span>
-          {!isSuggested && (
-            <button
-              type="button"
-              onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
-              className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-              title="Add design"
+          <span className="flex items-center gap-1.5">
+            <Link
+              href={`/app/portal/${slug}/design-system`}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+              title="Open the client's brand design system"
             >
-              <PlusIcon className="h-3.5 w-3.5" />
-            </button>
-          )}
+              Design system →
+            </Link>
+            {!isSuggested && (
+              <button
+                type="button"
+                onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
+                className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+                title="Add design"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </span>
         </div>
 
         <div className="flex flex-1 flex-col p-5">
