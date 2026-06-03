@@ -2,6 +2,7 @@
 
 import { LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { DragHandle, SortableList, SortableRow, reorder } from "@/components/proposals/sortable-list";
 import type { ProposalLinkInput } from "@/types/proposal";
 
 const linkTypeOptions: Array<{ value: ProposalLinkInput["type"]; label: string; placeholder: string }> = [
@@ -62,17 +63,24 @@ export function LinkManager({
       </div>
 
       {safeLinks.length ? (
+        <SortableList
+          ids={safeLinks.map((link, index) => link.id ?? `link-${index}`)}
+          onReorder={(from, to) => onChange(reorder(safeLinks, from, to))}
+        >
         <div className="space-y-3">
           {safeLinks.map((link, index) => {
             const selectedType = linkTypeOptions.find((option) => option.value === link.type) ?? linkTypeOptions[0];
+            const rowId = link.id ?? `link-${index}`;
 
             return (
+              <SortableRow key={rowId} id={rowId}>
+                {({ handleProps }) => (
               <article
-                key={`${link.id ?? "link"}-${index}`}
                 className="rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-2)]">
+                    <DragHandle {...handleProps} />
                     <LinkIcon className="h-4 w-4 text-[var(--brand-600)]" />
                     {selectedType.label}
                   </div>
@@ -143,9 +151,12 @@ export function LinkManager({
                   />
                 </label>
               </article>
+                )}
+              </SortableRow>
             );
           })}
         </div>
+        </SortableList>
       ) : (
         <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No links added yet.
