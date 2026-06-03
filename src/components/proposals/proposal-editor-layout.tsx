@@ -20,6 +20,8 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowDownTrayIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -210,6 +212,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const baselineRef = useRef("");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Undo / redo history (Phase 2b) ──────────────────────────────────────────
+  // Snapshots of the draft (JSON) before each change. Rapid text edits coalesce into one step
+  // (700ms window); structural ops (add/delete/reorder/toggle) are always discrete steps.
+  const pastRef = useRef<string[]>([]);
+  const futureRef = useRef<string[]>([]);
+  const lastEditAtRef = useRef(0);
+  const undoRef = useRef<() => void>(() => {});
+  const redoRef = useRef<() => void>(() => {});
+  const [, forceHistory] = useState(0);
+
   useEffect(() => {
     setActiveTab(urlTab);
   }, [urlTab]);
@@ -334,6 +346,29 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     };
   }, [localDraft, saveDraft]);
 
+  // Undo / redo keyboard shortcuts. Bound once; calls the latest handler via refs. Skips when a
+  // text field is focused so the browser's native per-character undo still works while typing.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      const el = document.activeElement as HTMLElement | null;
+      const inField =
+        !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (inField) return;
+      if (key === "y" || (key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redoRef.current();
+      } else if (key === "z") {
+        event.preventDefault();
+        undoRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -354,13 +389,45 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     return () => clearTimeout(timeoutId);
   }, []);
 
-  function updateDraft(nextDraft: ProposalDocument) {
+  function updateDraft(nextDraft: ProposalDocument, opts?: { coalesce?: boolean }) {
+    // Push the pre-change draft onto the undo stack. Coalesce rapid text edits so one undo
+    // doesn't just remove a single character; structural ops never coalesce.
+    if (draft) {
+      const now = Date.now();
+      const within = now - lastEditAtRef.current < 700;
+      lastEditAtRef.current = now;
+      if (!(opts?.coalesce && within)) {
+        pastRef.current.push(JSON.stringify(draft));
+        if (pastRef.current.length > 100) pastRef.current.shift();
+        futureRef.current = [];
+        forceHistory((v) => v + 1);
+      }
+    }
     setLocalDraft({
       ...nextDraft,
       status: deriveProposalStatus(nextDraft.metadata),
     });
     setSaveState("saving");
   }
+
+  // Reassigned every render so the handlers close over the current `draft`; invoked via refs from
+  // the toolbar buttons and the keyboard shortcut effect (which binds once).
+  undoRef.current = () => {
+    if (pastRef.current.length === 0 || !draft) return;
+    futureRef.current.push(JSON.stringify(draft));
+    const restored = JSON.parse(pastRef.current.pop() as string) as ProposalDocument;
+    setLocalDraft(restored);
+    setSaveState("saving");
+    forceHistory((v) => v + 1);
+  };
+  redoRef.current = () => {
+    if (futureRef.current.length === 0 || !draft) return;
+    pastRef.current.push(JSON.stringify(draft));
+    const restored = JSON.parse(futureRef.current.pop() as string) as ProposalDocument;
+    setLocalDraft(restored);
+    setSaveState("saving");
+    forceHistory((v) => v + 1);
+  };
 
   function updateSectionOrder(activeId: string, overId: string) {
     if (!draft || activeId === overId) {
@@ -636,6 +703,28 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => undoRef.current()}
+                disabled={pastRef.current.length === 0}
+                title="Undo (⌘Z)"
+                aria-label="Undo"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowUturnLeftIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => redoRef.current()}
+                disabled={futureRef.current.length === 0}
+                title="Redo (⌘⇧Z)"
+                aria-label="Redo"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowUturnRightIcon className="h-4 w-4" />
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setAiChatOpen(true)}
@@ -951,7 +1040,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               proposal={draft}
               sections={sectionEntries}
               activeId={activeEntry?.id ?? null}
-              onProposalChange={updateDraft}
+              onProposalChange={(next) => updateDraft(next, { coalesce: true })}
             />
 
             {/* Split-screen live preview — the rendered client view, updating as you type. */}
