@@ -88,6 +88,11 @@ export interface DocumentCoverProps {
    */
   watermark?: string;
   watermarkTone?: "neutral" | "warning" | "danger";
+  /**
+   * Co-brand lockup: when set (cover lockup = "Client × Gitwork"), the white-section logo row
+   * shows the client alongside the Foundry mark — client logo if a URL is given, else the name.
+   */
+  coBrand?: { clientName?: string; clientLogoUrl?: string };
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
@@ -110,6 +115,7 @@ export function DocumentCover({
   variant = "print",
   watermark,
   watermarkTone = "neutral",
+  coBrand,
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
@@ -294,14 +300,40 @@ export function DocumentCover({
           background: "white",
         }}
       >
-        {/* Logo — anchors the brand in the white section */}
-        <div style={{ marginBottom: executiveSummary || stats?.length ? 28 : 0 }}>
+        {/* Logo — anchors the brand in the white section. With a co-brand, lock it up with the client. */}
+        <div
+          style={{
+            marginBottom: executiveSummary || stats?.length ? 28 : 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={logoUrl}
             alt="Foundry by Gitwork"
             style={{ height: 22, objectFit: "contain", display: "block" }}
           />
+          {coBrand?.clientName || coBrand?.clientLogoUrl ? (
+            <>
+              <span aria-hidden="true" style={{ fontFamily: mono, fontSize: 15, fontWeight: 400, color: "#CBD5E1" }}>
+                ×
+              </span>
+              {coBrand.clientLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={coBrand.clientLogoUrl}
+                  alt={coBrand.clientName ?? "Client"}
+                  style={{ height: 22, objectFit: "contain", display: "block" }}
+                />
+              ) : (
+                <span style={{ fontFamily: serif, fontSize: 20, fontWeight: 400, letterSpacing: "-0.01em", color: "#0F172A" }}>
+                  {coBrand.clientName}
+                </span>
+              )}
+            </>
+          ) : null}
         </div>
 
         {/* Executive summary */}
@@ -341,37 +373,41 @@ export function DocumentCover({
           </div>
         ) : null}
 
-        {/* Stats strip */}
+        {/* Stats strip. Auto-fit grid (4-up on a wide page, wraps to 2-up in the narrow live
+            preview) with min-0 cells so a long currency value never overflows / clips. The 1px
+            gap over a hairline background paints the dividers. */}
         {stats && stats.length ? (
           <div
             style={{
-              display: "flex",
-              gap: 0,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+              gap: 1,
               marginBottom: callout ? 24 : 0,
               borderRadius: 10,
               overflow: "hidden",
               border: "1px solid rgba(0,0,0,0.08)",
+              background: "rgba(0,0,0,0.08)",
             }}
           >
             {stats.map((stat, i) => (
               <div
                 key={`${stat.label}-${i}`}
                 style={{
-                  flex: 1,
                   textAlign: "center",
-                  padding: "16px 8px",
+                  padding: "16px 10px",
                   background: stat.bg ?? "#FAFAF9",
-                  borderRight: i < stats.length - 1 ? "1px solid rgba(0,0,0,0.08)" : "none",
+                  minWidth: 0,
                 }}
               >
                 <div
                   style={{
                     fontFamily: serif,
-                    fontSize: 32,
+                    fontSize: 28,
                     fontWeight: 400,
                     color: stat.color ?? "#0F172A",
-                    lineHeight: 1.05,
+                    lineHeight: 1.1,
                     letterSpacing: "-0.02em",
+                    overflowWrap: "break-word",
                   }}
                 >
                   {stat.count}

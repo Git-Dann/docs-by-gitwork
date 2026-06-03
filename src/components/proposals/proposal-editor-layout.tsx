@@ -779,7 +779,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <button
               type="button"
               onClick={() => setAiChatOpen(true)}
-              className={buttonStyles({ variant: "primary", size: "md" })}
+              className={buttonStyles({ variant: "secondary", size: "md" })}
             >
               <SparklesIcon className="h-4 w-4" />
               Ask AI
@@ -824,8 +824,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               })}
             >
               <CheckCircleIcon className="h-4 w-4" />
-              Approve, Share & Export
-              <span className="rounded-full border border-white/20 bg-white/12 px-2 py-1 text-[11px] font-semibold tracking-[0.01em] text-white/95">
+              Approve, Share &amp; Export
+              <span className="rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95">
                 {statusLabel(draft.status)}
               </span>
               <ChevronDownIcon
@@ -839,30 +839,26 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 role="dialog"
                 aria-label="Approve, share and export"
                 style={{ top: approvalPos.top, right: approvalPos.right }}
-                className="fixed z-[100] w-[360px] rounded-[10px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]"
+                className="fixed z-[100] w-[360px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
               >
-                <div>
-                  <p className="app-eyebrow">Approval Flow</p>
-                  <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-                    Approve, share & export
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                    Manage internal sign-off, copy the public link, and export the client-facing A4 PDF from one place.
-                  </p>
+                {/* Widget-header strip — the platform signature; live status on the right. */}
+                <div className="widget-header">
+                  <span className="widget-header-label">APPROVE · SHARE · EXPORT</span>
+                  <span className="widget-header-right">{statusLabel(draft.status)}</span>
                 </div>
 
-                <div className="app-subtle-panel mt-4 p-4">
-                  <p className="app-eyebrow">Approvals</p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                    Product and tech sign-off can both be selected. CEO approval is the final state.
+                <div className="p-5">
+                  {/* Approvals — flat rows divided by hairlines, no nested cards. */}
+                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                    Approvals
                   </p>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-1 divide-y divide-[var(--border-2)]">
                     {approvalOptions.map((option) => {
                       const checked = Boolean(draft.metadata[option.key]);
                       return (
                         <label
                           key={option.key}
-                          className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-3 text-sm text-[var(--text-2)]"
+                          className="flex cursor-pointer items-start gap-3 py-2.5 text-sm text-[var(--text-2)]"
                         >
                           <input
                             type="checkbox"
@@ -870,7 +866,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                             onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
                             className="app-checkbox mt-0.5 rounded"
                           />
-                          <span className="space-y-0.5">
+                          <span>
                             <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
                             <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
                           </span>
@@ -878,80 +874,80 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       );
                     })}
                   </div>
-                </div>
 
-                <div className="app-subtle-panel mt-4 p-4">
-                  <p className="app-eyebrow">Public Link</p>
-                  {publicSharePath ? (
-                    <>
-                      <input
-                        readOnly
-                        value={publicShareUrl}
-                        className="app-input mt-3"
-                      />
-                      <div className="mt-3 flex items-center gap-3 text-sm">
-                        <Link
-                          href={publicSharePath}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-[var(--brand-700)] hover:underline"
-                        >
-                          Open shared preview
-                        </Link>
-                        <span className="text-[var(--text-4)]">·</span>
-                        <a
-                          href={buildShareMailto(draft.title, publicShareUrl)}
-                          className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
-                        >
-                          <EnvelopeIcon className="h-3.5 w-3.5" />
-                          Email link
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="mt-3 text-sm leading-6 text-[var(--text-3)]">
-                      No public link yet — click <span className="font-medium text-[var(--text-1)]">Share</span> below to
-                      mint a tokenised URL. The link can be revoked at any time.
+                  {/* Public link */}
+                  <div className="mt-5 border-t border-[var(--border-2)] pt-4">
+                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                      Public link
                     </p>
-                  )}
-                </div>
+                    {publicSharePath ? (
+                      <>
+                        <input readOnly value={publicShareUrl} className="app-input mt-2" />
+                        <div className="mt-2 flex items-center gap-3 text-sm">
+                          <Link
+                            href={publicSharePath}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-[var(--brand-700)] hover:underline"
+                          >
+                            Open shared preview
+                          </Link>
+                          <span className="text-[var(--text-4)]">·</span>
+                          <a
+                            href={buildShareMailto(draft.title, publicShareUrl)}
+                            className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
+                          >
+                            <EnvelopeIcon className="h-3.5 w-3.5" />
+                            Email link
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                        No public link yet — <span className="font-medium text-[var(--text-1)]">Share</span> below to mint a
+                        tokenised URL. Revocable any time.
+                      </p>
+                    )}
+                  </div>
 
-                <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1 justify-center"
-                    onClick={handleShareLink}
-                    leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
-                  >
-                    {copied ? "Copied" : "Share"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    className="flex-1 justify-center"
-                    onClick={handleExportPdf}
-                    leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                  >
-                    Export
-                  </Button>
-                </div>
+                  {/* Actions */}
+                  <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 justify-center"
+                      onClick={handleShareLink}
+                      leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                    >
+                      {copied ? "Copied" : "Share"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      className="flex-1 justify-center"
+                      onClick={handleExportPdf}
+                      leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                    >
+                      Export
+                    </Button>
+                  </div>
 
-                <div className="mt-3 border-t border-[var(--border-2)] pt-3">
-                  <button
-                    type="button"
-                    onClick={handleSaveAsTemplate}
-                    className="text-sm font-medium text-[var(--brand-700)] hover:underline"
-                  >
-                    Save current structure as a template…
-                  </button>
-                  {templateSavedAt ? (
-                    <p className="mt-1 text-xs text-[var(--success-500)]">
-                      Saved as &ldquo;{templateSavedAt}&rdquo;
-                    </p>
-                  ) : null}
+                  <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveAsTemplate}
+                      className="text-sm font-medium text-[var(--brand-700)] hover:underline"
+                    >
+                      Save current structure as a template…
+                    </button>
+                    {templateSavedAt ? (
+                      <p className="mt-1 text-xs text-[var(--success-500)]">
+                        Saved as &ldquo;{templateSavedAt}&rdquo;
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             )}
