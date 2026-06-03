@@ -17,6 +17,7 @@ import {
   PlusIcon,
   SignalIcon,
   SparklesIcon,
+  SwatchIcon,
   TrashIcon,
   VideoCameraIcon,
   XMarkIcon,
@@ -46,6 +47,7 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { useCreateTask } from "@/hooks/use-tasks";
+import { useClientDesignSystem } from "@/hooks/use-design-system";
 import { cn, formatDate } from "@/lib/format";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
 import type {
@@ -97,6 +99,8 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
+  // Only clients with an imported design system get the entry button (below).
+  const { data: designSystem } = useClientDesignSystem(slug);
 
   if (isPending) {
     return (
@@ -292,13 +296,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
-            <Link
-              href={`/app/portal/${slug}/design-system`}
-              title="Open this client's brand design system"
-              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-            >
-              Design system →
-            </Link>
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
               <PencilIcon className="h-3 w-3" />
               Edit
@@ -372,6 +369,18 @@ export function ClientDetail({ slug }: { slug: string }) {
                 </div>
               )}
             </div>
+
+            {/* Design system — only shown once a client has tokens imported. */}
+            {designSystem?.exists && (
+              <Link
+                href={`/app/portal/${slug}/design-system`}
+                title="Open this client's brand design system"
+                className="inline-flex items-center gap-1.5 self-center rounded-[8px] border border-[var(--brand-300)] bg-[var(--surface-brand)] px-3.5 py-2 text-sm font-medium text-[var(--brand-800)] transition hover:bg-[var(--surface-brand-strong)]"
+              >
+                <SwatchIcon className="h-4 w-4" />
+                Design system →
+              </Link>
+            )}
 
             {/* Bank details — only rendered when on file. Opens the reveal
                 modal so it stays out of the way until it's actually needed. */}
@@ -2187,188 +2196,185 @@ function ClientEditModal({
             <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
               Edit client
             </h2>
-              {/* Identity */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="app-field-label">Client name</span>
-                  <input
-                    value={form.name}
-                    onChange={(e) => set("name", e.target.value)}
-                    className="app-input"
-                  />
-                </label>
-                <div>
-                  <span className="app-field-label mb-2 block">Logo</span>
-                  <LogoImagePicker
-                    value={form.logoUrl}
-                    onChange={(value) => set("logoUrl", value)}
-                  />
-                </div>
-              </div>
-
-              {/* Links */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="app-field-label">Website</span>
-                  <input
-                    value={form.website}
-                    onChange={(e) => set("website", e.target.value)}
-                    className="app-input"
-                    placeholder="https://client.com"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">Google Drive folder URL</span>
-                  <input
-                    value={form.googleDriveFolderUrl}
-                    onChange={(e) => set("googleDriveFolderUrl", e.target.value)}
-                    className="app-input"
-                    placeholder="https://drive.google.com/drive/folders/…"
-                    type="url"
-                  />
-                </label>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="app-field-label">ClickUp folder URL</span>
-                  <input
-                    value={form.clickupUrl}
-                    onChange={(e) => set("clickupUrl", e.target.value)}
-                    className="app-input"
-                    placeholder="https://app.clickup.com/…"
-                    type="url"
-                  />
-                </label>
-                <label className="block">
-                  <span className="app-field-label">
-                    Slack channel
-                    {loadingChannels && (
-                      <span className="ml-2 text-[var(--text-4)]">Loading…</span>
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                {/* LEFT — identity, brand & integrations (avatar leads) */}
+                <div className="space-y-4">
+                  <div>
+                    <span className="app-field-label mb-2 block">Logo</span>
+                    <LogoImagePicker
+                      value={form.logoUrl}
+                      onChange={(value) => set("logoUrl", value)}
+                    />
+                  </div>
+                  <label className="block">
+                    <span className="app-field-label">Client name</span>
+                    <input
+                      value={form.name}
+                      onChange={(e) => set("name", e.target.value)}
+                      className="app-input"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Website</span>
+                    <input
+                      value={form.website}
+                      onChange={(e) => set("website", e.target.value)}
+                      className="app-input"
+                      placeholder="https://client.com"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">Google Drive folder URL</span>
+                    <input
+                      value={form.googleDriveFolderUrl}
+                      onChange={(e) => set("googleDriveFolderUrl", e.target.value)}
+                      className="app-input"
+                      placeholder="https://drive.google.com/drive/folders/…"
+                      type="url"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">ClickUp folder URL</span>
+                    <input
+                      value={form.clickupUrl}
+                      onChange={(e) => set("clickupUrl", e.target.value)}
+                      className="app-input"
+                      placeholder="https://app.clickup.com/…"
+                      type="url"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="app-field-label">
+                      Slack channel
+                      {loadingChannels && (
+                        <span className="ml-2 text-[var(--text-4)]">Loading…</span>
+                      )}
+                    </span>
+                    <select
+                      value={form.slackChannelId}
+                      onChange={(e) => set("slackChannelId", e.target.value)}
+                      className="app-select w-full"
+                    >
+                      <option value="">— None —</option>
+                      {channels.map((ch) => (
+                        <option key={ch.id} value={ch.id}>
+                          {ch.isPrivate ? "🔒 " : "#"}{ch.name}
+                          {ch.isMember ? "" : " (invite bot)"}
+                        </option>
+                      ))}
+                    </select>
+                    {channels.length === 0 && !loadingChannels && (
+                      <p className="mt-1 text-xs text-[var(--text-4)]">
+                        Add a Slack bot token in Settings → Integrations to enable this.
+                      </p>
                     )}
-                  </span>
-                  <select
-                    value={form.slackChannelId}
-                    onChange={(e) => set("slackChannelId", e.target.value)}
-                    className="app-select w-full"
-                  >
-                    <option value="">— None —</option>
-                    {channels.map((ch) => (
-                      <option key={ch.id} value={ch.id}>
-                        {ch.isPrivate ? "🔒 " : "#"}{ch.name}
-                        {ch.isMember ? "" : " (invite bot)"}
-                      </option>
-                    ))}
-                  </select>
-                  {channels.length === 0 && !loadingChannels && (
-                    <p className="mt-1 text-xs text-[var(--text-4)]">
-                      Add a Slack bot token in Settings → Integrations to enable this.
-                    </p>
-                  )}
-                </label>
-              </div>
+                  </label>
+                </div>
 
-              {/* Primary contact */}
-              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
-                <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Primary contact</p>
-                <div className="grid gap-4 sm:grid-cols-3">
+                {/* RIGHT — primary contact & address */}
+                <div className="space-y-5">
+                  <div>
+                    <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Primary contact</p>
+                    <div className="space-y-4">
+                      <label className="block">
+                        <span className="app-field-label">Name</span>
+                        <input
+                          value={form.primaryContactName}
+                          onChange={(e) => set("primaryContactName", e.target.value)}
+                          className="app-input"
+                          placeholder="Jane Smith"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="app-field-label">Email</span>
+                        <input
+                          value={form.primaryContactEmail}
+                          onChange={(e) => set("primaryContactEmail", e.target.value)}
+                          className="app-input"
+                          placeholder="jane@client.com"
+                          type="email"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="app-field-label">Phone</span>
+                        <input
+                          value={form.primaryContactPhone}
+                          onChange={(e) => set("primaryContactPhone", e.target.value)}
+                          className="app-input"
+                          placeholder="+44 7700 000000"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Address</p>
+                    <div className="space-y-4">
+                      <label className="block">
+                        <span className="app-field-label">Address line 1</span>
+                        <input
+                          value={form.addressLine1}
+                          onChange={(e) => set("addressLine1", e.target.value)}
+                          className="app-input"
+                          placeholder="123 High Street"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="app-field-label">Address line 2</span>
+                        <input
+                          value={form.addressLine2}
+                          onChange={(e) => set("addressLine2", e.target.value)}
+                          className="app-input"
+                          placeholder="Floor 2"
+                        />
+                      </label>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="app-field-label">City</span>
+                          <input
+                            value={form.city}
+                            onChange={(e) => set("city", e.target.value)}
+                            className="app-input"
+                            placeholder="London"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="app-field-label">Postcode</span>
+                          <input
+                            value={form.postcode}
+                            onChange={(e) => set("postcode", e.target.value)}
+                            className="app-input"
+                            placeholder="SW1A 1AA"
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="app-field-label">Country</span>
+                        <input
+                          value={form.country}
+                          onChange={(e) => set("country", e.target.value)}
+                          className="app-input"
+                          placeholder="United Kingdom"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes — full width */}
+                <div className="border-t border-[rgba(0,0,0,0.08)] pt-4 sm:col-span-2">
                   <label className="block">
-                    <span className="app-field-label">Name</span>
-                    <input
-                      value={form.primaryContactName}
-                      onChange={(e) => set("primaryContactName", e.target.value)}
-                      className="app-input"
-                      placeholder="Jane Smith"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">Email</span>
-                    <input
-                      value={form.primaryContactEmail}
-                      onChange={(e) => set("primaryContactEmail", e.target.value)}
-                      className="app-input"
-                      placeholder="jane@client.com"
-                      type="email"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">Phone</span>
-                    <input
-                      value={form.primaryContactPhone}
-                      onChange={(e) => set("primaryContactPhone", e.target.value)}
-                      className="app-input"
-                      placeholder="+44 7700 000000"
+                    <span className="app-field-label">Notes</span>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => set("notes", e.target.value)}
+                      className="app-input min-h-[80px] resize-y"
+                      placeholder="General notes about this client…"
                     />
                   </label>
                 </div>
-              </div>
 
-              {/* Address */}
-              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
-                <p className="mb-3 text-sm font-medium text-[var(--text-2)]">Address</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="app-field-label">Address line 1</span>
-                    <input
-                      value={form.addressLine1}
-                      onChange={(e) => set("addressLine1", e.target.value)}
-                      className="app-input"
-                      placeholder="123 High Street"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">Address line 2</span>
-                    <input
-                      value={form.addressLine2}
-                      onChange={(e) => set("addressLine2", e.target.value)}
-                      className="app-input"
-                      placeholder="Floor 2"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">City</span>
-                    <input
-                      value={form.city}
-                      onChange={(e) => set("city", e.target.value)}
-                      className="app-input"
-                      placeholder="London"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">Postcode</span>
-                    <input
-                      value={form.postcode}
-                      onChange={(e) => set("postcode", e.target.value)}
-                      className="app-input"
-                      placeholder="SW1A 1AA"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="app-field-label">Country</span>
-                    <input
-                      value={form.country}
-                      onChange={(e) => set("country", e.target.value)}
-                      className="app-input"
-                      placeholder="United Kingdom"
-                    />
-                  </label>
-                </div>
+                {error && <p className="text-sm text-rose-700 sm:col-span-2">{error}</p>}
               </div>
-
-              {/* Notes */}
-              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4">
-                <label className="block">
-                  <span className="app-field-label">Notes</span>
-                  <textarea
-                    value={form.notes}
-                    onChange={(e) => set("notes", e.target.value)}
-                    className="app-input min-h-[80px] resize-y"
-                    placeholder="General notes about this client…"
-                  />
-                </label>
-              </div>
-
-              {error && <p className="text-sm text-rose-700">{error}</p>}
           </div>
 
           <div className="flex shrink-0 justify-end gap-2 border-t border-[rgba(0,0,0,0.08)] px-6 py-4">
