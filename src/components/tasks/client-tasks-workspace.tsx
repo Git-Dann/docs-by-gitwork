@@ -185,27 +185,18 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : view === "board" ? (
         <TaskBoard tasks={filtered} showClient={false} onCardClick={setOpenTaskId} />
       ) : view === "list" ? (
-        <div className="space-y-3">
-          {selected.size > 0 ? (
-            <TaskBatchBar
-              selectedIds={[...selected]}
-              blocks={blocks}
-              onClear={() => setSelected(new Set())}
-            />
-          ) : null}
-          <TaskList
-            tasks={filtered}
-            showClient={false}
-            onRowClick={setOpenTaskId}
-            selectable
-            selectedIds={selected}
-            onToggleSelect={toggleSelect}
-            onToggleAll={(checked) => setSelected(checked ? new Set(filtered.map((t) => t.id)) : new Set())}
-            onToggleDone={(task) =>
-              updateTask.mutate({ id: task.id, input: { status: task.status === "DONE" ? "TODO" : "DONE" } })
-            }
-          />
-        </div>
+        <TaskList
+          tasks={filtered}
+          showClient={false}
+          onRowClick={setOpenTaskId}
+          selectable
+          selectedIds={selected}
+          onToggleSelect={toggleSelect}
+          onToggleAll={(checked) => setSelected(checked ? new Set(filtered.map((t) => t.id)) : new Set())}
+          onToggleDone={(task) =>
+            updateTask.mutate({ id: task.id, input: { status: task.status === "DONE" ? "TODO" : "DONE" } })
+          }
+        />
       ) : (
         <GanttChart
           blocks={ganttBlocks}
@@ -221,6 +212,11 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           emptyHint="No timeline yet — add a milestone or give a feature block start/end dates."
         />
       )}
+
+      {/* Floating batch bar — fixed overlay, never shifts the list */}
+      {view === "list" && selected.size > 0 ? (
+        <TaskBatchBar selectedIds={[...selected]} blocks={blocks} onClear={() => setSelected(new Set())} />
+      ) : null}
 
       {creatingTask ? (
         <TaskFormModal defaultClientId={clientId ?? undefined} lockClient onClose={() => setCreatingTask(false)} />

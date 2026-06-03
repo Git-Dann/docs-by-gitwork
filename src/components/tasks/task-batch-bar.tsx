@@ -54,7 +54,7 @@ function Pop({
       {open ? (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[200px] rounded-[10px] border border-[var(--border-2)] bg-white p-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.1)]">
+          <div className="absolute bottom-[calc(100%+8px)] right-0 z-50 max-h-[60vh] min-w-[200px] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
             {children(() => setOpen(false))}
           </div>
         </>
@@ -119,18 +119,20 @@ export function TaskBatchBar({
   }
 
   return (
-    <div className="sticky top-2 z-30 flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--brand-300)] bg-[var(--surface-brand)] px-3 py-2 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-      <span className="text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
+    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]">
+      <span className="whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
       <button
         type="button"
         onClick={onClear}
-        className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-xs font-medium text-[var(--brand-800)] hover:bg-white/60"
+        className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-xs font-medium text-[var(--brand-800)] hover:bg-[var(--surface-1)]"
       >
         <XMarkIcon className="h-3.5 w-3.5" />
         Clear
       </button>
 
-      <div className="ml-auto flex flex-wrap items-center gap-1.5">
+      <span className="mx-0.5 h-5 w-px bg-[var(--border-2)]" />
+
+      <div className="flex items-center gap-1.5">
         {/* Assign */}
         <Pop label="Assign" icon={<UserPlusIcon className="h-3.5 w-3.5" />} disabled={busy}>
           {(close) => (
