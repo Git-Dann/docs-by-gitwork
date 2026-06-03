@@ -1893,6 +1893,7 @@ import type {
   TaskStatus,
   TaskPriority,
   ClientTaskSummary,
+  TaskAttentionDTO,
   MyDayDTO,
   DailyUpdateDTO,
   RollupRosterDTO,
@@ -2011,6 +2012,10 @@ export function addTaskComment(id: string, body: string): Promise<TaskCommentDTO
 
 export function getClientTaskSummary(clientId: string): Promise<ClientTaskSummary> {
   return apiFetch(`/api/tasks/summary?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function getTaskAttention(): Promise<TaskAttentionDTO> {
+  return apiFetch("/api/tasks/attention");
 }
 
 export function getMyDay(date?: string): Promise<MyDayDTO> {

@@ -12,6 +12,7 @@ import {
   batchDeleteTasks,
   addTaskComment,
   getClientTaskSummary,
+  getTaskAttention,
   getMyDay,
   pushDailyUpdate,
   getRollupRoster,
@@ -75,6 +76,15 @@ export function useClientTaskSummary(clientId: string | null) {
     queryKey: QK.summary(clientId ?? ""),
     queryFn: () => getClientTaskSummary(clientId as string),
     enabled: Boolean(clientId),
+    staleTime: 30_000,
+  });
+}
+
+export function useTaskAttention(enabled = true) {
+  return useQuery({
+    queryKey: ["tasks", "attention"] as const,
+    queryFn: () => getTaskAttention(),
+    enabled,
     staleTime: 30_000,
   });
 }
