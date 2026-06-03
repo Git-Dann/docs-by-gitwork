@@ -1131,3 +1131,7 @@ export const designSystemSaveSchema = z.object({
 export const designSystemShareSchema = z.object({
   enabled: z.boolean(),
 });
+
+export const designSystemEnabledSchema = z.object({
+  enabled: z.boolean(),
+});

@@ -957,8 +957,12 @@ model ClientDesignSystem {
   id           String             @id @default(cuid())
   clientId     String             @unique
   client       WorkspaceClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tokens       Json
+  /// Nullable so a client's page can be enabled before any tokens are imported.
+  tokens       Json?
   status       DesignSystemStatus @default(DRAFT)
+  /// Per-client page toggle (set in Edit client). Tri-state: null = unset, so the
+  /// page defaults to visible when tokens exist; true/false is an explicit override.
+  enabled      Boolean?
   shareToken   String?
   shareEnabled Boolean            @default(false)
   updatedById  String?

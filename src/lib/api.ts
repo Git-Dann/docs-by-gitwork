@@ -2266,3 +2266,14 @@ export async function setClientDesignSystemShare(
   });
 }
 
+export async function setClientDesignSystemEnabled(
+  slug: string,
+  enabled: boolean,
+): Promise<DesignSystemDTO> {
+  return apiFetch<DesignSystemDTO>(`/api/clients/${slug}/design-system/enabled`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+

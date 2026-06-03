@@ -170,6 +170,8 @@ export interface DesignSystemShareInfo {
 
 export interface DesignSystemDTO {
   exists: boolean;
+  /** Whether the per-client design-system page/entry is enabled (Edit client toggle). */
+  enabled: boolean;
   tokens: DesignTokens | null;
   status: DesignSystemStatus;
   updatedAt: string | null;

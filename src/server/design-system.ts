@@ -32,7 +32,8 @@ function shareInfo(row: { shareToken: string | null; shareEnabled: boolean }): D
 }
 
 type RowWithUser = {
-  tokens: Prisma.JsonValue;
+  tokens: Prisma.JsonValue | null;
+  enabled: boolean | null;
   status: DesignSystemStatus;
   updatedAt: Date;
   shareToken: string | null;
@@ -41,9 +42,12 @@ type RowWithUser = {
 };
 
 function toDTO(row: RowWithUser): DesignSystemDTO {
+  const hasTokens = Boolean(row.tokens);
   return {
-    exists: true,
-    tokens: row.tokens as unknown as DesignTokens,
+    exists: hasTokens,
+    // null = unset → default to visible when tokens exist; true/false is an explicit override.
+    enabled: row.enabled ?? hasTokens,
+    tokens: hasTokens ? (row.tokens as unknown as DesignTokens) : null,
     status: row.status,
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy?.name ?? row.updatedBy?.email ?? null,
@@ -53,6 +57,7 @@ function toDTO(row: RowWithUser): DesignSystemDTO {
 
 const EMPTY_DTO: DesignSystemDTO = {
   exists: false,
+  enabled: false,
   tokens: null,
   status: "DRAFT",
   updatedAt: null,
@@ -123,13 +128,29 @@ export async function setDesignSystemShare(
   return shareInfo(updated);
 }
 
-/** Public read — no auth. Returns null when the token is unknown or sharing is off. */
+/** Toggle the per-client page on/off (Edit client). Creates the row (no tokens) if needed. */
+export async function setDesignSystemEnabled(
+  user: EffectiveUser,
+  clientId: string,
+  enabled: boolean,
+): Promise<DesignSystemDTO> {
+  await assertClientInScope(user, clientId);
+  const row = await prisma.clientDesignSystem.upsert({
+    where: { clientId },
+    create: { clientId, enabled },
+    update: { enabled },
+    include: { updatedBy: { select: { name: true, email: true } } },
+  });
+  return toDTO(row);
+}
+
+/** Public read — no auth. Returns null when the token is unknown, sharing is off, or no tokens. */
 export async function getPublicDesignSystem(token: string): Promise<PublicDesignSystemDTO | null> {
   const row = await prisma.clientDesignSystem.findFirst({
     where: { shareToken: token, shareEnabled: true },
     include: { client: { select: { name: true, logoUrl: true } } },
   });
-  if (!row) return null;
+  if (!row || !row.tokens) return null;
   const tokens = row.tokens as unknown as DesignTokens;
   return {
     clientName: tokens?.clientName || row.client.name,
