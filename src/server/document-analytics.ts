@@ -388,10 +388,17 @@ export async function getWorkspaceDocumentAnalytics(
     ? Math.round(openDeltas.reduce((a, b) => a + b, 0) / openDeltas.length)
     : null;
 
+  // Scope the view/section aggregations by document id rather than a relation filter. Filtering
+  // documentView.groupBy via `document: base` JOINs the Document table, and since both DocumentView
+  // and Document have a `createdAt` column, `_max: { createdAt }` becomes an ambiguous column
+  // reference in Postgres (error 42702). Resolving the ids up front keeps these queries join-free.
+  const baseDocs = await prisma.document.findMany({ where: base, select: { id: true } });
+  const baseDocIds = baseDocs.map((d) => d.id);
+
   // Per-document view counts + last-viewed, top 8 by views.
   const viewGroups = await prisma.documentView.groupBy({
     by: ["documentId"],
-    where: { origin: "DOCS", document: base },
+    where: { origin: "DOCS", documentId: { in: baseDocIds } },
     _count: { _all: true },
     _max: { createdAt: true },
     orderBy: { _count: { documentId: "desc" } },
@@ -424,7 +431,7 @@ export async function getWorkspaceDocumentAnalytics(
   // Most-read section types across every shared document.
   const sectionGroups = await prisma.documentViewEvent.groupBy({
     by: ["sectionKey"],
-    where: { view: { document: base, origin: "DOCS" } },
+    where: { view: { documentId: { in: baseDocIds }, origin: "DOCS" } },
     _sum: { dwellMs: true },
     _avg: { dwellMs: true },
     _count: { _all: true },
