@@ -292,6 +292,13 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
+            <Link
+              href={`/app/portal/${slug}/design-system`}
+              title="Open this client's brand design system"
+              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+            >
+              Design system →
+            </Link>
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
               <PencilIcon className="h-3 w-3" />
               Edit
@@ -650,25 +657,16 @@ export function ClientDetail({ slug }: { slug: string }) {
             <span className="widget-header__label--number">11</span>
             {" // DESIGNS"}
           </span>
-          <span className="flex items-center gap-1.5">
-            <Link
-              href={`/app/portal/${slug}/design-system`}
-              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-              title="Open the client's brand design system"
+          {!isSuggested && (
+            <button
+              type="button"
+              onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
+              className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+              title="Add design"
             >
-              Design system →
-            </Link>
-            {!isSuggested && (
-              <button
-                type="button"
-                onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
-                className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-                title="Add design"
-              >
-                <PlusIcon className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </span>
+              <PlusIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col p-5">
@@ -2179,18 +2177,16 @@ function ClientEditModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel w-full max-w-2xl overflow-hidden">
+        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
           {/* Modal widget header */}
-          <div className="widget-header">
+          <div className="widget-header shrink-0">
             <span className="widget-header__label">EDIT CLIENT</span>
           </div>
 
-          <div className="p-6">
-            <h2 className="mb-5 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
+          <div className="flex-1 min-h-0 space-y-5 overflow-y-auto p-6">
+            <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
               Edit client
             </h2>
-
-            <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
               {/* Identity */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
@@ -2373,22 +2369,21 @@ function ClientEditModal({
               </div>
 
               {error && <p className="text-sm text-rose-700">{error}</p>}
-            </div>
+          </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button type="button" variant="secondary" size="md" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                loading={isSaving}
-                onClick={onSave}
-              >
-                Save changes
-              </Button>
-            </div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-[rgba(0,0,0,0.08)] px-6 py-4">
+            <Button type="button" variant="secondary" size="md" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              loading={isSaving}
+              onClick={onSave}
+            >
+              Save changes
+            </Button>
           </div>
         </div>
       </div>
