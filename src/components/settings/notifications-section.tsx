@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { SettingsCard } from "@/components/settings/settings-card";
@@ -189,9 +190,10 @@ export function NotificationsSection() {
             </thead>
             <tbody className="divide-y divide-[var(--border-3)]">
               {EVENT_GROUPS.map((group) => (
-                <>
-                  <tr key={`${group.module}-header`} className="bg-[var(--surface-1)]/60">
-                    <td colSpan={1 + CHANNELS.length} className="px-6 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                // Fragment needs an explicit key inside .map — React warns otherwise.
+                <Fragment key={group.module}>
+                  <tr>
+                    <td colSpan={1 + CHANNELS.length} className="bg-[var(--surface-1)]/60 px-6 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                       {group.module}
                     </td>
                   </tr>
@@ -229,7 +231,7 @@ export function NotificationsSection() {
                       </tr>
                     );
                   })}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -267,7 +269,10 @@ export function NotificationsSection() {
               onChange={(event) =>
                 updatePrefs.mutate({ quietHoursStart: event.target.value || null })
               }
-              className="w-full"
+              // `app-input` matches every other field on the page — without it native
+              // <input type="time"> renders with browser default styling that looks broken
+              // next to the styled selects either side of it.
+              className="app-input w-full"
             />
           </label>
 
@@ -279,7 +284,7 @@ export function NotificationsSection() {
               onChange={(event) =>
                 updatePrefs.mutate({ quietHoursEnd: event.target.value || null })
               }
-              className="w-full"
+              className="app-input w-full"
             />
           </label>
 
