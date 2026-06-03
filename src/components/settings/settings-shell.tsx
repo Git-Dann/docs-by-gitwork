@@ -38,7 +38,9 @@ export type SettingsSectionId =
   | "team"
   | "roles"
   | "integrations"
-  | "agents-checks"
+  | "agents"
+  | "checks"
+  | "agents-checks" // legacy — redirects to "agents"
   // System
   | "audit"
   | "developer"
@@ -89,21 +91,21 @@ const GROUPS: SectionGroup[] = [
     sections: [
       {
         id: "general",
-        label: "General",
-        description: "Proposal defaults.",
+        label: "Document defaults",
+        description: "Prepared by, team, contact.",
         icon: AdjustmentsHorizontalIcon,
         permission: "settings.general",
       },
       {
         id: "branding",
         label: "Branding",
-        description: "Logo and cover accents.",
+        description: "Workspace logo.",
         icon: PaintBrushIcon,
         permission: "settings.branding",
       },
       {
         id: "content",
-        label: "Content",
+        label: "Boilerplate copy",
         description: "Confidentiality + objective snippets.",
         icon: PencilSquareIcon,
         permission: "settings.content",
@@ -140,9 +142,16 @@ const GROUPS: SectionGroup[] = [
         permission: "settings.integrations",
       },
       {
-        id: "agents-checks",
-        label: "Agents & checks",
-        description: "AI agent prompts and Pulse checks.",
+        id: "agents",
+        label: "AI agents",
+        description: "Per-agent prompt + model overrides.",
+        icon: CpuChipIcon,
+        permission: "settings.agents",
+      },
+      {
+        id: "checks",
+        label: "Pulse checks",
+        description: "Enable, downgrade, or add custom checks.",
         icon: CpuChipIcon,
         permission: "settings.agents",
       },

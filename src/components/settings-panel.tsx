@@ -34,6 +34,7 @@ import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card"
 import { MODULE_PERMISSIONS, isAtLeast, type RoleId } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
+import { SavedIndicator } from "@/components/settings/saved-indicator";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
 import type { SectionKey } from "@/types/proposal";
@@ -126,7 +127,11 @@ export function GeneralTab() {
 
   return (
     <div className="space-y-6">
-      <SettingsCard number="01" title="Proposal defaults">
+      <SettingsCard
+        number="01"
+        title="Proposal defaults"
+        right={<SavedIndicator mutation={updateDefaults} />}
+      >
         <p className="text-sm leading-6 text-[var(--text-3)]">
           Shared defaults pre-filled across proposals and sign-off sections. Saved to the
           workspace so every teammate sees the same values.
@@ -165,7 +170,11 @@ export function BrandingTab() {
 
   return (
     <div className="space-y-6">
-      <SettingsCard number="01" title="Workspace logo" right="FALLBACK">
+      <SettingsCard
+        number="01"
+        title="Workspace logo"
+        right={<SavedIndicator mutation={updateBranding} />}
+      >
           <p className="text-sm leading-6 text-[var(--text-3)]">
             The workspace logo used wherever a document doesn&apos;t specify its own. Templates
             in Docs now carry their own cover art and accents, so this is the fallback for ad-hoc
@@ -212,7 +221,11 @@ export function ContentTab() {
 
   return (
     <div className="space-y-6">
-      <SettingsCard number="01" title="Confidentiality defaults">
+      <SettingsCard
+        number="01"
+        title="Confidentiality defaults"
+        right={<SavedIndicator mutation={updateBranding} />}
+      >
         <p className="text-sm leading-6 text-[var(--text-3)]">
           The cover editor uses an internal/external toggle and resolves the final copy from these defaults.
         </p>
@@ -239,15 +252,18 @@ export function ContentTab() {
         number="02"
         title="Objective snippets"
         right={
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            leadingIcon={<PlusIcon className="h-4 w-4" />}
-            onClick={() => updateSnippets([...snippets, { title: "", description: "" }])}
-          >
-            Add snippet
-          </Button>
+          <div className="flex items-center gap-3">
+            <SavedIndicator mutation={updateDefaults} />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => updateSnippets([...snippets, { title: "", description: "" }])}
+            >
+              Add snippet
+            </Button>
+          </div>
         }
       >
         <p className="text-sm leading-6 text-[var(--text-3)]">

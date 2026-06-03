@@ -22,7 +22,8 @@ const ContentTab = dynamic(() => import("@/components/settings-panel").then((m) 
 const TemplatesTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.TemplatesTab })));
 const RateCardTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.RateCardTab })));
 const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.IntegrationsTab })));
-const AgentsAndChecksTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.AgentsAndChecksTab })));
+const AgentsPanel = dynamic(() => import("@/components/settings/agents-panel").then((m) => ({ default: m.AgentsPanel })));
+const ChecksPanel = dynamic(() => import("@/components/settings/checks-panel").then((m) => ({ default: m.ChecksPanel })));
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
@@ -43,7 +44,9 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "team",
   "roles",
   "integrations",
-  "agents-checks",
+  "agents",
+  "checks",
+  "agents-checks", // legacy — redirects to "agents"
   "audit",
   "developer",
   "privacy",
@@ -61,6 +64,9 @@ const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-
 const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
   team: "/app/settings/people",
   roles: "/app/settings/people?tab=roles",
+  // Old combined "agents-checks" page split into two separate sections in the rail.
+  // Land legacy bookmarks on the AI agents page; users wanting checks just click across.
+  "agents-checks": "/app/settings/agents",
 };
 
 // Settings sub-sections gated by an individual matrix permission. A Super Admin can
@@ -71,7 +77,8 @@ const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = 
   content: "settings.content",
   templates: "settings.templates",
   integrations: "settings.integrations",
-  "agents-checks": "settings.agents",
+  agents: "settings.agents",
+  checks: "settings.agents",
   audit: "settings.audit",
   developer: "settings.developer",
   privacy: "settings.privacy",
@@ -87,12 +94,12 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     subtitle: "Where and when Foundry pings you.",
   },
   general: {
-    title: "General",
-    subtitle: "Workspace proposal defaults.",
+    title: "Document defaults",
+    subtitle: "Prepared by, team, contact details — pre-filled on every new document.",
   },
   branding: {
     title: "Branding",
-    subtitle: "Cover assets for every document.",
+    subtitle: "Workspace logo — fallback for documents without their own.",
   },
   templates: {
     title: "Templates",
@@ -103,8 +110,8 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     subtitle: "Customise the client onboarding forms sent at /onboarding.",
   },
   content: {
-    title: "Content",
-    subtitle: "Confidentiality copy and reusable objective snippets.",
+    title: "Boilerplate copy",
+    subtitle: "Confidentiality statements and reusable objective snippets for proposals.",
   },
   "rate-card": {
     title: "Rate card",
@@ -126,9 +133,19 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Integrations",
     subtitle: "AI providers, Google, Slack, email.",
   },
+  agents: {
+    title: "AI agents",
+    subtitle: "Per-agent prompt and model overrides for Pulse and Study.",
+  },
+  checks: {
+    title: "Pulse checks",
+    subtitle: "Enable, downgrade severity, label or add custom checks per workspace.",
+  },
+  // Legacy URL — present in the meta so the type stays exhaustive; the page-level
+  // redirect (PEOPLE_REDIRECTS) catches this slug before this meta is ever read.
   "agents-checks": {
     title: "Agents & checks",
-    subtitle: "Per-agent prompts and Pulse check configuration.",
+    subtitle: "Split into AI agents and Pulse checks in the left rail.",
   },
   audit: {
     title: "Audit log",
@@ -253,7 +270,8 @@ export default async function SettingsSectionPage({
         {sectionId === "rate-card" ? <RateCardTab /> : null}
         {sectionId === "people" ? <PeopleAccess /> : null}
         {sectionId === "integrations" ? <IntegrationsTab /> : null}
-        {sectionId === "agents-checks" ? <AgentsAndChecksTab /> : null}
+        {sectionId === "agents" ? <AgentsPanel /> : null}
+        {sectionId === "checks" ? <ChecksPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}
