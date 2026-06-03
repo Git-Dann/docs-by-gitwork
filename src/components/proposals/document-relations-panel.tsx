@@ -70,7 +70,7 @@ export function DocumentRelationsPanel({ documentId, clientName }: DocumentRelat
           ) : data?.parent ? (
             <div className="mt-2 flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3">
               <Link
-                href={`/app/proposals/${data.parent.id}`}
+                href={`/app/docs/${data.parent.id}`}
                 className="min-w-0 flex-1"
               >
                 <div className="flex items-center gap-2">
@@ -89,7 +89,7 @@ export function DocumentRelationsPanel({ documentId, clientName }: DocumentRelat
               </Link>
               <div className="flex items-center gap-1">
                 <Link
-                  href={`/app/proposals/${data.parent.id}`}
+                  href={`/app/docs/${data.parent.id}`}
                   aria-label="Open parent"
                   className="rounded p-1 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                 >
@@ -159,14 +159,14 @@ export function DocumentRelationsPanel({ documentId, clientName }: DocumentRelat
                     {DOC_TYPE_BADGE[child.documentType]}
                   </span>
                   <Link
-                    href={`/app/proposals/${child.id}`}
+                    href={`/app/docs/${child.id}`}
                     className="flex-1 truncate text-sm font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                   >
                     {child.title}
                   </Link>
                   <StatusBadge status={child.status as never} />
                   <Link
-                    href={`/app/proposals/${child.id}`}
+                    href={`/app/docs/${child.id}`}
                     aria-label="Open"
                     className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
                   >

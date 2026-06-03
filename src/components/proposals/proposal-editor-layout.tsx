@@ -36,6 +36,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
+import { DocumentAnalyticsPanel } from "@/components/proposals/document-analytics-panel";
+import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
@@ -183,6 +185,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
   /** P5.17 — outline drawer toggle on < xl screens. */
   const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
+  // Split-screen live preview (Phase 2) — renders the document beside the section editor on wide
+  // screens, updating live from `draft` as the operator types.
+  const [showPreview, setShowPreview] = useState(true);
 
   // Scroll-position preservation when switching active section. We capture window.scrollY in
   // a ref *before* setActiveSectionId fires, then a useLayoutEffect restores it on the next
@@ -496,7 +501,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       return;
     }
 
-    window.open(`/app/proposals/${proposalId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+    window.open(`/app/docs/${proposalId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
   }
 
   function handleApprovalToggle(key: (typeof approvalOptions)[number]["key"], checked: boolean) {
@@ -575,7 +580,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-3)]">
               <HomeIcon className="h-4 w-4" />
               <ChevronRightIcon className="h-4 w-4" />
-              <Link href="/app/proposals" className="hover:text-[var(--text-1)]">
+              <Link href="/app/docs" className="hover:text-[var(--text-1)]">
                 Proposals
               </Link>
               <ChevronRightIcon className="h-4 w-4" />
@@ -602,7 +607,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               {draft.version ? <span className="app-chip">Version {draft.version}</span> : null}
               {parentDoc ? (
                 <Link
-                  href={`/app/proposals/${parentDoc.id}`}
+                  href={`/app/docs/${parentDoc.id}`}
                   className="app-chip inline-flex items-center gap-1.5 text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/60"
                   title={`Linked under: ${parentDoc.title}`}
                 >
@@ -648,7 +653,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               Quick draft
             </button>
             <Link
-              href={`/app/proposals/${proposalId}/preview`}
+              href={`/app/docs/${proposalId}/preview`}
               className={buttonStyles({
                 variant: "secondary",
                 size: "md",
@@ -839,6 +844,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             tabs={[
               { id: "collab",     label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
               { id: "signature",  label: "Signatures",    panel: <SignaturePanel documentId={proposalId} /> },
+              { id: "insights",   label: "Insights",      panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
               { id: "activity",   label: "Activity",      panel: <ActivityFeed documentId={proposalId} /> },
               { id: "linked",     label: "Linked",        panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
               { id: "proof",      label: "Proof drafts",  panel: <ProposalProofPanel proposalId={proposalId} /> },
@@ -846,20 +852,44 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </div>
       ) : (
-        <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-          {/* Desktop: outline pinned to the side */}
-          <div className="hidden xl:block">
-            <TableOfContentsCard
-              sections={sectionEntries}
-              activeId={activeEntry?.id ?? null}
-              editable
-              onSelect={(id) => selectSection(id)}
-              onInsertAt={(index) => setPaletteInsertAt(index)}
-              onDeleteSection={handleDeleteSection}
-              onReorder={updateSectionOrder}
-              onToggleVisibility={handleToggleVisibility}
-            />
+        <div className="space-y-3">
+          {/* Live-preview toggle — xl only (the preview pane needs the width). */}
+          <div className="hidden justify-end xl:flex">
+            <button
+              type="button"
+              onClick={() => setShowPreview((v) => !v)}
+              aria-pressed={showPreview}
+              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${
+                showPreview
+                  ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
+                  : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
+              }`}
+            >
+              {showPreview ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
+              {showPreview ? "Live preview on" : "Live preview off"}
+            </button>
           </div>
+
+          <section
+            className={`grid gap-4 ${
+              showPreview
+                ? "xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,1fr)]"
+                : "xl:grid-cols-[340px_minmax(0,1fr)]"
+            }`}
+          >
+            {/* Desktop: outline pinned to the side */}
+            <div className="hidden xl:block">
+              <TableOfContentsCard
+                sections={sectionEntries}
+                activeId={activeEntry?.id ?? null}
+                editable
+                onSelect={(id) => selectSection(id)}
+                onInsertAt={(index) => setPaletteInsertAt(index)}
+                onDeleteSection={handleDeleteSection}
+                onReorder={updateSectionOrder}
+                onToggleVisibility={handleToggleVisibility}
+              />
+            </div>
 
           {/* Mobile/tablet: outline opens as a slide-in drawer (P5.17) */}
           <div className="xl:hidden">
@@ -917,13 +947,31 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             </div>
           ) : null}
 
-          <ProposalBuilderPanel
-            proposal={draft}
-            sections={sectionEntries}
-            activeId={activeEntry?.id ?? null}
-            onProposalChange={updateDraft}
-          />
-        </section>
+            <ProposalBuilderPanel
+              proposal={draft}
+              sections={sectionEntries}
+              activeId={activeEntry?.id ?? null}
+              onProposalChange={updateDraft}
+            />
+
+            {/* Split-screen live preview — the rendered client view, updating as you type. */}
+            {showPreview ? (
+              <div className="hidden xl:block">
+                <div className="sticky top-4 flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
+                  <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
+                      LIVE PREVIEW
+                    </span>
+                    <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
+                  </div>
+                  <div className="overflow-auto p-4">
+                    <ProposalPreview proposal={draft} showTableOfContents={false} frame={false} />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </div>
       )}
 
       <AiDraftModal

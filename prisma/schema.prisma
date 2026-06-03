@@ -26,6 +26,8 @@ enum DocumentStatus {
   IN_REVIEW
   APPROVED
   SENT
+  ACCEPTED // Client accepted the document via the public /docs/[token] page (the "won" signal)
+  DECLINED // Client explicitly declined via the public page (the "lost" signal)
   ARCHIVED
 }
 
@@ -386,6 +388,11 @@ model Document {
   // ── Sharing (Sprint 1) ──────────────────────────────────────────────
   shareToken        String?            @unique // Random URL-safe token for /docs/[token]
   isShared          Boolean            @default(false)
+  // ── Engagement tracking (Phase 1) ───────────────────────────────────
+  sharedAt          DateTime? // First time sharing was enabled — anchors time-to-first-open
+  firstViewedAt     DateTime? // First time the public share link was opened — powers time-to-open + first-open alert
+  acceptedAt        DateTime? // When the client accepted via the public page (status → ACCEPTED)
+  declinedAt        DateTime? // When the client declined via the public page (status → DECLINED)
   // ── Numbering (Sprint 1) ────────────────────────────────────────────
   documentNumber    String?            @unique // e.g. PROP-2026-014, SLA-2026-003
   // ── Organisation (P0) ───────────────────────────────────────────────
@@ -547,11 +554,53 @@ model DocumentView {
    * Origin of the view — DOCS for /docs/[token], SIGN for /sign/[token].
    */
   origin     String           @default("DOCS")
+  // ── Engagement enrichment (Phase 1) ─────────────────────────────────
+  // visitorId: first-party cookie, stable across visits → unique-visitor + return-visit counts.
+  // sessionId: per page-load UUID → groups this visit's section-dwell events (the beacon can't
+  //            read a response, so the client generates it and the events endpoint resolves the
+  //            DocumentView by (documentId, sessionId)).
+  visitorId  String?
+  sessionId  String?
+  // Geo + device, resolved server-side. Geo from Vercel's x-vercel-ip-* headers (null off-Vercel);
+  // device/browser/os parsed from the UA. All best-effort, all nullable.
+  country    String?
+  city       String?
+  device     String? // mobile | tablet | desktop | bot
+  browser    String? // Chrome | Safari | Firefox | Edge | …
+  os         String? // iOS | Android | macOS | Windows | …
+  durationMs Int? // Total visible time for this visit, flushed on pagehide
+
   createdAt  DateTime         @default(now())
   document   Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
   signer     SignatureSigner? @relation(fields: [signerId], references: [id], onDelete: SetNull)
+  events     DocumentViewEvent[]
 
   @@index([documentId, createdAt])
+  @@index([documentId, visitorId])
+  @@index([documentId, sessionId])
+}
+
+/**
+ * Per-section engagement for a single visit (Phase 1). One aggregate row per (view, section):
+ * how long that section was on-screen (dwellMs) and how deep the viewer scrolled into it
+ * (maxScrollPct). The public page accumulates these client-side via an IntersectionObserver and
+ * flushes a batch on pagehide; the events endpoint upserts by [viewId, sectionKey], summing dwell.
+ * Aggregating dwellMs across views grouped by sectionKey gives the "most/least read sections"
+ * heatmap.
+ */
+model DocumentViewEvent {
+  id           String       @id @default(cuid())
+  viewId       String
+  sectionKey   String // Registry section key (cover, costing, timeline, …)
+  sectionTitle String? // Denormalized title for display without joining section data
+  dwellMs      Int          @default(0) // Total ms this section was on-screen this visit
+  maxScrollPct Int? // Deepest scroll into this section, 0-100
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  view         DocumentView @relation(fields: [viewId], references: [id], onDelete: Cascade)
+
+  @@unique([viewId, sectionKey])
+  @@index([viewId])
 }
 
 // Per-workspace + per-doc-type + per-year counter for atomic document numbering.

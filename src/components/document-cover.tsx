@@ -2,7 +2,7 @@
  * <DocumentCover/> — the single canonical cover used by:
  *   - Pulse internal A4 report (`/app/pulse/[scanId]/report`)
  *   - Pulse public share (`/report/[token]`)
- *   - Docs print page (`/app/proposals/[id]/print`)
+ *   - Docs print page (`/app/docs/[id]/print`)
  *   - Docs public share (`/docs/[token]`)
  *
  * Anatomy (top to bottom):

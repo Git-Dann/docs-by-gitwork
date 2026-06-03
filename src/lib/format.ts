@@ -44,6 +44,10 @@ export function statusLabel(status: DocumentStatus): string {
       return "Approved";
     case "SENT":
       return "Sent";
+    case "ACCEPTED":
+      return "Accepted";
+    case "DECLINED":
+      return "Declined";
     case "ARCHIVED":
       return "Archived";
   }
@@ -63,6 +67,10 @@ export function statusTone(status: DocumentStatus): string {
       return "bg-emerald-100 text-emerald-800";
     case "SENT":
       return "bg-sky-100 text-sky-800";
+    case "ACCEPTED":
+      return "bg-emerald-100 text-emerald-800";
+    case "DECLINED":
+      return "bg-rose-100 text-rose-700";
     case "ARCHIVED":
       return "bg-zinc-200 text-zinc-700";
     default:

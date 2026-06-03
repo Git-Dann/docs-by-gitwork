@@ -153,7 +153,7 @@ export default function CompanyPage() {
                 They work for our clients and eventually for teams beyond Gitwork.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
+                <Link href="/app/docs" className="app-button app-button-dark app-button-md">
                   Open Platform
                 </Link>
               </div>

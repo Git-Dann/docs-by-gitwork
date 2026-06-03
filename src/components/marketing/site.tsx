@@ -380,7 +380,7 @@ function FinalCta({
         <p className="mt-5 text-pretty text-[18px] leading-8 text-white/58">{copy}</p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           {renderLink({ label: "Book a Call", href: "https://calendly.com/gitworkgroup/30min", external: true }, "app-button app-button-primary app-button-md")}
-          {renderLink({ label: "Open Platform", href: "/app/proposals" }, "app-button app-button-dark app-button-md")}
+          {renderLink({ label: "Open Platform", href: "/app/docs" }, "app-button app-button-dark app-button-md")}
         </div>
       </div>
     </section>
@@ -416,7 +416,7 @@ function HomeHero() {
 
           <div className="mt-9 flex flex-wrap gap-3">
             {renderLink({ label: "Book a Call", href: "https://calendly.com/gitworkgroup/30min", external: true }, "app-button app-button-primary app-button-lg")}
-            {renderLink({ label: "Open Platform", href: "/app/proposals" }, "app-button app-button-dark app-button-lg")}
+            {renderLink({ label: "Open Platform", href: "/app/docs" }, "app-button app-button-dark app-button-lg")}
           </div>
 
           <div className="mt-10 grid gap-3 sm:grid-cols-3">

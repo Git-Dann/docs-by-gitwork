@@ -1,18 +1,22 @@
 /**
  * POST /api/docs/[token]/view
  *
- * Public, token-gated. Records a DocumentView row when someone opens the share URL. Used by
- * the editor's "Recent activity" feed and to drive the view-count display.
+ * Public, token-gated. Records (or reuses, per session) a DocumentView when someone opens the
+ * share URL, enriched with a first-party visitorId, coarse geo (Vercel edge headers) and a
+ * device/browser classification. Detects the document's first-ever open and fires a distinct
+ * DOC_FIRST_VIEWED Slack alert ("📣 your proposal was just opened") alongside the per-view
+ * DOC_VIEWED. Fire-and-forget on Slack so the public visitor never waits on a third party.
  *
- * Idempotent enough for our purposes — we accept multiple views from the same browser (each
- * load is a distinct row). The editor's UI deduplicates by counting unique-day-by-IP if it
- * needs a "unique visitor" figure.
+ * Client passes `?v=<visitorId>&s=<sessionId>` (small, sendBeacon-friendly); the sessionId ties
+ * this visit to the per-section dwell events posted later to /api/docs/[token]/events.
  */
 
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { recordDocumentView } from "@/server/document-analytics";
+import { clientIpFromRequest, geoFromRequest, parseUserAgent } from "@/server/visitor-context";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -29,32 +33,51 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
     if (!doc) return apiError("Not shared", 404);
 
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      undefined;
-    const userAgent = request.headers.get("user-agent") || undefined;
-    const referer = request.headers.get("referer") || undefined;
+    const ip = clientIpFromRequest(request);
+    const userAgent = request.headers.get("user-agent");
+    const referer = request.headers.get("referer");
+    const geo = geoFromRequest(request);
+    const ua = parseUserAgent(userAgent);
 
-    await prisma.documentView.create({
-      data: {
-        documentId: doc.id,
-        ip: ip ?? null,
-        userAgent: userAgent ?? null,
-        referer: referer ?? null,
-        origin: "DOCS",
-      },
+    const visitorId = request.nextUrl.searchParams.get("v")?.slice(0, 64) || null;
+    const sessionId = request.nextUrl.searchParams.get("s")?.slice(0, 64) || null;
+
+    const { isFirstView } = await recordDocumentView({
+      documentId: doc.id,
+      sessionId,
+      visitorId,
+      ip,
+      userAgent,
+      referer,
+      origin: "DOCS",
+      country: geo.country,
+      city: geo.city,
+      device: ua.device,
+      browser: ua.browser,
+      os: ua.os,
     });
 
-    // Fan out to Slack webhooks subscribed to DOC_VIEWED. Fire-and-forget so the public
-    // visitor never waits on a third-party.
+    const where = geo.city && geo.country ? `${geo.city}, ${geo.country}` : geo.country ?? ip ?? null;
+
+    // First open is the high-signal moment — surface it distinctly. Every subsequent open still
+    // fires DOC_VIEWED so subscribers who want all traffic keep getting it.
+    if (isFirstView) {
+      void notifyDocumentEvent({
+        workspaceId: doc.workspaceId,
+        documentId: doc.id,
+        documentTitle: doc.title,
+        documentType: doc.documentType,
+        kind: "DOC_FIRST_VIEWED",
+        detail: where ? `Opened from ${where}` : undefined,
+      });
+    }
     void notifyDocumentEvent({
       workspaceId: doc.workspaceId,
       documentId: doc.id,
       documentTitle: doc.title,
       documentType: doc.documentType,
       kind: "DOC_VIEWED",
-      detail: ip ? `Opened from ${ip}` : undefined,
+      detail: where ? `Opened from ${where}` : undefined,
     });
 
     return apiOk({ ok: true });

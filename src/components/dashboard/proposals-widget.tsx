@@ -73,7 +73,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
           06 // DOCS
         </span>
-        <Link href="/app/proposals" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
+        <Link href="/app/docs" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>
@@ -102,7 +102,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
             <div className="flex h-full flex-col items-center justify-center gap-1.5">
               <DocumentTextIcon className="h-6 w-6 text-[#94A3B8]" />
               <p className="text-xs text-[#475569]">No proposals yet</p>
-              <Link href="/app/proposals" className="text-xs font-medium text-[#1D4ED8] hover:underline">
+              <Link href="/app/docs" className="text-xs font-medium text-[#1D4ED8] hover:underline">
                 Create one →
               </Link>
             </div>
@@ -111,7 +111,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
               {proposals.slice(0, displayCount).map((p) => (
                 <Link
                   key={p.id}
-                  href={`/app/proposals/${p.id}`}
+                  href={`/app/docs/${p.id}`}
                   className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
                 >
                   <div className="min-w-0 flex-1">

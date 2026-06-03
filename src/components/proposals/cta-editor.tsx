@@ -8,7 +8,7 @@ const destinationOptions: Array<{ value: LinkType; label: string; placeholder: s
   { value: "DOCUMENT_LINK", label: "Document link", placeholder: "https://docs.google.com/..." },
   { value: "DECK_LINK", label: "Deck link", placeholder: "https://pitch.com/..." },
   { value: "EMAIL_LINK", label: "Email action", placeholder: "hello@gitwork.io" },
-  { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/proposals/123" },
+  { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/docs/123" },
 ];
 
 function ensureRole(ctas: CTAInput[], role: CTAInput["role"]): CTAInput {
