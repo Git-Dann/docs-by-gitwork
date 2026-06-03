@@ -46,7 +46,7 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { useCreateTask } from "@/hooks/use-tasks";
-import { useClientDesignSystem } from "@/hooks/use-design-system";
+import { useClientDesignSystem, useSetClientDesignSystemEnabled } from "@/hooks/use-design-system";
 import { cn, formatDate } from "@/lib/format";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
 import type {
@@ -72,6 +72,7 @@ type EditFormState = {
   googleDriveFolderUrl: string;
   clickupUrl: string;
   slackChannelId: string;
+  designSystemEnabled: boolean;
 };
 
 export function ClientDetail({ slug }: { slug: string }) {
@@ -98,8 +99,10 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
-  // Only clients with an imported design system get the entry button (below).
+  // The design-system entry button shows when the page is enabled (Edit client toggle;
+  // defaults on once tokens are imported). See the action stack below.
   const { data: designSystem } = useClientDesignSystem(slug);
+  const setDesignSystemEnabled = useSetClientDesignSystemEnabled(slug);
 
   if (isPending) {
     return (
@@ -143,6 +146,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
       clickupUrl: client.clickupUrl ?? "",
       slackChannelId: client.slackChannelId ?? "",
+      designSystemEnabled: designSystem?.enabled ?? false,
     });
     setEditing(true);
   }
@@ -168,6 +172,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         clickupUrl: editForm.clickupUrl || undefined,
         slackChannelId: editForm.slackChannelId || undefined,
       });
+      if (editForm.designSystemEnabled !== (designSystem?.enabled ?? false)) {
+        await setDesignSystemEnabled.mutateAsync(editForm.designSystemEnabled);
+      }
       setEditing(false);
       setEditForm(null);
     } catch (err) {
@@ -371,7 +378,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
             {/* Right-side action stack — bottom-aligned. Bank (when on file) sits on
                 top; the design system takes the priority bottom slot. */}
-            {(client.bank?.onFile || designSystem?.exists) && (
+            {(client.bank?.onFile || designSystem?.enabled) && (
               <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
                 {client.bank?.onFile && (
                   <Button
@@ -384,7 +391,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                     Bank details
                   </Button>
                 )}
-                {designSystem?.exists && (
+                {designSystem?.enabled && (
                   <Link
                     href={`/app/portal/${slug}/design-system`}
                     title="Open this client's brand design system"
@@ -2268,6 +2275,32 @@ function ClientEditModal({
                       </p>
                     )}
                   </label>
+
+                  <div>
+                    <span className="app-field-label">Design system page</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.designSystemEnabled}
+                      onClick={() => onChange({ ...form, designSystemEnabled: !form.designSystemEnabled })}
+                      className="mt-1 flex w-full items-center justify-between gap-3 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-2.5 text-left transition hover:bg-[var(--surface-1)]"
+                    >
+                      <span className="text-[12px] text-[var(--text-3)]">
+                        {form.designSystemEnabled
+                          ? "Enabled — entry + page visible"
+                          : "Disabled — hidden for this client"}
+                      </span>
+                      <span
+                        className="relative h-5 w-9 shrink-0 rounded-full transition-colors"
+                        style={{ background: form.designSystemEnabled ? "var(--brand-600)" : "var(--border-2)" }}
+                      >
+                        <span
+                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+                          style={{ left: form.designSystemEnabled ? 18 : 2 }}
+                        />
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* RIGHT — primary contact & address */}

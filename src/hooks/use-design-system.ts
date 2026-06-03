@@ -5,6 +5,7 @@ import {
   getClientDesignSystem,
   saveClientDesignSystem,
   setClientDesignSystemShare,
+  setClientDesignSystemEnabled,
 } from "@/lib/api";
 import type { DesignSystemStatus, DesignTokens } from "@/types/design-tokens";
 
@@ -35,5 +36,13 @@ export function useSetClientDesignSystemShare(slug: string) {
   return useMutation({
     mutationFn: (enabled: boolean) => setClientDesignSystemShare(slug, enabled),
     onSuccess: () => void qc.invalidateQueries({ queryKey: QK.ds(slug) }),
+  });
+}
+
+export function useSetClientDesignSystemEnabled(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setClientDesignSystemEnabled(slug, enabled),
+    onSuccess: (data) => qc.setQueryData(QK.ds(slug), data),
   });
 }
