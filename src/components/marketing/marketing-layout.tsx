@@ -33,7 +33,7 @@ const footerColumns = [
       { label: "Docs", href: "/products/docs", external: false },
       { label: "Proof", href: "/products/proof", external: false },
       { label: "Code", href: "/products/codeclear", external: false },
-      { label: "Open Platform", href: "/app/proposals", external: false },
+      { label: "Open Platform", href: "/app/docs", external: false },
     ],
   },
   {
@@ -110,7 +110,7 @@ export function MarketingLayout({
               ))}
             </nav>
             <div className="flex shrink-0 items-center gap-3">
-              <Link href="/app/proposals" className="app-button app-button-dark app-button-md">
+              <Link href="/app/docs" className="app-button app-button-dark app-button-md">
                 Open Platform
               </Link>
               <a

@@ -18,9 +18,11 @@ import { prisma } from "@/lib/prisma";
 export type DocumentEventKindLiteral =
   | "DOC_SHARED"
   | "DOC_VIEWED"
+  | "DOC_FIRST_VIEWED"
   | "DOC_SENT"
   | "DOC_SIGNED"
   | "DOC_COMPLETED"
+  | "DOC_ACCEPTED"
   | "DOC_DECLINED"
   | "COMMENT_ADDED";
 
@@ -41,13 +43,15 @@ interface NotifyInput {
 }
 
 const EVENT_LABEL: Record<DocumentEventKindLiteral, { eyebrow: string; emoji: string }> = {
-  DOC_SHARED:    { eyebrow: "Share link minted",   emoji: ":link:" },
-  DOC_VIEWED:    { eyebrow: "Viewed",              emoji: ":eyes:" },
-  DOC_SENT:      { eyebrow: "Sent for signature",  emoji: ":envelope_with_arrow:" },
-  DOC_SIGNED:    { eyebrow: "Signed",              emoji: ":lower_left_fountain_pen:" },
-  DOC_COMPLETED: { eyebrow: "Fully signed",        emoji: ":white_check_mark:" },
-  DOC_DECLINED:  { eyebrow: "Signing declined",    emoji: ":x:" },
-  COMMENT_ADDED: { eyebrow: "New comment",         emoji: ":speech_balloon:" },
+  DOC_SHARED:       { eyebrow: "Share link minted",      emoji: ":link:" },
+  DOC_VIEWED:       { eyebrow: "Viewed",                 emoji: ":eyes:" },
+  DOC_FIRST_VIEWED: { eyebrow: "Opened for the first time", emoji: ":tada:" },
+  DOC_SENT:         { eyebrow: "Sent for signature",     emoji: ":envelope_with_arrow:" },
+  DOC_SIGNED:       { eyebrow: "Signed",                 emoji: ":lower_left_fountain_pen:" },
+  DOC_COMPLETED:    { eyebrow: "Fully signed",           emoji: ":white_check_mark:" },
+  DOC_ACCEPTED:     { eyebrow: "Accepted by client",     emoji: ":tada:" },
+  DOC_DECLINED:     { eyebrow: "Declined",               emoji: ":x:" },
+  COMMENT_ADDED:    { eyebrow: "New comment",            emoji: ":speech_balloon:" },
 };
 
 /**
@@ -82,7 +86,7 @@ function buildPayload(input: NotifyInput): unknown {
         elements: [
           {
             type: "mrkdwn",
-            text: `Docs by Gitwork  ·  <${input.url ?? "https://foundry.gitwork.co.uk/app/proposals"}|view document>`,
+            text: `Docs by Gitwork  ·  <${input.url ?? "https://foundry.gitwork.co.uk/app/docs"}|view document>`,
           },
         ],
       },

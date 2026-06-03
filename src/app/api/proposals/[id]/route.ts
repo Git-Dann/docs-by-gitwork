@@ -83,6 +83,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    // Protect the client's conversion signal: once a document is ACCEPTED/DECLINED (set from the
+    // public page), an editor autosave — which sends a client-derived status — must not silently
+    // downgrade it back to DRAFT/APPROVED. Only an explicit ARCHIVE may move it out of a terminal
+    // state. (Same spirit as the SENT edit-lock above, but content edits stay allowed.)
+    const terminalLocked = existing.status === "ACCEPTED" || existing.status === "DECLINED";
+    const nextStatus =
+      terminalLocked && payload.status && payload.status !== "ARCHIVED"
+        ? existing.status
+        : payload.status;
+
     await prisma.$transaction(async (tx) => {
       await tx.document.update({
         where: {
@@ -90,7 +100,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         },
         data: {
           title: payload.title,
-          status: payload.status,
+          status: nextStatus,
           productName: payload.productName,
           clientName: payload.clientName,
           summary: payload.summary,

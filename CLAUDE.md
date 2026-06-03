@@ -111,7 +111,7 @@ The sidebar uses different labels from the URL routes — mapping below:
 | **Foundry HQ** | `/app` | — | Dashboard overview |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors |
 | **Code** | `/app/codeclear` | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
-| **Docs** | `/app/proposals` | `src/server/proposals.ts` | Proposal builder — sections, costing, timeline, PDF/export |
+| **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). **Canonical route is `/app/docs`**; `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/clients` | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
 | **Care** | `/app/support` | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
 | **Study** | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI-powered user research — multi-agent persona interviews, synthesis, reports |
@@ -292,6 +292,7 @@ Core domains:
 |---|---|
 | Platform | `User`, `Workspace`, `WorkspaceMember`, `WorkspaceClient` |
 | Proposals/Docs | `Document`, `DocumentSection`, `DocumentTemplate`, `Asset`, `CTA`, `Link`, `TimelinePhase`, `CostLineItem`, `Export` |
+| Docs sharing/tracking | `DocumentView` (+ `visitorId`/`sessionId`/geo/device/`durationMs`), `DocumentViewEvent` (per-section dwell), `DocumentComment`, `DocumentVersion`, `EditorPresence`, `DocumentAiSession`, `SignatureRequest`/`SignatureSigner`/`SignatureEvent`. `Document` carries `shareToken`/`isShared`/`sharedAt`/`firstViewedAt`/`acceptedAt`/`declinedAt`; `DocumentStatus` adds `ACCEPTED`/`DECLINED` |
 | Proof | `ProofDocument` |
 | Clients | `WorkspaceClient`, `ActivityLog` |
 | CodeClear | `Candidate`, `Placement`, `Note`, `GitHubAnalysisRun`, `CodeClearScore`, `CodeClearScoreDraft` |
@@ -568,3 +569,55 @@ the copy and fields are editable in-app and there can be multiple named forms.
   the grid) rather than a compound `address_group`, and the billing block uses generic per-field
   `showIf` instead of the old bordered box — faithful, not pixel-identical. Verified via `tsc`,
   `eslint`, and `next build` (clean); `prisma db push` (additive) applies on deploy.
+## 17. Recent Changes (June 2026) — Docs audit: security, link tracking, builder
+
+A multi-phase pass to make Docs a best-in-class document builder (benchmarked vs Better
+Proposals / Qwilr / Figma). **Note:** much of the "Docs rebuild" surface (the public
+`/docs/[token]` share view, `DocumentView` tracking, signatures, comments, versions, AI
+authoring) already existed before this pass but was undocumented here — §4/§7 now reflect it.
+
+**Phase 0 — security + cleanup**
+- **Gated previously-open mutations.** `/api/proposals/bulk` (mass delete/archive/revoke-share),
+  `/[id]/archive`, `/timeline`, `/engagement`, `/export` now `assertCan(canManageDocs)` — closes a
+  real hole where any authenticated member (incl. a scoped developer) could bulk-delete every
+  document. `SHARE_LINK` export additionally requires `canShareDocs`.
+- **Fixed the dead client share link.** `/api/proposals/[id]/export` `SHARE_LINK` now mints the
+  real `/docs/[token]` via `enableDocumentShare` (was the deprecated `/preview/[id]` "link
+  expired" page). Removed the orphaned `export-toolbar.tsx`.
+- **Route consolidation.** `/app/docs` is now canonical (list + editor + preview + print).
+  `/app/proposals/*` are `redirect()` stubs for old Slack/email deep links. `middleware.ts`
+  `MODULE_PATHS` already mapped both. Validator hardening: non-negative discount, 0–100 tax.
+
+**Phase 1 — link tracking + analytics (`src/server/document-analytics.ts`, `visitor-context.ts`)**
+- **Capture** — the public page runs a real tracker (`src/app/docs/[token]/view-beacon.tsx`):
+  persistent first-party `visitorId` + per-visit `sessionId`, an IntersectionObserver measuring
+  **per-section dwell + scroll depth**, total visible time, flushed to `/api/docs/[token]/events`
+  on tab-hide/pagehide/15s. Geo (Vercel `x-vercel-ip-*` headers) + device/browser/OS (UA parse)
+  captured server-side on `/api/docs/[token]/view`.
+- **First-open + conversion** — first open is detected atomically and fires a distinct
+  `DOC_FIRST_VIEWED` Slack alert (vs every-view `DOC_VIEWED`). Clients **accept/decline in-page**
+  (`/api/docs/[token]/accept`) → status `ACCEPTED`/`DECLINED` + `DOC_ACCEPTED`/`DOC_DECLINED`. An
+  editor autosave can't clobber a client's acceptance (guard in `PATCH /api/proposals/[id]`).
+- **Read APIs (web + iOS)** — `GET /api/documents/[id]/analytics` (per-doc: visitors, dwell
+  heatmap, time-to-open, device/geo, conversion, recent visits) and `GET /api/documents/analytics`
+  (cross-doc: funnel, open/win rate, leaderboards; `documentType`/`days`/`from`/`to` params). Both
+  mobile-JWT-aware. **Full contract in `docs/api-link-tracking.md`.** Note `/api/documents/analytics`
+  is a static segment that takes routing precedence over `/api/documents/[id]`.
+- **UI** — editor right-rail **Insights** tab (`document-analytics-panel.tsx`) + cross-doc
+  dashboard at **`/app/docs/analytics`** (`docs-analytics-dashboard.tsx`), reachable from an
+  Analytics button on the Docs list.
+
+**Phase 2a — builder feel**
+- **Markdown rich text** — `src/lib/markdown.tsx` (dependency-free, XSS-safe renderer: headings,
+  bold/italic, links with URL-sanitisation, inline code, lists — no `dangerouslySetInnerHTML`) +
+  `markdown-field.tsx` (toolbar + ⌘B/⌘I/⌘K). Wired into the free-prose sections (`prose`,
+  `introduction`); stores plain markdown, backward-compatible with existing plain text.
+- **Split-screen live preview** — the Builder tab renders the client view beside the editor,
+  updating live as you type (toggle, on by default on xl). No more separate preview route.
+
+**Still pending (next sessions):** Phase 2b — drag for in-section repeating items (dnd-kit only
+covers the outline today), undo/redo + a delete confirm (section delete is currently immediate),
+shared UI primitives (`<Input>/<Select>/<Modal>/<Dropdown>`), an a11y pass on popovers, and
+replacing the `window.location.reload()` after bulk actions with query invalidation. Phase 3 —
+Stripe pay-in-page, merge variables, content/snippet library, real server-side PDF
+(`@sparticuz/chromium` is already a dependency).

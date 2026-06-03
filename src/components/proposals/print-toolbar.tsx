@@ -20,7 +20,7 @@ export function PrintToolbar({ proposalId }: { proposalId: string }) {
           Print / Save PDF
         </Button>
         <Link
-          href={`/app/proposals/${proposalId}`}
+          href={`/app/docs/${proposalId}`}
           className={buttonStyles({ variant: "secondary", size: "sm" })}
         >
           Back to editor

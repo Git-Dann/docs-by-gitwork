@@ -9,7 +9,7 @@ const linkTypeOptions: Array<{ value: ProposalLinkInput["type"]; label: string; 
   { value: "DECK_LINK", label: "Deck link", placeholder: "pitch.com/..." },
   { value: "DOCUMENT_LINK", label: "Document link", placeholder: "docs.google.com/..." },
   { value: "EMAIL_LINK", label: "Email link", placeholder: "hello@gitwork.io" },
-  { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/proposals/123" },
+  { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/docs/123" },
 ];
 
 export function LinkManager({

@@ -531,8 +531,8 @@ export const proposalUpdateSchema = z.object({
 export const proposalCostingSchema = z.object({
   costLineItems: z.array(costLineItemSchema),
   currency: z.enum(["GBP", "USD", "EUR"]).optional(),
-  discount: z.number().optional(),
-  taxRate: z.number().optional(),
+  discount: z.number().nonnegative().optional(),
+  taxRate: z.number().min(0).max(100).optional(),
   monthlyCostSummary: z.string().optional(),
   durationSummary: z.string().optional(),
   totalCostLabel: z.string().optional(),

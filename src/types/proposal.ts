@@ -5,6 +5,8 @@ export type DocumentStatus =
   | "IN_REVIEW"
   | "APPROVED"
   | "SENT"
+  | "ACCEPTED"
+  | "DECLINED"
   | "ARCHIVED";
 
 export type DocumentType = "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";

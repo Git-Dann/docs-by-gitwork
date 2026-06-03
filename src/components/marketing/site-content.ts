@@ -32,7 +32,7 @@ export const siteNavigation: SiteLink[] = [
 ];
 
 export const headerActions: SiteLink[] = [
-  { label: "Open Platform", href: "/app/proposals" },
+  { label: "Open Platform", href: "/app/docs" },
   { label: "Book a Call", href: "https://calendly.com/gitworkgroup/30min", external: true },
 ];
 
@@ -216,7 +216,7 @@ export const products: ProductPage[] = [
     heroCopy:
       "Docs is Gitwork’s front-door system for turning raw project inputs into structured briefs, commercial framing, and cleaner client conversations.",
     audience: "For agencies, founders, and product teams that need a sharper scope before delivery begins.",
-    primaryCta: { label: "Open Docs", href: "/app/proposals" },
+    primaryCta: { label: "Open Docs", href: "/app/docs" },
     secondaryCta: { label: "Book a Call", href: "https://calendly.com/gitworkgroup/30min", external: true },
     quickHits: [
       "Capture discovery and commercial detail in one place",
@@ -340,7 +340,7 @@ export const footerColumns: Array<{ title: string; links: SiteLink[] }> = [
   {
     title: "Platform",
     links: [
-      { label: "Open Platform", href: "/app/proposals" },
+      { label: "Open Platform", href: "/app/docs" },
       { label: "Open Proof", href: "/app/proof" },
       { label: "Open Code", href: "/app/codeclear" },
     ],

@@ -178,7 +178,7 @@ const endpoints: Endpoint[] = [
       { name: "format", type: "PRINT | PDF | SHARE_LINK", required: true, description: "Export format to prepare" },
       { name: "settings", type: "object", required: false, description: "Optional export settings persisted on the export record" },
     ],
-    response: `{ "export": { "id": "...", "format": "PDF", "status": "PENDING", "url": "/app/proposals/:id/print", "requestedAt": "..." } }`,
+    response: `{ "export": { "id": "...", "format": "PDF", "status": "PENDING", "url": "/app/docs/:id/print", "requestedAt": "..." } }`,
   },
   {
     method: "GET",

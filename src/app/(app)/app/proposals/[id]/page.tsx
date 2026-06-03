@@ -1,20 +1,14 @@
-import { AppShell } from "@/components/app-shell";
-import { ProposalEditorLayout } from "@/components/proposals/proposal-editor-layout";
+/**
+ * Legacy route → canonical /app/docs/[id]. Kept as a redirect so old Slack/email deep links
+ * (which can't be edited retroactively) still resolve.
+ */
+import { redirect } from "next/navigation";
 
-interface ProposalEditorPageProps {
+export default async function LegacyProposalEditorRedirect({
+  params,
+}: {
   params: Promise<{ id: string }>;
-}
-
-export default async function ProposalEditorPage({ params }: ProposalEditorPageProps) {
+}) {
   const { id } = await params;
-
-  return (
-    <AppShell
-      title="Proposal Editor"
-      hideContentHeader
-      mainClassName="min-h-0 flex-1 overflow-auto p-5 sm:p-6 lg:px-8 lg:py-6"
-    >
-      <ProposalEditorLayout proposalId={id} />
-    </AppShell>
-  );
+  redirect(`/app/docs/${id}`);
 }

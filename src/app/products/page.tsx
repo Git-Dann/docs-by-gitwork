@@ -181,7 +181,7 @@ export default function ProductsPage() {
             >
               Book a Call
             </a>
-            <Link href="/app/proposals" className="app-button app-button-dark app-button-lg">
+            <Link href="/app/docs" className="app-button app-button-dark app-button-lg">
               Open Platform
             </Link>
           </div>

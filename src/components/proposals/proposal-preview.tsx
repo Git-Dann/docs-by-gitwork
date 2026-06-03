@@ -7,11 +7,18 @@ export function ProposalPreview({
   className,
   showTableOfContents = true,
   frame = true,
+  trackSections = false,
 }: {
   proposal: ProposalDocument;
   className?: string;
   showTableOfContents?: boolean;
   frame?: boolean;
+  /**
+   * Tag each section with data-doc-section attributes so the public engagement tracker can
+   * measure per-section dwell. Off everywhere except the public /docs/[token] view, so the
+   * editor and print DOM stay unchanged.
+   */
+  trackSections?: boolean;
 }) {
   const sortedSections = [...proposal.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
@@ -25,14 +32,24 @@ export function ProposalPreview({
       }
     >
       <div className="space-y-10 print:space-y-8">
-        {visibleSections.map((section, index) => (
-          <ProposalSectionPreview
-            key={section.id ?? `${section.key}-${index}`}
-            section={section}
-            proposal={proposal}
-            index={index}
-          />
-        ))}
+        {visibleSections.map((section, index) =>
+          trackSections ? (
+            <div
+              key={section.id ?? `${section.key}-${index}`}
+              data-doc-section={section.key}
+              data-doc-section-title={section.title}
+            >
+              <ProposalSectionPreview section={section} proposal={proposal} index={index} />
+            </div>
+          ) : (
+            <ProposalSectionPreview
+              key={section.id ?? `${section.key}-${index}`}
+              section={section}
+              proposal={proposal}
+              index={index}
+            />
+          ),
+        )}
       </div>
     </article>
   );

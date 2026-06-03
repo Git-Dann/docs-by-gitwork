@@ -110,7 +110,7 @@ export function FoundryProjectDetail({ slug }: { slug: string }) {
               <Link href="/app/docs" className={buttonStyles({ variant: "secondary", size: "sm" })}>
                 Open Docs
               </Link>
-              <Link href="/app/proposals" className={buttonStyles({ variant: "tertiary", size: "sm" })}>
+              <Link href="/app/docs" className={buttonStyles({ variant: "tertiary", size: "sm" })}>
                 Open legacy builder
               </Link>
             </div>

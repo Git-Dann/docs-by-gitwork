@@ -15,7 +15,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
-import { DocsViewBeacon } from "./view-beacon";
+import { DocsTracker } from "./view-beacon";
+import { DocsAcceptBar } from "./accept-bar";
 import { PublicComments } from "./public-comments";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +82,7 @@ export default async function PublicDocumentPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
-      <DocsViewBeacon token={token} />
+      <DocsTracker token={token} />
       {/*
        * The cover (with Foundry logo, doc number, type label, dated) now comes from
        * <DocumentCover/> inside the proposal sections — so we don't need a separate header
@@ -92,9 +93,20 @@ export default async function PublicDocumentPage({ params }: PageProps) {
           proposal={proposal}
           showTableOfContents={false}
           frame
+          trackSections
           className="mx-auto w-full max-w-[880px]"
         />
       </div>
+
+      {/* Accept / decline — the in-page conversion event (proposals only; contracts use /sign). */}
+      {record.documentType === "PROPOSAL" ? (
+        <DocsAcceptBar
+          token={token}
+          initialStatus={
+            record.status === "ACCEPTED" ? "ACCEPTED" : record.status === "DECLINED" ? "DECLINED" : "PENDING"
+          }
+        />
+      ) : null}
 
       <PublicComments token={token} />
 

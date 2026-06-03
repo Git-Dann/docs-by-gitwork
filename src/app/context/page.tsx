@@ -45,7 +45,7 @@ export default function ContextPage() {
           <tbody>
             {[
               ["Marketing", "/", "Foundry public homepage (Gitwork logo, Foundry design)", "Live"],
-              ["Docs / Proposals", "/app/proposals", "Proposal builder — sections, costing, timeline, PDF export", "Live"],
+              ["Docs / Proposals", "/app/docs", "Proposal builder — sections, costing, timeline, PDF export", "Live"],
               ["Proof", "/app/proof", "Document sign-off workflow — DRAFT → APPROVED", "Live"],
               ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
               ["Clients", "/app/clients", "Client management and profile pages", "Live"],

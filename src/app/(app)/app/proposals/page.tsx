@@ -1,16 +1,9 @@
-import { Suspense } from "react";
-import { AppShell } from "@/components/app-shell";
-import { ProposalList } from "@/components/proposals/proposal-list";
+/**
+ * Legacy route. The Docs module canonicalised on /app/docs (matching the sidebar nav and the
+ * "Docs" rename). This stub redirects so any old bookmarks / deep links keep working.
+ */
+import { redirect } from "next/navigation";
 
-export default function ProposalsPage() {
-  return (
-    <AppShell
-      title="Docs"
-      subtitle="Draft, structure, and ship proposal documents with Gitwork as the single source of truth."
-    >
-      <Suspense fallback={<p className="text-sm text-[var(--text-3)]">Loading proposals...</p>}>
-        <ProposalList />
-      </Suspense>
-    </AppShell>
-  );
+export default function LegacyProposalsListRedirect() {
+  redirect("/app/docs");
 }

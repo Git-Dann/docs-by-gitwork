@@ -3,6 +3,8 @@
 import { ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { MarkdownField } from "@/components/proposals/markdown-field";
+import { Markdown } from "@/lib/markdown";
 import type { IntroductionSectionData } from "@/types/proposal";
 
 const DEFAULT: IntroductionSectionData = { statement: "", summary: "", graphic: "" };
@@ -25,10 +27,11 @@ export const introductionSection = defineSection<IntroductionSectionData>({
         value={data.statement}
         onChange={(statement) => onChange({ ...data, statement })}
       />
-      <FormTextArea
+      <MarkdownField
         label="Positioning summary"
         value={data.summary}
         onChange={(summary) => onChange({ ...data, summary })}
+        rows={5}
       />
       <EditorHint message="Section graphics are managed in Supporting Links & Assets." />
     </SimpleForm>
@@ -41,7 +44,7 @@ export const introductionSection = defineSection<IntroductionSectionData>({
         </p>
       ) : null}
       {data.summary ? (
-        <p className="max-w-3xl text-[16px] leading-8 text-[var(--text-2)]">{data.summary}</p>
+        <Markdown className="max-w-3xl space-y-4">{data.summary}</Markdown>
       ) : null}
     </div>
   ),

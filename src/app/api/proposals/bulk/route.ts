@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 const bulkSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
@@ -18,6 +19,10 @@ const bulkSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Gate: these are destructive/sharing mutations (delete, archive, revoke public link).
+    // Without this any authenticated member — including a scoped developer with no docs.manage —
+    // could mass-delete every document. Mirrors the single-doc delete/PATCH gate.
+    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "manage documents");
     const body = bulkSchema.parse(await request.json());
 
     const results: Array<{ id: string; ok: boolean; error?: string }> = [];

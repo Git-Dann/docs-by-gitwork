@@ -107,6 +107,7 @@ export async function enableDocumentShare(
     where: { id: documentId },
     select: {
       shareToken: true,
+      sharedAt: true,
       workspace: {
         select: { customHostname: true, customHostnameVerified: true },
       },
@@ -116,7 +117,13 @@ export async function enableDocumentShare(
   const shareToken = existing?.shareToken ?? mintShareToken();
   await prisma.document.update({
     where: { id: documentId },
-    data: { shareToken, isShared: true },
+    data: {
+      shareToken,
+      isShared: true,
+      // Stamp the first-ever share so time-to-first-open is measurable. Preserved across
+      // revoke/re-enable (only set when still null) so the original send time is the anchor.
+      ...(existing?.sharedAt ? {} : { sharedAt: new Date() }),
+    },
   });
 
   // Prefer the workspace's branded subdomain when verified; otherwise fall back to the relative

@@ -80,7 +80,7 @@ export function DocsWorkspace() {
                   <Link href={`/app/projects/${entry.project.slug}`} className={buttonStyles({ variant: "secondary", size: "xs" })}>
                     Open project
                   </Link>
-                  <Link href="/app/proposals" className={buttonStyles({ variant: "tertiary", size: "xs" })}>
+                  <Link href="/app/docs" className={buttonStyles({ variant: "tertiary", size: "xs" })}>
                     Open builder
                   </Link>
                 </div>
@@ -89,7 +89,7 @@ export function DocsWorkspace() {
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/app/proposals" className={buttonStyles({ variant: "primary", size: "sm" })}>
+            <Link href="/app/docs" className={buttonStyles({ variant: "primary", size: "sm" })}>
               Proposal builder
             </Link>
             <Link href="/app/templates" className={buttonStyles({ variant: "secondary", size: "sm" })}>

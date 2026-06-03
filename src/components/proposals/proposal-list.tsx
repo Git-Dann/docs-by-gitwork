@@ -2,6 +2,7 @@
 
 import {
   ArchiveBoxIcon,
+  ChartBarIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -223,7 +224,7 @@ export function ProposalList() {
     setShowCreate(false);
     setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
 
-    router.push(`/app/proposals/${created.proposal.id}`);
+    router.push(`/app/docs/${created.proposal.id}`);
   }
 
   const totalCount = proposals.length;
@@ -361,17 +362,26 @@ export function ProposalList() {
             </p>
           </div>
 
-          {canManageDocs ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              onClick={() => setShowCreate(true)}
-              leadingIcon={<PlusIcon className="h-4 w-4" />}
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/app/docs/analytics"
+              className={buttonStyles({ variant: "secondary", size: "md" })}
             >
-              New document
-            </Button>
-          ) : null}
+              <ChartBarIcon className="h-4 w-4" />
+              Analytics
+            </Link>
+            {canManageDocs ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => setShowCreate(true)}
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                New document
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/* Doc-type filter chip row. Scoped to the table only — stat tiles stay over the
@@ -477,7 +487,7 @@ export function ProposalList() {
                     className="w-full justify-center"
                     onClick={() => {
                       setSearch("");
-                      router.push("/app/proposals");
+                      router.push("/app/docs");
                     }}
                   >
                     Clear client filter
@@ -593,7 +603,7 @@ export function ProposalList() {
                             </span>
                           ) : null}
                           <Link
-                            href={`/app/proposals/${proposal.id}`}
+                            href={`/app/docs/${proposal.id}`}
                             className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                           >
                             {proposal.title}
@@ -626,7 +636,7 @@ export function ProposalList() {
                       <td>
                         <div className="flex items-center justify-end gap-1">
                           <Link
-                            href={`/app/proposals/${proposal.id}`}
+                            href={`/app/docs/${proposal.id}`}
                             className={buttonStyles({
                               variant: "utility",
                               size: "icon-md",
@@ -1092,7 +1102,7 @@ function GroupedList({
                       aria-label={`Select ${doc.title}`}
                     />
                     <Link
-                      href={`/app/proposals/${doc.id}`}
+                      href={`/app/docs/${doc.id}`}
                       className="flex-1 truncate font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                     >
                       {doc.title}

@@ -26,6 +26,14 @@ const statusBadgeTones: Record<DocumentStatus, { wrapper: string; dot: string }>
     wrapper: "border-sky-200 bg-white text-sky-800",
     dot: "bg-sky-500",
   },
+  ACCEPTED: {
+    wrapper: "border-emerald-300 bg-emerald-50 text-emerald-800",
+    dot: "bg-emerald-500",
+  },
+  DECLINED: {
+    wrapper: "border-rose-200 bg-white text-rose-700",
+    dot: "bg-rose-500",
+  },
   ARCHIVED: {
     wrapper: "border-zinc-200 bg-white text-zinc-700",
     dot: "bg-zinc-400",
