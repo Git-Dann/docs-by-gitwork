@@ -984,3 +984,134 @@ export const meetingUpdateSchema = z
     (v) => (v.actionItemId !== undefined && v.done !== undefined) || v.clientId !== undefined,
     { message: "Provide actionItemId + done to toggle an item, or clientId to reassign." },
   );
+
+// ── Design system (per-client brand tokens; see src/types/design-tokens.ts) ──
+const colourTokenSchema = z.object({
+  name: z.string(),
+  hex: z.string(),
+  rgb: z.string().optional(),
+  pantone: z.string().optional(),
+  role: z.string(),
+  usage: z.string().default(""),
+});
+
+const typographyTokenSchema = z.object({
+  role: z.string(),
+  fontFamily: z.string(),
+  fontWeight: z.number(),
+  fontSize: z.string(),
+  lineHeight: z.number(),
+  letterSpacing: z.string().optional(),
+  textTransform: z.string().optional(),
+  usage: z.string().optional(),
+  sample: z.string().optional(),
+});
+
+const gradientTokenSchema = z.object({
+  name: z.string(),
+  css: z.string(),
+  usage: z.string().default(""),
+});
+
+const shadowTokenSchema = z.object({
+  name: z.string(),
+  css: z.string(),
+  usage: z.string().default(""),
+});
+
+const buttonVariantSchema = z.object({
+  name: z.string(),
+  className: z.string().optional(),
+  background: z.string(),
+  textColour: z.string(),
+  border: z.string().optional(),
+  hoverBackground: z.string().optional(),
+  surfaces: z.array(z.string()).default([]),
+  usage: z.string().optional(),
+});
+
+const emptyStateTokensSchema = z.object({
+  background: z.string(),
+  stroke: z.string(),
+  strokeWidth: z.string(),
+  strokeStyle: z.string(),
+});
+
+const inputStateTokenSchema = z.object({
+  state: z.string(),
+  border: z.string().optional(),
+  ring: z.string().optional(),
+  background: z.string().optional(),
+  textColour: z.string().optional(),
+  note: z.string().optional(),
+});
+
+const badgeTokenSchema = z.object({
+  label: z.string(),
+  background: z.string(),
+  textColour: z.string(),
+  border: z.string().optional(),
+  group: z.string().optional(),
+});
+
+const alertTokenSchema = z.object({
+  name: z.string(),
+  background: z.string(),
+  textColour: z.string(),
+  border: z.string().optional(),
+  usage: z.string().optional(),
+});
+
+const logoRulesSchema = z.object({
+  minSizes: z.record(z.string(), z.string()).optional(),
+  clearSpace: z.string().optional(),
+  colourRules: z
+    .array(z.object({ surface: z.string(), logoVersion: z.string() }))
+    .optional(),
+  notes: z.string().optional(),
+});
+
+export const designSystemStatusSchema = z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]);
+
+export const designTokensSchema = z.object({
+  clientName: z.string().min(1),
+  version: z.string().default("1.0"),
+  generatedAt: z.string().default(""),
+  brandVoice: z.string().optional(),
+  colours: z.object({
+    primary: z.array(colourTokenSchema),
+    secondary: z.array(colourTokenSchema),
+    neutrals: z.array(colourTokenSchema),
+  }),
+  gradients: z.array(gradientTokenSchema).default([]),
+  typography: z.object({
+    displayFont: z.string(),
+    bodyFont: z.string(),
+    systemFallback: z.string(),
+    monoFont: z.string().optional(),
+    scale: z.array(typographyTokenSchema),
+  }),
+  spacing: z.object({
+    base: z.number(),
+    scale: z.record(z.string(), z.string()),
+  }),
+  radius: z.record(z.string(), z.string()),
+  shadows: z.array(shadowTokenSchema).default([]),
+  buttons: z.array(buttonVariantSchema).default([]),
+  emptyState: emptyStateTokensSchema.optional(),
+  inputs: z.array(inputStateTokenSchema).optional(),
+  badges: z.array(badgeTokenSchema).optional(),
+  alerts: z.array(alertTokenSchema).optional(),
+  logoRules: logoRulesSchema.optional(),
+  cssVariables: z.string().default(""),
+  confidence: z.record(z.string(), z.enum(["HIGH", "MEDIUM", "LOW"])).optional(),
+});
+
+export const designSystemSaveSchema = z.object({
+  tokens: designTokensSchema,
+  status: designSystemStatusSchema.optional(),
+});
+
+export const designSystemShareSchema = z.object({
+  enabled: z.boolean(),
+});

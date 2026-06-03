@@ -187,6 +187,7 @@ model User {
   tasksAssigned             Task[]                  @relation("TaskAssignee")
   assignedTasks             Task[]                  @relation("TaskAssignees")
   tasksCreated              Task[]                  @relation("TaskCreator")
+  designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   dailyUpdates              DailyUpdate[]
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
@@ -890,6 +891,7 @@ model WorkspaceClient {
   meetings             Meeting[]
   bankAccount          ClientBankAccount?
   onboarding           ClientOnboarding?
+  designSystem         ClientDesignSystem?
   assignments          ClientAssignment[]
   tasks                Task[]
   featureBlocks        FeatureBlock[]
@@ -938,6 +940,34 @@ model ClientDesign {
 
   @@index([clientId])
   @@map("ClientDesign")
+}
+
+enum DesignSystemStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+/// Per-client brand design system. Stores the DesignTokens JSON (see
+/// src/types/design-tokens.ts) produced by the Cowork `design-system` skill; the
+/// Portal viewer + public /brand/[token] page render from it. Additive (1:1, like
+/// ClientBankAccount). `shareToken` is intentionally NOT @unique — see the note on
+/// WorkspaceClient.timelineShareToken (a unique index trips the build's data-loss guard).
+model ClientDesignSystem {
+  id           String             @id @default(cuid())
+  clientId     String             @unique
+  client       WorkspaceClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tokens       Json
+  status       DesignSystemStatus @default(DRAFT)
+  shareToken   String?
+  shareEnabled Boolean            @default(false)
+  updatedById  String?
+  updatedBy    User?              @relation("DesignSystemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([shareToken])
+  @@map("ClientDesignSystem")
 }
 
 /// Self-serve client onboarding session. Created when the team mints an

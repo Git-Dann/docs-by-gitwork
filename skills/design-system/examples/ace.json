@@ -1,0 +1,98 @@
+{
+  "clientName": "Ace Grading",
+  "version": "1.0",
+  "generatedAt": "2026-06-03T00:00:00.000Z",
+  "brandVoice": "Heritage meets innovation — a premium trading-card grading platform.",
+  "colours": {
+    "primary": [
+      { "name": "Ace Shadow", "hex": "#03162B", "rgb": "rgb(3, 22, 43)", "pantone": "532 C", "role": "primary", "usage": "Navbars, hero sections, dark cards, footers — the dominant UI background." },
+      { "name": "Ace Trophy", "hex": "#D0AC6B", "rgb": "rgb(208, 172, 107)", "pantone": "871 C", "role": "accent", "usage": "Primary buttons, CTAs, active states, grade-10 badges, the signature glow." }
+    ],
+    "secondary": [
+      { "name": "Ace Prism", "hex": "#193466", "rgb": "rgb(25, 52, 102)", "pantone": "280 C", "role": "secondary", "usage": "Dark button hover states, alternative panel fills." },
+      { "name": "Ace Fossil", "hex": "#9BA69E", "rgb": "rgb(155, 166, 158)", "pantone": "557 C", "role": "secondary", "usage": "Subtext, captions, placeholders, borders, eyebrow labels." },
+      { "name": "Ace Pulse", "hex": "#115586", "rgb": "rgb(17, 85, 134)", "pantone": "301 C", "role": "secondary", "usage": "Gradient start, info-state borders, link colour." }
+    ],
+    "neutrals": [
+      { "name": "White", "hex": "#FFFFFF", "role": "neutral", "usage": "Text on dark, light section backgrounds." },
+      { "name": "Off White", "hex": "#F5F4F2", "role": "neutral", "usage": "Page background, section fills on light layouts." },
+      { "name": "Black", "hex": "#000000", "role": "neutral", "usage": "Mono logo on light backgrounds." }
+    ]
+  },
+  "gradients": [
+    { "name": "Eclipse — Diagonal", "css": "linear-gradient(135deg, #115586 0%, #03162B 100%)", "usage": "Hero sections, marketing banners, full-bleed backgrounds." },
+    { "name": "Eclipse — Radial", "css": "radial-gradient(ellipse at center, #115586 0%, #03162B 100%)", "usage": "Card detail pages, product hero backgrounds." }
+  ],
+  "typography": {
+    "displayFont": "GT Ultra Fine",
+    "bodyFont": "Acumin Pro",
+    "systemFallback": "Georgia, 'Times New Roman', serif",
+    "scale": [
+      { "role": "Display XL", "fontFamily": "GT Ultra Fine", "fontWeight": 700, "fontSize": "72px", "lineHeight": 1.1, "usage": "Marketing hero." },
+      { "role": "H1", "fontFamily": "GT Ultra Fine", "fontWeight": 700, "fontSize": "48px", "lineHeight": 1.1, "usage": "Page hero." },
+      { "role": "H2", "fontFamily": "GT Ultra Fine", "fontWeight": 700, "fontSize": "36px", "lineHeight": 1.25, "usage": "Section heading." },
+      { "role": "H3", "fontFamily": "GT Ultra Fine", "fontWeight": 700, "fontSize": "28px", "lineHeight": 1.25, "usage": "Subsection." },
+      { "role": "Lead", "fontFamily": "Acumin Pro", "fontWeight": 500, "fontSize": "20px", "lineHeight": 1.5, "usage": "Intro / lead paragraph." },
+      { "role": "Body", "fontFamily": "Acumin Pro", "fontWeight": 400, "fontSize": "16px", "lineHeight": 1.5, "usage": "Default body text." },
+      { "role": "Eyebrow", "fontFamily": "Acumin Pro", "fontWeight": 600, "fontSize": "12px", "lineHeight": 1.4, "letterSpacing": "0.08em", "textTransform": "uppercase", "usage": "Section eyebrows.", "sample": "BRAND GUIDELINES" },
+      { "role": "Caption", "fontFamily": "Acumin Pro", "fontWeight": 400, "fontSize": "12px", "lineHeight": 1.5, "usage": "Helper text." }
+    ]
+  },
+  "spacing": {
+    "base": 8,
+    "scale": { "1": "4px", "2": "8px", "3": "12px", "4": "16px", "5": "20px", "6": "24px", "8": "32px", "10": "40px", "12": "48px", "16": "64px", "20": "80px", "24": "96px" }
+  },
+  "radius": { "none": "0px", "sm": "2px", "control": "4px", "md": "4px", "lg": "8px" },
+  "shadows": [
+    { "name": "sm", "css": "0 1px 3px rgba(3,22,43,0.12), 0 1px 2px rgba(3,22,43,0.08)", "usage": "Cards, inputs, chips." },
+    { "name": "md", "css": "0 4px 12px rgba(3,22,43,0.15), 0 2px 4px rgba(3,22,43,0.1)", "usage": "Dropdowns, drawers." },
+    { "name": "lg", "css": "0 10px 30px rgba(3,22,43,0.2), 0 4px 8px rgba(3,22,43,0.12)", "usage": "Modals, overlays." },
+    { "name": "gold", "css": "0 0 20px rgba(208,172,107,0.3)", "usage": "Premium moments only — hero CTAs, grade-10 reveals." }
+  ],
+  "buttons": [
+    { "name": "Primary", "background": "#D0AC6B", "textColour": "#03162B", "hoverBackground": "#C49B55", "surfaces": ["dark", "gradient"], "usage": "Primary CTA. Trophy gold stays primary on dark/gradient." },
+    { "name": "Secondary", "background": "transparent", "textColour": "#D0AC6B", "border": "1.5px solid #D0AC6B", "surfaces": ["dark"], "usage": "Secondary action on dark." },
+    { "name": "Dark", "background": "#03162B", "textColour": "#FFFFFF", "hoverBackground": "#193466", "surfaces": ["light"], "usage": "Primary action on light surfaces." },
+    { "name": "Ghost white", "background": "transparent", "textColour": "#FFFFFF", "border": "1.5px solid rgba(255,255,255,0.45)", "surfaces": ["dark", "gradient"], "usage": "Low-emphasis on dark." },
+    { "name": "White", "background": "#FFFFFF", "textColour": "#03162B", "surfaces": ["dark"], "usage": "High-contrast action on dark." }
+  ],
+  "emptyState": { "background": "rgba(155, 166, 158, 0.15)", "stroke": "rgba(155, 166, 158, 0.35)", "strokeWidth": "1.5px", "strokeStyle": "dashed" },
+  "inputs": [
+    { "state": "default", "border": "1.5px solid rgba(3,22,43,0.2)", "note": "Resting state." },
+    { "state": "hover", "border": "1.5px solid rgba(3,22,43,0.4)" },
+    { "state": "focus", "border": "1.5px solid #D0AC6B", "ring": "0 0 0 3px rgba(208,172,107,0.15)", "note": "Trophy 15% ring." },
+    { "state": "error", "border": "1.5px solid #ef4444", "ring": "0 0 0 3px rgba(239,68,68,0.1)" },
+    { "state": "disabled", "border": "1.5px solid rgba(3,22,43,0.2)", "background": "rgba(3,22,43,0.04)" }
+  ],
+  "badges": [
+    { "label": "Premium", "background": "#D0AC6B", "textColour": "#03162B", "group": "Status" },
+    { "label": "Graded", "background": "#193466", "textColour": "#FFFFFF", "group": "Status" },
+    { "label": "In review", "background": "rgba(17,85,134,0.15)", "textColour": "#115586", "group": "Status" },
+    { "label": "Pending", "background": "rgba(155,166,158,0.2)", "textColour": "#03162B", "group": "Status" },
+    { "label": "Failed", "background": "#FEE2E2", "textColour": "#B91C1C", "group": "Status" },
+    { "label": "10", "background": "#D0AC6B", "textColour": "#03162B", "group": "Grade" },
+    { "label": "9", "background": "#D0AC6B", "textColour": "#03162B", "group": "Grade" },
+    { "label": "8", "background": "#193466", "textColour": "#FFFFFF", "group": "Grade" },
+    { "label": "7", "background": "#9BA69E", "textColour": "#03162B", "group": "Grade" },
+    { "label": "Auth", "background": "rgba(155,166,158,0.2)", "textColour": "#03162B", "group": "Grade" }
+  ],
+  "alerts": [
+    { "name": "Info", "background": "rgba(17,85,134,0.12)", "textColour": "#115586", "border": "1px solid rgba(17,85,134,0.3)", "usage": "Neutral notices." },
+    { "name": "Success", "background": "#DCFCE7", "textColour": "#15803D", "usage": "Grading complete." },
+    { "name": "Warning", "background": "#FEF3C7", "textColour": "#B45309", "usage": "Needs attention." },
+    { "name": "Error", "background": "#FEE2E2", "textColour": "#B91C1C", "usage": "Submission failed." }
+  ],
+  "logoRules": {
+    "minSizes": { "horizontal": "20px", "horizontal+strapline": "30px", "stacked": "60px", "shield": "35px", "logotype": "20px" },
+    "clearSpace": "A minimum clear zone equal to the height of the 'A' letterform on all four sides.",
+    "colourRules": [
+      { "surface": "Dark (Shadow / Prism / gradient)", "logoVersion": "Trophy gold → mono white fallback" },
+      { "surface": "Light / neutral / white", "logoVersion": "Shadow (dark) → mono black fallback" },
+      { "surface": "Photography / complex", "logoVersion": "Mono white only" },
+      { "surface": "Ace Fossil grey", "logoVersion": "Shadow or mono black" }
+    ],
+    "notes": "Never recreate the logo in type or code; do not stretch, rotate, recolour, or add effects."
+  },
+  "cssVariables": ":root {\n  --ace-shadow: #03162B;\n  --ace-trophy: #D0AC6B;\n  --ace-prism: #193466;\n  --ace-fossil: #9BA69E;\n  --ace-pulse: #115586;\n  --off-white: #F5F4F2;\n  --font-display: 'GT Ultra Fine', Georgia, serif;\n  --font-body: 'Acumin Pro', Arial, sans-serif;\n  --radius-control: 4px;\n  --radius-lg: 8px;\n  --shadow-sm: 0 1px 3px rgba(3,22,43,0.12), 0 1px 2px rgba(3,22,43,0.08);\n  --shadow-gold: 0 0 20px rgba(208,172,107,0.3);\n  --gradient-eclipse: linear-gradient(135deg, #115586 0%, #03162B 100%);\n  --empty-bg: rgba(155,166,158,0.15);\n  --empty-stroke: rgba(155,166,158,0.35);\n}",
+  "confidence": { "colours": "HIGH", "typography": "HIGH", "gradients": "HIGH", "buttons": "HIGH", "logoRules": "HIGH", "alerts": "MEDIUM" }
+}
