@@ -55,12 +55,14 @@ const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 // ── chrome primitives (Foundry widget grammar) ─────────────────────────────────
 
 function Section({
+  id,
   n,
   title,
   intro,
   status,
   children,
 }: {
+  id?: string;
   n: number;
   title: string;
   intro?: string;
@@ -68,7 +70,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="widget-card">
+    <section id={id} className="widget-card scroll-mt-20">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">
@@ -978,11 +980,27 @@ export function DesignSystemViewer({
     node: <CssTokensSection tokens={tokens} />,
   });
 
+  const sectionId = (title: string) =>
+    `ds-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+
   return (
     <div className="flex flex-col gap-4">
       <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} />
+      {/* Jump nav — sticks under the page band while you scroll. */}
+      <nav className="sticky top-2 z-20 flex flex-wrap gap-1 rounded-[10px] border border-[rgba(0,0,0,0.06)] bg-[rgba(250,250,249,0.92)] px-2 py-1.5 backdrop-blur">
+        {sections.map((s) => (
+          <a
+            key={s.title}
+            href={`#${sectionId(s.title)}`}
+            className="rounded-[6px] px-2 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)] transition hover:bg-white hover:text-[var(--brand-700)]"
+            style={{ fontFamily: mono }}
+          >
+            {s.title}
+          </a>
+        ))}
+      </nav>
       {sections.map((s, i) => (
-        <Section key={s.title} n={i + 1} title={s.title} intro={s.intro}>
+        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro}>
           {s.node}
         </Section>
       ))}

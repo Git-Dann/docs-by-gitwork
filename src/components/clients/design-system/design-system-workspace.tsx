@@ -7,12 +7,19 @@ import {
   useClientDesignSystem,
   useSetClientDesignSystemShare,
 } from "@/hooks/use-design-system";
-import { Button } from "@/components/ui/button";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { ChevronDownIcon, EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
 import { DesignSystemViewer } from "./design-system-viewer";
 import { ImportModal } from "./import-modal";
 import { LogoManagerModal } from "./logo-manager-modal";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
+const chipBtn =
+  "inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
+const menuPanel =
+  "z-50 mt-1.5 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
+const menuItem =
+  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)]";
 
 export function DesignSystemWorkspace({ slug }: { slug: string }) {
   const { data: clientData } = useClientDetail(slug);
@@ -53,55 +60,85 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
         </Link>
         {ds?.exists && (
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => tokens && copy(tokens.cssVariables || "", setCopiedCss)}
-            >
-              {copiedCss ? "Copied ✓" : "Copy CSS"}
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
-              Update
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setLogoOpen(true)}>
-              Logos
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={share.isPending}
-              onClick={() => share.mutate(!shareOn)}
-            >
-              {shareOn ? "Shared" : "Share"}
-            </Button>
+            {/* Share — toggle + link + open, folded into one menu */}
+            <Menu as="div" className="relative">
+              <MenuButton className={chipBtn}>
+                {shareOn ? (
+                  <>
+                    <span className="text-[var(--brand-600)]">●</span> Shared
+                  </>
+                ) : (
+                  "Share"
+                )}
+                <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
+              </MenuButton>
+              <MenuItems anchor="bottom end" className={`${menuPanel} w-72`}>
+                <div className="flex items-center justify-between gap-3 px-2.5 py-2">
+                  <div>
+                    <p className="text-[13px] font-medium text-[var(--text-1)]">Public page</p>
+                    <p className="text-[11px] text-[var(--text-4)]">Anyone with the link can view.</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={shareOn}
+                    disabled={share.isPending}
+                    onClick={() => share.mutate(!shareOn)}
+                    className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
+                    style={{ background: shareOn ? "var(--brand-600)" : "var(--border-2)" }}
+                  >
+                    <span
+                      className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+                      style={{ left: shareOn ? 18 : 2 }}
+                    />
+                  </button>
+                </div>
+                {shareOn && shareUrl && (
+                  <div className="mt-1 border-t border-[rgba(0,0,0,0.06)] pt-1.5">
+                    <p className="truncate px-2.5 pb-1 text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                      {shareUrl}
+                    </p>
+                    <button type="button" onClick={() => copy(shareUrl, setCopiedLink)} className={menuItem}>
+                      {copiedLink ? "Copied ✓" : "Copy link"}
+                    </button>
+                    <a href={ds.share.url ?? "#"} target="_blank" rel="noreferrer" className={menuItem}>
+                      Open ↗
+                    </a>
+                  </div>
+                )}
+              </MenuItems>
+            </Menu>
+
+            {/* Maintenance — Copy CSS / Update / Logos */}
+            <Menu as="div" className="relative">
+              <MenuButton className={`${chipBtn} px-2`} aria-label="Manage design system">
+                <EllipsisHorizontalIcon className="h-4 w-4" />
+              </MenuButton>
+              <MenuItems anchor="bottom end" className={`${menuPanel} w-48`}>
+                <MenuItem>
+                  <button
+                    type="button"
+                    onClick={() => tokens && copy(tokens.cssVariables || "", setCopiedCss)}
+                    className={menuItem}
+                  >
+                    {copiedCss ? "Copied ✓" : "Copy CSS variables"}
+                  </button>
+                </MenuItem>
+                <MenuItem>
+                  <button type="button" onClick={() => setImportOpen(true)} className={menuItem}>
+                    Update tokens…
+                  </button>
+                </MenuItem>
+                <MenuItem>
+                  <button type="button" onClick={() => setLogoOpen(true)} className={menuItem}>
+                    Manage logos…
+                  </button>
+                </MenuItem>
+              </MenuItems>
+            </Menu>
           </div>
         )}
       </div>
-
-      {ds?.exists && shareOn && shareUrl && (
-        <div className="mb-5 flex flex-wrap items-center gap-3 text-[12px]">
-          <code className="truncate text-[var(--text-3)]" style={{ fontFamily: MONO }}>
-            {shareUrl}
-          </code>
-          <button
-            type="button"
-            onClick={() => copy(shareUrl, setCopiedLink)}
-            className="shrink-0 font-medium text-[var(--brand-700)] hover:underline"
-          >
-            {copiedLink ? "Copied ✓" : "Copy link"}
-          </button>
-          <a
-            href={ds.share.url ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 font-medium text-[var(--brand-700)] hover:underline"
-          >
-            Open ↗
-          </a>
-        </div>
-      )}
 
       {isPending ? (
         <p className="py-20 text-center text-sm text-[var(--text-4)]">Loading…</p>
