@@ -303,8 +303,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       ) return;
       setApprovalOpen(false);
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setApprovalOpen(false);
+        approvalButtonRef.current?.focus();
+      }
+    }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [approvalOpen]);
 
   const saveDraft = useCallback(
@@ -754,6 +764,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <button
               ref={approvalButtonRef}
               type="button"
+              aria-haspopup="dialog"
+              aria-expanded={approvalOpen}
               onClick={() => {
                 const rect = approvalButtonRef.current?.getBoundingClientRect();
                 if (rect) {
@@ -783,6 +795,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             {approvalOpen && (
               <div
                 ref={approvalPanelRef}
+                role="dialog"
+                aria-label="Approve, share and export"
                 style={{ top: approvalPos.top, right: approvalPos.right }}
                 className="fixed z-[100] w-[360px] rounded-[10px] border border-[var(--border-2)] bg-white p-5 shadow-[var(--shadow-lg)]"
               >

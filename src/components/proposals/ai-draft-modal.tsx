@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { SparklesIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { apiFetch } from "@/lib/api";
 import type { ProposalDocument } from "@/types/proposal";
 
@@ -53,8 +54,6 @@ export function AiDraftModal({ open, onClose, documentId, onApply }: AiDraftModa
       });
   }
 
-  if (!open) return null;
-
   async function handleSubmit() {
     if (brief.trim().length < 8) {
       setError("Add a few more sentences to the brief — the model needs context.");
@@ -93,15 +92,7 @@ export function AiDraftModal({ open, onClose, documentId, onApply }: AiDraftModa
   }
 
   return (
-    <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        aria-label="Close AI draft modal"
-        className="app-dialog-backdrop absolute inset-0"
-        onClick={handleClose}
-      />
-      <div className="absolute inset-0 flex items-start justify-center p-4 sm:items-center">
-        <div className="app-dialog-panel relative mt-10 w-full max-w-xl overflow-hidden sm:mt-0">
+    <Modal open={open} onClose={handleClose} panelClassName="w-full max-w-xl">
           {/* Header */}
           <div className="widget-header">
             <span className="widget-header-label">DRAFT WITH AI</span>
@@ -208,8 +199,6 @@ export function AiDraftModal({ open, onClose, documentId, onApply }: AiDraftModa
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

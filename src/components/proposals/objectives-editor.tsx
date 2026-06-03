@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { IconSelect } from "@/components/proposals/icon-select";
+import { DragHandle, SortableList, SortableRow, reorder } from "@/components/proposals/sortable-list";
 import type { ObjectiveItem } from "@/types/proposal";
 
 export function ObjectivesEditor({
@@ -13,26 +14,21 @@ export function ObjectivesEditor({
   onChange: (items: ObjectiveItem[]) => void;
 }) {
   const safeItems = items ?? [];
-
-  function move(index: number, delta: -1 | 1) {
-    const targetIndex = index + delta;
-    if (targetIndex < 0 || targetIndex >= safeItems.length) {
-      return;
-    }
-
-    const clone = [...safeItems];
-    const [entry] = clone.splice(index, 1);
-    clone.splice(targetIndex, 0, entry);
-    onChange(clone);
-  }
+  const ids = safeItems.map((item, index) => item.id ?? `obj-${index}`);
 
   return (
     <div className="space-y-4">
       {safeItems.length ? (
-        <div className="space-y-4">
-          {safeItems.map((item, index) => (
-            <article key={item.id ?? `${item.title}-${index}`} className="space-y-4 border-b border-[rgba(0,0,0,0.08)] pb-4 last:border-b-0 last:pb-0">
-              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
+        <SortableList ids={ids} onReorder={(from, to) => onChange(reorder(safeItems, from, to))}>
+          <div className="space-y-4">
+            {safeItems.map((item, index) => (
+              <SortableRow key={ids[index]} id={ids[index]}>
+                {({ handleProps }) => (
+                  <article className="space-y-4 border-b border-[rgba(0,0,0,0.08)] pb-4">
+                    <div className="grid gap-3 lg:grid-cols-[auto_220px_minmax(0,1fr)_auto]">
+                      <div className="flex items-start pt-7">
+                        <DragHandle {...handleProps} />
+                      </div>
                 <label className="space-y-1.5">
                   <span className="text-sm font-medium text-[var(--text-2)]">Title</span>
                   <input
@@ -66,25 +62,7 @@ export function ObjectivesEditor({
                   />
                 </label>
 
-                <div className="flex items-start justify-end gap-1 pt-7">
-                  <Button
-                    type="button"
-                    onClick={() => move(index, -1)}
-                    variant="utility"
-                    size="icon-md"
-                    aria-label="Move objective up"
-                  >
-                    <ArrowUpIcon className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => move(index, 1)}
-                    variant="utility"
-                    size="icon-md"
-                    aria-label="Move objective down"
-                  >
-                    <ArrowDownIcon className="h-4 w-4" />
-                  </Button>
+                <div className="flex items-start justify-end pt-7">
                   <Button
                     type="button"
                     onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
@@ -109,11 +87,14 @@ export function ObjectivesEditor({
                       ),
                     )
                   }
-                />
-              </label>
-            </article>
-          ))}
-        </div>
+                      />
+                    </label>
+                  </article>
+                )}
+              </SortableRow>
+            ))}
+          </div>
+        </SortableList>
       ) : (
         <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
           No objectives yet.
