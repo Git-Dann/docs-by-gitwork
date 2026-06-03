@@ -615,12 +615,23 @@ authoring) already existed before this pass but was undocumented here — §4/§
 - **Split-screen live preview** — the Builder tab renders the client view beside the editor,
   updating live as you type (toggle, on by default on xl). No more separate preview route.
 
-**Still pending (next sessions):** Phase 2b — drag for in-section repeating items (dnd-kit only
-covers the outline today), undo/redo + a delete confirm (section delete is currently immediate),
-shared UI primitives (`<Input>/<Select>/<Modal>/<Dropdown>`), an a11y pass on popovers, and
-replacing the `window.location.reload()` after bulk actions with query invalidation. Phase 3 —
-Stripe pay-in-page, merge variables, content/snippet library, real server-side PDF
-(`@sparticuz/chromium` is already a dependency).
+**Shipped since (Phases 2b + 3):**
+- **Phase 2b** — editor **undo/redo** (history-aware `updateDraft`, coalesced text edits, ⌘Z/⌘⇧Z
+  that don't hijack native field undo; section delete now undoable); bulk actions invalidate the
+  query instead of `window.location.reload()`; **in-section drag** (`src/components/proposals/sortable-list.tsx`
+  → objectives/list-items/links); an accessible **`<Modal>` primitive** (`src/components/ui/modal.tsx`
+  — focus trap, Escape, scroll-lock, ARIA) adopted by the AI draft modal; approval-popover a11y.
+- **Phase 3** — **merge variables** (`src/lib/merge-variables.ts`: `{{client_name}}`/`{{total}}`/…
+  resolved at render in preview/public/PDF, never persisted; insert menu in the markdown toolbar);
+  **content snippet library** (`ContentSnippet` model + `/api/snippets`; save-as-snippet in the
+  builder panel, insert from the Add-block palette); **real server-side PDF**
+  (`GET /api/proposals/[id]/pdf` — `@sparticuz/chromium` + `puppeteer-core` render the public
+  `/docs/[token]?print=1` page; **requires the doc be shared**; `serverExternalPackages` set in
+  `next.config.ts`). ⚠️ The PDF route is serverless Chromium — verify with one live click on prod.
+
+**Still pending / optional:** broad adoption of the `<Modal>`/field primitives across the other
+hand-rolled dialogs (create-doc modal, cost budget dialog) — mechanical migration. Stripe
+pay-in-page was **dropped** per Dan (web-first; accept/decline-in-page already covers conversion).
 ## 18. Recent Changes (June 2026) — Pulse: shared lite-scan core, decoupled AI, public embed widget
 
 Pulse was re-architected around **one AI-free deterministic core** (`src/server/pulse-lite/run-lite-scan.ts`)

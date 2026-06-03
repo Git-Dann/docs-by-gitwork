@@ -613,7 +613,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       return;
     }
 
-    window.open(`/app/docs/${proposalId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+    // When the document is shared we can produce a real, pixel-accurate server-side PDF (Chromium
+    // renders the public page). Otherwise fall back to the browser print view.
+    if (draft?.isShared && draft.shareToken) {
+      window.open(`/api/proposals/${proposalId}/pdf`, "_blank", "noopener,noreferrer");
+    } else {
+      window.open(`/app/docs/${proposalId}/print?autoprint=1`, "_blank", "noopener,noreferrer");
+    }
   }
 
   function handleApprovalToggle(key: (typeof approvalOptions)[number]["key"], checked: boolean) {
