@@ -22,6 +22,7 @@ import {
   useDeleteOnboardingLink,
   useOnboardingLinks,
 } from "@/hooks/use-proposals";
+import { useOnboardingForms } from "@/hooks/use-onboarding-forms";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import type { ClientListItem } from "@/types/client";
@@ -858,9 +859,13 @@ export function ClientManagement() {
 // ---------------------------------------------------------------------------
 function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
   const [label, setLabel] = useState("");
+  const [formId, setFormId] = useState("");
   const [link, setLink] = useState<OnboardingLinkRecord | null>(null);
   const [copied, setCopied] = useState(false);
   const createMutation = useCreateOnboardingLink();
+  const formsQuery = useOnboardingForms();
+  const forms = formsQuery.data?.forms ?? [];
+  const defaultFormName = forms.find((f) => f.isDefault)?.name ?? "Standard onboarding";
 
   const fullUrl = useMemo(() => {
     if (!link) return "";
@@ -869,7 +874,10 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
   }, [link]);
 
   const handleCreate = async () => {
-    const result = await createMutation.mutateAsync({ label: label.trim() || undefined });
+    const result = await createMutation.mutateAsync({
+      label: label.trim() || undefined,
+      formId: formId || undefined,
+    });
     setLink(result.link);
   };
 
@@ -907,6 +915,28 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
                   will appear here under <em>Pending review</em> when they submit.
                 </p>
                 <div className="mt-5 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      Onboarding form
+                    </span>
+                    <select
+                      value={formId}
+                      onChange={(e) => setFormId(e.target.value)}
+                      className="app-input"
+                    >
+                      <option value="">{defaultFormName} (default)</option>
+                      {forms
+                        .filter((f) => !f.isDefault)
+                        .map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                    </select>
+                    <span className="app-field-hint mt-1">
+                      Edit forms in Settings → Onboarding.
+                    </span>
+                  </label>
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                       Label <span className="text-[var(--text-4)]">(optional)</span>

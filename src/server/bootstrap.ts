@@ -6,6 +6,10 @@ import {
   TEMPLATE_SLUG_BY_TYPE,
   getTemplateBlueprintsForType,
 } from "@/lib/templates";
+import {
+  DEFAULT_ONBOARDING_FORM_SLUG,
+  getDefaultOnboardingForm,
+} from "@/lib/onboarding/default-form";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_TEMPLATE_SLUG,
@@ -277,6 +281,23 @@ async function _ensureBaseRecords() {
       },
     });
   }
+
+  // Seed the default onboarding form (the customisable replacement for the old
+  // hard-coded flow). Unlike the Docs templates above, we DON'T clobber `steps` on
+  // re-boot — operators edit forms via Settings → Onboarding and those edits must
+  // persist. The empty `update` just ensures the row exists.
+  await prisma.onboardingForm.upsert({
+    where: { slug: DEFAULT_ONBOARDING_FORM_SLUG },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      slug: DEFAULT_ONBOARDING_FORM_SLUG,
+      name: "Standard onboarding",
+      description: "The default Gitwork client onboarding form.",
+      steps: getDefaultOnboardingForm() as unknown as Prisma.InputJsonValue,
+      isDefault: true,
+    },
+  });
 
   await prisma.rateCardPerson.createMany({
     data: getDefaultRateCardPeoplePayload(workspace.id),

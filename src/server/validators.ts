@@ -599,51 +599,27 @@ export const workspaceClientStatusSchema = z.enum([
 
 export const onboardingLinkCreateSchema = z.object({
   label: z.string().trim().max(200).optional(),
+  // Which form to mint from. Omitted → the workspace default form.
+  formId: z.string().trim().min(1).max(64).optional(),
 });
 
-// Public autosave — every field optional so the wizard can save a partial step.
-// Each field is also nullable so the client can explicitly clear it.
-const optionalNullableString = z
-  .string()
-  .trim()
-  .max(2000)
-  .nullable()
-  .optional();
+// Shared: optional + nullable trimmed string — a field can save partial or clear.
+const optionalNullableString = z.string().trim().max(2000).nullable().optional();
 
+// Public autosave — answers keyed by field id; the server routes each answer to its
+// system column or into the answers JSON using the link's form snapshot. currentStep
+// and the billing toggle stay first-class. All optional so a partial step can save.
 export const onboardingAutosaveSchema = z
   .object({
-    currentStep: z.number().int().min(0).max(20).optional(),
-    contactFirstName: optionalNullableString,
-    contactLastName: optionalNullableString,
-    contactEmail: optionalNullableString,
-    contactRole: optionalNullableString,
-    contactPhone: optionalNullableString,
-    invoiceEmail: optionalNullableString,
-    companyName: optionalNullableString,
-    legalCompanyName: optionalNullableString,
-    companyNumber: optionalNullableString,
-    vatNumber: optionalNullableString,
-    addressLine1: optionalNullableString,
-    addressLine2: optionalNullableString,
-    city: optionalNullableString,
-    county: optionalNullableString,
-    postcode: optionalNullableString,
-    country: optionalNullableString,
+    currentStep: z.number().int().min(0).max(50).optional(),
     billingDiffers: z.boolean().optional(),
-    billingAddressLine1: optionalNullableString,
-    billingAddressLine2: optionalNullableString,
-    billingCity: optionalNullableString,
-    billingCounty: optionalNullableString,
-    billingPostcode: optionalNullableString,
-    billingCountry: optionalNullableString,
-    productName: optionalNullableString,
-    productUrl: optionalNullableString,
-    productDescription: z.string().trim().max(5000).nullable().optional(),
-    projectGoals: z.string().trim().max(10000).nullable().optional(),
+    answers: z.record(z.string(), z.unknown()).optional(),
   })
-  .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required.",
-  });
+  .refine(
+    (v) =>
+      v.currentStep !== undefined || v.billingDiffers !== undefined || v.answers !== undefined,
+    { message: "At least one field is required." },
+  );
 
 export const onboardingBankSchema = z.object({
   accountHolder: optionalNullableString,
@@ -664,6 +640,94 @@ export const onboardingBankSchema = z.object({
 export const onboardingSubmitSchema = z.object({
   confirm: z.literal(true),
 });
+
+// ─── Onboarding forms (templates) ─────────────────────────────────────────────
+
+const onboardingFieldTypeSchema = z.enum([
+  "short_text",
+  "long_text",
+  "email",
+  "phone",
+  "url",
+  "number",
+  "select",
+  "multiselect",
+  "checkbox",
+  "bank_details",
+  "static",
+]);
+
+const onboardingFieldSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  type: onboardingFieldTypeSchema,
+  label: z.string().max(300),
+  hint: z.string().max(500).optional(),
+  placeholder: z.string().max(200).optional(),
+  required: z.boolean().optional(),
+  systemKey: z.string().trim().max(64).optional(),
+  options: z
+    .array(z.object({ id: z.string().trim().min(1).max(64), label: z.string().max(200) }))
+    .max(40)
+    .optional(),
+  config: z
+    .object({
+      width: z.enum(["full", "half"]).optional(),
+      default: z.string().max(200).optional(),
+      maxLength: z.number().int().positive().max(20000).optional(),
+      rows: z.number().int().positive().max(40).optional(),
+      transform: z.enum(["upper", "alnum_upper"]).optional(),
+      datalist: z.enum(["uk-banks"]).optional(),
+      body: z.string().max(4000).optional(),
+    })
+    .optional(),
+  showIf: z
+    .object({
+      fieldId: z.string().trim().min(1).max(64),
+      equals: z.union([z.string(), z.number(), z.boolean()]),
+    })
+    .optional(),
+});
+
+const onboardingStepSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  key: z.string().trim().min(1).max(64),
+  title: z.string().max(200),
+  blurb: z.string().max(2000).optional(),
+  fields: z.array(onboardingFieldSchema).max(60),
+});
+
+export const onboardingFormStructureSchema = z.object({
+  welcome: z.object({
+    eyebrow: z.string().max(120).optional(),
+    heading: z.string().max(200),
+    subheading: z.string().max(300).optional(),
+    bullets: z.array(z.string().max(300)).max(8),
+    ctaLabel: z.string().max(60).optional(),
+  }),
+  steps: z.array(onboardingStepSchema).max(20),
+  review: z.object({
+    blurb: z.string().max(500).optional(),
+    legal: z.string().max(1000).optional(),
+    agreement: z.string().max(1000).optional(),
+  }),
+});
+
+export const onboardingFormCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  cloneFromId: z.string().trim().min(1).max(64).optional(),
+  structure: onboardingFormStructureSchema.optional(),
+});
+
+export const onboardingFormUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    structure: onboardingFormStructureSchema.optional(),
+    isDefault: z.boolean().optional(),
+    isArchived: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
 
 export const clientStatusUpdateSchema = z.object({
   status: workspaceClientStatusSchema,

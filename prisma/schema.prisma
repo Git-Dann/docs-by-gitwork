@@ -285,6 +285,7 @@ model Workspace {
   templates                DocumentTemplate[]
   clients                  WorkspaceClient[]
   clientOnboardings        ClientOnboarding[]
+  onboardingForms          OnboardingForm[]
   rateCardPeople           RateCardPerson[]
   proofDocuments           ProofDocument[]
   candidates               Candidate[]
@@ -887,7 +888,16 @@ model ClientOnboarding {
   currentStep         Int                          @default(0)
   /// Operator-facing label shown in the Onboarding links tab ("Acme call from Tuesday").
   label               String?
-  // ── Autosaved answers ──────────────────────────────────────────────
+  // ── Form (template) provenance + snapshot ───────────────────────────
+  /// Which OnboardingForm this link was minted from (provenance only; rendering uses the snapshot).
+  formId              String?
+  form                OnboardingForm?              @relation(fields: [formId], references: [id], onDelete: SetNull)
+  /// Frozen OnboardingFormStructure rendered by the public flow. Null on legacy rows → the
+  /// public flow falls back to the in-code default form, so old links keep working unchanged.
+  formSnapshot        Json?
+  /// Custom-field answers keyed by field id. System fields stay in their dedicated columns below.
+  answers             Json?
+  // ── Autosaved answers (system fields → mapped into WorkspaceClient on submit) ──
   // Contact — split first/last to mirror the live Gitwork invoicing Typeform.
   contactFirstName    String?
   contactLastName     String?
@@ -953,6 +963,30 @@ model ClientOnboardingBankAccount {
   accountNumberLast4  String?          @db.VarChar(4)
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+}
+
+/// A customisable onboarding form (template). Mirrors DocumentTemplate: the whole
+/// step/field structure + copy lives in `steps` (Json). When a link is minted the
+/// structure is snapshotted onto ClientOnboarding.formSnapshot, so editing a form
+/// never changes links already sent out.
+model OnboardingForm {
+  id          String             @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace?         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name        String
+  slug        String             @unique
+  description String?
+  /// OnboardingFormStructure: { welcome, steps[], review }. Validated in app code, not Prisma.
+  steps       Json
+  /// Reserved for theme accents / estimated-time / future per-form settings.
+  settings    Json?
+  isDefault   Boolean            @default(false)
+  isArchived  Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  onboardings ClientOnboarding[]
+
+  @@index([workspaceId, isArchived, updatedAt])
 }
 
 /// Encrypted bank details for an active client. Same schema as the onboarding

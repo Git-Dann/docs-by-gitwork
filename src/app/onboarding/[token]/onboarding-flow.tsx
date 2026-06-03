@@ -1,113 +1,56 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircleIcon, ArrowRightIcon, ArrowLeftIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircleIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon,
+  ArrowDownTrayIcon,
+} from "@heroicons/react/24/outline";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { fieldIdSet, isFieldVisible } from "@/lib/onboarding/structure";
+import type {
+  OnboardingAnswers,
+  OnboardingAnswerValue,
+  OnboardingFieldDef,
+  OnboardingFormStructure,
+} from "@/types/onboarding";
+import {
+  FieldRenderer,
+  type BankInput,
+  type BankSummary,
+} from "@/components/onboarding/field-renderer";
 
 // ─── Types matching the public API payload ────────────────────────────────────
 
 type SessionStatus = "IN_PROGRESS" | "SUBMITTED" | "LINKED";
 
-type SessionStringFields = {
-  contactFirstName: string | null;
-  contactLastName: string | null;
-  contactEmail: string | null;
-  contactRole: string | null;
-  contactPhone: string | null;
-  invoiceEmail: string | null;
-  companyName: string | null;
-  legalCompanyName: string | null;
-  companyNumber: string | null;
-  vatNumber: string | null;
-  addressLine1: string | null;
-  addressLine2: string | null;
-  city: string | null;
-  county: string | null;
-  postcode: string | null;
-  country: string | null;
-  billingAddressLine1: string | null;
-  billingAddressLine2: string | null;
-  billingCity: string | null;
-  billingCounty: string | null;
-  billingPostcode: string | null;
-  billingCountry: string | null;
-  productName: string | null;
-  productUrl: string | null;
-  productDescription: string | null;
-  projectGoals: string | null;
-};
-
-type StringFieldKey = keyof SessionStringFields;
-
-type SessionFields = SessionStringFields & {
-  billingDiffers: boolean;
-};
-
-type BankSummary = {
-  onFile: boolean;
-  currency: string | null;
-  accountNumberLast4: string | null;
-};
-
 export type OnboardingSession = {
   status: SessionStatus;
   currentStep: number;
-  fields: SessionFields;
+  structure: OnboardingFormStructure;
+  fields: Record<string, string | null>;
+  answers: OnboardingAnswers;
   bank: BankSummary;
   submittedAt: string | null;
 };
 
-type BankInput = {
-  accountHolder: string;
-  bankName: string;
-  sortCode: string;
-  accountNumber: string;
-  iban: string;
-  swiftBic: string;
-  currency: string;
-};
-
-const STEPS = [
-  { key: "welcome", title: "Welcome" },
-  { key: "you", title: "About you" },
-  { key: "company", title: "Company & billing" },
-  { key: "product", title: "Your product" },
-  { key: "goals", title: "What you're hoping for" },
-  { key: "bank", title: "Bank details" },
-  { key: "review", title: "Review & submit" },
-] as const;
-
-const COUNTRY_DEFAULT = "United Kingdom";
-
-// Strip out the null-vs-string awkwardness for inputs.
-function s(value: string | null | undefined): string {
-  return value ?? "";
+/** Compact one-line summary of a field's answer for the review screen. */
+function fieldSummary(field: OnboardingFieldDef, answers: OnboardingAnswers): string {
+  const raw = answers[field.id];
+  if (field.type === "checkbox") return raw === true ? field.label : "";
+  if (field.type === "multiselect") {
+    const arr = Array.isArray(raw) ? raw : [];
+    return arr.map((v) => field.options?.find((o) => o.id === v)?.label ?? String(v)).join(", ");
+  }
+  if (field.type === "select") {
+    if (raw == null || raw === "") return "";
+    return field.options?.find((o) => o.id === raw)?.label ?? String(raw);
+  }
+  return typeof raw === "string" ? raw.trim() : "";
 }
-
-// Format a UK sort code as the client types: digits only, grouped as XX-XX-XX.
-function formatSortCode(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 6);
-  return digits.replace(/(\d{2})(?=\d)/g, "$1-");
-}
-
-// Bank-field input guards — restrict to the characters each field can hold.
-function digitsOnly(value: string, max: number): string {
-  return value.replace(/\D/g, "").slice(0, max);
-}
-function alnumUpper(value: string, max: number): string {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, max);
-}
-
-// Common UK banks — powers the bank-name autocomplete (native <datalist>).
-const UK_BANKS = [
-  "Barclays", "HSBC", "Lloyds Bank", "NatWest", "Santander", "Halifax",
-  "Nationwide", "TSB", "The Co-operative Bank", "Metro Bank", "Monzo",
-  "Starling Bank", "Revolut", "Royal Bank of Scotland", "Bank of Scotland",
-  "Virgin Money", "Tide", "Wise", "Allied Irish Bank", "Bank of Ireland",
-  "Clydesdale Bank", "Coutts", "First Direct", "Cynergy Bank",
-];
 
 export function OnboardingFlow({
   token,
@@ -116,8 +59,15 @@ export function OnboardingFlow({
   token: string;
   initialSession: OnboardingSession;
 }) {
-  const [step, setStep] = useState(initialSession.currentStep);
-  const [fields, setFields] = useState<SessionFields>(initialSession.fields);
+  const structure = initialSession.structure;
+  const steps = useMemo(() => structure.steps, [structure]);
+  // Screens: 0 = welcome, 1..steps.length = wizard steps, steps.length + 1 = review.
+  const lastIndex = steps.length + 1;
+
+  const [step, setStep] = useState(() =>
+    Math.max(0, Math.min(initialSession.currentStep, lastIndex)),
+  );
+  const [answers, setAnswers] = useState<OnboardingAnswers>(initialSession.answers);
   const [bankInput, setBankInput] = useState<BankInput>({
     accountHolder: "",
     bankName: "",
@@ -129,9 +79,7 @@ export function OnboardingFlow({
   });
   const [bankSummary, setBankSummary] = useState<BankSummary>(initialSession.bank);
   const [status, setStatus] = useState<SessionStatus>(initialSession.status);
-  const [submittedAt, setSubmittedAt] = useState<string | null>(
-    initialSession.submittedAt,
-  );
+  const [submittedAt, setSubmittedAt] = useState<string | null>(initialSession.submittedAt);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,12 +88,10 @@ export function OnboardingFlow({
 
   const readOnly = status !== "IN_PROGRESS";
 
-  const setField = (key: StringFieldKey) => (value: string) => {
-    setFields((prev) => ({ ...prev, [key]: value }));
-  };
+  const idSet = useMemo(() => fieldIdSet(structure), [structure]);
 
-  const setBillingDiffers = (value: boolean) => {
-    setFields((prev) => ({ ...prev, billingDiffers: value }));
+  const setAnswer = (id: string, value: OnboardingAnswerValue) => {
+    setAnswers((prev) => ({ ...prev, [id]: value }));
   };
 
   const setBank = (key: keyof BankInput) => (value: string) => {
@@ -158,19 +104,22 @@ export function OnboardingFlow({
     savedHintTimer.current = window.setTimeout(() => setSavedHint(false), 1600);
   }, []);
 
-  useEffect(() => () => {
-    if (savedHintTimer.current) window.clearTimeout(savedHintTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (savedHintTimer.current) window.clearTimeout(savedHintTimer.current);
+    },
+    [],
+  );
 
-  // Persist non-bank fields + currentStep. Caller decides when (Next button etc.)
+  // Persist answers + currentStep. Caller decides when (Next button / debounce).
   const autosave = useCallback(
-    async (overrides?: { currentStep?: number; fields?: Partial<SessionFields> }) => {
+    async (overrides?: { currentStep?: number; answers?: OnboardingAnswers }) => {
       if (readOnly) return true;
       setSaving(true);
       setError(null);
       try {
         const payload = {
-          ...(overrides?.fields ?? fields),
+          answers: overrides?.answers ?? answers,
           currentStep: overrides?.currentStep ?? step,
         };
         const res = await fetch(`/api/onboarding/${token}`, {
@@ -191,12 +140,11 @@ export function OnboardingFlow({
         setSaving(false);
       }
     },
-    [fields, readOnly, step, token, flashSaved],
+    [answers, readOnly, step, token, flashSaved],
   );
 
-  // Live autosave — persist non-bank fields ~1.2s after the client stops
-  // typing, so a half-filled step survives leaving and coming back (not just
-  // on Next/Back). Bank fields save on leaving the bank step via persistBank.
+  // Live autosave — persist ~1.2s after the client stops typing, so a half-filled
+  // step survives leaving and coming back. Skipped on the welcome screen.
   const firstFieldsRender = useRef(true);
   useEffect(() => {
     if (readOnly || step === 0) return;
@@ -208,13 +156,10 @@ export function OnboardingFlow({
       void autosave({ currentStep: step });
     }, 1200);
     return () => window.clearTimeout(id);
-  }, [fields, step, readOnly, autosave]);
+  }, [answers, step, readOnly, autosave]);
 
   const persistBank = useCallback(async () => {
     if (readOnly) return true;
-    // Only send fields the user actually typed in this session (so an empty
-    // input doesn't clobber a previous submission).
-    const payload: Record<string, string | null> = {};
     const trimmed = {
       accountHolder: bankInput.accountHolder.trim(),
       bankName: bankInput.bankName.trim(),
@@ -228,6 +173,7 @@ export function OnboardingFlow({
       // Nothing entered — skip the network round-trip.
       return true;
     }
+    const payload: Record<string, string | null> = {};
     if (trimmed.accountHolder) payload.accountHolder = trimmed.accountHolder;
     if (trimmed.bankName) payload.bankName = trimmed.bankName;
     if (trimmed.sortCode) payload.sortCode = trimmed.sortCode;
@@ -250,7 +196,6 @@ export function OnboardingFlow({
       }
       const json = (await res.json()) as { session: OnboardingSession };
       setBankSummary(json.session.bank);
-      // Clear the form so it doesn't show plaintext after a refresh.
       setBankInput({
         accountHolder: "",
         bankName: "",
@@ -270,11 +215,13 @@ export function OnboardingFlow({
     }
   }, [bankInput, readOnly, token, flashSaved]);
 
+  const currentStepDef = step >= 1 && step <= steps.length ? steps[step - 1] : null;
+  const currentHasBank = Boolean(currentStepDef?.fields.some((f) => f.type === "bank_details"));
+
   const goTo = async (nextStep: number) => {
     if (nextStep === step) return;
-    // Save when leaving a step. Bank step uses its own endpoint.
     if (!readOnly) {
-      const ok = STEPS[step].key === "bank"
+      const ok = currentHasBank
         ? (await persistBank()) && (await autosave({ currentStep: nextStep }))
         : await autosave({ currentStep: nextStep });
       if (!ok) return;
@@ -283,14 +230,13 @@ export function OnboardingFlow({
     window.scrollTo({ top: 0, behavior: "instant" });
   };
 
-  const next = () => goTo(Math.min(step + 1, STEPS.length - 1));
+  const next = () => goTo(Math.min(step + 1, lastIndex));
   const back = () => goTo(Math.max(step - 1, 0));
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      // Final autosave so the server has the latest field values too.
       const fieldsOk = await autosave({ currentStep: step });
       if (!fieldsOk) return;
       const res = await fetch(`/api/onboarding/${token}/submit`, {
@@ -312,28 +258,21 @@ export function OnboardingFlow({
     }
   };
 
-  // Cross-step "can I advance?" rules.
+  // Required-field gate for the current step (respects showIf visibility).
   const canAdvance = (() => {
     if (readOnly) return true;
-    switch (STEPS[step].key) {
-      case "welcome":
-        return true;
-      case "you":
-        return Boolean(fields.contactFirstName?.trim() && fields.contactEmail?.trim());
-      case "company":
-        return Boolean(fields.companyName?.trim());
-      case "product":
-        return true; // product fields are optional during onboarding
-      case "goals":
-        return true;
-      case "bank":
-        return true; // bank step is optional — client can finish without it
-      case "review":
-        return true;
-      default:
-        return true;
-    }
+    if (!currentStepDef) return true; // welcome / review
+    return currentStepDef.fields.every((f) => {
+      if (!f.required || !isFieldVisible(f, answers, idSet)) return true;
+      const v = answers[f.id];
+      if (f.type === "checkbox") return v === true;
+      if (f.type === "multiselect") return Array.isArray(v) && v.length > 0;
+      return typeof v === "string" ? v.trim().length > 0 : v != null;
+    });
   })();
+
+  const bankBundle = { input: bankInput, setBank, summary: bankSummary };
+  const welcome = structure.welcome;
 
   // ─── Step 0 — Welcome (2-column landing) ─────────────────────────────────
 
@@ -347,7 +286,6 @@ export function OnboardingFlow({
             className="absolute inset-0"
             style={{ background: "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)" }}
           />
-          {/* Faded concentric rings, top-right — same accent as DocumentCover */}
           <div aria-hidden className="pointer-events-none absolute -right-20 -top-20 h-[340px] w-[340px] rounded-full border border-white/10" />
           <div aria-hidden className="pointer-events-none absolute -right-8 -top-8 h-[200px] w-[200px] rounded-full border border-white/[0.08]" />
           <div className="relative z-10 flex h-full flex-col justify-between p-8 text-white md:p-12">
@@ -358,7 +296,7 @@ export function OnboardingFlow({
               className="font-display text-3xl leading-[1.08] tracking-[-0.025em] md:text-5xl"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              Let&apos;s get your project set up.
+              {welcome.heading}
             </h1>
             <p className="font-mono text-[11px] text-white/45">gitwork.co.uk</p>
           </div>
@@ -368,57 +306,53 @@ export function OnboardingFlow({
         <div className="flex flex-1 items-center justify-center bg-[var(--surface-canvas)] px-6 py-12 md:px-12">
           <div className="w-full max-w-md space-y-7">
             <div className="space-y-2">
-              <p className="font-mono text-[11px] font-semibold tracking-[0.18em] uppercase text-[var(--text-4)]">
-                Onboarding · ~3 mins
-              </p>
-              <h2 className="text-2xl font-semibold text-[var(--text-1)]">
-                A quick walk-through of who you are and what you&apos;re building.
-              </h2>
+              {welcome.eyebrow ? (
+                <p className="font-mono text-[11px] font-semibold tracking-[0.18em] uppercase text-[var(--text-4)]">
+                  {welcome.eyebrow}
+                </p>
+              ) : null}
+              {welcome.subheading ? (
+                <h2 className="text-2xl font-semibold text-[var(--text-1)]">{welcome.subheading}</h2>
+              ) : null}
             </div>
-            <ul className="space-y-3 text-sm leading-relaxed text-[var(--text-3)]">
-              <li className="flex gap-2">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                Save and resume anytime — your answers are stored against this private link.
-              </li>
-              <li className="flex gap-2">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                Bank details are encrypted at rest. Only Gitwork staff can see them.
-              </li>
-              <li className="flex gap-2">
-                <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                Once you submit, our team will review your details and get back to you shortly.
-              </li>
-            </ul>
+            {welcome.bullets.length > 0 && (
+              <ul className="space-y-3 text-sm leading-relaxed text-[var(--text-3)]">
+                {welcome.bullets.map((bullet, i) => (
+                  <li key={i} className="flex gap-2">
+                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                    {bullet}
+                  </li>
+                ))}
+              </ul>
+            )}
             {readOnly ? (
               <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 {status === "LINKED"
                   ? "Your client account is being set up — Gitwork is taking it from here."
                   : `Submitted${
-                      submittedAt
-                        ? ` on ${new Date(submittedAt).toLocaleDateString()}`
-                        : ""
+                      submittedAt ? ` on ${new Date(submittedAt).toLocaleDateString()}` : ""
                     }. We'll be in touch shortly.`}
               </div>
             ) : (
-              <Button
-                onClick={() => goTo(1)}
-                variant="primary"
-                className="app-button-lg w-full"
-              >
-                Get started
+              <Button onClick={() => goTo(1)} variant="primary" className="app-button-lg w-full">
+                {welcome.ctaLabel || "Get started"}
                 <ArrowRightIcon className="ml-1 h-4 w-4" />
               </Button>
             )}
-            {error && (
-              <p className="text-sm text-[var(--danger-500)]">{error}</p>
-            )}
+            {error && <p className="text-sm text-[var(--danger-500)]">{error}</p>}
           </div>
         </div>
       </div>
     );
   }
 
-  // ─── Steps 1..6 — Wizard ────────────────────────────────────────────────
+  // ─── Steps 1..N + Review — Wizard ────────────────────────────────────────
+
+  const isReview = step === lastIndex;
+  const screenTitle = isReview ? "Review & submit" : currentStepDef?.title ?? "";
+  const visibleFields = currentStepDef
+    ? currentStepDef.fields.filter((f) => isFieldVisible(f, answers, idSet))
+    : [];
 
   return (
     <div className="min-h-screen bg-[var(--surface-canvas)]">
@@ -426,19 +360,11 @@ export function OnboardingFlow({
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Image
-              src="/foundry-logo.png"
-              alt="Foundry"
-              width={28}
-              height={28}
-              className="rounded-md"
-            />
-            <span className="text-sm font-semibold text-[var(--text-2)]">
-              Gitwork onboarding
-            </span>
+            <Image src="/foundry-logo.png" alt="Foundry" width={28} height={28} className="rounded-md" />
+            <span className="text-sm font-semibold text-[var(--text-2)]">Gitwork onboarding</span>
           </div>
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-            Step {step} of {STEPS.length - 1}
+            Step {step} of {lastIndex}
           </span>
         </div>
 
@@ -446,31 +372,22 @@ export function OnboardingFlow({
         <section className="widget-card mb-5">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">0{step}</span>
+              <span className="widget-header__label--number">{step < 10 ? `0${step}` : step}</span>
               {" // "}
-              {STEPS[step].title.toUpperCase()}
+              {screenTitle.toUpperCase()}
             </span>
-            <span
-              className="widget-header__status"
-              aria-live="polite"
-            >
-              {readOnly
-                ? "READ ONLY"
-                : saving
-                  ? "SAVING…"
-                  : savedHint
-                    ? "SAVED ✓"
-                    : "AUTOSAVED"}
+            <span className="widget-header__status" aria-live="polite">
+              {readOnly ? "READ ONLY" : saving ? "SAVING…" : savedHint ? "SAVED ✓" : "AUTOSAVED"}
             </span>
           </div>
           <div className="px-5 py-3">
             <div className="flex items-center gap-1">
-              {STEPS.slice(1).map((s, i) => {
+              {Array.from({ length: lastIndex }, (_, i) => {
                 const idx = i + 1;
                 const reached = idx <= step;
                 return (
                   <button
-                    key={s.key}
+                    key={idx}
                     type="button"
                     onClick={() => idx < step && goTo(idx)}
                     disabled={idx >= step || readOnly}
@@ -479,7 +396,7 @@ export function OnboardingFlow({
                       reached ? "bg-[var(--brand-700)]" : "bg-[var(--border-2)]",
                       idx < step && !readOnly && "cursor-pointer hover:bg-[var(--brand-800)]",
                     )}
-                    aria-label={`Go to step ${idx}: ${s.title}`}
+                    aria-label={`Go to step ${idx}`}
                   />
                 );
               })}
@@ -498,60 +415,50 @@ export function OnboardingFlow({
               </div>
             )}
 
-            {STEPS[step].key === "you" && (
-              <StepYou fields={fields} setField={setField} readOnly={readOnly} />
-            )}
-            {STEPS[step].key === "company" && (
-              <StepCompany
-                fields={fields}
-                setField={setField}
-                setBillingDiffers={setBillingDiffers}
-                readOnly={readOnly}
-              />
-            )}
-            {STEPS[step].key === "product" && (
-              <StepProduct fields={fields} setField={setField} readOnly={readOnly} />
-            )}
-            {STEPS[step].key === "goals" && (
-              <StepGoals fields={fields} setField={setField} readOnly={readOnly} />
-            )}
-            {STEPS[step].key === "bank" && (
-              <StepBank
-                bankInput={bankInput}
-                setBank={setBank}
+            {isReview ? (
+              <ReviewScreen
+                structure={structure}
+                steps={steps}
+                answers={answers}
                 bankSummary={bankSummary}
-                readOnly={readOnly}
-              />
-            )}
-            {STEPS[step].key === "review" && (
-              <StepReview
-                fields={fields}
-                bankSummary={bankSummary}
-                onEditStep={(i) => goTo(i)}
+                onEditStep={(idx) => goTo(idx)}
                 readOnly={readOnly}
                 token={token}
               />
-            )}
+            ) : currentStepDef ? (
+              <>
+                {currentStepDef.blurb ? (
+                  <p className="text-sm text-[var(--text-3)]">{currentStepDef.blurb}</p>
+                ) : null}
+                <div className="flex flex-wrap gap-4">
+                  {visibleFields.map((field) => (
+                    <div
+                      key={field.id}
+                      className={field.config?.width === "half" ? "w-full sm:w-[calc(50%-0.5rem)]" : "w-full"}
+                    >
+                      <FieldRenderer
+                        field={field}
+                        answers={answers}
+                        setAnswer={setAnswer}
+                        readOnly={readOnly}
+                        bank={bankBundle}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
 
         {/* Nav */}
         <div className="mt-5 flex items-center justify-between gap-3">
-          <Button
-            variant="secondary"
-            onClick={back}
-            disabled={saving || submitting}
-            className="app-button-md"
-          >
+          <Button variant="secondary" onClick={back} disabled={saving || submitting} className="app-button-md">
             <ArrowLeftIcon className="mr-1 h-4 w-4" />
             Back
           </Button>
-          {error && (
-            <p className="flex-1 text-center text-sm text-[var(--danger-500)]">
-              {error}
-            </p>
-          )}
-          {STEPS[step].key === "review" ? (
+          {error && <p className="flex-1 text-center text-sm text-[var(--danger-500)]">{error}</p>}
+          {isReview ? (
             !readOnly ? (
               <Button
                 variant="primary"
@@ -583,587 +490,63 @@ export function OnboardingFlow({
   );
 }
 
-// ─── Field primitives ─────────────────────────────────────────────────────────
+// ─── Review screen ──────────────────────────────────────────────────────────────
 
-function Field({
-  label,
-  children,
-  hint,
-  required,
-}: {
-  label: string;
-  children: React.ReactNode;
-  hint?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="app-field-label">
-        {label}
-        {required && <span className="ml-1 text-[var(--danger-500)]">*</span>}
-      </span>
-      {children}
-      {hint && <span className="app-field-hint">{hint}</span>}
-    </label>
-  );
-}
-
-type TextInputProps = Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  "onChange" | "value" | "readOnly"
-> & {
-  value: string;
-  onChange: (v: string) => void;
-  readOnly?: boolean;
-};
-
-function TextInput({ value, onChange, readOnly, ...rest }: TextInputProps) {
-  return (
-    <input
-      // text-base (16px) on mobile stops iOS Safari zooming in on focus;
-      // back to 14px from sm: up. Taller min-height = comfortable mobile taps.
-      className="app-input text-base sm:text-sm min-h-[46px] sm:min-h-[36px]"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={readOnly}
-      {...rest}
-    />
-  );
-}
-
-type TextAreaProps = Omit<
-  React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-  "onChange" | "value" | "readOnly"
-> & {
-  value: string;
-  onChange: (v: string) => void;
-  readOnly?: boolean;
-};
-
-function TextArea({ value, onChange, readOnly, ...rest }: TextAreaProps) {
-  return (
-    <textarea
-      className="app-textarea text-base sm:text-sm"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={readOnly}
-      {...rest}
-    />
-  );
-}
-
-// ─── Step components ──────────────────────────────────────────────────────────
-
-function StepYou({
-  fields,
-  setField,
-  readOnly,
-}: {
-  fields: SessionFields;
-  setField: (k: StringFieldKey) => (v: string) => void;
-  readOnly: boolean;
-}) {
-  return (
-    <>
-      <p className="text-sm text-[var(--text-3)]">
-        Who&apos;s the primary contact for this project? Everything we send goes here first.
-      </p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="First name" required>
-          <TextInput
-            value={s(fields.contactFirstName)}
-            onChange={setField("contactFirstName")}
-            readOnly={readOnly}
-            placeholder="Jane"
-            autoComplete="given-name"
-            maxLength={60}
-          />
-        </Field>
-        <Field label="Last name">
-          <TextInput
-            value={s(fields.contactLastName)}
-            onChange={setField("contactLastName")}
-            readOnly={readOnly}
-            placeholder="Smith"
-            autoComplete="family-name"
-            maxLength={60}
-          />
-        </Field>
-      </div>
-      <Field label="Email" required>
-        <TextInput
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          value={s(fields.contactEmail)}
-          onChange={setField("contactEmail")}
-          readOnly={readOnly}
-          placeholder="jane@company.com"
-        />
-      </Field>
-      <Field label="Your role">
-        <TextInput
-          autoComplete="organization-title"
-          value={s(fields.contactRole)}
-          onChange={setField("contactRole")}
-          readOnly={readOnly}
-          placeholder="Founder, CTO, Product lead…"
-        />
-      </Field>
-      <Field label="Phone" hint="Optional. We'll only call if something's urgent.">
-        <TextInput
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          value={s(fields.contactPhone)}
-          onChange={setField("contactPhone")}
-          readOnly={readOnly}
-          placeholder="+44 7700 900000"
-        />
-      </Field>
-    </>
-  );
-}
-
-function StepCompany({
-  fields,
-  setField,
-  setBillingDiffers,
-  readOnly,
-}: {
-  fields: SessionFields;
-  setField: (k: StringFieldKey) => (v: string) => void;
-  setBillingDiffers: (v: boolean) => void;
-  readOnly: boolean;
-}) {
-  return (
-    <>
-      <p className="text-sm text-[var(--text-3)]">
-        Where invoices and contracts should be addressed. The legal name lines up with Companies House if you have one.
-      </p>
-      <Field label="Company name" required>
-        <TextInput
-          autoComplete="organization"
-          value={s(fields.companyName)}
-          onChange={setField("companyName")}
-          readOnly={readOnly}
-          placeholder="Acme Health"
-        />
-      </Field>
-      <Field
-        label="Registered (legal) name"
-        hint="Only if it's different from the trading name above."
-      >
-        <TextInput
-          value={s(fields.legalCompanyName)}
-          onChange={setField("legalCompanyName")}
-          readOnly={readOnly}
-          placeholder="Acme Health Ltd"
-        />
-      </Field>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Company number">
-          <TextInput
-            value={s(fields.companyNumber)}
-            onChange={(v) => setField("companyNumber")(v.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 10))}
-            readOnly={readOnly}
-            placeholder="12345678"
-            autoComplete="off"
-            maxLength={10}
-          />
-        </Field>
-        <Field label="VAT number" hint="If you're VAT registered.">
-          <TextInput
-            value={s(fields.vatNumber)}
-            onChange={(v) => setField("vatNumber")(v.toUpperCase().slice(0, 15))}
-            readOnly={readOnly}
-            placeholder="GB123456789"
-            autoComplete="off"
-            maxLength={15}
-          />
-        </Field>
-      </div>
-      <Field
-        label="Invoice email"
-        hint="Which email should we send invoices to? Leave blank to use the contact email above."
-      >
-        <TextInput
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          value={s(fields.invoiceEmail)}
-          onChange={setField("invoiceEmail")}
-          readOnly={readOnly}
-          placeholder="accounts@company.com"
-        />
-      </Field>
-
-      {/* ── HQ / registered address ── */}
-      <p className="pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-        Registered address
-      </p>
-      <Field label="Address">
-        <TextInput
-          autoComplete="address-line1"
-          value={s(fields.addressLine1)}
-          onChange={setField("addressLine1")}
-          readOnly={readOnly}
-          placeholder="20 Office Park"
-        />
-      </Field>
-      <Field label="Address line 2">
-        <TextInput
-          autoComplete="address-line2"
-          value={s(fields.addressLine2)}
-          onChange={setField("addressLine2")}
-          readOnly={readOnly}
-        />
-      </Field>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Town/City">
-          <TextInput
-            autoComplete="address-level2"
-            value={s(fields.city)}
-            onChange={setField("city")}
-            readOnly={readOnly}
-            placeholder="Manchester"
-          />
-        </Field>
-        <Field label="County">
-          <TextInput
-            autoComplete="address-level1"
-            value={s(fields.county)}
-            onChange={setField("county")}
-            readOnly={readOnly}
-            placeholder="Greater Manchester"
-          />
-        </Field>
-        <Field label="Postcode">
-          <TextInput
-            autoComplete="postal-code"
-            value={s(fields.postcode)}
-            onChange={(v) => setField("postcode")(v.toUpperCase().slice(0, 10))}
-            readOnly={readOnly}
-            placeholder="M1 1AA"
-            maxLength={10}
-          />
-        </Field>
-        <Field label="Country">
-          <TextInput
-            autoComplete="country-name"
-            value={s(fields.country) || COUNTRY_DEFAULT}
-            onChange={setField("country")}
-            readOnly={readOnly}
-          />
-        </Field>
-      </div>
-
-      {/* ── Billing address toggle ── */}
-      <label className="flex items-start gap-2.5 pt-1">
-        <input
-          type="checkbox"
-          className="app-checkbox mt-0.5"
-          checked={fields.billingDiffers}
-          onChange={(e) => setBillingDiffers(e.target.checked)}
-          disabled={readOnly}
-        />
-        <span className="text-sm text-[var(--text-2)]">
-          Our billing address is different from our registered address
-        </span>
-      </label>
-
-      {fields.billingDiffers && (
-        <div className="space-y-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-            Billing address
-          </p>
-          <Field label="Address">
-            <TextInput
-              value={s(fields.billingAddressLine1)}
-              onChange={setField("billingAddressLine1")}
-              readOnly={readOnly}
-              placeholder="Finance Dept, 1 High Street"
-            />
-          </Field>
-          <Field label="Address line 2">
-            <TextInput
-              value={s(fields.billingAddressLine2)}
-              onChange={setField("billingAddressLine2")}
-              readOnly={readOnly}
-            />
-          </Field>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Town/City">
-              <TextInput
-                value={s(fields.billingCity)}
-                onChange={setField("billingCity")}
-                readOnly={readOnly}
-                placeholder="London"
-              />
-            </Field>
-            <Field label="County">
-              <TextInput
-                value={s(fields.billingCounty)}
-                onChange={setField("billingCounty")}
-                readOnly={readOnly}
-              />
-            </Field>
-            <Field label="Postcode">
-              <TextInput
-                value={s(fields.billingPostcode)}
-                onChange={setField("billingPostcode")}
-                readOnly={readOnly}
-                placeholder="EC1A 1BB"
-              />
-            </Field>
-            <Field label="Country">
-              <TextInput
-                value={s(fields.billingCountry) || COUNTRY_DEFAULT}
-                onChange={setField("billingCountry")}
-                readOnly={readOnly}
-              />
-            </Field>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function StepProduct({
-  fields,
-  setField,
-  readOnly,
-}: {
-  fields: SessionFields;
-  setField: (k: StringFieldKey) => (v: string) => void;
-  readOnly: boolean;
-}) {
-  return (
-    <>
-      <p className="text-sm text-[var(--text-3)]">
-        Tell us about the product. If it&apos;s already live, drop the URL — we&apos;ll take a quick look. (We don&apos;t run any deep scans until you officially come on board.)
-      </p>
-      <Field label="Product name">
-        <TextInput
-          value={s(fields.productName)}
-          onChange={setField("productName")}
-          readOnly={readOnly}
-          placeholder="Acme Health"
-        />
-      </Field>
-      <Field label="Live URL" hint="If your product is already deployed somewhere.">
-        <TextInput
-          type="url"
-          value={s(fields.productUrl)}
-          onChange={setField("productUrl")}
-          readOnly={readOnly}
-          placeholder="https://acmehealth.com"
-        />
-      </Field>
-      <Field
-        label="Short description"
-        hint="One paragraph — what does it do and who's it for?"
-      >
-        <TextArea
-          value={s(fields.productDescription)}
-          onChange={setField("productDescription")}
-          readOnly={readOnly}
-          rows={4}
-          maxLength={2000}
-        />
-      </Field>
-    </>
-  );
-}
-
-function StepGoals({
-  fields,
-  setField,
-  readOnly,
-}: {
-  fields: SessionFields;
-  setField: (k: StringFieldKey) => (v: string) => void;
-  readOnly: boolean;
-}) {
-  return (
-    <>
-      <p className="text-sm text-[var(--text-3)]">
-        What are you hoping Gitwork can help with? Build it from scratch, take it from prototype to production, fix a particular pain point — whatever&apos;s most useful for us to know.
-      </p>
-      <Field label="In your own words">
-        <TextArea
-          value={s(fields.projectGoals)}
-          onChange={setField("projectGoals")}
-          readOnly={readOnly}
-          rows={8}
-          maxLength={5000}
-        />
-      </Field>
-    </>
-  );
-}
-
-function StepBank({
-  bankInput,
-  setBank,
-  bankSummary,
-  readOnly,
-}: {
-  bankInput: BankInput;
-  setBank: (k: keyof BankInput) => (v: string) => void;
-  bankSummary: BankSummary;
-  readOnly: boolean;
-}) {
-  return (
-    <>
-      <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-xs leading-relaxed text-[var(--text-3)]">
-        Bank details are <strong>encrypted at rest</strong>. We use them to set up invoicing on
-        your project. Only Gitwork staff can see them.
-      </div>
-      <datalist id="uk-banks">
-        {UK_BANKS.map((b) => (
-          <option key={b} value={b} />
-        ))}
-      </datalist>
-      {bankSummary.onFile && (
-        <div className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          We&apos;ve got your bank details on file
-          {bankSummary.accountNumberLast4
-            ? ` (••••${bankSummary.accountNumberLast4})`
-            : ""}
-          . Re-enter below to overwrite them, or leave blank to keep what you sent.
-        </div>
-      )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Account holder name">
-          <TextInput
-            value={bankInput.accountHolder}
-            onChange={setBank("accountHolder")}
-            readOnly={readOnly}
-            placeholder="Acme Health Ltd"
-            autoComplete="off"
-            maxLength={70}
-          />
-        </Field>
-        <Field label="Bank name">
-          <TextInput
-            value={bankInput.bankName}
-            onChange={setBank("bankName")}
-            readOnly={readOnly}
-            placeholder="Barclays"
-            list="uk-banks"
-            autoComplete="off"
-            maxLength={60}
-          />
-        </Field>
-        <Field label="Sort code">
-          <TextInput
-            value={bankInput.sortCode}
-            onChange={(v) => setBank("sortCode")(formatSortCode(v))}
-            readOnly={readOnly}
-            placeholder="20-00-00"
-            autoComplete="off"
-            inputMode="numeric"
-            maxLength={8}
-          />
-        </Field>
-        <Field label="Account number" hint="8 digits.">
-          <TextInput
-            value={bankInput.accountNumber}
-            onChange={(v) => setBank("accountNumber")(digitsOnly(v, 8))}
-            readOnly={readOnly}
-            placeholder="12345678"
-            autoComplete="off"
-            inputMode="numeric"
-            maxLength={8}
-          />
-        </Field>
-        <Field
-          label="IBAN"
-          hint="For international clients only."
-        >
-          <TextInput
-            value={bankInput.iban}
-            onChange={(v) => setBank("iban")(alnumUpper(v, 34))}
-            readOnly={readOnly}
-            placeholder="GB29NWBK60161331926819"
-            autoComplete="off"
-            maxLength={34}
-          />
-        </Field>
-        <Field label="SWIFT / BIC">
-          <TextInput
-            value={bankInput.swiftBic}
-            onChange={(v) => setBank("swiftBic")(alnumUpper(v, 11))}
-            readOnly={readOnly}
-            placeholder="NWBKGB2L"
-            autoComplete="off"
-            maxLength={11}
-          />
-        </Field>
-      </div>
-      <Field label="Currency" hint="ISO code (GBP, USD, EUR…).">
-        <TextInput
-          value={bankInput.currency}
-          onChange={(v) => setBank("currency")(v.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 3))}
-          readOnly={readOnly}
-          placeholder="GBP"
-          maxLength={3}
-        />
-      </Field>
-    </>
-  );
-}
-
-function StepReview({
-  fields,
+function ReviewScreen({
+  structure,
+  steps,
+  answers,
   bankSummary,
   onEditStep,
   readOnly,
   token,
 }: {
-  fields: SessionFields;
+  structure: OnboardingFormStructure;
+  steps: OnboardingFormStructure["steps"];
+  answers: OnboardingAnswers;
   bankSummary: BankSummary;
   onEditStep: (idx: number) => void;
   readOnly: boolean;
   token: string;
 }) {
-  const contactName = [fields.contactFirstName, fields.contactLastName].filter(Boolean).join(" ");
-  const rows: Array<{ stepIdx: number; label: string; value: string }> = [
-    { stepIdx: 1, label: "Contact", value: [contactName, fields.contactEmail].filter(Boolean).join(" · ") },
-    { stepIdx: 2, label: "Company", value: [fields.companyName, fields.invoiceEmail ? `invoices → ${fields.invoiceEmail}` : null].filter(Boolean).join(" · ") || "—" },
-    { stepIdx: 3, label: "Product", value: [fields.productName, fields.productUrl].filter(Boolean).join(" — ") || "—" },
-    { stepIdx: 4, label: "Goals", value: fields.projectGoals ? `${fields.projectGoals.slice(0, 80)}${fields.projectGoals.length > 80 ? "…" : ""}` : "—" },
-    {
-      stepIdx: 5,
-      label: "Bank",
-      value: bankSummary.onFile
+  const ids = fieldIdSet(structure);
+  const rows = steps.map((s, i) => {
+    const screenIdx = i + 1;
+    const bankField = s.fields.find((f) => f.type === "bank_details");
+    let value: string;
+    if (bankField) {
+      value = bankSummary.onFile
         ? `On file${bankSummary.accountNumberLast4 ? ` (••••${bankSummary.accountNumberLast4})` : ""}`
-        : "Not provided",
-    },
-  ];
+        : "Not provided";
+    } else {
+      const parts = s.fields
+        .filter((f) => f.type !== "static" && f.type !== "bank_details" && isFieldVisible(f, answers, ids))
+        .map((f) => fieldSummary(f, answers))
+        .filter(Boolean);
+      value = parts.join(" · ");
+      if (value.length > 90) value = `${value.slice(0, 90)}…`;
+    }
+    return { screenIdx, label: s.title, value: value || "—" };
+  });
+
+  const review = structure.review;
+
   return (
     <>
-      <p className="text-sm text-[var(--text-3)]">
-        Quick check before you send. Tap a section to edit.
-      </p>
+      {review.blurb ? <p className="text-sm text-[var(--text-3)]">{review.blurb}</p> : null}
       <ul className="divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)]">
         {rows.map((row) => (
-          <li
-            key={row.label}
-            className="flex items-center justify-between gap-3 px-4 py-3"
-          >
+          <li key={row.screenIdx} className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                 {row.label}
               </p>
-              <p className="truncate text-sm text-[var(--text-2)]">{row.value || "—"}</p>
+              <p className="truncate text-sm text-[var(--text-2)]">{row.value}</p>
             </div>
             {!readOnly && (
               <button
                 type="button"
-                onClick={() => onEditStep(row.stepIdx)}
+                onClick={() => onEditStep(row.screenIdx)}
                 className="app-button app-button-tertiary app-button-xs"
               >
                 Edit
@@ -1181,20 +564,17 @@ function StepReview({
         <ArrowDownTrayIcon className="h-4 w-4" />
         Download a copy (PDF)
       </a>
-      <p className="text-xs text-[var(--text-4)]">
-        Your bank details are never included in the download.
-      </p>
+      <p className="text-xs text-[var(--text-4)]">Your bank details are never included in the download.</p>
       {!readOnly && (
         <>
-          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-xs leading-relaxed text-[var(--text-3)]">
-            Your service agreement and welcome pack are sent separately once we&apos;ve reviewed
-            this — nothing to sign here.
-          </div>
-          <p className="text-xs leading-relaxed text-[var(--text-4)]">
-            By submitting, you confirm the answers above are accurate and you&apos;re happy for
-            Gitwork to use them to set up your engagement. You&apos;ll still be able to make changes
-            via this link until we move you to active workflow.
-          </p>
+          {review.legal ? (
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-xs leading-relaxed text-[var(--text-3)]">
+              {review.legal}
+            </div>
+          ) : null}
+          {review.agreement ? (
+            <p className="text-xs leading-relaxed text-[var(--text-4)]">{review.agreement}</p>
+          ) : null}
         </>
       )}
     </>

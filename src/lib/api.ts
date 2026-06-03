@@ -18,6 +18,11 @@ import type {
   ClientPlatformRecord,
   WorkspaceClientStatus,
 } from "@/types/client";
+import type {
+  OnboardingFormRecord,
+  OnboardingFormStructure,
+  OnboardingFormSummary,
+} from "@/types/onboarding";
 import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
 import type {
   CandidateListParams,
@@ -301,7 +306,7 @@ export async function listOnboardingLinks(): Promise<{ links: OnboardingLinkReco
 }
 
 export async function createOnboardingLink(
-  input: { label?: string } = {},
+  input: { label?: string; formId?: string } = {},
 ): Promise<{ link: OnboardingLinkRecord }> {
   return apiFetch<{ link: OnboardingLinkRecord }>("/api/clients/onboarding-links", {
     method: "POST",
@@ -323,6 +328,63 @@ export async function moveOnboardingToWorkflow(
     `/api/clients/onboarding-links/${id}/move-to-workflow`,
     { method: "POST" },
   );
+}
+
+// ─── Onboarding forms (templates) ───────────────────────────────────────────
+
+export async function listOnboardingForms(
+  includeArchived = false,
+): Promise<{ forms: OnboardingFormSummary[] }> {
+  const q = includeArchived ? "?includeArchived=true" : "";
+  return apiFetch<{ forms: OnboardingFormSummary[] }>(`/api/onboarding-forms${q}`);
+}
+
+export async function getOnboardingForm(id: string): Promise<{ form: OnboardingFormRecord }> {
+  return apiFetch<{ form: OnboardingFormRecord }>(`/api/onboarding-forms/${id}`);
+}
+
+export async function createOnboardingForm(input: {
+  name: string;
+  description?: string;
+  cloneFromId?: string;
+  structure?: OnboardingFormStructure;
+}): Promise<{ form: OnboardingFormRecord }> {
+  return apiFetch<{ form: OnboardingFormRecord }>("/api/onboarding-forms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateOnboardingForm(
+  id: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    structure?: OnboardingFormStructure;
+    isDefault?: boolean;
+    isArchived?: boolean;
+  },
+): Promise<{ form: OnboardingFormRecord }> {
+  return apiFetch<{ form: OnboardingFormRecord }>(`/api/onboarding-forms/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function duplicateOnboardingForm(id: string): Promise<{ form: OnboardingFormRecord }> {
+  return apiFetch<{ form: OnboardingFormRecord }>(`/api/onboarding-forms/${id}/duplicate`, {
+    method: "POST",
+  });
+}
+
+export async function deleteOnboardingForm(
+  id: string,
+): Promise<{ deleted: boolean; archived?: boolean }> {
+  return apiFetch<{ deleted: boolean; archived?: boolean }>(`/api/onboarding-forms/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export async function setClientStatusApi(

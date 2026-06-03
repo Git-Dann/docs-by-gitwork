@@ -1,5 +1,24 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { OnboardingPublicPayload } from "@/server/onboarding";
+import { fieldIdSet, isFieldVisible } from "@/lib/onboarding/structure";
+import type { OnboardingAnswers, OnboardingFieldDef } from "@/types/onboarding";
+
+/** Display string for a field's answer, or null when there's nothing to show. */
+function displayValue(def: OnboardingFieldDef, answers: OnboardingAnswers): string | null {
+  const raw = answers[def.id];
+  if (def.type === "checkbox") return raw === true ? "Yes" : null;
+  if (def.type === "multiselect") {
+    const arr = Array.isArray(raw) ? raw : [];
+    if (!arr.length) return null;
+    return arr.map((v) => def.options?.find((o) => o.id === v)?.label ?? String(v)).join(", ");
+  }
+  if (def.type === "select") {
+    if (raw == null || raw === "") return null;
+    return def.options?.find((o) => o.id === raw)?.label ?? String(raw);
+  }
+  const s = raw == null ? "" : String(raw).trim();
+  return s || null;
+}
 
 // Mirrors the Docs `DocumentCover` look (blue gradient hero, faded rings, mono
 // eyebrow, editorial serif title, white body) using pdf-lib's built-in fonts —
@@ -8,7 +27,6 @@ import type { OnboardingPublicPayload } from "@/server/onboarding";
 // Bank details are never included (the public payload doesn't carry them).
 
 const BRAND = rgb(0.114, 0.306, 0.847); // #1D4ED8
-const BRAND_DARK = rgb(0.118, 0.227, 0.541); // #1E3A8A
 const INK = rgb(0.059, 0.09, 0.165); // #0F172A
 const BODY = rgb(0.216, 0.255, 0.318); // #374151
 const MUTED = rgb(0.58, 0.639, 0.722); // #94A3B8
@@ -47,7 +65,7 @@ export async function buildOnboardingPdf(
   session: OnboardingPublicPayload,
   opts: { generatedOn: string },
 ): Promise<Uint8Array> {
-  const f = session.fields;
+  const { structure, answers } = session;
   const doc = await PDFDocument.create();
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   const serif = await doc.embedFont(StandardFonts.TimesRoman);
@@ -88,7 +106,8 @@ export async function buildOnboardingPdf(
     opacity: 0.6,
   });
   // Editorial title (company name, or a generic fallback)
-  const title = f.companyName?.trim() || "Onboarding summary";
+  const companyName = typeof answers.companyName === "string" ? answers.companyName.trim() : "";
+  const title = companyName || "Onboarding summary";
   const titleLines = wrap(title, serif, 30, contentW - 40).slice(0, 2);
   titleLines.forEach((ln, i) => {
     page.drawText(ln, { x: M, y: H - 112 - i * 34, size: 30, font: serif, color: WHITE });
@@ -141,57 +160,41 @@ export async function buildOnboardingPdf(
     top += 8;
   };
 
-  const fullName = [f.contactFirstName, f.contactLastName].filter(Boolean).join(" ");
+  // Render the form's own steps + fields (so custom questions appear too). Skip
+  // chrome (static) and empty answers; the bank field prints a fixed "omitted" note.
+  const idSet = fieldIdSet(structure);
+  let firstStep = true;
 
-  heading("Contact");
-  row("Name", fullName);
-  row("Email", f.contactEmail);
-  row("Role", f.contactRole);
-  row("Phone", f.contactPhone);
+  for (const step of structure.steps) {
+    const visible = step.fields.filter((field) => isFieldVisible(field, answers, idSet));
+    const hasBank = visible.some((fld) => fld.type === "bank_details");
+    const printable = visible.filter(
+      (fld) => fld.type !== "static" && fld.type !== "bank_details" && displayValue(fld, answers),
+    );
+    if (printable.length === 0 && !hasBank) continue;
 
-  top += 8;
-  heading("Company");
-  row("Company name", f.companyName);
-  row("Registered name", f.legalCompanyName);
-  row("Company number", f.companyNumber);
-  row("VAT number", f.vatNumber);
-  row("Invoice email", f.invoiceEmail);
+    if (!firstStep) top += 8;
+    firstStep = false;
+    heading(step.title);
 
-  const hq = [f.addressLine1, f.addressLine2, f.city, f.county, f.postcode, f.country].filter(Boolean).join(", ");
-  if (hq) {
-    top += 8;
-    heading("Registered address");
-    para(hq);
-  }
-
-  if (f.billingDiffers) {
-    const billing = [f.billingAddressLine1, f.billingAddressLine2, f.billingCity, f.billingCounty, f.billingPostcode, f.billingCountry]
-      .filter(Boolean)
-      .join(", ");
-    if (billing) {
-      top += 8;
-      heading("Billing address");
-      para(billing);
+    for (const field of visible) {
+      if (field.type === "static") continue;
+      if (field.type === "bank_details") {
+        para("Provided securely and stored encrypted by Gitwork. Omitted from this copy for your security.");
+        continue;
+      }
+      const value = displayValue(field, answers);
+      if (!value) continue;
+      if (field.type === "long_text") {
+        ensure(15);
+        page.drawText(field.label, { x: M, y: yOf(), size: 9, font: mono, color: MUTED });
+        top += 15;
+        para(value);
+      } else {
+        row(field.label, value);
+      }
     }
   }
-
-  if (f.productName || f.productUrl || f.productDescription) {
-    top += 8;
-    heading("Product");
-    row("Name", f.productName);
-    row("URL", f.productUrl);
-    if (f.productDescription) para(f.productDescription);
-  }
-
-  if (f.projectGoals) {
-    top += 8;
-    heading("What you're hoping for");
-    para(f.projectGoals);
-  }
-
-  top += 8;
-  heading("Bank details");
-  para("Provided securely and stored encrypted by Gitwork. Omitted from this copy for your security.");
 
   // ── Footer (date, right-aligned, above a hairline) ──
   const footY = M - 6;

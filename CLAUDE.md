@@ -526,3 +526,45 @@ the report auto-fills metrics with **month-over-month trends**.
 - **Caveat** — the Big Wedge adapter's `overall-report`/`feedback/stats` shapes are undocumented
   in their OpenAPI spec, so those metrics are flattened best-effort and may want refining once a
   live admin token + sample response are available. Rounds-played is clean and month-scoped.
+
+## 16. Recent Changes (June 2026) — Customisable onboarding (forms ported onto the Docs pattern)
+
+The public onboarding flow (`/onboarding/[token]`) was **fully hardcoded** — 7 steps + every
+label/hint/paragraph baked into `onboarding-flow.tsx`, each answer a fixed `ClientOnboarding`
+column. It's now **data-driven**, mirroring the Docs Template + JSON + field-registry pattern, so
+the copy and fields are editable in-app and there can be multiple named forms.
+
+- **Model:** new `OnboardingForm` (the editable template — `steps` Json holds an
+  `OnboardingFormStructure` = `{ welcome, steps[], review }`; `slug` unique; `isDefault`;
+  `isArchived`). Additive `ClientOnboarding` columns: `formId`, `formSnapshot` (Json — the frozen
+  structure the link renders from), `answers` (Json — custom-field answers). **All additive** → safe
+  under the no-`--accept-data-loss` build. The 26 existing system columns + `bankAccount` stay.
+- **Snapshot on mint** (like Docs copies template.sections): `createOnboardingLink({ formId })`
+  freezes the form's structure onto `formSnapshot`, so editing a form never changes links already
+  sent. Legacy rows (null snapshot) fall back to the in-code default form → render unchanged.
+- **Field registry + system catalog + default form** in `src/lib/onboarding/`:
+  `field-types.ts` (type metadata + `validateAnswer`, framework-free so the server imports it),
+  `system-fields.ts` (catalog of built-in client-mapped fields + `SYSTEM_TEXT_COLUMNS` write
+  allow-list, replacing the old `AUTOSAVABLE_FIELDS`), `default-form.ts` (today's 7 steps verbatim;
+  seeded as the default `OnboardingForm` in `bootstrap.ts`, `update: {}` so edits persist across
+  boots), `structure.ts` (pure walkers: `fieldsById`, `isFieldVisible` showIf, `isFormStructure`).
+  System-field id === its column name, so columns + answers line up.
+- **System vs custom:** system fields persist to their column and map into `WorkspaceClient` on
+  submit (unchanged mapping). Custom questions live in `ClientOnboarding.answers` (JSON), surface in
+  review/PDF, and are summarised into the new client's `notes`. `autosaveOnboarding` routes each
+  answer by its snapshot field def; `submitOnboarding` validates the form's *own* required fields
+  (not the old fixed 3-column check).
+- **Public flow** (`onboarding-flow.tsx`) is now a generic engine over `session.structure` +
+  `session.answers`; one `FieldRenderer` (`src/components/onboarding/field-renderer.tsx`, shared with
+  the builder preview) renders any field type and keeps the input guards / UK-bank datalist / iOS
+  font sizing / bank sub-form. PDF (`onboarding-pdf.ts`) iterates the structure (custom answers too).
+- **Builder UI:** new **Settings → Onboarding** tab → `src/components/settings/onboarding/`
+  (`forms-tab` list, `form-builder` 3-pane: outline with `@dnd-kit` step+field reorder, field/step
+  copy editors, live preview reusing `FieldRenderer`; `add-field-palette` grouped Client-details vs
+  Custom-questions). Server `src/server/onboarding-forms.ts` + `/api/onboarding-forms(/[id])(/duplicate)`
+  (writes gated by `canManageClients`); hooks `use-onboarding-forms.ts`; fetchers in `lib/api.ts`.
+- **Mint picker:** `NewOnboardingLinkModal` (Portal) gained a form `<select>` → passes `formId`.
+- **Deferred / notes:** address fields are individual `short_text` (with `config.width:"half"` for
+  the grid) rather than a compound `address_group`, and the billing block uses generic per-field
+  `showIf` instead of the old bordered box — faithful, not pixel-identical. Verified via `tsc`,
+  `eslint`, and `next build` (clean); `prisma db push` (additive) applies on deploy.

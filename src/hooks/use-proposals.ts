@@ -100,7 +100,7 @@ export function useOnboardingLinks() {
 export function useCreateOnboardingLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { label?: string } = {}) => createOnboardingLink(input),
+    mutationFn: (input: { label?: string; formId?: string } = {}) => createOnboardingLink(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["onboarding-links"] });
     },

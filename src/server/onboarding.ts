@@ -4,6 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { encryptNullable, decryptNullable } from "@/lib/encryption";
 import { slugifyClientName } from "@/lib/clients";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { getDefaultOnboardingForm } from "@/lib/onboarding/default-form";
+import {
+  SYSTEM_TEXT_COLUMNS,
+  isSystemTextColumn,
+  isSystemBooleanColumn,
+} from "@/lib/onboarding/system-fields";
+import { fieldIdSet, fieldsById, isFieldVisible, isFormStructure } from "@/lib/onboarding/structure";
+import { collectsAnswer, validateAnswer } from "@/lib/onboarding/field-types";
+import type { OnboardingAnswers, OnboardingFormStructure } from "@/types/onboarding";
 
 const onboardings = (prisma as unknown as {
   clientOnboarding: Prisma.ClientOnboardingDelegate;
@@ -21,49 +30,18 @@ const workspaceClients = (prisma as unknown as {
   workspaceClient: Prisma.WorkspaceClientDelegate;
 }).workspaceClient;
 
-// Field set the public autosave is allowed to touch — explicitly enumerated so a
-// rogue payload can't write to workspaceId / status / token / etc.
-const AUTOSAVABLE_FIELDS = [
-  "contactFirstName",
-  "contactLastName",
-  "contactEmail",
-  "contactRole",
-  "contactPhone",
-  "invoiceEmail",
-  "companyName",
-  "legalCompanyName",
-  "companyNumber",
-  "vatNumber",
-  "addressLine1",
-  "addressLine2",
-  "city",
-  "county",
-  "postcode",
-  "country",
-  "billingAddressLine1",
-  "billingAddressLine2",
-  "billingCity",
-  "billingCounty",
-  "billingPostcode",
-  "billingCountry",
-  "productName",
-  "productUrl",
-  "productDescription",
-  "projectGoals",
-] as const;
-
-type AutosavableField = (typeof AUTOSAVABLE_FIELDS)[number];
-
-// billingDiffers is a boolean toggle (not a free-text field) but is still
-// client-editable, so it rides alongside the string fields in the payload.
-export type OnboardingFields = Record<AutosavableField, string | null> & {
-  billingDiffers: boolean;
-};
-
 export type OnboardingPublicPayload = {
   status: "IN_PROGRESS" | "SUBMITTED" | "LINKED";
   currentStep: number;
-  fields: OnboardingFields;
+  /** The form structure rendered by the public flow (snapshot, or in-code default). */
+  structure: OnboardingFormStructure;
+  /**
+   * System text-column values keyed by column name. Kept for the admin list UI +
+   * PDF filename (back-compat). Custom answers are NOT in here — see `answers`.
+   */
+  fields: Record<string, string | null>;
+  /** Unified answer map keyed by field id: system columns + billingDiffers + custom JSON. */
+  answers: OnboardingAnswers;
   bank: {
     onFile: boolean;
     currency: string | null;
@@ -72,10 +50,14 @@ export type OnboardingPublicPayload = {
   submittedAt: string | null;
 };
 
-export type OnboardingAdminRecord = OnboardingPublicPayload & {
+// Lean admin record — omits the full form `structure` + `answers` map so the
+// links list doesn't ship a snapshot per row. `fields` (system columns) is enough
+// for the list UI; custom answers surface on the materialised client's notes.
+export type OnboardingAdminRecord = Omit<OnboardingPublicPayload, "structure" | "answers"> & {
   id: string;
   accessToken: string;
   label: string | null;
+  formId: string | null;
   workspaceClientId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -93,23 +75,71 @@ function generateAccessToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-function toPublicPayload(row: OnboardingRow): OnboardingPublicPayload {
-  const stringFields = AUTOSAVABLE_FIELDS.reduce(
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** The structure a row renders from: its frozen snapshot, else the in-code default. */
+function structureFor(row: { formSnapshot: Prisma.JsonValue | null }): OnboardingFormStructure {
+  if (isFormStructure(row.formSnapshot)) {
+    return row.formSnapshot as unknown as OnboardingFormStructure;
+  }
+  return getDefaultOnboardingForm();
+}
+
+/** System text columns as a record keyed by column name. */
+function systemFieldsRecord(row: OnboardingRow): Record<string, string | null> {
+  return SYSTEM_TEXT_COLUMNS.reduce(
     (acc, key) => {
       const value = row[key as keyof OnboardingRow] as string | null | undefined;
-      acc[key] = (value ?? null) as string | null;
+      acc[key] = value ?? null;
       return acc;
     },
-    {} as Record<AutosavableField, string | null>,
+    {} as Record<string, string | null>,
   );
-  const fields: OnboardingFields = {
-    ...stringFields,
-    billingDiffers: Boolean(row.billingDiffers),
-  };
+}
+
+/** Unified answer map keyed by field id: system columns + billingDiffers + custom JSON. */
+function mergedAnswers(row: OnboardingRow): OnboardingAnswers {
+  const custom = isPlainObject(row.answers) ? (row.answers as OnboardingAnswers) : {};
+  return { ...systemFieldsRecord(row), billingDiffers: Boolean(row.billingDiffers), ...custom };
+}
+
+/** Labels of required, visible, unanswered fields — empty when the form is ready to submit. */
+function missingRequiredLabels(row: OnboardingRow): string[] {
+  const structure = structureFor(row);
+  const answers = mergedAnswers(row);
+  const ids = fieldIdSet(structure);
+  const missing: string[] = [];
+  for (const step of structure.steps) {
+    for (const f of step.fields) {
+      if (!f.required || f.type === "bank_details" || !collectsAnswer(f.type)) continue;
+      if (!isFieldVisible(f, answers, ids)) continue;
+      const v = answers[f.id];
+      const ok =
+        f.type === "checkbox"
+          ? v === true
+          : f.type === "multiselect"
+            ? Array.isArray(v) && v.length > 0
+            : typeof v === "string"
+              ? v.trim().length > 0
+              : v != null;
+      if (!ok) missing.push(f.label || f.id);
+    }
+  }
+  return missing;
+}
+
+function toPublicPayload(row: OnboardingRow): OnboardingPublicPayload {
+  const fields = systemFieldsRecord(row);
+  const answers = mergedAnswers(row);
+
   return {
     status: (row.status as "IN_PROGRESS" | "SUBMITTED" | "LINKED") ?? "IN_PROGRESS",
     currentStep: row.currentStep,
+    structure: structureFor(row),
     fields,
+    answers,
     bank: {
       onFile: Boolean(row.bankAccount),
       currency: row.bankAccount?.currency ?? null,
@@ -120,11 +150,17 @@ function toPublicPayload(row: OnboardingRow): OnboardingPublicPayload {
 }
 
 function toAdminRecord(row: OnboardingRow): OnboardingAdminRecord {
+  const pub = toPublicPayload(row);
   return {
-    ...toPublicPayload(row),
+    status: pub.status,
+    currentStep: pub.currentStep,
+    fields: pub.fields,
+    bank: pub.bank,
+    submittedAt: pub.submittedAt,
     id: row.id,
     accessToken: row.accessToken,
     label: row.label,
+    formId: row.formId ?? null,
     workspaceClientId: row.workspaceClientId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -132,14 +168,38 @@ function toAdminRecord(row: OnboardingRow): OnboardingAdminRecord {
   };
 }
 
-export async function createOnboardingLink(input?: { label?: string }) {
+/** Resolve which form to mint from: the explicit id (if live), else the default. */
+async function resolveForm(
+  formId?: string,
+): Promise<{ id: string; steps: Prisma.JsonValue } | null> {
+  if (formId) {
+    const byId = await prisma.onboardingForm.findFirst({
+      where: { id: formId, isArchived: false },
+      select: { id: true, steps: true },
+    });
+    if (byId) return byId;
+  }
+  return prisma.onboardingForm.findFirst({
+    where: { isArchived: false, isDefault: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, steps: true },
+  });
+}
+
+export async function createOnboardingLink(input?: { label?: string; formId?: string }) {
   const { workspace } = await ensureBaseRecords();
+  // Snapshot the form's structure onto the row so later edits to the form never
+  // change a link that's already out. Falls back to the in-code default.
+  const form = await resolveForm(input?.formId);
+  const snapshot = (form?.steps ?? getDefaultOnboardingForm()) as unknown as Prisma.InputJsonValue;
   const accessToken = generateAccessToken();
   const row = await onboardings.create({
     data: {
       workspaceId: workspace.id,
       accessToken,
       label: input?.label?.trim() || null,
+      formId: form?.id ?? null,
+      formSnapshot: snapshot,
     },
     include: { bankAccount: true },
   });
@@ -222,15 +282,15 @@ export async function revealOnboardingBank(
 
 export async function autosaveOnboarding(
   token: string,
-  input: Partial<
-    Record<AutosavableField | "currentStep", string | number | null> & {
-      billingDiffers: boolean;
-    }
-  >,
+  input: {
+    currentStep?: number;
+    billingDiffers?: boolean;
+    answers?: Record<string, unknown>;
+  },
 ): Promise<OnboardingPublicPayload | null> {
   const row = await onboardings.findUnique({
     where: { accessToken: token },
-    select: { id: true, status: true },
+    select: { id: true, status: true, answers: true, formSnapshot: true },
   });
   if (!row) return null;
   if (row.status === "LINKED") {
@@ -238,23 +298,44 @@ export async function autosaveOnboarding(
     return getOnboardingByTokenPublic(token);
   }
 
-  const data: Record<string, string | number | boolean | null> = {};
-  for (const key of AUTOSAVABLE_FIELDS) {
-    if (key in input) {
-      const v = input[key];
-      data[key] = typeof v === "string" ? v.trim() || null : v ?? null;
+  // Route each answer by its field definition (from the row's snapshot): system
+  // fields write to their dedicated column, custom fields merge into `answers` JSON.
+  // Only field ids present in the snapshot are honoured — a rogue key is ignored.
+  const defs = fieldsById(structureFor(row));
+  const data: Record<string, string | number | boolean | null | Prisma.InputJsonValue> = {};
+  const custom: OnboardingAnswers = isPlainObject(row.answers)
+    ? { ...(row.answers as OnboardingAnswers) }
+    : {};
+  let customTouched = false;
+
+  if (input.answers) {
+    for (const [id, raw] of Object.entries(input.answers)) {
+      const def = defs.get(id);
+      if (!def || !collectsAnswer(def.type) || def.type === "bank_details") continue;
+      const { value } = validateAnswer(def, raw);
+      if (isSystemBooleanColumn(def.systemKey)) {
+        data.billingDiffers = Boolean(value);
+      } else if (def.systemKey && isSystemTextColumn(def.systemKey)) {
+        data[def.systemKey] = typeof value === "string" ? value : value == null ? null : String(value);
+      } else {
+        custom[id] = value;
+        customTouched = true;
+      }
     }
-  }
-  if (typeof input.currentStep === "number") {
-    data.currentStep = input.currentStep;
   }
   if (typeof input.billingDiffers === "boolean") {
     data.billingDiffers = input.billingDiffers;
   }
+  if (typeof input.currentStep === "number") {
+    data.currentStep = input.currentStep;
+  }
+  if (customTouched) {
+    data.answers = custom as Prisma.InputJsonValue;
+  }
 
   await onboardings.update({
     where: { id: row.id },
-    data,
+    data: data as Prisma.ClientOnboardingUpdateInput,
   });
   return getOnboardingByTokenPublic(token);
 }
@@ -319,6 +400,41 @@ export async function saveOnboardingBank(
 }
 
 /**
+ * Render custom (non-system) answers as a short text block appended to the new
+ * client's notes — custom questions don't map to a client column, so this is how
+ * the operator sees them once the onboarding is materialised.
+ */
+function summariseCustomAnswers(row: OnboardingRow): string {
+  if (!isPlainObject(row.answers)) return "";
+  const answers = row.answers as OnboardingAnswers;
+  const defs = fieldsById(structureFor(row));
+  const lines: string[] = [];
+  for (const [id, value] of Object.entries(answers)) {
+    const def = defs.get(id);
+    if (!def || def.systemKey) continue; // only custom fields
+    if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) continue;
+    let rendered: string;
+    if (Array.isArray(value)) {
+      rendered = value.map((v) => def.options?.find((o) => o.id === v)?.label ?? v).join(", ");
+    } else if (typeof value === "boolean") {
+      rendered = value ? "Yes" : "No";
+    } else if (def.type === "select") {
+      rendered = def.options?.find((o) => o.id === value)?.label ?? String(value);
+    } else {
+      rendered = String(value);
+    }
+    lines.push(`${def.label || id}: ${rendered}`);
+  }
+  return lines.length ? `Onboarding answers\n${lines.join("\n")}` : "";
+}
+
+/** Combine the project-goals free-text with any custom-answer summary into notes. */
+function buildClientNotes(row: OnboardingRow): string | null {
+  const parts = [row.projectGoals?.trim() || "", summariseCustomAnswers(row)].filter(Boolean);
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+/**
  * Materialise a Pending-review WorkspaceClient from a submitted onboarding row.
  * Creates the client (status = PENDING_REVIEW) from the captured answers and
  * copies the encrypted bank cipher across to ClientBankAccount. Does NOT mutate
@@ -356,7 +472,7 @@ async function materializePendingClient(
       county: row.county,
       postcode: row.postcode,
       country: row.country,
-      notes: row.projectGoals,
+      notes: buildClientNotes(row),
       primaryContactName: contactName || null,
       primaryContactEmail: row.contactEmail,
       primaryContactPhone: row.contactPhone,
@@ -416,11 +532,12 @@ export async function submitOnboarding(
   // Already materialised — nothing to do.
   if (row.workspaceClientId) return getOnboardingByTokenPublic(token);
 
-  // Minimum required answers — first name, email, company name. The wizard
-  // prevents submit when these are blank, but enforce here too.
-  if (!row.contactFirstName?.trim() || !row.contactEmail?.trim() || !row.companyName?.trim()) {
+  // Enforce the form's own required fields (the wizard also gates this client-side).
+  // Derived from the snapshot so custom forms work — not the old fixed 3-column check.
+  const missing = missingRequiredLabels(row);
+  if (missing.length > 0) {
     throw new Error(
-      "Please complete the About you and Company steps before submitting.",
+      `Please complete the required field${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`,
     );
   }
 
@@ -492,7 +609,7 @@ export async function moveOnboardingToWorkflow(id: string): Promise<{ slug: stri
       county: row.county,
       postcode: row.postcode,
       country: row.country,
-      notes: row.projectGoals,
+      notes: buildClientNotes(row),
       primaryContactName: contactName || null,
       primaryContactEmail: row.contactEmail,
       primaryContactPhone: row.contactPhone,
