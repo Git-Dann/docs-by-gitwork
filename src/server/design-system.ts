@@ -127,7 +127,7 @@ export async function setDesignSystemShare(
 export async function getPublicDesignSystem(token: string): Promise<PublicDesignSystemDTO | null> {
   const row = await prisma.clientDesignSystem.findFirst({
     where: { shareToken: token, shareEnabled: true },
-    include: { client: { select: { name: true } } },
+    include: { client: { select: { name: true, logoUrl: true } } },
   });
   if (!row) return null;
   const tokens = row.tokens as unknown as DesignTokens;
@@ -135,6 +135,7 @@ export async function getPublicDesignSystem(token: string): Promise<PublicDesign
     clientName: tokens?.clientName || row.client.name,
     tokens,
     generatedAt: row.updatedAt.toISOString(),
+    logoUrl: row.client.logoUrl ?? null,
   };
 }
 

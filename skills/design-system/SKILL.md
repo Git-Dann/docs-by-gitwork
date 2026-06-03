@@ -46,6 +46,10 @@ human to confirm.
 - **Inputs / badges / alerts / emptyState / logoRules** — optional groups; include them whenever the
   guidelines show them (e.g. focus rings, status/grade badges, dashed empty-state, logo min-sizes and
   colour-on-surface rules). Omit a group entirely if the brand genuinely doesn't define it.
+- **Logo lockups** — list each logo image under `logoRules.assets` as `{ label, src, background }`,
+  where `src` is a **hosted image URL** (PNG/SVG) of the lockup (e.g. primary full logo, white/reversed,
+  logomark) and `background` is `"light"` or `"dark"` (the surface to preview it on). The viewer renders
+  these as a logo showcase. Without `assets`, it falls back to the client's uploaded logo on light/dark.
 - **cssVariables** — emit the full `:root {}` block. If you can't, leave it `""` and Foundry will
   synthesise a fallback.
 
@@ -90,7 +94,7 @@ Match Foundry's type at `src/types/design-tokens.ts`. Required core:
   "inputs":  [{ "state", "border?", "ring?", "background?", "textColour?", "note?" }],
   "badges":  [{ "label", "background", "textColour", "border?", "group?" }],
   "alerts":  [{ "name", "background", "textColour", "border?", "usage?" }],
-  "logoRules": { "minSizes?": {}, "clearSpace?", "colourRules?": [{ "surface", "logoVersion" }], "notes?" },
+  "logoRules": { "assets?": [{ "label", "src", "background?": "light|dark" }], "minSizes?": {}, "clearSpace?", "colourRules?": [{ "surface", "logoVersion" }], "notes?" },
 
   "cssVariables": ":root { … }",
   "confidence": { "colours": "HIGH", "typography": "MEDIUM" }

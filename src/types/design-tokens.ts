@@ -90,11 +90,19 @@ export interface AlertToken {
   usage?: string;
 }
 
+export interface LogoAsset {
+  label: string; // e.g. "Primary full logo", "White logo", "Logomark"
+  src: string; // image URL (or data URI) of the lockup
+  background?: "light" | "dark"; // which surface to preview it on
+}
+
 export interface LogoRules {
   minSizes?: Record<string, string>; // e.g. { horizontal: "20px" }
   clearSpace?: string;
   colourRules?: Array<{ surface: string; logoVersion: string }>;
   notes?: string;
+  /** Logo lockups to render as images (primary / white / logomark …). */
+  assets?: LogoAsset[];
 }
 
 export type DesignTokenConfidence = "HIGH" | "MEDIUM" | "LOW";
@@ -162,4 +170,6 @@ export interface PublicDesignSystemDTO {
   clientName: string;
   tokens: DesignTokens;
   generatedAt: string;
+  /** The client's uploaded logo (shown in the hero + logo section). */
+  logoUrl: string | null;
 }

@@ -7,13 +7,11 @@ import {
   useClientDesignSystem,
   useSetClientDesignSystemShare,
 } from "@/hooks/use-design-system";
-import { formatDate } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 import { DesignSystemViewer } from "./design-system-viewer";
 import { ImportModal } from "./import-modal";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
-const chip =
-  "rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
 
 export function DesignSystemWorkspace({ slug }: { slug: string }) {
   const { data: clientData } = useClientDetail(slug);
@@ -44,7 +42,7 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <Link
           href={`/app/portal/${slug}`}
           className="text-[13px] text-[var(--text-3)] transition hover:text-[var(--brand-700)]"
@@ -52,47 +50,49 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
           ← {client?.name ?? "Client"}
         </Link>
         {ds?.exists && (
-          <div className="flex flex-wrap items-center gap-2">
-            {ds.updatedAt && (
-              <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                Updated {formatDate(ds.updatedAt)}
-                {ds.updatedBy ? ` · ${ds.updatedBy}` : ""}
-              </span>
-            )}
-            <button type="button" className={chip} onClick={() => tokens && copy(tokens.cssVariables || "", setCopiedCss)}>
-              {copiedCss ? "Copied ✓" : "Copy CSS"}
-            </button>
-            <button type="button" className={chip} onClick={() => setImportOpen(true)}>
-              Update
-            </button>
-            <button
+          <div className="flex items-center gap-2">
+            <Button
               type="button"
-              onClick={() => share.mutate(!shareOn)}
-              disabled={share.isPending}
-              className={
-                shareOn
-                  ? "rounded-[6px] border border-[var(--brand-600)] bg-[var(--surface-brand)] px-2.5 py-1 text-[11px] font-medium text-[var(--brand-800)] disabled:opacity-50"
-                  : chip
-              }
+              variant="secondary"
+              size="sm"
+              onClick={() => tokens && copy(tokens.cssVariables || "", setCopiedCss)}
             >
-              {shareOn ? "● Shared" : "Share"}
-            </button>
+              {copiedCss ? "Copied ✓" : "Copy CSS"}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
+              Update
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={share.isPending}
+              onClick={() => share.mutate(!shareOn)}
+            >
+              {shareOn ? "Shared" : "Share"}
+            </Button>
           </div>
         )}
       </div>
 
       {ds?.exists && shareOn && shareUrl && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-1.5">
-          <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-            Public link
-          </span>
-          <code className="flex-1 truncate text-[11px] text-[var(--text-3)]" style={{ fontFamily: MONO }}>
+        <div className="mb-5 flex flex-wrap items-center gap-3 text-[12px]">
+          <code className="truncate text-[var(--text-3)]" style={{ fontFamily: MONO }}>
             {shareUrl}
           </code>
-          <button type="button" className={chip} onClick={() => copy(shareUrl, setCopiedLink)}>
+          <button
+            type="button"
+            onClick={() => copy(shareUrl, setCopiedLink)}
+            className="shrink-0 font-medium text-[var(--brand-700)] hover:underline"
+          >
             {copiedLink ? "Copied ✓" : "Copy link"}
           </button>
-          <a href={ds.share.url ?? "#"} target="_blank" rel="noreferrer" className={chip}>
+          <a
+            href={ds.share.url ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 font-medium text-[var(--brand-700)] hover:underline"
+          >
             Open ↗
           </a>
         </div>
@@ -124,7 +124,7 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
           </div>
         </section>
       ) : (
-        <DesignSystemViewer tokens={tokens} />
+        <DesignSystemViewer tokens={tokens} clientLogoUrl={client?.logoUrl ?? null} />
       )}
 
       {importOpen && <ImportModal slug={slug} onClose={() => setImportOpen(false)} />}
