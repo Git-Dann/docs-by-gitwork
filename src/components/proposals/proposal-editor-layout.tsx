@@ -211,6 +211,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
+  // AI actions menu (Ask AI · Quick draft). Fixed-positioned like the approval popover because the
+  // editor header lives inside an overflow-hidden widget-card.
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [aiMenuPos, setAiMenuPos] = useState({ top: 0, right: 0 });
+  const aiMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const aiMenuRef = useRef<HTMLDivElement>(null);
 
   const baselineRef = useRef("");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -319,6 +325,29 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       document.removeEventListener("keydown", handleKey);
     };
   }, [approvalOpen]);
+
+  useEffect(() => {
+    if (!aiMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        aiMenuRef.current?.contains(e.target as Node) ||
+        aiMenuButtonRef.current?.contains(e.target as Node)
+      ) return;
+      setAiMenuOpen(false);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setAiMenuOpen(false);
+        aiMenuButtonRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [aiMenuOpen]);
 
   const saveDraft = useCallback(
     async (nextDraft: ProposalDocument) => {
@@ -775,33 +804,69 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               >
                 <ArrowUturnRightIcon className="h-4 w-4" />
               </button>
+              <Link
+                href={`/app/docs/${proposalId}/preview`}
+                title="Open full preview"
+                aria-label="Open full preview"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)]"
+              >
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </Link>
             </div>
-            <button
-              type="button"
-              onClick={() => setAiChatOpen(true)}
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <SparklesIcon className="h-4 w-4" />
-              Ask AI
-            </button>
-            <button
-              type="button"
-              onClick={() => setAiDraftOpen(true)}
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <SparklesIcon className="h-4 w-4" />
-              Quick draft
-            </button>
-            <Link
-              href={`/app/docs/${proposalId}/preview`}
-              className={buttonStyles({
-                variant: "secondary",
-                size: "md",
-              })}
-            >
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              Preview
-            </Link>
+
+            {/* AI menu — Ask AI · Quick draft */}
+            <div>
+              <button
+                ref={aiMenuButtonRef}
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={aiMenuOpen}
+                onClick={() => {
+                  const rect = aiMenuButtonRef.current?.getBoundingClientRect();
+                  if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                  setAiMenuOpen((v) => !v);
+                }}
+                className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5 pr-2" })}
+              >
+                <SparklesIcon className="h-4 w-4" />
+                AI
+                <ChevronDownIcon className={cn("h-4 w-4 opacity-70 transition", aiMenuOpen && "rotate-180")} />
+              </button>
+              {aiMenuOpen && (
+                <div
+                  ref={aiMenuRef}
+                  role="menu"
+                  aria-label="AI actions"
+                  style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
+                  className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
+                >
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
+                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                    <span>
+                      <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
+                      <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
+                    </span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
+                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                    <span>
+                      <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
+                      <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               ref={approvalButtonRef}
               type="button"
@@ -824,7 +889,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               })}
             >
               <CheckCircleIcon className="h-4 w-4" />
-              Approve, Share &amp; Export
+              Review &amp; Send
               <span className="rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95">
                 {statusLabel(draft.status)}
               </span>
@@ -843,7 +908,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               >
                 {/* Widget-header strip — the platform signature; live status on the right. */}
                 <div className="widget-header">
-                  <span className="widget-header-label">APPROVE · SHARE · EXPORT</span>
+                  <span className="widget-header-label">REVIEW &amp; SEND</span>
                   <span className="widget-header-right">{statusLabel(draft.status)}</span>
                 </div>
 
