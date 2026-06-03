@@ -1,6 +1,7 @@
 "use client";
 
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { ImagePicker } from "@/components/ui/image-picker";
 import type { CoverSectionData } from "@/types/proposal";
 
 export function CoverEditor({
@@ -96,6 +97,34 @@ export function CoverEditor({
               <option value="CLIENT_X_GITWORK">Client x Gitwork</option>
             </select>
           </label>
+        </div>
+
+        {/* Cover logos — both editable here so you can swap the Foundry mark per-document and
+            supply a client logo even for a prospect that isn't in Portal yet. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-[var(--text-2)]">Brand logo</span>
+            <ImagePicker
+              value={value.brandLogoUrl ?? ""}
+              onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
+            />
+            <span className="block text-xs text-[var(--text-4)]">
+              Overrides the cover&rsquo;s Foundry mark for this document. Leave blank to use the
+              Settings → Branding logo.
+            </span>
+          </label>
+          {(value.brandLockup ?? "GITWORK") === "CLIENT_X_GITWORK" ? (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
+              <ImagePicker
+                value={value.clientLogoUrl ?? ""}
+                onChange={(clientLogoUrl) => onChange({ ...value, clientLogoUrl })}
+              />
+              <span className="block text-xs text-[var(--text-4)]">
+                Shown in the lockup beside the Foundry mark. Leave blank to show the client name as text.
+              </span>
+            </label>
+          ) : null}
         </div>
 
         <div className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4">

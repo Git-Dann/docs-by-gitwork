@@ -84,7 +84,11 @@ export const coverSection = defineSection<CoverSectionData>({
       | { statement?: string; summary?: string }
       | undefined;
 
-    const brandLogoUrl = (branding?.brandLogoUrl ?? "").trim() || "/foundry-logo.png";
+    // Per-document override (cover builder) → workspace branding → bundled default.
+    const brandLogoUrl =
+      (data.brandLogoUrl ?? "").trim() ||
+      (branding?.brandLogoUrl ?? "").trim() ||
+      "/foundry-logo.png";
     const mode = data.confidentialityMode ?? "INTERNAL";
     const confidentialityText =
       (mode === "EXTERNAL"
@@ -178,8 +182,9 @@ export const coverSection = defineSection<CoverSectionData>({
           dated={proposal.updatedAt.slice(0, 10)}
           logoUrl={brandLogoUrl}
           coBrand={
-            data.brandLockup === "CLIENT_X_GITWORK" && clientName && clientName !== "Client"
-              ? { clientName }
+            data.brandLockup === "CLIENT_X_GITWORK" &&
+            ((data.clientLogoUrl ?? "").trim() || (clientName && clientName !== "Client"))
+              ? { clientName, clientLogoUrl: (data.clientLogoUrl ?? "").trim() || undefined }
               : undefined
           }
           variant="print"
