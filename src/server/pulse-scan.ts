@@ -462,13 +462,23 @@ function applyPlatformFilter(checks: PulseScanCheckInput[], platform: string): P
   });
 }
 
-export async function runUrlChecks(url: string, platform?: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+export async function runUrlChecks(
+  url: string,
+  platform?: string,
+  onWave?: (checks: PulseScanCheckInput[]) => void,
+): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
     return runMobileStoreChecks(url, urlType);
   }
 
   const checks: PulseScanCheckInput[] = [];
+  // Optional incremental emitter — fires partial waves so callers (runLiteScan)
+  // can persist + stream checks as they land. Applies the same platform filter
+  // the final return uses, so streamed statuses match the authoritative set.
+  const emit = onWave
+    ? (batch: PulseScanCheckInput[]) => onWave(platform ? applyPlatformFilter(batch, platform) : batch)
+    : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
   const httpUrl = httpsUrl.replace("https://", "http://");
@@ -2635,6 +2645,10 @@ export async function runUrlChecks(url: string, platform?: string): Promise<{ ch
         : "No newsletter or email signup detected. Email lists compound over time — a newsletter is one of the highest-ROI acquisition channels for SaaS.",
     });
 
+    // Emit the core (non-extended) checks as the first wave before the heavier
+    // extended modules run, so the UI fills in immediately.
+    emit?.(checks.slice());
+
     // ─── Extended checks (all 305 new checks in parallel category modules) ────
     try {
       const extended = await runExtendedChecks({
@@ -2644,7 +2658,7 @@ export async function runUrlChecks(url: string, platform?: string): Promise<{ ch
         platform: platform ?? "",
         ctx,
         htmlLower,
-      });
+      }, emit);
       checks.push(...extended);
     } catch {
       // Extended checks are non-critical — swallow errors so core scan still succeeds

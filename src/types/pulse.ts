@@ -141,6 +141,7 @@ export interface PulseScanRecord {
   scanVersion: string;
   startedAt: string;
   completedAt: string | null;
+  checksCompletedAt: string | null;
   healthScore: number | null;
   previousHealthScore: number | null;
   techStack: string[] | null;

@@ -9,53 +9,68 @@ import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
 
-const STAGES = [
-  { label: "Connecting to project",        from: 0  },
-  { label: "Fetching page & headers",      from: 8  },
-  { label: "Running automated checks",     from: 22 },
-  { label: "Detecting tech stack",         from: 45 },
-  { label: "Measuring Core Web Vitals",    from: 55 },
-  { label: "AI analysis in progress",      from: 68 },
-  { label: "Finalising report",            from: 92 },
-];
+// Rough expected check volume per input type — used only as the denominator for
+// the live progress bar during the deterministic CHECKS phase. Approximate is
+// fine: the authoritative phase signal is `checksCompletedAt` flipping to the AI
+// phase. Clamped so the bar never claims 100% before checks are actually done.
+const EXPECTED_CHECKS: Record<string, number> = { URL: 500, GITHUB_REPO: 240, FREE_TEXT: 1 };
 
-function currentStage(pct: number) {
-  return STAGES.slice().reverse().find((s) => pct >= s.from) ?? STAGES[0];
-}
-
-function easedProgress(elapsedMs: number, capPct = 96, totalMs = 60000): number {
-  const t = Math.min(elapsedMs / totalMs, 1);
-  const eased = 1 - Math.pow(1 - t, 2.5);
-  return Math.min(eased * capPct, capPct);
+// Time-eased fill for the AI phase, which has no granular progress signal.
+function easeOut(t: number): number {
+  const x = Math.min(Math.max(t, 0), 1);
+  return 1 - Math.pow(1 - x, 2.5);
 }
 
 function ScanRunningState({
   startedAt,
   scanId,
   liveChecks,
+  checksCompletedAt,
+  inputType,
 }: {
   startedAt: string;
   scanId: string;
   liveChecks: { category: string; status: string }[];
+  checksCompletedAt: string | null;
+  inputType: string;
 }) {
   const { mutate: cancel, isPending: cancelling } = useCancelPulseScan();
-  const [pct, setPct] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const origin = new Date(startedAt).getTime();
     function tick() {
-      const elapsed = Date.now() - origin;
-      setElapsedSec(Math.floor(elapsed / 1000));
-      setPct(easedProgress(elapsed));
+      const t = Date.now();
+      setNow(t);
+      setElapsedSec(Math.floor((t - origin) / 1000));
     }
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [startedAt]);
 
-  const stage = currentStage(pct);
-  const isLong = elapsedSec > 60;
+  const checksDone = Boolean(checksCompletedAt);
+  const checksCount = liveChecks.length;
+  const expected = EXPECTED_CHECKS[inputType] ?? 400;
+
+  // CHECKS phase: real progress = checks persisted / expected, mapped to 0–74%.
+  // AI phase: 74% → ~99% time-eased over ~120s (AI gives no progress signal).
+  let pct: number;
+  if (checksDone) {
+    const aiMs = now - new Date(checksCompletedAt!).getTime();
+    pct = 74 + easeOut(aiMs / 120_000) * 25;
+  } else {
+    pct = Math.min(checksCount / expected, 0.98) * 74;
+  }
+  pct = Math.min(pct, 99);
+
+  const stageLabel = checksDone
+    ? "AI analysis in progress"
+    : checksCount > 0
+      ? `Running automated checks · ${checksCount} done`
+      : "Connecting & fetching page";
+  const isLong = elapsedSec > 75;
 
   // Build per-category summary from live checks
   const categoryMap = new Map<string, { pass: number; warn: number; fail: number }>();
@@ -79,7 +94,7 @@ function ScanRunningState({
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-[var(--text-1)]">{stage.label}…</p>
+            <p className="text-sm font-semibold text-[var(--text-1)]">{stageLabel}…</p>
             <p className="mt-0.5 text-xs tabular-nums text-[var(--text-4)]">{elapsedSec}s elapsed</p>
           </div>
 
@@ -90,21 +105,22 @@ function ScanRunningState({
             />
           </div>
 
-          <div className="flex justify-between px-0.5">
-            {STAGES.map((s) => (
-              <div
-                key={s.label}
-                title={s.label}
-                className={`h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
-                  pct >= s.from ? "bg-[var(--brand-600)]" : "bg-[var(--border-2)]"
-                }`}
-              />
-            ))}
+          {/* Two-phase indicator: deterministic checks → AI synthesis */}
+          <div className="flex items-center justify-center gap-2 text-[11px] font-medium">
+            <span className={checksDone ? "text-emerald-600" : "text-[var(--brand-600)]"}>
+              {checksDone ? "✓ Checks complete" : "● Running checks"}
+            </span>
+            <span className="text-[var(--border-2)]">→</span>
+            <span className={checksDone ? "text-[var(--brand-600)]" : "text-[var(--text-4)]"}>
+              {checksDone ? "● AI analysis" : "AI analysis"}
+            </span>
           </div>
 
           {isLong && (
             <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Taking longer than usual — complex sites or large repos can take up to 90 seconds.
+              {checksDone
+                ? "AI synthesis can take up to a couple of minutes — your checks and score below are final."
+                : "Taking longer than usual — complex sites or large repos can take a little longer."}
             </p>
           )}
 
@@ -119,11 +135,11 @@ function ScanRunningState({
         </div>
       </div>
 
-      {/* Live check preview — appears once Phase 1 completes (~8-10s) */}
+      {/* Live check preview — fills in incrementally as each wave lands */}
       {categories.length > 0 && (
         <div className="rounded-[10px] border border-[var(--border-2)] p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
-            Checks streaming in — AI analysis still running
+            {checksDone ? "All checks complete — AI is writing your report" : "Checks streaming in live…"}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {categories.map(([category, s]) => {
@@ -229,6 +245,8 @@ export default function PulseScanDetailPage({
             startedAt={scan.startedAt}
             scanId={scanId}
             liveChecks={scan.checks}
+            checksCompletedAt={scan.checksCompletedAt}
+            inputType={scan.inputType}
           />
         )}
 

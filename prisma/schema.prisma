@@ -1491,6 +1491,10 @@ model PulseScan {
   scanVersion         String
   startedAt           DateTime           @default(now())
   completedAt         DateTime?
+  // Set when the deterministic checks finish and have been persisted, while AI
+  // synthesis is still running (status stays RUNNING). Lets the UI show the full
+  // checks view + a "checks done, AI running" state instead of gating on the LLM.
+  checksCompletedAt   DateTime?
   healthScore         Int?
   previousHealthScore Int?
   techStack           Json?
@@ -1552,6 +1556,49 @@ model PulseScanCheck {
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])
+}
+
+// ─── Pulse Lite (public embeddable scanner) ───────────────────────────────────
+// Anonymous, AI-free scans run from the public /embed/pulse widget. Kept in their
+// OWN tables so anonymous traffic never pollutes workspace PulseScan stats/lists.
+// Checks are stored inline as JSON (ephemeral; rows TTL-expire via expiresAt).
+
+model PulseLiteScan {
+  id             String          @id @default(cuid())
+  targetUrl      String
+  targetHost     String
+  ip             String?
+  status         PulseScanStatus @default(RUNNING)
+  healthScore    Int?
+  techStack      Json? // string[]
+  checks         Json? // PulseScanCheckInput[] — persisted incrementally as waves land
+  insights       Json? // BrowserAgentInsights | null
+  emailCaptured  Boolean         @default(false)
+  leadId         String? // → PulseLead once an email is captured
+  importedScanId String? // → workspace PulseScan once "Import to Foundry" is used
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  expiresAt      DateTime? // raw scan rows are pruned after this (privacy + table hygiene)
+
+  @@index([ip, createdAt])
+  @@index([targetHost, createdAt])
+  @@index([expiresAt])
+}
+
+model PulseLead {
+  id                String    @id @default(cuid())
+  email             String
+  liteScanId        String?
+  targetUrl         String
+  healthScore       Int?
+  source            String    @default("embed")
+  convertedClientId String? // → WorkspaceClient if the lead is imported into Foundry
+  notifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([email])
+  @@index([createdAt])
 }
 
 // ─── Support Ops ──────────────────────────────────────────────────────────────

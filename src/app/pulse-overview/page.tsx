@@ -90,6 +90,44 @@ export default function PulseOverviewPage() {
         </div>
       </section>
 
+      {/* Live demo — the real embeddable widget */}
+      <section style={{ padding: "72px 24px", background: "white", borderBottom: "1px solid #eef2f7" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
+            Try it live — free
+          </p>
+          <h2 style={{ fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.02em", margin: "0 0 8px" }}>
+            Scan any site right now
+          </h2>
+          <p style={{ fontSize: 16, color: "#64748b", lineHeight: 1.7, margin: "0 0 28px" }}>
+            The same engine, no AI, no signup — your health score in seconds. This is the exact widget you can drop on your own site.
+          </p>
+          <iframe
+            id="pulse-embed-demo"
+            src="/embed/pulse"
+            title="Gitwork Pulse — live site health check"
+            style={{ width: "100%", maxWidth: 720, margin: "0 auto", border: "1px solid #e2e8f0", borderRadius: 16, minHeight: 540, background: "white", display: "block", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
+          />
+          {/* Auto-resize the demo iframe to its content height. */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html:
+                "(function(){var f=document.getElementById('pulse-embed-demo');window.addEventListener('message',function(e){var d=e.data||{};if(d.type==='pulse-embed-height'&&typeof d.height==='number'&&f){f.style.height=d.height+'px';}});})();",
+            }}
+          />
+
+          {/* Copy-paste embed snippet for site owners */}
+          <div style={{ marginTop: 28, textAlign: "left", background: "#0f172a", borderRadius: 12, padding: "16px 18px", maxWidth: 720, marginLeft: "auto", marginRight: "auto" }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 8px" }}>
+              Add it to your site
+            </p>
+            <code style={{ display: "block", fontFamily: "var(--font-mono), monospace", fontSize: 13, color: "#a5b4fc", wordBreak: "break-all" }}>
+              &lt;script async src=&quot;https://foundry.gitwork.co.uk/embed/pulse/embed.js&quot;&gt;&lt;/script&gt;
+            </code>
+          </div>
+        </div>
+      </section>
+
       {/* The business case */}
       <section style={{ padding: "80px 24px", background: "#f8fafc" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>

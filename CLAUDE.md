@@ -621,3 +621,60 @@ shared UI primitives (`<Input>/<Select>/<Modal>/<Dropdown>`), an a11y pass on po
 replacing the `window.location.reload()` after bulk actions with query invalidation. Phase 3 —
 Stripe pay-in-page, merge variables, content/snippet library, real server-side PDF
 (`@sparticuz/chromium` is already a dependency).
+## 18. Recent Changes (June 2026) — Pulse: shared lite-scan core, decoupled AI, public embed widget
+
+Pulse was re-architected around **one AI-free deterministic core** (`src/server/pulse-lite/run-lite-scan.ts`)
+that powers both the internal full scan and a new public embeddable scanner. The deterministic
+checks (`runUrlChecks`/`runGithubChecks`/`runExtendedChecks`/`runDeployAgent`/`runBrowserAgent`)
+were already AI-free; the AI (`pulse-ai.ts`) only ever ran on top. This work makes that split
+explicit and reuses it three ways.
+
+- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, skipUrlGuard, onChecks })`
+  returns `{ checks, techStack, healthScore, browser/deploy/codeInsights, homepageUrl }`, de-duped by
+  `checkKey` + stably ordered. It emits **incremental waves** via `onChecks` — implemented by an
+  optional `onWave` threaded into `runUrlChecks` (emits core checks before extended) and
+  `runExtendedChecks` (emits each of the 19 category modules as it resolves). No AI imports in
+  `pulse-lite/*` — keep it that way.
+- **SSRF guard** (`pulse-lite/url-guard.ts`) — `assertScannableUrl()`: http/https only, no creds,
+  `dns.lookup` + reject private/reserved/loopback/link-local/metadata ranges. **Mandatory on the
+  public path**; applied defensively elsewhere. **Rate limit** (`pulse-lite/rate-limit.ts`) —
+  Postgres-backed per-IP (8/hr, 30/day) + per-host (12/hr); no Redis.
+- **AI decoupled (internal scan)** — `runAnalysis` (`src/server/pulse.ts`) is now **CHECKS → ANALYSING**:
+  the deterministic phase persists each wave incrementally and sets `PulseScan.checksCompletedAt`
+  (status stays `RUNNING`); AI/discovery/competitor run *after*. Users see the full checks view +
+  a "checks complete, AI running" state in ~15–30s instead of waiting ~2–4 min. AI failure still
+  leaves a usable checks-only result.
+- **Delta SSE** (`/api/pulse/scans/[scanId]/stream`) — streams only *new* checks (by `checkKey`) +
+  scalar state per tick instead of re-sending the whole scan every 2s; `complete` triggers one
+  authoritative refetch for the heavy AI payload. Client (`usePulseScanStream`) **merges** deltas
+  instead of overwriting → far fewer re-renders. Progress bar is now **real** (persisted/expected
+  check count), replacing the time-eased fake.
+- **Durability** — `GET /api/cron/pulse-reconcile` (CRON_SECRET, registered in `vercel.json`,
+  **daily** — bump to hourly on Pro): scans stuck `RUNNING` past 6 min are *salvaged* to COMPLETED
+  if `checksCompletedAt` is set (checks usable), else FAILED. Also **prunes expired** `PulseLiteScan`
+  rows (privacy/hygiene).
+- **Public report cached** — `/report/[token]` dropped `force-dynamic` for `unstable_cache`
+  (tag `pulse-report-<token>`, 5-min TTL); the share/unshare route `revalidateTag`s rotated/removed
+  tokens so old links stop resolving. Added `robots: noindex`.
+- **Public embed widget** — standalone `/embed/pulse` (client widget, **score free, email-gates the
+  detail**), iframe-able anywhere (`frame-ancestors *` for `/embed/*` in `next.config.ts`),
+  postMessage auto-resize, snippet at `public/embed/pulse/embed.js`. Public no-auth endpoints
+  `POST/GET /api/public/pulse/scan[/id]` + `/unlock` (added `/api/public/pulse` to
+  `PUBLIC_API_PATHS`; CORS `*` already applies). `runPublicLiteScan` (`pulse-lite/public-scan.ts`)
+  runs with `includePageSpeed:false` and a single throttled JSON flusher (no write races).
+- **Foundry funnel** — captured email → `PulseLead` (notifies admins via `src/server/email.ts`).
+  `leads-admin.ts` (`importLeadToFoundry`) one-click turns a lead into a full workspace `PulseScan`
+  (→ proposal via `generateProposalFromScan`); surfaced by `PulseLeadsPanel` on `/app/pulse`.
+  `leads.ts` (public, dependency-light) is kept separate from `leads-admin.ts` (imports the AI
+  pipeline) so the public unlock route doesn't bundle `pulse-ai`. Live demo embedded on
+  `/pulse-overview`.
+
+**Data model (additive, applies via the build's `prisma db push`):** `PulseScan.checksCompletedAt`;
+new isolated `PulseLiteScan` (checks stored inline as JSON; `expiresAt` TTL) + `PulseLead`. Anonymous
+public scans never touch the workspace `PulseScan` table.
+
+**Deferred / caveats:** the deep flattening of `runUrlChecks`'s ~9 sequential probe rounds was NOT
+done (risky in a 4000-line file; the 19 extended modules + top-level agents already parallelise the
+bulk). The embed page inherits the global `SessionProvider` (harmless; a lighter provider tree would
+drop an unused `/api/auth/session` call from the iframe). Reconciler is daily on Hobby. Optional env
+`GOOGLE_PSI_API_KEY` improves PageSpeed quota (internal scans only; public path skips PSI).
