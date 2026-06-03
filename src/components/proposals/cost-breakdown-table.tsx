@@ -8,6 +8,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { CurrencyField } from "@/components/proposals/currency-field";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { Tooltip } from "@/components/ui/tooltip";
 import { listRateCardPeople } from "@/lib/api";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -1265,13 +1266,7 @@ function BudgetEditorDialog({
     : null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-[rgba(10,13,18,0.28)] backdrop-blur-[3px]"
-        onClick={onClose}
-      />
-
-      <div className="relative z-10 w-full max-w-[420px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_3px_3px_-1.5px_rgba(16,24,40,0.04)]">
+    <Modal open onClose={onClose} panelClassName="w-full max-w-[420px]">
         <div className="flex items-start justify-between gap-4 px-5 pt-5">
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">
             {value.index === null ? "Add budget row" : "Edit budget row"}
@@ -1442,8 +1437,7 @@ function BudgetEditorDialog({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
