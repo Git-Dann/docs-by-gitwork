@@ -56,6 +56,7 @@ import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
+import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
@@ -149,6 +150,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const searchParams = useSearchParams();
   const { data, isPending, error } = useProposal(proposalId);
   const updateMutation = useUpdateProposal(proposalId);
+  const snippetsQuery = useSnippets();
+  const deleteSnippet = useDeleteSnippet();
   const urlTab = parseEditorTab(searchParams.get("tab"));
 
   const [localDraft, setLocalDraft] = useState<ProposalDocument | null>(null);
@@ -486,6 +489,38 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       sortOrder: insertIndex,
       isVisible: sectionType.defaultVisible !== false,
       data: cloneSectionData(sectionType.defaultData as ProposalSection["data"]),
+    };
+
+    const ordered = [...draft.sections].sort((a, b) => a.sortOrder - b.sortOrder);
+    ordered.splice(insertIndex, 0, nextSection);
+    const nextSections = ordered.map((section, index) => ({ ...section, sortOrder: index }));
+
+    updateDraft({ ...draft, sections: nextSections });
+    setActiveSectionId(getSectionEntryId(nextSection));
+    setActiveTab("builder");
+  }
+
+  // Insert a saved snippet (Phase 3): a section pre-filled with the snippet's stored data.
+  function handleAddSnippet(snippetId: string, insertAt?: number) {
+    if (!draft) return;
+    const snippet = (snippetsQuery.data ?? []).find((s) => s.id === snippetId);
+    if (!snippet) return;
+    const sectionType = SECTION_REGISTRY[snippet.sectionKey as SectionKey];
+    if (!sectionType) return;
+
+    const insertIndex =
+      typeof insertAt === "number"
+        ? Math.max(0, Math.min(insertAt, draft.sections.length))
+        : draft.sections.length;
+
+    const nextSection: ProposalSection = {
+      id: createDraftSectionId(),
+      key: sectionType.key,
+      title: snippet.name || sectionType.defaultTitle,
+      description: sectionType.defaultDescription ?? "",
+      sortOrder: insertIndex,
+      isVisible: sectionType.defaultVisible !== false,
+      data: cloneSectionData(snippet.data as ProposalSection["data"]),
     };
 
     const ordered = [...draft.sections].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1107,6 +1142,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             handleAddSection(key, paletteInsertAt);
           }
         }}
+        snippets={(snippetsQuery.data ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          sectionKey: s.sectionKey,
+        }))}
+        onPickSnippet={(id) => {
+          if (paletteInsertAt !== null) {
+            handleAddSnippet(id, paletteInsertAt);
+          }
+        }}
+        onDeleteSnippet={(id) => deleteSnippet.mutate(id)}
         documentType={draft.documentType}
         insertContextLabel={
           paletteInsertAt !== null && paletteInsertAt < sectionEntries.length

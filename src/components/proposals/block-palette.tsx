@@ -16,7 +16,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon, MagnifyingGlassIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import {
   SECTION_REGISTRY,
   sectionsByCategory,
@@ -31,6 +31,12 @@ interface BlockPaletteProps {
   onClose: () => void;
   /** Called when the operator picks a block. The parent inserts at insertAt or appends. */
   onPick: (key: SectionKey) => void;
+  /** Saved content snippets to offer for insertion (Phase 3). */
+  snippets?: Array<{ id: string; name: string; sectionKey: string }>;
+  /** Called when the operator picks a saved snippet. */
+  onPickSnippet?: (id: string) => void;
+  /** Called when the operator removes a saved snippet. */
+  onDeleteSnippet?: (id: string) => void;
   /** Document type for filtering — recommended-first ordering. */
   documentType?: DocumentType;
   /** Optional context label (e.g. "Inserting before §03 Objectives") for the header. */
@@ -41,6 +47,9 @@ export function BlockPalette({
   open,
   onClose,
   onPick,
+  snippets = [],
+  onPickSnippet,
+  onDeleteSnippet,
   documentType,
   insertContextLabel,
 }: BlockPaletteProps) {
@@ -140,6 +149,62 @@ export function BlockPalette({
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {/* Saved snippets (Phase 3) — reusable sections, shown first when present. */}
+          {(() => {
+            const needle = search.trim().toLowerCase();
+            const matched = needle
+              ? snippets.filter((s) => s.name.toLowerCase().includes(needle))
+              : snippets;
+            if (matched.length === 0) return null;
+            return (
+              <div className="mb-6">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                  Saved snippets
+                </p>
+                <ul className="mt-3 grid grid-cols-1 gap-2">
+                  {matched.map((snippet) => {
+                    const section = SECTION_REGISTRY[snippet.sectionKey as SectionKey];
+                    return (
+                      <li key={snippet.id} className="group/snippet relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onPickSnippet?.(snippet.id);
+                            onClose();
+                          }}
+                          className={cn(
+                            "flex w-full items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-3 pr-9 text-left transition",
+                            "hover:border-[var(--brand-300)] hover:bg-[var(--brand-200)]/30",
+                          )}
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[var(--brand-700)]">
+                            <BookmarkIcon className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-[var(--text-1)]">{snippet.name}</p>
+                            <p className="mt-0.5 text-xs text-[var(--text-3)]">
+                              {section?.displayName ?? snippet.sectionKey}
+                            </p>
+                          </div>
+                        </button>
+                        {onDeleteSnippet ? (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteSnippet(snippet.id)}
+                            aria-label={`Delete snippet ${snippet.name}`}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)] group-hover/snippet:opacity-100"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })()}
+
           {groups.length === 0 ? (
             <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-sm text-[var(--text-4)]">
               No blocks match &ldquo;{search}&rdquo;

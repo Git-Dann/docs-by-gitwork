@@ -1,5 +1,6 @@
 import { TableOfContents } from "@/components/proposals/table-of-contents";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
+import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import type { ProposalDocument } from "@/types/proposal";
 
 export function ProposalPreview({
@@ -20,7 +21,10 @@ export function ProposalPreview({
    */
   trackSections?: boolean;
 }) {
-  const sortedSections = [...proposal.sections].sort((left, right) => left.sortOrder - right.sortOrder);
+  // Substitute merge variables ({{client_name}}, {{total}}, …) for the rendered/exported view.
+  // The editor's section forms still show the raw tokens — only this render surface resolves them.
+  const resolved = resolveProposalMergeVariables(proposal);
+  const sortedSections = [...resolved.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
 
   const documentBody = (
@@ -39,13 +43,13 @@ export function ProposalPreview({
               data-doc-section={section.key}
               data-doc-section-title={section.title}
             >
-              <ProposalSectionPreview section={section} proposal={proposal} index={index} />
+              <ProposalSectionPreview section={section} proposal={resolved} index={index} />
             </div>
           ) : (
             <ProposalSectionPreview
               key={section.id ?? `${section.key}-${index}`}
               section={section}
-              proposal={proposal}
+              proposal={resolved}
               index={index}
             />
           ),

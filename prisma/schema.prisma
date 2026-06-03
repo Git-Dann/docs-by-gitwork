@@ -310,6 +310,26 @@ model Workspace {
   dailyUpdates             DailyUpdate[]
   featureBlocks            FeatureBlock[]
   milestones               Milestone[]
+  contentSnippets          ContentSnippet[]
+}
+
+/**
+ * Reusable content block (Phase 3) — a saved section the operator can drop into any document.
+ * Stores the registry section key + the section's data payload, scoped to the workspace.
+ */
+model ContentSnippet {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  sectionKey  String // Registry section type (prose, costing, …)
+  data        Json // The section's data payload at save time
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, sectionKey])
+  @@index([workspaceId, createdAt])
 }
 
 model WorkspaceMember {
