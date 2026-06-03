@@ -8,7 +8,11 @@ import {
 } from "@/lib/templates";
 import {
   DEFAULT_ONBOARDING_FORM_SLUG,
+  QUICK_ONBOARDING_FORM_SLUG,
+  ENTERPRISE_ONBOARDING_FORM_SLUG,
   getDefaultOnboardingForm,
+  getQuickOnboardingForm,
+  getEnterpriseOnboardingForm,
 } from "@/lib/onboarding/default-form";
 import { prisma } from "@/lib/prisma";
 import {
@@ -296,6 +300,33 @@ async function _ensureBaseRecords() {
       description: "The default Gitwork client onboarding form.",
       steps: getDefaultOnboardingForm() as unknown as Prisma.InputJsonValue,
       isDefault: true,
+    },
+  });
+
+  // Two extra starter forms operators can pick when minting a link (or duplicate +
+  // tweak). Like the default, `update: {}` so in-app edits aren't clobbered on re-boot.
+  await prisma.onboardingForm.upsert({
+    where: { slug: QUICK_ONBOARDING_FORM_SLUG },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      slug: QUICK_ONBOARDING_FORM_SLUG,
+      name: "Quick start",
+      description: "Lightweight intro form for small or fast-moving engagements.",
+      steps: getQuickOnboardingForm() as unknown as Prisma.InputJsonValue,
+      isDefault: false,
+    },
+  });
+  await prisma.onboardingForm.upsert({
+    where: { slug: ENTERPRISE_ONBOARDING_FORM_SLUG },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      slug: ENTERPRISE_ONBOARDING_FORM_SLUG,
+      name: "Enterprise",
+      description: "Thorough form with procurement, security & compliance, and stakeholder capture.",
+      steps: getEnterpriseOnboardingForm() as unknown as Prisma.InputJsonValue,
+      isDefault: false,
     },
   });
 
