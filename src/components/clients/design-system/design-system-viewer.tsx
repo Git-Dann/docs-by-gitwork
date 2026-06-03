@@ -715,10 +715,6 @@ function CssTokensSection({ tokens }: { tokens: DesignTokens }) {
 
 function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: string }) {
   const heroInk = readable(tokens.colours.primary[0]?.hex ?? "#0F172A");
-  const dim = heroInk === "#FFFFFF" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.55)";
-  const fonts = [tokens.typography.displayFont, tokens.typography.bodyFont, tokens.typography.monoFont].filter(
-    (f): f is string => Boolean(f),
-  );
   return (
     <section className="widget-card overflow-hidden">
       <div className="widget-header">
@@ -731,28 +727,21 @@ function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: stri
         </span>
       </div>
       {/* Brand-coloured hero band — the client's own gradient. */}
-      <div style={{ background: gradientCss, padding: "40px 32px" }}>
-        <p
-          className="text-[10px] uppercase tracking-[0.16em]"
-          style={{ fontFamily: mono, color: dim }}
-        >
-          Brand Design System
-        </p>
+      <div style={{ background: gradientCss, padding: "28px 32px" }}>
         <h1
-          className="mt-2"
           style={{
             fontFamily: `${tokens.typography.displayFont}, ${tokens.typography.systemFallback}`,
-            fontSize: 48,
+            fontSize: 40,
             lineHeight: 1.05,
             color: heroInk,
-            margin: "8px 0 0",
+            margin: 0,
           }}
         >
           {tokens.clientName}
         </h1>
         {tokens.brandVoice && (
           <p
-            className="mt-3 max-w-xl text-[15px] leading-relaxed"
+            className="mt-2 max-w-xl text-[14px] leading-relaxed"
             style={{
               fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}`,
               color: heroInk === "#FFFFFF" ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.7)",
@@ -761,18 +750,6 @@ function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: stri
             {tokens.brandVoice}
           </p>
         )}
-      </div>
-      {/* Meta strip */}
-      <div className="flex flex-wrap items-center gap-2 p-5">
-        {fonts.map((f) => (
-          <span
-            key={f}
-            className="rounded-[6px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px] text-[var(--text-3)]"
-            style={{ fontFamily: mono }}
-          >
-            {f}
-          </span>
-        ))}
       </div>
     </section>
   );

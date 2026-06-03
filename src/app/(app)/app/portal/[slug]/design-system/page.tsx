@@ -9,7 +9,7 @@ export default async function ClientDesignSystemPage({
   const { slug } = await params;
 
   return (
-    <AppShell title="Design System" subtitle="The client’s brand tokens, rendered live.">
+    <AppShell title="Design System">
       <DesignSystemWorkspace slug={slug} />
     </AppShell>
   );

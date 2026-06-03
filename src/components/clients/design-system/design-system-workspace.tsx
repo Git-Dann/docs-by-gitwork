@@ -82,11 +82,11 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
       </div>
 
       {ds?.exists && shareOn && shareUrl && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--brand-300)] bg-[var(--surface-brand)] px-3 py-2">
-          <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--brand-800)]" style={{ fontFamily: MONO }}>
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-1.5">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             Public link
           </span>
-          <code className="flex-1 truncate text-[12px] text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+          <code className="flex-1 truncate text-[11px] text-[var(--text-3)]" style={{ fontFamily: MONO }}>
             {shareUrl}
           </code>
           <button type="button" className={chip} onClick={() => copy(shareUrl, setCopiedLink)}>
