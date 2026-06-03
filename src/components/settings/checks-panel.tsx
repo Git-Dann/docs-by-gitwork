@@ -12,6 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useChecks, useSaveCheck, useResetCheck, type CheckConfigRecord } from "@/hooks/use-checks";
 import { CHECK_CATEGORIES } from "@/server/checks-registry";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
 
 const SEVERITY_LABELS: Record<string, string> = {
@@ -81,28 +82,32 @@ export function ChecksPanel() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Summary bar */}
-      <div className="flex items-center gap-6 rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="size-2 rounded-full bg-green-500" />
-          <span className="text-sm font-semibold text-[var(--text-1)]">{totalEnabled}</span>
-          <span className="text-xs text-[var(--text-3)]">active</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="size-2 rounded-full bg-[var(--border-2)]" />
-          <span className="text-sm font-semibold text-[var(--text-1)]">{totalDisabled}</span>
-          <span className="text-xs text-[var(--text-3)]">disabled</span>
-        </div>
-        {customCount > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-[var(--brand-500)]" />
-            <span className="text-sm font-semibold text-[var(--text-1)]">{customCount}</span>
-            <span className="text-xs text-[var(--text-3)]">custom</span>
-          </div>
-        )}
-      </div>
-
+    <SettingsCard
+      number="01"
+      title="Pulse checks"
+      right={
+        <span className="flex items-center gap-4 normal-case tracking-normal">
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-green-500" />
+            <span className="text-xs font-semibold text-[var(--text-1)]">{totalEnabled}</span>
+            <span className="text-xs text-[var(--text-3)]">active</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-[var(--border-2)]" />
+            <span className="text-xs font-semibold text-[var(--text-1)]">{totalDisabled}</span>
+            <span className="text-xs text-[var(--text-3)]">disabled</span>
+          </span>
+          {customCount > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-[var(--brand-500)]" />
+              <span className="text-xs font-semibold text-[var(--text-1)]">{customCount}</span>
+              <span className="text-xs text-[var(--text-3)]">custom</span>
+            </span>
+          )}
+        </span>
+      }
+    >
+      <div className="space-y-5">
       {/* Search + filter */}
       <div className="flex gap-2">
         <div className="relative flex-1">
@@ -150,7 +155,7 @@ export function ChecksPanel() {
                 <span className="flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
                 <div className="flex items-center gap-3">
                   {hasOverrides && (
-                    <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--brand-600)]">
+                    <span className="rounded-[4px] bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--brand-600)]">
                       customised
                     </span>
                   )}
@@ -182,6 +187,7 @@ export function ChecksPanel() {
           </p>
         )}
       </div>
+      </div>
 
       {editing && (
         <CheckDrawer
@@ -189,7 +195,7 @@ export function ChecksPanel() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </SettingsCard>
   );
 }
 

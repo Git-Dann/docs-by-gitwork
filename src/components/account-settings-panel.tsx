@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { roleLabel } from "@/types/auth";
 
 export function AccountSettingsPanel() {
@@ -64,12 +65,8 @@ export function AccountSettingsPanel() {
 
   return (
     <div className="proposal-form-theme space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Profile</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Your account
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="Profile">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Sign-in identity is managed by Google Workspace — change your name there and it
           updates here automatically. The profile image below overrides your Google photo inside
           Foundry, including the sidebar.
@@ -148,7 +145,7 @@ export function AccountSettingsPanel() {
             {updateAccount.isPending ? "Saving…" : "Save changes"}
           </Button>
         </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }

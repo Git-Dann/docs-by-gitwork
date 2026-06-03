@@ -34,6 +34,7 @@ import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card"
 import { MODULE_PERMISSIONS, isAtLeast, type RoleId } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
 import type { SectionKey } from "@/types/proposal";
 
@@ -125,12 +126,8 @@ export function GeneralTab() {
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Workspace</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Proposal defaults
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="Proposal defaults">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Shared defaults pre-filled across proposals and sign-off sections. Saved to the
           workspace so every teammate sees the same values.
         </p>
@@ -152,7 +149,7 @@ export function GeneralTab() {
             onChange={(contactDetails) => patch({ contactDetails })}
           />
         </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }
@@ -168,12 +165,7 @@ export function BrandingTab() {
 
   return (
     <div className="space-y-6">
-      <section className="widget-card overflow-hidden">
-        <div className="widget-header">
-          <span className="widget-header-label">01 {"// "}WORKSPACE LOGO</span>
-          <span className="widget-header-right">FALLBACK</span>
-        </div>
-        <div className="p-6">
+      <SettingsCard number="01" title="Workspace logo" right="FALLBACK">
           <p className="text-sm leading-6 text-[var(--text-3)]">
             The workspace logo used wherever a document doesn&apos;t specify its own. Templates
             in Docs now carry their own cover art and accents, so this is the fallback for ad-hoc
@@ -200,8 +192,7 @@ export function BrandingTab() {
             Settings → Templates so different document types can carry their own visual style.
             Confidentiality copy lives under Content.
           </p>
-        </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }
@@ -221,12 +212,8 @@ export function ContentTab() {
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Cover copy</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Confidentiality defaults
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="Confidentiality defaults">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           The cover editor uses an internal/external toggle and resolves the final copy from these defaults.
         </p>
 
@@ -246,20 +233,12 @@ export function ContentTab() {
             }
           />
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="app-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="app-eyebrow">Reusable content</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Objective snippets
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Reusable objectives available inside the proposal builder.
-            </p>
-          </div>
-
+      <SettingsCard
+        number="02"
+        title="Objective snippets"
+        right={
           <Button
             type="button"
             variant="secondary"
@@ -269,7 +248,11 @@ export function ContentTab() {
           >
             Add snippet
           </Button>
-        </div>
+        }
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Reusable objectives available inside the proposal builder.
+        </p>
 
         {snippets.length > 0 ? (
           <div className="mt-6 space-y-3">
@@ -318,7 +301,7 @@ export function ContentTab() {
         ) : (
           <p className="mt-4 text-sm text-[var(--text-3)]">No snippets configured yet.</p>
         )}
-      </section>
+      </SettingsCard>
     </div>
   );
 }
@@ -490,19 +473,10 @@ export function RateCardTab() {
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="app-eyebrow">Shared roster</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              People & Rates
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-              This is the shared roster Axis mirrors for proposal pricing. Store source currency and
-              billing period here, then let Axis convert everything to a GBP day rate on-device.
-            </p>
-          </div>
-
+      <SettingsCard
+        number="01"
+        title="People & Rates"
+        right={
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -530,7 +504,12 @@ export function RateCardTab() {
               New person
             </Button>
           </div>
-        </div>
+        }
+      >
+        <p className="max-w-3xl text-sm leading-6 text-[var(--text-3)]">
+          This is the shared roster Axis mirrors for proposal pricing. Store source currency and
+          billing period here, then let Axis convert everything to a GBP day rate on-device.
+        </p>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,400px)]">
           <section className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-[var(--shadow-xs)]">
@@ -539,7 +518,7 @@ export function RateCardTab() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base font-semibold text-[var(--text-1)]">Roster</h3>
-                    <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                    <span className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                       {people.length} people
                     </span>
                   </div>
@@ -603,7 +582,7 @@ export function RateCardTab() {
                                 {person.name}
                               </span>
                               {person.seedIdentifier ? (
-                                <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                                <span className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                                   Default
                                 </span>
                               ) : null}
@@ -618,7 +597,7 @@ export function RateCardTab() {
                                 {formatCurrencyValue(person.sourceRate, person.sourceCurrencyCode)}
                               </span>
                               <span className="text-sm text-[var(--text-4)]">•</span>
-                              <span className="inline-flex items-center rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                              <span className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
                                 {billingPeriodLabel(person.billingPeriod)}
                               </span>
                               <span className="text-sm text-[var(--text-4)]">•</span>
@@ -795,7 +774,7 @@ export function RateCardTab() {
             ) : null}
           </div>
         </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }
@@ -1170,12 +1149,8 @@ export function IntegrationsTab() {
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">AI provider</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          AI analysis engine
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="AI analysis engine">
+        <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
           Select the AI provider Pulse uses for all scans. Only the selected provider is used — no fallbacks.
           Add its API key and model below.
         </p>
@@ -1241,7 +1216,7 @@ export function IntegrationsTab() {
             ))}
           </div>
         )}
-      </section>
+      </SettingsCard>
 
       {/* ── Google Workspace — service account ────────────────────── */}
       <GoogleServiceAccountSection config={config} onSaved={setConfig} />
@@ -1283,18 +1258,10 @@ export function TeamTab({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div className="space-y-6">
-      <section className="app-card p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="app-eyebrow">Access</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Team members
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Manage who can access Foundry. Admins have full access. Staff access is limited to
-              modules you enable for them.
-            </p>
-          </div>
+      <SettingsCard
+        number="01"
+        title="Team members"
+        right={
           <Button
             type="button"
             variant="primary"
@@ -1305,7 +1272,12 @@ export function TeamTab({ currentUserId }: { currentUserId: string }) {
             <PlusIcon className="h-4 w-4" />
             Add member
           </Button>
-        </div>
+        }
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Manage who can access Foundry. Admins have full access. Staff access is limited to
+          modules you enable for them.
+        </p>
 
         <div className="mt-6">
           {loading ? (
@@ -1328,7 +1300,7 @@ export function TeamTab({ currentUserId }: { currentUserId: string }) {
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(
-                        "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                        "rounded-[4px] px-2.5 py-0.5 text-xs font-semibold",
                         m.role === "ADMIN"
                           ? "bg-[var(--brand-700)] text-white"
                           : "bg-[var(--surface-1)] text-[var(--text-3)]",
@@ -1375,7 +1347,7 @@ export function TeamTab({ currentUserId }: { currentUserId: string }) {
             </div>
           )}
         </div>
-      </section>
+      </SettingsCard>
 
       {showAddModal && (
         <AddMemberModal
@@ -1887,25 +1859,22 @@ function GoogleServiceAccountSection({
   const isConfigured = config?.googleServiceAccountJsonSet ?? false;
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Google Workspace</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Service Account
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+    <SettingsCard
+      number="02"
+      title="Google Workspace"
+      right={
+        <>
+          <span className={`h-1.5 w-1.5 rounded-full ${isConfigured ? "bg-emerald-500" : "bg-amber-400"}`} />
+          {isConfigured ? "Configured" : "Not configured"}
+        </>
+      }
+    >
+      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
         Paste the service account JSON from Google Cloud Console. Care uses this with domain-wide delegation
         to read Gmail inboxes configured per-connector — no per-user OAuth required.
       </p>
 
       <div className="mt-5 space-y-4">
-        {/* Status */}
-        <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${isConfigured ? "bg-emerald-500" : "bg-amber-400"}`} />
-          <span className="text-xs font-medium text-[var(--text-2)]">
-            {isConfigured ? "Service account configured" : "Not configured"}
-          </span>
-        </div>
-
         {/* JSON textarea */}
         <label className="block space-y-1.5">
           <span className="app-field-label">{isConfigured ? "Replace JSON (leave blank to keep existing)" : "Service account JSON"}</span>
@@ -1951,7 +1920,7 @@ function GoogleServiceAccountSection({
           Save
         </Button>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -2074,12 +2043,8 @@ function SlackSection({
   }
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Slack</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Slack context for meeting summaries
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+    <SettingsCard number="03" title="Slack">
+      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
         Connect a Slack workspace to pull relevant messages into AI meeting summaries. Once the
         bot is connected, Foundry pulls the live channel list so you can multi-select instead
         of pasting IDs. Bot needs{" "}
@@ -2274,7 +2239,7 @@ function SlackSection({
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}
         </button>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -2340,12 +2305,8 @@ function EmailOutboundSection({
   }
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Email</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Outbound email
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+    <SettingsCard number="04" title="Outbound email">
+      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
         Used for proposal sends, Care replies, and notification emails. Pick a provider, set the
         From identity, and Foundry will route outgoing mail through it.
       </p>
@@ -2481,7 +2442,7 @@ function EmailOutboundSection({
           {saving ? "Saving…" : saved ? "Saved ✓" : "Save email settings"}
         </button>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -2656,12 +2617,8 @@ function CandidateBulkImportSection() {
   }
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Catalogue</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        Bulk import candidates
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+    <SettingsCard number="02" title="Bulk import candidates">
+      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
         Upload a CSV or paste a JSON array to add up to 500 devs in one go.
         Dedupes by GitHub handle within this workspace. New rows are marked{" "}
         <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs">EXTERNAL</code>{" "}
@@ -2787,7 +2744,7 @@ function CandidateBulkImportSection() {
           </Button>
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -2821,12 +2778,8 @@ function ExternalApiKeySection() {
   }
 
   return (
-    <section className="app-card p-6">
-      <p className="app-eyebrow">Access control</p>
-      <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-        External API Key
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-3)]">
+    <SettingsCard number="01" title="External API Key">
+      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
         Used for programmatic access to the Foundry API from external tools and integrations.
         Pass as an{" "}
         <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
@@ -2848,7 +2801,7 @@ function ExternalApiKeySection() {
                 {integrations.externalApiKeyMasked}
               </code>
               {integrations.externalApiKeySource === "env" && (
-                <span className="shrink-0 rounded-full bg-[var(--mist)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)]">
+                <span className="shrink-0 rounded-[4px] bg-[var(--mist)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)]">
                   from env
                 </span>
               )}
@@ -2894,7 +2847,7 @@ function ExternalApiKeySection() {
           </div>
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -3192,24 +3145,10 @@ function ApiSection({
   const totalEndpoints = filteredGroups.reduce((sum, g) => sum + g.endpoints.length, 0);
 
   return (
-    <section className="app-card p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="app-eyebrow">Developer</p>
-          <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            API access
-          </h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-            Use these endpoints to connect Foundry to external clients (the iOS app, automation
-            scripts, partner integrations). The web app authenticates via a server-set session
-            cookie; external clients send{" "}
-            <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-2)]">
-              Authorization: Bearer &lt;API_KEY&gt;
-            </code>
-            .
-          </p>
-        </div>
-
+    <SettingsCard
+      number="03"
+      title="API access"
+      right={
         <Link
           href="/api-docs"
           target="_blank"
@@ -3219,7 +3158,17 @@ function ApiSection({
           View full API docs
           <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
         </Link>
-      </div>
+      }
+    >
+      <p className="max-w-3xl text-sm leading-6 text-[var(--text-3)]">
+        Use these endpoints to connect Foundry to external clients (the iOS app, automation
+        scripts, partner integrations). The web app authenticates via a server-set session
+        cookie; external clients send{" "}
+        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-2)]">
+          Authorization: Bearer &lt;API_KEY&gt;
+        </code>
+        .
+      </p>
 
       {/* Base URL + Authentication — stacked vertically so the endpoint list below has full
           width. The previous side-by-side layout cramped both halves. */}
@@ -3319,7 +3268,7 @@ function ApiSection({
           </>
         )}
       </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -3615,12 +3564,12 @@ export function TemplatesTab() {
 
   return (
     <div className="space-y-6">
-      <section className="widget-card overflow-hidden">
-        <div className="widget-header">
-          <span className="widget-header-label">01 {"// "}DOCUMENT TEMPLATES</span>
-          <span className="widget-header-right">{templates.length} TOTAL</span>
-        </div>
-        <div className="space-y-5 p-6">
+      <SettingsCard
+        number="01"
+        title="Document templates"
+        right={`${templates.length} total`}
+        bodyClassName="space-y-5"
+      >
           <p className="text-sm leading-6 text-[var(--text-3)]">
             Every new Document is spun up from a template. The seed templates here are bundled with
             Foundry — duplicate one to make a workspace-owned variant you can tweak per client.
@@ -3762,8 +3711,7 @@ export function TemplatesTab() {
               </div>
             );
           })}
-        </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }
@@ -4146,13 +4094,12 @@ function SlackDocNotificationsSection() {
   }
 
   return (
-    <section className="widget-card overflow-hidden">
-      <div className="widget-header">
-        <span className="widget-header-label">DOC NOTIFICATIONS · SLACK</span>
-        <span className="widget-header-right">{subs?.length ?? 0} CONFIGURED</span>
-      </div>
-
-      <div className="space-y-5 p-6">
+    <SettingsCard
+      number="05"
+      title="Doc notifications · Slack"
+      right={`${subs?.length ?? 0} configured`}
+      bodyClassName="space-y-5"
+    >
         <p className="text-sm leading-6 text-[var(--text-3)]">
           Post a message to a Slack channel whenever a doc event happens &mdash; share link minted,
           public viewer opens it, signers sign or decline, comments come in. Create an{" "}
@@ -4312,8 +4259,7 @@ function SlackDocNotificationsSection() {
             </Button>
           </div>
         </div>
-      </div>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -4402,15 +4348,12 @@ function CustomHostnameSection() {
   }
 
   return (
-    <section className="widget-card overflow-hidden">
-      <div className="widget-header">
-        <span className="widget-header-label">BRANDED SHARE DOMAIN</span>
-        <span className="widget-header-right">
-          {state?.verified ? "VERIFIED" : state?.hostname ? "PENDING" : "DEFAULT"}
-        </span>
-      </div>
-
-      <div className="space-y-5 p-6">
+    <SettingsCard
+      number="06"
+      title="Branded share domain"
+      right={state?.verified ? "VERIFIED" : state?.hostname ? "PENDING" : "DEFAULT"}
+      bodyClassName="space-y-5"
+    >
         <p className="text-sm leading-6 text-[var(--text-3)]">
           Replace <code className="font-mono text-[12px] text-[var(--text-2)]">foundry.gitwork.co.uk/docs/&hellip;</code>{" "}
           on public share links with your own subdomain &mdash;{" "}
@@ -4514,7 +4457,6 @@ function CustomHostnameSection() {
             ) : null}
           </div>
         )}
-      </div>
-    </section>
+    </SettingsCard>
   );
 }

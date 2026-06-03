@@ -14,10 +14,10 @@ import {
   ClipboardDocumentIcon,
   PencilIcon,
   TrashIcon,
-  UserPlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
 import { useClientList } from "@/hooks/use-proposals";
 import { getRolePermissions, listMemberClients, setMemberClients } from "@/lib/api";
@@ -137,11 +137,7 @@ export function TeamSection() {
     <div className="proposal-form-theme space-y-6">
       {/* Create invite */}
       {isAdmin ? (
-        <section className="app-card p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <UserPlusIcon className="h-5 w-5 text-[var(--text-3)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-1)]">Create invite link</h2>
-          </div>
+        <SettingsCard number="01" title="Create invite">
           <div className="flex flex-wrap gap-3">
             <input
               value={label}
@@ -161,14 +157,13 @@ export function TeamSection() {
           <p className="mt-2 text-xs text-[var(--text-4)]">
             Anyone with the link can join using their @gitwork.co.uk Google account.
           </p>
-        </section>
+        </SettingsCard>
       ) : null}
 
       {/* Pending invites */}
       {pendingInvites.length > 0 ? (
-        <section>
-          <h2 className="app-eyebrow mb-3">Pending invite links</h2>
-          <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
+        <SettingsCard number="02" title="Pending invites">
+          <div className="divide-y divide-[var(--border-2)]">
             {pendingInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
@@ -231,19 +226,19 @@ export function TeamSection() {
               </div>
             ))}
           </div>
-        </section>
+        </SettingsCard>
       ) : null}
 
       {/* Members */}
-      <section>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="app-eyebrow">Members</h2>
-          <span className="text-xs text-[var(--text-4)]">{members.length} people</span>
-        </div>
+      <SettingsCard
+        number="03"
+        title="Members"
+        right={<span className="text-xs text-[var(--text-4)]">{members.length} people</span>}
+      >
         {loading ? (
           <p className="text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
-          <div className="overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
+          <div>
             {/* Header row */}
             <div className="hidden items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_64px]">
               <span className="app-eyebrow">Member</span>
@@ -301,13 +296,12 @@ export function TeamSection() {
             </div>
           </div>
         )}
-      </section>
+      </SettingsCard>
 
       {/* Past invites */}
       {pastInvites.length > 0 ? (
-        <section>
-          <h2 className="app-eyebrow mb-3">Past invites</h2>
-          <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-white">
+        <SettingsCard number="04" title="Past invites">
+          <div className="divide-y divide-[var(--border-2)]">
             {pastInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
@@ -341,7 +335,7 @@ export function TeamSection() {
               </div>
             ))}
           </div>
-        </section>
+        </SettingsCard>
       ) : null}
 
       {accessMember ? (

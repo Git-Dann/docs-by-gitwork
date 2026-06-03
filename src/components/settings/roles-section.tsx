@@ -7,13 +7,9 @@
 // every member's effective permissions server-side.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArrowPathIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  LockClosedIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowPathIcon, CheckIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
 import { getRolePermissions, updateRolePermissions } from "@/lib/api";
 import {
@@ -134,20 +130,11 @@ export function RolesSection() {
 
   return (
     <div className="proposal-form-theme space-y-6">
-      <section className="app-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-2">
-            <LockClosedIcon className="mt-0.5 h-5 w-5 text-[var(--text-3)]" />
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-1)]">Role permission matrix</h2>
-              <p className="mt-1 max-w-2xl text-xs text-[var(--text-4)]">
-                Define what each role can do. Tick a box to grant that role a permission. Changes
-                apply to everyone with the role (plus any per-person overrides set on the Team tab).
-                Super Admins always have everything and can&apos;t be limited.
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
+      <SettingsCard
+        number="01"
+        title="Roles & permissions"
+        right={
+          <span className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={toggleAll}
@@ -163,8 +150,14 @@ export function RolesSection() {
               <ArrowPathIcon className="h-3.5 w-3.5" />
               Reset
             </button>
-          </div>
-        </div>
+          </span>
+        }
+      >
+        <p className="max-w-2xl text-xs text-[var(--text-4)]">
+          Define what each role can do. Tick a box to grant that role a permission. Changes apply to
+          everyone with the role (plus any per-person overrides set on the Team tab). Super Admins
+          always have everything and can&apos;t be limited.
+        </p>
 
         {loading || !matrix ? (
           <p className="mt-6 text-sm text-[var(--text-3)]">Loading…</p>
@@ -208,7 +201,7 @@ export function RolesSection() {
             </div>
           </div>
         )}
-      </section>
+      </SettingsCard>
 
       {/* Sticky-ish save bar */}
       <div className="flex items-center justify-between gap-3">

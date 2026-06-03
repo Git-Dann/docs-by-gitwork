@@ -10,6 +10,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useAgents, useSaveAgent, useResetAgent, type AgentConfigRecord } from "@/hooks/use-agents";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
 
 const PRODUCT_LABELS: Record<string, string> = {
@@ -38,10 +39,14 @@ export function AgentsPanel() {
 
   return (
     <div className="space-y-8">
-      {Object.entries(byProduct).map(([product, productAgents]) => (
-        <div key={product}>
-          <p className="app-eyebrow mb-3">{PRODUCT_LABELS[product] ?? product}</p>
-          <div className="divide-y divide-[var(--border-2)] rounded-[14px] border border-[var(--border-2)]">
+      {Object.entries(byProduct).map(([product, productAgents], i) => (
+        <SettingsCard
+          key={product}
+          number={String(i + 1).padStart(2, "0")}
+          title={PRODUCT_LABELS[product] ?? product}
+          bodyClassName="p-0"
+        >
+          <div className="divide-y divide-[var(--border-2)]">
             {productAgents.map((agent) => (
               <AgentRow
                 key={agent.agentKey}
@@ -50,7 +55,7 @@ export function AgentsPanel() {
               />
             ))}
           </div>
-        </div>
+        </SettingsCard>
       ))}
 
       {editing && (
@@ -87,12 +92,12 @@ function AgentRow({
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-[var(--text-1)]">{agent.name}</span>
           {hasOverride && (
-            <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--brand-600)]">
+            <span className="rounded-[4px] bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--brand-600)]">
               customised
             </span>
           )}
           {!agent.enabled && (
-            <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+            <span className="rounded-[4px] bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
               disabled
             </span>
           )}
