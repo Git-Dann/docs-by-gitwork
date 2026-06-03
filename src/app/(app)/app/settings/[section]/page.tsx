@@ -60,13 +60,17 @@ const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
 const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-card", "workspace", "onboarding"]);
 
-// Old standalone routes now live under People & Access — redirect for back-compat.
+// Old standalone routes now live in different sections — redirect for back-compat.
 const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
   team: "/app/settings/people",
   roles: "/app/settings/people?tab=roles",
   // Old combined "agents-checks" page split into two separate sections in the rail.
   // Land legacy bookmarks on the AI agents page; users wanting checks just click across.
   "agents-checks": "/app/settings/agents",
+  // Branding + Content folded into Document defaults (the merged "general" section).
+  // Any bookmark to the old URLs lands on the merged page — same content, one URL.
+  branding: "/app/settings/general",
+  content: "/app/settings/general",
 };
 
 // Settings sub-sections gated by an individual matrix permission. A Super Admin can

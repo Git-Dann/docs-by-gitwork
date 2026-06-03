@@ -12,8 +12,6 @@ import {
   CommandLineIcon,
   CpuChipIcon,
   DocumentDuplicateIcon,
-  PaintBrushIcon,
-  PencilSquareIcon,
   ShieldCheckIcon,
   Squares2X2Icon,
   UserCircleIcon,
@@ -92,24 +90,14 @@ const GROUPS: SectionGroup[] = [
       {
         id: "general",
         label: "Document defaults",
-        description: "Prepared by, team, contact.",
+        description: "Identity, logo, confidentiality, snippets.",
         icon: AdjustmentsHorizontalIcon,
         permission: "settings.general",
       },
-      {
-        id: "branding",
-        label: "Branding",
-        description: "Workspace logo.",
-        icon: PaintBrushIcon,
-        permission: "settings.branding",
-      },
-      {
-        id: "content",
-        label: "Boilerplate copy",
-        description: "Confidentiality + objective snippets.",
-        icon: PencilSquareIcon,
-        permission: "settings.content",
-      },
+      // "branding" and "content" are now stacked as cards inside the Document defaults
+      // section above — separate rail entries removed. Routes still resolve (the page
+      // dispatcher redirects /settings/branding and /settings/content to /general) so
+      // any external links / bookmarks survive.
       {
         id: "templates",
         label: "Templates",

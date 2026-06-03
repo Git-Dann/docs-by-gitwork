@@ -119,14 +119,23 @@ export function SettingsPanel({
 export function GeneralTab() {
   const defaultsQuery = useWorkspaceDefaults();
   const updateDefaults = useUpdateWorkspaceDefaults();
-  const defaults = defaultsQuery.data;
+  const brandingQuery = useWorkspaceBranding();
+  const updateBranding = useUpdateWorkspaceBranding();
 
-  function patch(patchObject: Partial<{ preparedBy: string; team: string; contactDetails: string }>) {
-    updateDefaults.mutate(patchObject);
+  const defaults = defaultsQuery.data;
+  const branding = brandingQuery.data;
+  const snippets = defaults?.objectiveSnippets ?? [];
+
+  function patchDefaults(input: Partial<{ preparedBy: string; team: string; contactDetails: string }>) {
+    updateDefaults.mutate(input);
+  }
+
+  function updateSnippets(next: Array<{ title: string; description: string }>) {
+    updateDefaults.mutate({ objectiveSnippets: next });
   }
 
   return (
-    <div className="space-y-6">
+    <div className="proposal-form-theme space-y-6">
       <SettingsCard
         number="01"
         title="Proposal defaults"
@@ -141,19 +150,147 @@ export function GeneralTab() {
           <FieldInput
             label="Prepared by"
             value={defaults?.preparedBy ?? ""}
-            onChange={(preparedBy) => patch({ preparedBy })}
+            onChange={(preparedBy) => patchDefaults({ preparedBy })}
+            placeholder="Gitwork"
           />
           <FieldInput
             label="Team / department"
             value={defaults?.team ?? ""}
-            onChange={(team) => patch({ team })}
+            onChange={(team) => patchDefaults({ team })}
+            placeholder="Product & Delivery"
           />
           <FieldInput
             label="Contact details"
             value={defaults?.contactDetails ?? ""}
-            onChange={(contactDetails) => patch({ contactDetails })}
+            onChange={(contactDetails) => patchDefaults({ contactDetails })}
+            placeholder="hello@gitwork.co.uk"
           />
         </div>
+      </SettingsCard>
+
+      <SettingsCard
+        number="02"
+        title="Workspace logo"
+        right={<SavedIndicator mutation={updateBranding} />}
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          The workspace logo used wherever a document doesn&apos;t specify its own — also appears
+          on scan reports and (future) email signatures. Templates in Docs carry their own cover
+          art, so this is the fallback.
+        </p>
+
+        <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:max-w-md">
+          <div className="space-y-2">
+            <FieldLabel>Workspace logo</FieldLabel>
+            <ImagePicker
+              value={branding?.brandLogoUrl ?? ""}
+              onChange={(value) => updateBranding.mutate({ brandLogoUrl: value })}
+              previewClassName="h-36 w-full"
+            />
+          </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        number="03"
+        title="Confidentiality defaults"
+        right={<SavedIndicator mutation={updateBranding} />}
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          The cover editor uses an internal/external toggle and resolves the final copy from
+          these defaults.
+        </p>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          <FieldTextArea
+            label="Internal statement"
+            value={branding?.defaultConfidentialityInternal ?? ""}
+            onChange={(value) =>
+              updateBranding.mutate({ defaultConfidentialityInternal: value })
+            }
+          />
+          <FieldTextArea
+            label="External statement"
+            value={branding?.defaultConfidentialityExternal ?? ""}
+            onChange={(value) =>
+              updateBranding.mutate({ defaultConfidentialityExternal: value })
+            }
+          />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        number="04"
+        title="Objective snippets"
+        right={
+          <div className="flex items-center gap-3">
+            <SavedIndicator mutation={updateDefaults} />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => updateSnippets([...snippets, { title: "", description: "" }])}
+            >
+              Add snippet
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Reusable objectives available inside the proposal builder — pick from a list instead
+          of retyping for every new doc.
+        </p>
+
+        {snippets.length > 0 ? (
+          <div className="mt-6 space-y-3">
+            {snippets.map((snippet, index) => (
+              <article
+                key={`${snippet.title}-${index}`}
+                className="grid gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto]"
+              >
+                <FieldInput
+                  label="Title"
+                  value={snippet.title}
+                  onChange={(title) =>
+                    updateSnippets(
+                      snippets.map((entry, entryIndex) =>
+                        entryIndex === index ? { ...entry, title } : entry,
+                      ),
+                    )
+                  }
+                  placeholder="Reduce proposal cycle time"
+                />
+                <FieldInput
+                  label="Description"
+                  value={snippet.description}
+                  onChange={(description) =>
+                    updateSnippets(
+                      snippets.map((entry, entryIndex) =>
+                        entryIndex === index ? { ...entry, description } : entry,
+                      ),
+                    )
+                  }
+                  placeholder="Decrease proposal drafting and review timeline by at least 40%."
+                />
+                <div className="flex items-end justify-end">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() =>
+                      updateSnippets(snippets.filter((_, entryIndex) => entryIndex !== index))
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[var(--text-3)]">No snippets configured yet.</p>
+        )}
       </SettingsCard>
     </div>
   );
@@ -3316,11 +3453,13 @@ function FieldInput({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block space-y-1.5">
@@ -3329,7 +3468,10 @@ function FieldInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type={type}
-        className="w-full"
+        placeholder={placeholder}
+        // `app-input` provides the border + 36px height + focus ring. Without it the input has
+        // zero affordance — looks like plain text on the page.
+        className="app-input"
       />
     </label>
   );
