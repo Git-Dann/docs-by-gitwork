@@ -5,38 +5,112 @@ import {
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { useMemo } from "react";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
+import { useClientList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
-import { statusLabel } from "@/types/codeclear";
-import {
-  CodeClearStatusBadge,
-  CodeClearTabs,
-  WidgetCard,
-} from "@/components/codeclear/codeclear-shared";
+import { CodeClearTabs, WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
-  // Overview is the health/stats view — pull lightweight aggregates only.
-  // The full roster lives in /app/codeclear/candidates.
+  // The overview now derives from the full roster (pageSize 100 covers
+  // the Gitwork team comfortably). The legacy hiring-pipeline stats —
+  // pass rate, stage distribution, scan queue — are intentionally gone:
+  // this product manages our internal devs and their client engagements,
+  // not external candidates moving through interviews.
   const allCandidatesQuery = useCodeClearCandidates({
     page: 1,
     pageSize: 100,
     sortBy: "createdAt",
     sortDir: "desc",
   });
+  const clientsQuery = useClientList();
 
   const stats = statsQuery.data;
-  const allCandidates = allCandidatesQuery.data?.items ?? [];
+  // Wrap the `?? []` fallbacks in useMemo so the downstream `useMemo`s
+  // that depend on these arrays don't see a fresh reference every render
+  // (eslint react-hooks/exhaustive-deps).
+  const allCandidates = useMemo(
+    () => allCandidatesQuery.data?.items ?? [],
+    [allCandidatesQuery.data],
+  );
+  const allClients = useMemo(
+    () => clientsQuery.data?.clients ?? [],
+    [clientsQuery.data],
+  );
 
-  const stageTotal = (stats?.byStatus ?? []).reduce((sum, e) => sum + e.count, 0);
+  // ─── Derived metrics ──────────────────────────────────────────────────────
+  const total = stats?.total ?? allCandidates.length;
 
-  const scanned = allCandidates.filter(
-    (c) => c.analysisState === "COMPLETE" || c.analysisState === "DRAFT_UPDATED",
-  ).length;
-  const coveragePct =
-    allCandidates.length > 0 ? Math.round((scanned / allCandidates.length) * 100) : 0;
-  const scanning = allCandidates.filter((c) => c.analysisState === "RUNNING").length;
-  const neverScanned = allCandidates.filter((c) => c.analysisState === "NEVER_RUN").length;
+  // Engaged = at least one active client placement. Complement is bench.
+  const engaged = useMemo(
+    () => allCandidates.filter((c) => c.currentClients.length > 0).length,
+    [allCandidates],
+  );
+  const bench = Math.max(0, total - engaged);
+  const engagedPct = total > 0 ? Math.round((engaged / total) * 100) : 0;
+
+  // Calibre = mean of finalized score or live draft, across devs that have
+  // a score at all. Skipping unscored devs keeps the average meaningful
+  // when half the bench hasn't been validated yet.
+  const calibreSamples = useMemo(
+    () =>
+      allCandidates
+        .map((c) => c.score?.overallScore ?? c.scoreDraft?.overallScore ?? null)
+        .filter((v): v is number => v != null),
+    [allCandidates],
+  );
+  const avgCalibre =
+    calibreSamples.length > 0
+      ? Math.round(calibreSamples.reduce((sum, v) => sum + v, 0) / calibreSamples.length)
+      : null;
+
+  // Validated = at least one completed analysis run sitting on the dev.
+  // Counts as "we have real signal on this person", not just hand-entered.
+  const validated = useMemo(
+    () =>
+      allCandidates.filter(
+        (c) => c.analysisState === "COMPLETE" || c.analysisState === "DRAFT_UPDATED",
+      ).length,
+    [allCandidates],
+  );
+  const validatedPct = total > 0 ? Math.round((validated / total) * 100) : 0;
+
+  // Tier distribution — the bench mix. Drives how the team is composed.
+  const tierMix = useMemo(() => {
+    const counts: Record<"TIER_1" | "TIER_2" | "TIER_3", number> = {
+      TIER_1: 0,
+      TIER_2: 0,
+      TIER_3: 0,
+    };
+    for (const c of allCandidates) {
+      if (c.effectiveTier in counts) counts[c.effectiveTier as keyof typeof counts]++;
+    }
+    return counts;
+  }, [allCandidates]);
+
+  // Client coverage — how the team is deployed. Aggregate over all
+  // currentClients on every dev (a dev can be on multiple), then sort.
+  const clientCoverage = useMemo(() => {
+    const byId = new Map<string, { id: string | null; name: string; count: number }>();
+    for (const c of allCandidates) {
+      for (const eng of c.currentClients) {
+        const key = eng.id ?? `name:${eng.name}`;
+        const existing = byId.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          byId.set(key, { id: eng.id, name: eng.name, count: 1 });
+        }
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => b.count - a.count);
+  }, [allCandidates]);
+  const clientLogoById = useMemo(
+    () => new Map(allClients.map((c) => [c.id, c.logoUrl ?? null])),
+    [allClients],
+  );
 
   return (
     <div className="space-y-6">
@@ -64,101 +138,177 @@ export function CodeClearOverview() {
         </div>
       ) : null}
 
-      {/* Bento — numbered widget grid */}
+      {/* Bento — reworked around the current product. The old
+          CodeClear-era "hiring funnel" widgets (pass rate, stage
+          distribution, scan queue) are gone — they don't reflect what
+          this dashboard is for now. */}
       <div className="bento-grid">
+        {/* Row 1 — four headline stats about the bench itself. */}
         <StatWidget
           number="01"
           name="ROSTER"
-          value={String(stats?.total ?? 0)}
+          value={String(total)}
           unit="DEVELOPERS"
-          caption="Across all pipeline stages"
+          caption="On the Gitwork bench"
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
           number="02"
-          name="AVG SCORE"
-          value={stats?.avgThis != null ? String(stats.avgThis) : "—"}
-          unit="/ 100 THIS MONTH"
+          name="ENGAGED"
+          value={String(engaged)}
+          unit={`OF ${total}`}
           caption={
-            stats?.avgLast != null ? `Last month ${stats.avgLast}/100` : "No prior month data yet"
+            bench === 0
+              ? "Whole team is placed"
+              : `${bench} dev${bench > 1 ? "s" : ""} on the bench`
           }
+          progress={engagedPct}
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
           number="03"
-          name="PASS RATE"
-          value={stats?.passRateThis != null ? String(stats.passRateThis) : "—"}
-          unit="% AT 65+"
-          caption="Verified developers this month"
+          name="AVG CALIBRE"
+          value={avgCalibre != null ? String(avgCalibre) : "—"}
+          unit="/ 100"
+          caption={
+            calibreSamples.length > 0
+              ? `From ${calibreSamples.length} scored dev${calibreSamples.length > 1 ? "s" : ""}`
+              : "No devs scored yet"
+          }
+          progress={avgCalibre ?? undefined}
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
           number="04"
-          name="SIGNAL COVERAGE"
-          value={String(coveragePct)}
-          unit="% OF ROSTER"
+          name="VALIDATED"
+          value={String(validated)}
+          unit={`OF ${total}`}
           caption={
-            scanning > 0
-              ? `${scanning} live scan${scanning > 1 ? "s" : ""} in progress`
-              : `${scanned} of ${allCandidates.length} scored from live signal`
+            validated === 0
+              ? "No live GitHub signal yet"
+              : `${validatedPct}% have completed validation`
           }
-          progress={coveragePct}
-          status={scanning > 0 ? "LIVE" : undefined}
-          statusTone={scanning > 0 ? "info" : "muted"}
+          progress={validatedPct}
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
 
+        {/* Row 2 — bench composition (tier mix) + how the team is
+            deployed (clients with dev counts). */}
         <WidgetCard
           number="05"
-          name="QUEUE STATUS"
+          name="TIER MIX"
           className="col-span-12 xl:col-span-4"
-          status={scanning > 0 ? "ACTIVE" : "IDLE"}
-          statusTone={scanning > 0 ? "info" : "muted"}
-        >
-          <div className="grid grid-cols-2 gap-3">
-            <QueueStat label="LIVE SCANS" value={String(scanning)} tone="info" />
-            <QueueStat label="NEVER SCANNED" value={String(neverScanned)} tone={neverScanned > 0 ? "warning" : "muted"} />
-            <QueueStat label="RE-CHECK DUE" value={String(stats?.recheckDue ?? 0)} tone={(stats?.recheckDue ?? 0) > 0 ? "danger" : "muted"} />
-            <QueueStat label="COMPLETE" value={String(scanned)} tone="success" />
-          </div>
-        </WidgetCard>
-
-        {/* Stage distribution — pairs with Queue Status above on the same row. */}
-        <WidgetCard
-          number="06"
-          name="STAGE DISTRIBUTION"
-          className="col-span-12 xl:col-span-8"
-          status={`${stageTotal} TOTAL`}
+          status={`${total} TOTAL`}
           statusTone="muted"
         >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {(stats?.byStatus ?? []).map((entry) => {
-              const pct = stageTotal > 0 ? (entry.count / stageTotal) * 100 : 0;
-              return (
-                <div
-                  key={entry.status}
-                  className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4"
-                >
-                  <CodeClearStatusBadge status={entry.status} />
-                  <p className="mt-4 font-display text-[36px] font-normal leading-[1.1] tracking-[-0.03em] text-[var(--text-1)]">
-                    {entry.count}
-                  </p>
-                  <p className="widget-data-label mt-1">{statusLabel(entry.status)}</p>
-                  <div className="widget-progress mt-3">
-                    <div className="widget-progress__fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <p className="widget-timestamp mt-1.5">{pct.toFixed(0)}% OF PIPELINE</p>
-                </div>
-              );
-            })}
-            {(stats?.byStatus ?? []).length === 0 ? (
-              <div className="col-span-full py-6 text-center text-sm text-[var(--text-4)]">
-                No developers yet.
-              </div>
-            ) : null}
+          <div className="space-y-3">
+            <TierRow
+              label="Tier 1"
+              caption="Senior · 80+"
+              count={tierMix.TIER_1}
+              total={total}
+              tone="success"
+            />
+            <TierRow
+              label="Tier 2"
+              caption="Mid · 60-79"
+              count={tierMix.TIER_2}
+              total={total}
+              tone="info"
+            />
+            <TierRow
+              label="Tier 3"
+              caption="Junior · under 60"
+              count={tierMix.TIER_3}
+              total={total}
+              tone="muted"
+            />
           </div>
         </WidgetCard>
 
+        <WidgetCard
+          number="06"
+          name="CLIENT COVERAGE"
+          className="col-span-12 xl:col-span-8"
+          status={
+            clientCoverage.length === 0
+              ? "NONE"
+              : `${clientCoverage.length} CLIENT${clientCoverage.length > 1 ? "S" : ""}`
+          }
+          statusTone={clientCoverage.length === 0 ? "muted" : "info"}
+        >
+          {clientCoverage.length === 0 ? (
+            <div className="py-6 text-center text-sm text-[var(--text-4)]">
+              No active placements. Assign devs from the Pipeline.
+            </div>
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {clientCoverage.slice(0, 8).map((entry) => {
+                const logo = entry.id ? clientLogoById.get(entry.id) ?? null : null;
+                return (
+                  <li
+                    key={entry.id ?? entry.name}
+                    className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2"
+                  >
+                    <ClientAvatar name={entry.name} logoUrl={logo} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+                        {entry.name}
+                      </p>
+                      <p className="widget-timestamp mt-0.5">
+                        {entry.count} DEV{entry.count > 1 ? "S" : ""}
+                      </p>
+                    </div>
+                    <span className="font-display text-[22px] font-normal leading-none tracking-[-0.02em] text-[var(--text-1)]">
+                      {entry.count}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </WidgetCard>
+      </div>
+    </div>
+  );
+}
+
+function TierRow({
+  label,
+  caption,
+  count,
+  total,
+  tone,
+}: {
+  label: string;
+  caption: string;
+  count: number;
+  total: number;
+  tone: "success" | "info" | "muted";
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  const barClass =
+    tone === "success"
+      ? "bg-emerald-500"
+      : tone === "info"
+        ? "bg-sky-500"
+        : "bg-[var(--text-4)]";
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-1)]">{label}</p>
+          <p className="widget-timestamp mt-0.5">{caption}</p>
+        </div>
+        <div className="text-right">
+          <span className="font-display text-[24px] font-normal leading-none tracking-[-0.02em] text-[var(--text-1)]">
+            {count}
+          </span>
+          <p className="widget-timestamp mt-0.5">{pct}% OF BENCH</p>
+        </div>
+      </div>
+      <div className="widget-progress mt-2">
+        <div className={cn("h-full rounded-full", barClass)} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -212,35 +362,3 @@ function StatWidget({
   );
 }
 
-function QueueStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "info" | "success" | "warning" | "danger" | "muted";
-}) {
-  const dot =
-    tone === "success"
-      ? "widget-status-dot--success"
-      : tone === "warning"
-        ? "widget-status-dot--warning"
-        : tone === "danger"
-          ? "widget-status-dot--danger"
-          : tone === "info"
-            ? "widget-status-dot--info"
-            : "";
-
-  return (
-    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-      <div className="flex items-center gap-2">
-        <span className={cn("widget-status-dot", dot)} aria-hidden />
-        <span className="widget-data-label">{label}</span>
-      </div>
-      <p className="mt-2 font-display text-[32px] font-normal leading-[1.1] tracking-[-0.03em] text-[var(--text-1)]">
-        {value}
-      </p>
-    </div>
-  );
-}
