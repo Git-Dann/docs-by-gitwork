@@ -95,7 +95,12 @@ export const coverSection = defineSection<CoverSectionData>({
 
     const clientName =
       data.clientName || proposal.clientName || proposal.metadata.client || "Client";
-    const authorLine = [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
+    // "Prepared by" is edited on the cover itself (it writes proposal.metadata.owner), so the
+    // cover preview must read it from there first — otherwise edits to the field never showed.
+    // Fall back to the signoff footer's prepared-by / team only when owner is blank.
+    const authorLine =
+      proposal.metadata.owner?.trim() ||
+      [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
     const titleLine = data.proposalTitle || proposal.title || "Untitled document";
 
     const docTypeLabel =
@@ -172,6 +177,11 @@ export const coverSection = defineSection<CoverSectionData>({
           callout={confidentialityText ? { text: confidentialityText, tone: "neutral" } : undefined}
           dated={proposal.updatedAt.slice(0, 10)}
           logoUrl={brandLogoUrl}
+          coBrand={
+            data.brandLockup === "CLIENT_X_GITWORK" && clientName && clientName !== "Client"
+              ? { clientName }
+              : undefined
+          }
           variant="print"
           watermark={watermark}
           watermarkTone={watermarkTone}
