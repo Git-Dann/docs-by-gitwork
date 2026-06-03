@@ -9,11 +9,17 @@ export function CoverEditor({
   onChange,
   preparedBy,
   onPreparedByChange,
+  linkedClientLogoUrl,
+  linkedClientName,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
   preparedBy: string;
   onPreparedByChange: (value: string) => void;
+  /** Logo of the linked Portal client, used as the client-lockup fallback when the override is blank. */
+  linkedClientLogoUrl?: string;
+  /** Name of the linked Portal client, for the inheritance hint. */
+  linkedClientName?: string;
 }) {
   const brandingQuery = useWorkspaceBranding();
   const branding = brandingQuery.data;
@@ -24,6 +30,9 @@ export function CoverEditor({
       : branding?.defaultConfidentialityInternal) ||
     value.confidentiality ||
     "";
+
+  const clientLogoOverride = (value.clientLogoUrl ?? "").trim();
+  const inheritsPortalLogo = !clientLogoOverride && Boolean(linkedClientLogoUrl);
 
   return (
     <div className="space-y-4">
@@ -120,9 +129,24 @@ export function CoverEditor({
                 value={value.clientLogoUrl ?? ""}
                 onChange={(clientLogoUrl) => onChange({ ...value, clientLogoUrl })}
               />
-              <span className="block text-xs text-[var(--text-4)]">
-                Shown in the lockup beside the Foundry mark. Leave blank to show the client name as text.
-              </span>
+              {inheritsPortalLogo ? (
+                <span className="flex items-center gap-2 text-xs text-[var(--text-4)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={linkedClientLogoUrl}
+                    alt=""
+                    className="h-5 w-5 shrink-0 rounded-[4px] border border-[var(--border-2)] object-contain"
+                  />
+                  <span>
+                    Using {linkedClientName?.trim() || "the linked client"}&rsquo;s logo from Portal.
+                    Pick an image to override.
+                  </span>
+                </span>
+              ) : (
+                <span className="block text-xs text-[var(--text-4)]">
+                  Shown in the lockup beside the Foundry mark. Leave blank to show the client name as text.
+                </span>
+              )}
             </label>
           ) : null}
         </div>

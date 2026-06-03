@@ -1590,6 +1590,11 @@ function OverviewCanvas({
 
   const clientName = proposal.clientName || proposal.metadata.client || cover?.clientName || "";
   const owner = proposal.metadata.owner || "";
+  // Mirror the cover's author-line resolution exactly so the overview can't disagree with the
+  // document. The cover renders "Prepared by" from metadata.owner (what the cover editor's
+  // "Prepared by" field writes), falling back to the sign-off footer's prepared-by / team.
+  const preparedByLine =
+    owner.trim() || [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
   const expiryDate = proposal.expiresAt ?? proposal.metadata.expiryDate ?? null;
   const isEmptyProposal =
     !clientName &&
@@ -1683,8 +1688,7 @@ function OverviewCanvas({
         figureLabel="CLIENT · OWNERSHIP"
         figureLong
       >
-        <OverviewStatRow label="Owner" value={owner || "Not set"} />
-        <OverviewStatRow label="Prepared by" value={signoff?.preparedBy || "Not set"} />
+        <OverviewStatRow label="Prepared by" value={preparedByLine || "Not set"} />
         <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
         <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
         <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />

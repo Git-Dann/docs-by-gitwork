@@ -64,6 +64,9 @@ export const proposalInclude = {
   },
   template: true,
   owner: true,
+  // Linked Portal client — used to auto-fill the cover's "Client × Gitwork" logo when the
+  // document is tied to a WorkspaceClient that already has a logo (falls back to the name).
+  client: { select: { id: true, name: true, logoUrl: true } },
 } satisfies Prisma.DocumentInclude;
 
 export type ProposalDocumentRecord = Prisma.DocumentGetPayload<{
@@ -149,6 +152,10 @@ export function serializeProposal(
     title: document.title,
     productName: document.productName,
     clientName: document.clientName,
+    clientId: document.clientId ?? null,
+    // Logo of the linked Portal client (if any) — the cover uses this to auto-fill the
+    // "Client × Gitwork" lockup when the per-document override is blank.
+    linkedClientLogoUrl: document.client?.logoUrl ?? null,
     summary: document.summary,
     version: document.version,
     documentNumber: document.documentNumber ?? null,
