@@ -26,6 +26,9 @@ const AgentsAndChecksTab = dynamic(() => import("@/components/settings-panel").t
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
+const OnboardingFormsTab = dynamic(() =>
+  import("@/components/settings/onboarding/forms-tab").then((m) => ({ default: m.OnboardingFormsTab })),
+);
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
@@ -33,6 +36,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "general",
   "branding",
   "templates",
+  "onboarding",
   "content",
   "rate-card",
   "people",
@@ -51,7 +55,7 @@ const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
-const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-card", "workspace"]);
+const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-card", "workspace", "onboarding"]);
 
 // Old standalone routes now live under People & Access — redirect for back-compat.
 const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
@@ -93,6 +97,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   templates: {
     title: "Templates",
     subtitle: "Document templates and section editing.",
+  },
+  onboarding: {
+    title: "Onboarding",
+    subtitle: "Customise the client onboarding forms sent at /onboarding.",
   },
   content: {
     title: "Content",
@@ -241,6 +249,7 @@ export default async function SettingsSectionPage({
         {sectionId === "branding" ? <BrandingTab /> : null}
         {sectionId === "content" ? <ContentTab /> : null}
         {sectionId === "templates" ? <TemplatesTab /> : null}
+        {sectionId === "onboarding" ? <OnboardingFormsTab /> : null}
         {sectionId === "rate-card" ? <RateCardTab /> : null}
         {sectionId === "people" ? <PeopleAccess /> : null}
         {sectionId === "integrations" ? <IntegrationsTab /> : null}

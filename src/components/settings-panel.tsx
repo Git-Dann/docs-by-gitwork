@@ -35,7 +35,6 @@ import { MODULE_PERMISSIONS, isAtLeast, type RoleId } from "@/types/auth";
 import { AgentsPanel } from "@/components/settings/agents-panel";
 import { ChecksPanel } from "@/components/settings/checks-panel";
 import { SettingsCard } from "@/components/settings/settings-card";
-import { OnboardingFormsTab } from "@/components/settings/onboarding/forms-tab";
 import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
 import type { SectionKey } from "@/types/proposal";
 
@@ -43,7 +42,6 @@ type TabId =
   | "general"
   | "branding"
   | "templates"
-  | "onboarding"
   | "content"
   | "people"
   | "integrations"
@@ -62,7 +60,6 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "general", label: "General" },
   { id: "branding", label: "Branding" },
   { id: "templates", label: "Templates" },
-  { id: "onboarding", label: "Onboarding" },
   { id: "content", label: "Content" },
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
@@ -109,7 +106,6 @@ export function SettingsPanel({
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "branding" && <BrandingTab />}
       {activeTab === "templates" && <TemplatesTab />}
-      {activeTab === "onboarding" && <OnboardingFormsTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}

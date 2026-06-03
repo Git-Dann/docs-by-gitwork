@@ -6,6 +6,7 @@ import {
   AdjustmentsHorizontalIcon,
   BellAlertIcon,
   BuildingOffice2Icon,
+  ClipboardDocumentCheckIcon,
   ClipboardDocumentListIcon,
   Cog6ToothIcon,
   CommandLineIcon,
@@ -30,6 +31,7 @@ export type SettingsSectionId =
   | "general"
   | "branding"
   | "templates"
+  | "onboarding"
   | "content"
   | "rate-card"
   | "people"
@@ -112,6 +114,13 @@ const GROUPS: SectionGroup[] = [
         description: "Document section templates.",
         icon: DocumentDuplicateIcon,
         permission: "settings.templates",
+      },
+      {
+        id: "onboarding",
+        label: "Onboarding",
+        description: "Client onboarding forms.",
+        icon: ClipboardDocumentCheckIcon,
+        adminOnly: true,
       },
       // Rate card management isn't surfaced in the Settings nav anymore — it belongs alongside
       // the proposal builder where it's actually consumed. The route at
