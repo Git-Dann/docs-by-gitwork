@@ -17,7 +17,6 @@ import {
   PlusIcon,
   SignalIcon,
   SparklesIcon,
-  SwatchIcon,
   TrashIcon,
   VideoCameraIcon,
   XMarkIcon,
@@ -375,9 +374,8 @@ export function ClientDetail({ slug }: { slug: string }) {
               <Link
                 href={`/app/portal/${slug}/design-system`}
                 title="Open this client's brand design system"
-                className="inline-flex items-center gap-1.5 self-center rounded-[8px] border border-[var(--brand-300)] bg-[var(--surface-brand)] px-3.5 py-2 text-sm font-medium text-[var(--brand-800)] transition hover:bg-[var(--surface-brand-strong)]"
+                className="inline-flex items-center gap-1 self-center rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
               >
-                <SwatchIcon className="h-4 w-4" />
                 Design system →
               </Link>
             )}
