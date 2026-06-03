@@ -26,6 +26,8 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
+  SparklesIcon,
+  ClipboardDocumentCheckIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { SettingsCard } from "@/components/settings/settings-card";
@@ -217,9 +219,10 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         {/* ── 01 // Structure ── */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-4">
           <SettingsCard number="01" title="Structure" bodyClassName="space-y-1">
             <OutlineItem
+              icon={SparklesIcon}
               label="Welcome screen"
               active={sel.kind === "welcome"}
               onClick={() => setSel({ kind: "welcome" })}
@@ -253,6 +256,7 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
             </button>
             <div className="pt-2">
               <OutlineItem
+                icon={ClipboardDocumentCheckIcon}
                 label="Review & submit screen"
                 active={sel.kind === "review"}
                 onClick={() => setSel({ kind: "review" })}
@@ -262,7 +266,7 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
         </div>
 
         {/* ── 02 // {selection} ── */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-8">
           <SettingsCard number="02" title={editorTitle} bodyClassName="space-y-4">
             {sel.kind === "welcome" && (
               <WelcomeEditor structure={structure} onChange={(welcome) => commitStructure({ ...structure, welcome })} />
@@ -284,9 +288,12 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
           </SettingsCard>
         </div>
 
-        {/* ── 03 // Preview ── */}
-        <div className="lg:col-span-4">
-          <SettingsCard number="03" title="Preview" right="LIVE" bodyClassName="space-y-4">
+      </div>
+
+      {/* ── 03 // Preview — full-width 16:9 viewport, mirrors the public flow ── */}
+      <SettingsCard number="03" title="Preview" right="LIVE">
+        <div className="aspect-[16/9] w-full overflow-auto rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
+          <div className="mx-auto max-w-2xl px-6 py-8">
             <StepPreview
               structure={structure}
               selStep={selStep}
@@ -294,9 +301,9 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
               answers={previewAnswers}
               setAnswer={setPreviewAnswer}
             />
-          </SettingsCard>
+          </div>
         </div>
-      </div>
+      </SettingsCard>
 
       {paletteOpen && selStep && (
         <AddFieldPalette
@@ -312,17 +319,28 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
 
 // ─── Outline rows ───────────────────────────────────────────────────────────────
 
-function OutlineItem({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function OutlineItem({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: (props: React.ComponentProps<"svg">) => React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-[8px] px-3 py-2 text-left text-sm font-medium transition",
+        "flex w-full items-center gap-2 rounded-[6px] px-2 py-2 text-left text-sm font-medium transition",
         active ? "bg-[var(--brand-200)] text-[var(--brand-800)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
       )}
     >
-      {label}
+      <Icon className={cn("h-4 w-4 shrink-0", active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
+      <span className="min-w-0">{label}</span>
     </button>
   );
 }
