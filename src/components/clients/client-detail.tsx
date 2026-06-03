@@ -1139,11 +1139,12 @@ function formatTimeRange(startISO?: string | null, endISO?: string | null): stri
 }
 
 function MeetingNotesSection({ slug }: { slug: string }) {
+  const PAGE_SIZE = 5;
+  const [page, setPage] = useState(0);
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
-  // Debounce so we search as the user pauses, not on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => setQuery(input.trim()), 350);
+    const t = setTimeout(() => { setQuery(input.trim()); setPage(0); }, 350);
     return () => clearTimeout(t);
   }, [input]);
 
@@ -1155,48 +1156,25 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const [addedTaskIds, setAddedTaskIds] = useState<Record<string, boolean>>({});
   const [viewing, setViewing] = useState<ScribeMeeting | null>(null);
 
-  // Push a meeting action item into the client's task board (lands in Backlog).
   async function addActionItemAsTask(clientId: string, itemId: string, text: string) {
     setAddingTaskId(itemId);
-    try {
-      await createTask.mutateAsync({ clientId, title: text });
-      setAddedTaskIds((s) => ({ ...s, [itemId]: true }));
-    } catch {
-      /* swallow — button just won't flip to "Added" */
-    } finally {
-      setAddingTaskId(null);
-    }
+    try { await createTask.mutateAsync({ clientId, title: text }); setAddedTaskIds((s) => ({ ...s, [itemId]: true })); }
+    catch { /* swallow */ } finally { setAddingTaskId(null); }
+  }
+
+  async function fetchNotes(args: { calendarEventId: string; meetingCode: string | null; title: string; start?: string; end?: string; attendees?: string[]; }) {
+    if (!args.meetingCode) return;
+    setBusyId(args.calendarEventId);
+    try { await ingest.mutateAsync({ calendarEventId: args.calendarEventId, meetingCode: args.meetingCode, title: args.title, start: args.start, end: args.end, attendees: args.attendees }); }
+    catch { /* error via ingest.isError */ } finally { setBusyId(null); }
   }
 
   const meetings = data?.meetings ?? [];
   const candidates = data?.candidates ?? [];
-  const showSearch = Boolean(data) && (meetings.length > 0 || query.length > 0);
-
-  async function fetchNotes(args: {
-    calendarEventId: string;
-    meetingCode: string | null;
-    title: string;
-    start?: string;
-    end?: string;
-    attendees?: string[];
-  }) {
-    if (!args.meetingCode) return;
-    setBusyId(args.calendarEventId);
-    try {
-      await ingest.mutateAsync({
-        calendarEventId: args.calendarEventId,
-        meetingCode: args.meetingCode,
-        title: args.title,
-        start: args.start,
-        end: args.end,
-        attendees: args.attendees,
-      });
-    } catch {
-      /* error surfaced via ingest.isError */
-    } finally {
-      setBusyId(null);
-    }
-  }
+  type Row = | { kind: "candidate"; c: (typeof candidates)[0] } | { kind: "meeting"; m: ScribeMeeting };
+  const rows: Row[] = [...candidates.map((c) => ({ kind: "candidate" as const, c })), ...meetings.map((m) => ({ kind: "meeting" as const, m }))];
+  const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <>
@@ -1211,149 +1189,98 @@ function MeetingNotesSection({ slug }: { slug: string }) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-4 p-5">
-        {showSearch && (
+      <div className="flex flex-col gap-3 p-4">
+        {Boolean(data) && rows.length > 0 && (
           <div className="relative">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Search meeting notes…"
-              className="w-full rounded-[6px] border border-[var(--border-2)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--accent)] focus:outline-none"
-            />
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-4)]" />
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Search calls…"
+              className="w-full rounded-[6px] border border-[var(--border-2)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--accent)] focus:outline-none" />
           </div>
         )}
-
-        {isLoading ? (
-          <p className="widget-data-label animate-pulse">Loading…</p>
-        ) : (
-          <>
-            {meetings.length === 0 && candidates.length === 0 &&
-              (query ? (
-                <p className="py-6 text-center text-sm text-[var(--text-4)]">
-                  No notes match “{query}”.
-                </p>
-              ) : (
-                <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-8 text-center">
-                  <p className="text-sm text-[var(--text-4)]">
-                    {data?.calendarConnected
-                      ? "No recent Google Meet calls with this client."
-                      : "Connect Google (sign out and back in) to let Scribe capture notes from your Meet calls."}
-                  </p>
-                </div>
-              ))}
-
-            {candidates.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs font-medium text-[var(--text-3)]">Recent calls</p>
-                {candidates.map((c) => (
-                  <div
-                    key={c.calendarEventId}
-                    className="flex items-center justify-between gap-3 rounded-[6px] border border-[var(--border-1)] px-3 py-2"
-                  >
+        {isLoading && <p className="widget-data-label animate-pulse py-4 text-center">Loading…</p>}
+        {!isLoading && rows.length === 0 && (
+          <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-8 text-center">
+            <p className="text-sm text-[var(--text-4)]">
+              {data?.calendarConnected ? (query ? `No calls matching "${query}".` : "No recent calls with this client.") : "Connect Google Calendar to capture Scribe notes from your Meet calls."}
+            </p>
+          </div>
+        )}
+        {pageRows.length > 0 && (
+          <div className="divide-y divide-[rgba(0,0,0,0.05)] rounded-[6px] border border-[rgba(0,0,0,0.08)] overflow-hidden">
+            {pageRows.map((row) => {
+              if (row.kind === "candidate") {
+                const c = row.c;
+                const busy = busyId === c.calendarEventId;
+                return (
+                  <div key={c.calendarEventId} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[var(--text-1)]">{c.title}</p>
-                      <p className="text-xs text-[var(--text-3)]">{formatDate(c.start)}</p>
+                      <p className="widget-timestamp mt-0.5">{formatDate(c.start)}</p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={busyId === c.calendarEventId}
-                      onClick={() => void fetchNotes(c)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                    >
-                      {busyId === c.calendarEventId ? (
-                        <>
-                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Fetching
-                        </>
-                      ) : (
-                        <>
-                          <SparklesIcon className="h-3 w-3" />
-                          Fetch notes
-                        </>
-                      )}
+                    <button type="button" disabled={busy || !c.meetingCode} onClick={() => void fetchNotes(c)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50">
+                      {busy ? (<><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Fetching</>) : (<><SparklesIcon className="h-3 w-3" />Fetch notes</>)}
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
-
-            {ingest.isError && (
-              <p className="text-xs text-rose-600">
-                {(ingest.error as Error)?.message ?? "Couldn't fetch notes."}
-              </p>
-            )}
-
-            {meetings.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                {candidates.length > 0 && (
-                  <p className="text-xs font-medium text-[var(--text-3)]">Captured notes</p>
-                )}
-                {meetings.map((m) => {
-                  const chip = meetingStatusChip(m.status);
-                  const ready = m.status === "SUMMARISED";
-                  const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex items-center justify-between gap-3 rounded-[6px] border border-[var(--border-1)] px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.title}</p>
-                        <p className="text-xs text-[var(--text-3)]">{formatDate(m.startedAt ?? m.createdAt)}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
-                            chip.cls,
-                          )}
-                        >
-                          {chip.label}
-                        </span>
-                        {ready ? (
-                          <button
-                            type="button"
-                            onClick={() => setViewing(m)}
-                            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                          >
-                            View
-                            <ArrowUpRightIcon className="h-3 w-3" />
-                          </button>
-                        ) : retryable && m.calendarEventId && m.meetingCode ? (
-                          <button
-                            type="button"
-                            disabled={busyId === m.calendarEventId}
-                            onClick={() =>
-                              void fetchNotes({
-                                calendarEventId: m.calendarEventId!,
-                                meetingCode: m.meetingCode,
-                                title: m.title,
-                                start: m.startedAt ?? undefined,
-                                end: m.endedAt ?? undefined,
-                                attendees: m.attendees,
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
-                          >
-                            {busyId === m.calendarEventId ? "Retrying" : "Retry"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+                );
+              }
+              const m = row.m;
+              const chip = meetingStatusChip(m.status);
+              const ready = m.status === "SUMMARISED";
+              const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
+              const busy = busyId === m.calendarEventId;
+              return (
+                <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.title}</p>
+                    <p className="widget-timestamp mt-0.5">{formatDate(m.startedAt ?? m.createdAt)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className={cn("inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]", chip.cls)} style={{ fontFamily: "var(--font-mono)" }}>{chip.label}</span>
+                    {ready ? (
+                      <button type="button" onClick={() => setViewing(m)}
+                        className="inline-flex items-center gap-1 rounded-[6px] border border-[rgba(0,0,0,0.14)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
+                        View notes<ArrowUpRightIcon className="h-3 w-3" />
+                      </button>
+                    ) : (retryable && m.calendarEventId && m.meetingCode) ? (
+                      <button type="button" disabled={busy}
+                        onClick={() => void fetchNotes({ calendarEventId: m.calendarEventId!, meetingCode: m.meetingCode, title: m.title, start: m.startedAt ?? undefined, end: m.endedAt ?? undefined, attendees: m.attendees })}
+                        className="inline-flex items-center gap-1 rounded-[6px] border border-[rgba(0,0,0,0.14)] px-2.5 py-1 text-xs font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50">
+                        {busy ? "Retrying…" : "Retry"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-1">
+            <span className="widget-timestamp">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, rows.length)} of {rows.length}</span>
+            <div className="flex items-center gap-1">
+              <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} title="Previous"
+                className="rounded-[4px] p-1 text-[var(--text-3)] hover:bg-[var(--surface-1)] disabled:opacity-30 transition-colors">
+                <ChevronUpIcon className="h-4 w-4" />
+              </button>
+              <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} title="Next"
+                className="rounded-[4px] p-1 text-[var(--text-3)] hover:bg-[var(--surface-1)] disabled:opacity-30 transition-colors">
+                <ChevronDownIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+        {ingest.isError && <p className="text-xs text-rose-600">{(ingest.error as Error)?.message ?? "Couldn't fetch notes."}</p>}
       </div>
 
       {viewing && (
         <MeetingNotesModal
           meeting={viewing}
           onClose={() => setViewing(null)}
+          onRefetch={viewing.calendarEventId && viewing.meetingCode
+            ? () => void fetchNotes({ calendarEventId: viewing.calendarEventId!, meetingCode: viewing.meetingCode, title: viewing.title, start: viewing.startedAt ?? undefined, end: viewing.endedAt ?? undefined, attendees: viewing.attendees })
+            : undefined}
+          isRefetching={busyId === viewing.calendarEventId}
           onAddTask={addActionItemAsTask}
           addingTaskId={addingTaskId}
           addedTaskIds={addedTaskIds}
@@ -1363,17 +1290,20 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   );
 }
 
-// MeetingNotesModal — full notes for one meeting: title/attendees/time header,
-// notes on the left, decisions + action items on the right.
+
 function MeetingNotesModal({
   meeting,
   onClose,
+  onRefetch,
+  isRefetching,
   onAddTask,
   addingTaskId,
   addedTaskIds,
 }: {
   meeting: ScribeMeeting;
   onClose: () => void;
+  onRefetch?: () => void;
+  isRefetching?: boolean;
   onAddTask: (clientId: string, itemId: string, text: string) => void;
   addingTaskId: string | null;
   addedTaskIds: Record<string, boolean>;
@@ -1426,7 +1356,16 @@ function MeetingNotesModal({
               </div>
             )}
           </div>
-          <button
+          <div className="flex items-center gap-2 shrink-0">
+            {onRefetch && (
+              <button type="button" onClick={onRefetch} disabled={isRefetching}
+                className="inline-flex items-center gap-1 rounded-[6px] border border-[rgba(0,0,0,0.12)] px-2.5 py-1 text-xs font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+                title="Re-fetch notes">
+                <ArrowPathIcon className="h-3 w-3" />
+                {isRefetching ? "Fetching…" : "Refetch"}
+              </button>
+            )}
+            <button
             type="button"
             onClick={onClose}
             className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
@@ -1434,6 +1373,7 @@ function MeetingNotesModal({
           >
             <XMarkIcon className="h-4 w-4" />
           </button>
+          </div>
         </div>
 
         {/* Body — 2 columns, each scrolls independently */}
