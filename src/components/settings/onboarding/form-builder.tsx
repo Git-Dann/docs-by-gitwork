@@ -28,6 +28,7 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
 import { fieldIdSet, isFieldVisible } from "@/lib/onboarding/structure";
 import { fieldTypeMeta } from "@/lib/onboarding/field-types";
@@ -110,6 +111,12 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
 
   const steps = structure.steps;
   const selStep = sel.kind === "step" ? steps.find((s) => s.id === sel.id) ?? null : null;
+  const editorTitle =
+    sel.kind === "welcome"
+      ? "Welcome screen"
+      : sel.kind === "review"
+        ? "Review & submit"
+        : selStep?.title || "Step";
   const usedSystemKeys = new Set(
     steps.flatMap((s) => s.fields.map((f) => f.systemKey).filter((k): k is string => Boolean(k))),
   );
@@ -167,17 +174,18 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <Button
             type="button"
+            variant="tertiary"
+            size="sm"
+            leadingIcon={<ArrowLeftIcon className="h-4 w-4" />}
             onClick={onBack}
-            className="app-button app-button-tertiary app-button-sm"
           >
-            <ArrowLeftIcon className="h-4 w-4" />
             All forms
-          </button>
+          </Button>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -186,8 +194,8 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
             placeholder="Form name"
           />
           {isDefault ? (
-            <span className="rounded-full bg-[var(--brand-200)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--brand-800)]">
-              Default
+            <span className="rounded-[4px] bg-[var(--brand-200)] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+              DEFAULT
             </span>
           ) : (
             <button
@@ -196,22 +204,26 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
                 setIsDefault(true);
                 update.mutate({ id: formId, isDefault: true });
               }}
-              className="text-xs text-[var(--brand-700)] hover:underline"
+              className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)] hover:underline"
             >
               Make default
             </button>
           )}
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
           {update.isPending ? "Saving…" : "Saved ✓"}
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-        {/* ── Outline ── */}
-        <aside className="lg:col-span-3">
-          <div className="space-y-1">
-            <OutlineItem label="Welcome" active={sel.kind === "welcome"} onClick={() => setSel({ kind: "welcome" })} />
+        {/* ── 01 // Structure ── */}
+        <div className="lg:col-span-3">
+          <SettingsCard number="01" title="Structure" bodyClassName="space-y-1">
+            <OutlineItem
+              label="Welcome screen"
+              active={sel.kind === "welcome"}
+              onClick={() => setSel({ kind: "welcome" })}
+            />
             <p className="px-1 pt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
               Steps
             </p>
@@ -234,58 +246,55 @@ export function OnboardingFormBuilder({ formId, onBack }: { formId: string; onBa
             <button
               type="button"
               onClick={addStep}
-              className="mt-1 flex w-full items-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-xs font-medium text-[var(--text-3)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
+              className="mt-1 flex w-full items-center gap-2 rounded-[6px] border border-dashed border-[var(--border-2)] px-3 py-2 text-xs font-medium text-[var(--text-3)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
             >
               <PlusIcon className="h-4 w-4" />
               Add step
             </button>
             <div className="pt-2">
-              <OutlineItem label="Review & submit" active={sel.kind === "review"} onClick={() => setSel({ kind: "review" })} />
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Editor ── */}
-        <div className="lg:col-span-5">
-          <section className="widget-card">
-            <div className="widget-body space-y-4">
-              {sel.kind === "welcome" && (
-                <WelcomeEditor structure={structure} onChange={(welcome) => commitStructure({ ...structure, welcome })} />
-              )}
-              {sel.kind === "review" && (
-                <ReviewEditor structure={structure} onChange={(review) => commitStructure({ ...structure, review })} />
-              )}
-              {selStep && (
-                <StepEditor
-                  step={selStep}
-                  sensors={sensors}
-                  onStepChange={(patch) => updateStep(selStep.id, patch)}
-                  onFieldChange={(fieldId, patch) => updateField(selStep.id, fieldId, patch)}
-                  onFieldDelete={(fieldId) => deleteField(selStep.id, fieldId)}
-                  onFieldsDragEnd={onFieldsDragEnd(selStep.id)}
-                  onAddField={() => setPaletteOpen(true)}
-                />
-              )}
-            </div>
-          </section>
-        </div>
-
-        {/* ── Live preview ── */}
-        <div className="lg:col-span-4">
-          <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-            Preview
-          </p>
-          <section className="widget-card">
-            <div className="widget-body space-y-4">
-              <StepPreview
-                structure={structure}
-                selStep={selStep}
-                sel={sel}
-                answers={previewAnswers}
-                setAnswer={setPreviewAnswer}
+              <OutlineItem
+                label="Review & submit screen"
+                active={sel.kind === "review"}
+                onClick={() => setSel({ kind: "review" })}
               />
             </div>
-          </section>
+          </SettingsCard>
+        </div>
+
+        {/* ── 02 // {selection} ── */}
+        <div className="lg:col-span-5">
+          <SettingsCard number="02" title={editorTitle} bodyClassName="space-y-4">
+            {sel.kind === "welcome" && (
+              <WelcomeEditor structure={structure} onChange={(welcome) => commitStructure({ ...structure, welcome })} />
+            )}
+            {sel.kind === "review" && (
+              <ReviewEditor structure={structure} onChange={(review) => commitStructure({ ...structure, review })} />
+            )}
+            {selStep && (
+              <StepEditor
+                step={selStep}
+                sensors={sensors}
+                onStepChange={(patch) => updateStep(selStep.id, patch)}
+                onFieldChange={(fieldId, patch) => updateField(selStep.id, fieldId, patch)}
+                onFieldDelete={(fieldId) => deleteField(selStep.id, fieldId)}
+                onFieldsDragEnd={onFieldsDragEnd(selStep.id)}
+                onAddField={() => setPaletteOpen(true)}
+              />
+            )}
+          </SettingsCard>
+        </div>
+
+        {/* ── 03 // Preview ── */}
+        <div className="lg:col-span-4">
+          <SettingsCard number="03" title="Preview" right="LIVE" bodyClassName="space-y-4">
+            <StepPreview
+              structure={structure}
+              selStep={selStep}
+              sel={sel}
+              answers={previewAnswers}
+              setAnswer={setPreviewAnswer}
+            />
+          </SettingsCard>
         </div>
       </div>
 
@@ -414,7 +423,9 @@ function WelcomeEditor({
   const patch = (p: Partial<OnboardingFormStructure["welcome"]>) => onChange({ ...w, ...p });
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[var(--text-1)]">Welcome screen</h3>
+      <p className="text-sm text-[var(--text-3)]">
+        The landing page clients see first, before the form starts.
+      </p>
       <LabeledInput label="Eyebrow" value={w.eyebrow ?? ""} onChange={(v) => patch({ eyebrow: v })} placeholder="Onboarding · ~3 mins" />
       <LabeledInput label="Hero heading" value={w.heading} onChange={(v) => patch({ heading: v })} />
       <LabeledInput label="Sub-heading" value={w.subheading ?? ""} onChange={(v) => patch({ subheading: v })} textarea rows={2} />
@@ -459,7 +470,10 @@ function ReviewEditor({
   const patch = (p: Partial<OnboardingFormStructure["review"]>) => onChange({ ...r, ...p });
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[var(--text-1)]">Review &amp; submit screen</h3>
+      <p className="text-sm text-[var(--text-3)]">
+        The final step of the form: clients see a summary of every answer, then submit. The summary
+        list is generated automatically — here you edit the copy shown around it.
+      </p>
       <LabeledInput label="Intro line" value={r.blurb ?? ""} onChange={(v) => patch({ blurb: v })} placeholder="Quick check before you send…" />
       <LabeledInput label="Reassurance note" value={r.legal ?? ""} onChange={(v) => patch({ legal: v })} textarea rows={2} />
       <LabeledInput label="Submit fine-print" value={r.agreement ?? ""} onChange={(v) => patch({ agreement: v })} textarea rows={3} />
@@ -564,8 +578,8 @@ function SortableFieldRow({
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           {expanded ? <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />}
           <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-2)]">{field.label || meta.displayName}</span>
-          <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-4)]">
-            {isSystem ? "client" : meta.displayName}
+          <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+            {isSystem ? "Client" : meta.displayName}
           </span>
         </button>
         <button
