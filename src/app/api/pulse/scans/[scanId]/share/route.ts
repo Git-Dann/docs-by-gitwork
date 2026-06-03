@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
+import { revalidateTag } from "next/cache";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan } from "@/server/pulse";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +24,10 @@ export async function POST(
       select: { shareToken: true },
     });
 
+    // Bust the cached report for any rotated-out token so old links stop resolving.
+    if (scan.shareToken && scan.shareToken !== token) revalidateTag(`pulse-report-${scan.shareToken}`);
+    revalidateTag(`pulse-report-${token}`);
+
     return apiOk({ shareToken: updated.shareToken, isShared: true });
   } catch (error) {
     return fromError(error);
@@ -35,10 +40,13 @@ export async function DELETE(
 ) {
   try {
     const { scanId } = await params;
+    const existing = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { shareToken: true } });
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: { shareToken: null, isShared: false },
     });
+    // Invalidate the cached report so the un-shared link 404s immediately.
+    if (existing?.shareToken) revalidateTag(`pulse-report-${existing.shareToken}`);
     return apiOk({ isShared: false });
   } catch (error) {
     return fromError(error);

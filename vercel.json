@@ -10,6 +10,10 @@
     {
       "path": "/api/cron/meet-transcripts",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/pulse-reconcile",
+      "schedule": "0 4 * * *"
     }
   ]
 }

@@ -1089,6 +1089,14 @@ export async function unsharePulseScan(scanId: string): Promise<{ isShared: bool
   );
 }
 
+export async function listPulseLeads(): Promise<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }> {
+  return apiFetch<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }>("/api/pulse/leads");
+}
+
+export async function importPulseLead(leadId: string): Promise<{ scanId: string }> {
+  return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
+}
+
 export interface FixAgentResult {
   proposedFixes: Array<{ checkKey: string; filePath: string; newContent: string; explanation: string }>;
   prUrl: string | null;

@@ -29,28 +29,48 @@ import { runApiQualityChecks } from "./pulse-checks/api-quality";
 
 export type { ExtendedCheckContext };
 
-export async function runExtendedChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const results = await Promise.allSettled([
-    runSecurityExtended(ctx),
-    runLegalExtended(ctx),
-    runPerformanceExtended(ctx),
-    runWcagChecks(ctx),
-    runAuthExtended(ctx),
-    runRolesPermissionsChecks(ctx),
-    runEmailDeliverabilityChecks(ctx),
-    runObservabilityExtended(ctx),
-    runInfrastructureExtended(ctx),
-    runSaasExtended(ctx),
-    runPaymentsExtended(ctx),
-    runSeoExtended(ctx),
-    runTrustBrandExtended(ctx),
-    runMissingPagesExtended(ctx),
-    runGlobalDistributionExtended(ctx),
-    runCodeQualityExtended(ctx),
-    runMobileExtended(ctx),
-    runBusinessOperationsChecks(ctx),
-    runApiQualityChecks(ctx),
-  ]);
+/**
+ * Runs all extended category modules in parallel.
+ *
+ * `onWave` (optional) is fired with each module's checks as soon as that module
+ * resolves — this powers incremental persistence + live streaming in the scan
+ * pipeline. The full flattened array is still returned for callers that just
+ * want the end result.
+ */
+export async function runExtendedChecks(
+  ctx: ExtendedCheckContext,
+  onWave?: (checks: PulseScanCheckInput[]) => void,
+): Promise<PulseScanCheckInput[]> {
+  const runners = [
+    runSecurityExtended,
+    runLegalExtended,
+    runPerformanceExtended,
+    runWcagChecks,
+    runAuthExtended,
+    runRolesPermissionsChecks,
+    runEmailDeliverabilityChecks,
+    runObservabilityExtended,
+    runInfrastructureExtended,
+    runSaasExtended,
+    runPaymentsExtended,
+    runSeoExtended,
+    runTrustBrandExtended,
+    runMissingPagesExtended,
+    runGlobalDistributionExtended,
+    runCodeQualityExtended,
+    runMobileExtended,
+    runBusinessOperationsChecks,
+    runApiQualityChecks,
+  ];
 
-  return results.flatMap((r) => r.status === "fulfilled" ? r.value : []);
+  const results = await Promise.allSettled(
+    runners.map((run) =>
+      Promise.resolve(run(ctx)).then((value) => {
+        if (onWave && value.length) onWave(value);
+        return value;
+      }),
+    ),
+  );
+
+  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 }

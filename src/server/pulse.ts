@@ -10,10 +10,9 @@ import {
   getDefaultAssetPayload,
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
-import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
+import { calculateHealthScore, SCAN_VERSION, skipAllChecks } from "@/server/pulse-scan";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
-import { runOrchestratedScan } from "@/server/pulse-agents/orchestrator";
-import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
+import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import {
@@ -67,6 +66,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     scanVersion: record.scanVersion,
     startedAt: record.startedAt.toISOString(),
     completedAt: record.completedAt?.toISOString() ?? null,
+    checksCompletedAt: record.checksCompletedAt?.toISOString() ?? null,
     healthScore: record.healthScore,
     previousHealthScore: record.previousHealthScore ?? null,
     techStack: asJson<string[] | null>(record.techStack, null),
@@ -562,17 +562,71 @@ export async function runAnalysis(
       return;
     }
 
-    // For URL scans the target is known upfront — start browser agent and
-    // competitor checks immediately so they run in parallel with infra checks
-    // instead of waiting for the agent pipeline to complete (~15-30s saved).
-    const knownUrl = input.inputType === "URL" ? (input.inputUrl ?? null) : null;
+    // ─── CHECKS phase ─────────────────────────────────────────────────────────
+    // Run the AI-FREE deterministic core, persisting each wave of checks as it
+    // lands so SSE clients fill in live. AI is fully decoupled and runs AFTER.
+    const persistChecks = async (batch: PulseScanCheckInput[]) => {
+      await prisma.pulseScanCheck.createMany({
+        data: batch.map((check) => ({
+          scanId,
+          category: check.category,
+          checkKey: check.checkKey,
+          label: check.label,
+          status: check.status,
+          detail: check.detail ?? null,
+          evidence: check.evidence ?? null,
+          sortOrder: check.sortOrder ?? 0,
+        })),
+      });
+    };
 
-    const earlyBrowserPromise = knownUrl
-      ? runBrowserAgent(knownUrl)
-      : null;
+    let allChecks: PulseScanCheckInput[];
+    let techStack: string[] = [];
+    let codeInsights: CodeAgentInsights | null = null;
+    let deployInsights: DeployAgentInsights | null = null;
+    let browserInsights: BrowserAgentInsights | null = null;
 
-    const earlyCompetitorPromise: Promise<CompetitorScanSummary[]> =
-      knownUrl && input.competitorUrls && input.competitorUrls.length > 0
+    if (input.inputType === "FREE_TEXT") {
+      allChecks = skipAllChecks("FREE_TEXT");
+      if (allChecks.length > 0) await persistChecks(allChecks);
+    } else {
+      const lite = await runLiteScan({
+        inputType: input.inputType,
+        url: input.inputUrl,
+        githubRepo: input.inputGithubRepo,
+        platform: input.platform,
+        includePageSpeed: true,
+        skipUrlGuard: true, // internal team scans (may target platform subdomains)
+        onChecks: persistChecks,
+      });
+      allChecks = lite.checks;
+      techStack = lite.techStack;
+      codeInsights = lite.codeInsights;
+      deployInsights = lite.deployInsights;
+      browserInsights = lite.browserInsights;
+    }
+
+    const healthScore = calculateHealthScore(allChecks);
+
+    // Mark the deterministic phase done. status stays RUNNING — the UI now shows
+    // the full checks view + a "checks complete, AI analysis running" state,
+    // instead of waiting for the LLM. Browser/PSI checks are already persisted.
+    const beforeAnalyse = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
+    if (beforeAnalyse?.status !== "RUNNING") return;
+    await prisma.pulseScan.update({
+      where: { id: scanId },
+      data: {
+        healthScore,
+        checksCompletedAt: new Date(),
+        techStack: techStack as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    // ─── ANALYSING phase ──────────────────────────────────────────────────────
+    // Competitor scans (deterministic) run in parallel with AI synthesis below.
+    const competitorScanPromise: Promise<CompetitorScanSummary[]> =
+      input.competitorUrls && input.competitorUrls.length > 0
         ? Promise.all(
             input.competitorUrls.map(async (url) => {
               try {
@@ -591,77 +645,8 @@ export async function runAnalysis(
           )
         : Promise.resolve([]);
 
-    // Multi-agent orchestrated scan (parallel where possible)
-    const scanResult = await runOrchestratedScan({
-      inputType: input.inputType,
-      inputUrl: input.inputUrl,
-      inputGithubRepo: input.inputGithubRepo,
-      inputDescription: input.inputDescription,
-      platform: input.platform,
-    });
-
-    const { checks: allChecks, techStack, codeInsights, deployInsights } = scanResult;
-    const healthScore = calculateHealthScore(allChecks);
-
-    // Phase 1: persist checks + lightweight fields immediately so SSE clients
-    // can show check results while the AI synthesis is still running.
-    const currentBefore = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
-    if (currentBefore?.status !== "RUNNING") return;
-
-    await prisma.pulseScanCheck.createMany({
-      data: allChecks.map((check, i) => ({
-        scanId,
-        category: check.category,
-        checkKey: check.checkKey,
-        label: check.label,
-        status: check.status,
-        detail: check.detail ?? null,
-        evidence: check.evidence ?? null,
-        sortOrder: check.sortOrder ?? i,
-      })),
-    });
-    await prisma.pulseScan.update({
-      where: { id: scanId },
-      data: {
-        healthScore,
-        techStack: techStack as unknown as Prisma.InputJsonValue,
-        agentData: { codeInsights, deployInsights } as unknown as Prisma.InputJsonValue,
-      },
-    });
-
-    // For GitHub scans, homepage URL may only be known now (from code agent).
-    // For URL scans, earlyBrowserPromise already started above.
-    const browserUrl =
-      input.inputType === "URL" ? knownUrl
-      : (input.inputType === "GITHUB_REPO" && scanResult.homepageUrl) ? scanResult.homepageUrl
-      : null;
-
-    const browserAgentPromise = earlyBrowserPromise
-      ?? (browserUrl ? runBrowserAgent(browserUrl) : Promise.resolve({ checks: [] as PulseScanCheckInput[], insights: null }));
-
-    // For GitHub scans, competitor checks start here (URL was unknown earlier).
-    const competitorScanPromise: Promise<CompetitorScanSummary[]> = earlyCompetitorPromise.then((early) => {
-      if (early.length > 0 || !input.competitorUrls?.length) return early;
-      return Promise.all(
-        input.competitorUrls.map(async (url) => {
-          try {
-            let resolvedUrl = url.trim();
-            if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
-            const result = await withTimeout(runUrlChecks(resolvedUrl), 90_000, `competitor scan for ${resolvedUrl}`);
-            const score = calculateHealthScore(result.checks);
-            const pass = result.checks.filter((c) => c.status === "PASS").length;
-            const warn = result.checks.filter((c) => c.status === "WARN").length;
-            const fail = result.checks.filter((c) => c.status === "FAIL").length;
-            return { url: resolvedUrl, healthScore: score, checksPass: pass, checksWarn: warn, checksFail: fail, techStack: result.techStack };
-          } catch {
-            return { url, healthScore: 0, checksPass: 0, checksWarn: 0, checksFail: 0, techStack: [] };
-          }
-        }),
-      );
-    });
-
     // Auth scan — if test credentials provided, log in and capture authenticated content.
-    // This runs in parallel with competitor/browser work via Promise.all below.
+    // This runs in parallel with competitor work via Promise.all below.
     // Credentials are NEVER stored — only the extracted page content is passed to the AI.
     let authContent: string | null = null;
     if (input.testEmail && input.testPassword && input.inputType === "URL" && input.inputUrl) {
@@ -732,10 +717,9 @@ export async function runAnalysis(
       }
     }
 
-    const [{ analysis: llmAnalysis, aiError }, competitorScans, browserResult] = await Promise.all([
+    const [{ analysis: llmAnalysis, aiError }, competitorScans] = await Promise.all([
       safeAnalyse(),
       withTimeout(competitorScanPromise, 120_000, "competitor scans").catch(() => [] as CompetitorScanSummary[]),
-      withTimeout(browserAgentPromise, 60_000, "browser agent").catch(() => ({ checks: [] as PulseScanCheckInput[], insights: null })),
     ]);
 
     // Discovery kit and competitor comparison require a successful LLM analysis.
@@ -778,29 +762,10 @@ export async function runAnalysis(
         ? { scans: competitorScans, comparison: competitorComparison }
         : null;
 
-    // Phase 2: persist AI analysis + browser insights and mark COMPLETED
+    // Phase 2: persist AI analysis and mark COMPLETED. Deterministic checks +
+    // browser/PSI checks were already persisted incrementally in the CHECKS phase.
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
     if (current?.status !== "RUNNING") return;
-
-    // Add browser checks to DB (they arrive after Phase 1 fast checks)
-    if (browserResult.checks.length > 0) {
-      const existingKeys = new Set(allChecks.map((c) => c.checkKey));
-      const newBrowserChecks = browserResult.checks.filter((c) => !existingKeys.has(c.checkKey));
-      if (newBrowserChecks.length > 0) {
-        await prisma.pulseScanCheck.createMany({
-          data: newBrowserChecks.map((check, i) => ({
-            scanId,
-            category: check.category,
-            checkKey: check.checkKey,
-            label: check.label,
-            status: check.status,
-            detail: check.detail ?? null,
-            evidence: check.evidence ?? null,
-            sortOrder: (allChecks.length + i),
-          })),
-        });
-      }
-    }
 
     await prisma.pulseScan.update({
       where: { id: scanId },
@@ -810,7 +775,7 @@ export async function runAnalysis(
         llmAnalysis: llmAnalysis ? (llmAnalysis as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights, browserInsights: browserResult.insights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
 

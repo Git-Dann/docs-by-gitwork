@@ -22,6 +22,8 @@ import {
   listMonitors,
   createMonitor,
   deleteMonitor,
+  listPulseLeads,
+  importPulseLead,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -89,13 +91,43 @@ export function usePulseScanStream(scanId: string, enabled: boolean) {
 
     es.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as { type: string; scan?: PulseScanRecord };
-        if (msg.type === "state" && msg.scan) {
-          queryClient.setQueryData(["pulse-scan", scanId], { scan: msg.scan });
+        const msg = JSON.parse(event.data) as {
+          type: string;
+          scan?: Partial<PulseScanRecord>;
+          checks?: PulseScanRecord["checks"];
+        };
+
+        // Delta: merge only the new checks into the cached scan (by checkKey),
+        // re-sorting by sortOrder. Skipped if the base scan hasn't loaded yet —
+        // the parallel usePulseScan mount fetch already includes checks-so-far.
+        if (msg.type === "checks" && msg.checks?.length) {
+          queryClient.setQueryData(
+            ["pulse-scan", scanId],
+            (old: { scan: PulseScanRecord } | undefined) => {
+              if (!old?.scan) return old;
+              const byKey = new Map(old.scan.checks.map((c) => [c.checkKey, c]));
+              for (const c of msg.checks!) byKey.set(c.checkKey, c);
+              const checks = Array.from(byKey.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+              return { scan: { ...old.scan, checks } };
+            },
+          );
         }
+
+        // Scalar state (status, healthScore, checksCompletedAt…) — small patch.
+        if (msg.type === "meta" && msg.scan) {
+          queryClient.setQueryData(
+            ["pulse-scan", scanId],
+            (old: { scan: PulseScanRecord } | undefined) => {
+              if (!old?.scan) return old;
+              return { scan: { ...old.scan, ...msg.scan } };
+            },
+          );
+        }
+
         if (msg.type === "complete") {
           es.close();
-          // Final authoritative fetch after stream closes
+          // One authoritative fetch to pick up the heavy AI payload (llmAnalysis,
+          // discoveryKit, competitorData) that the delta stream intentionally omits.
           queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
           queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
           queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
@@ -240,6 +272,25 @@ export function useCreateMonitor() {
     mutationFn: createMonitor,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });
+    },
+  });
+}
+
+export function usePulseLeads() {
+  return useQuery({
+    queryKey: ["pulse-leads"],
+    queryFn: listPulseLeads,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useImportPulseLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: importPulseLead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });
 }
