@@ -83,6 +83,10 @@ export interface CoverSectionData {
   confidentialityMode?: "INTERNAL" | "EXTERNAL";
   heroImage?: string;
   brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
+  /** Per-document override for the Foundry/Gitwork mark. Blank → workspace branding logo. */
+  brandLogoUrl?: string;
+  /** Client logo for the "Client × Gitwork" lockup. Blank → the client name is shown instead. */
+  clientLogoUrl?: string;
 }
 
 export interface IntroductionSectionData {
