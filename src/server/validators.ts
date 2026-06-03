@@ -1069,6 +1069,21 @@ const logoRulesSchema = z.object({
     .array(z.object({ surface: z.string(), logoVersion: z.string() }))
     .optional(),
   notes: z.string().optional(),
+  assets: z
+    .array(
+      z.object({
+        label: z.string(),
+        src: z.string(),
+        background: z.enum(["light", "dark"]).optional(),
+      }),
+    )
+    .optional(),
+  brandStrapline: z.string().optional(),
+  formats: z.record(z.string(), z.string()).optional(),
+  rules: z.array(z.string()).optional(),
+  fileNamingConvention: z.string().optional(),
+  colourCodes: z.array(z.string()).optional(),
+  formatCodes: z.record(z.string(), z.string()).optional(),
 });
 
 export const designSystemStatusSchema = z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]);
@@ -1096,6 +1111,7 @@ export const designTokensSchema = z.object({
     scale: z.record(z.string(), z.string()),
   }),
   radius: z.record(z.string(), z.string()),
+  colourRamps: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   shadows: z.array(shadowTokenSchema).default([]),
   buttons: z.array(buttonVariantSchema).default([]),
   emptyState: emptyStateTokensSchema.optional(),

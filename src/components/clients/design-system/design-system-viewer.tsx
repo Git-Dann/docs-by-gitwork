@@ -45,6 +45,11 @@ function rgba(hex: string, a: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
 }
 
+/** True when a ramp value is an actual colour (filters out prose keys like "source"). */
+function isColour(v: string): boolean {
+  return /^(#|rgb|hsl)/i.test((v || "").trim());
+}
+
 const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
 // ── chrome primitives (Foundry widget grammar) ─────────────────────────────────
@@ -192,6 +197,34 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
           <div className="flex flex-col gap-3">
             {tokens.colours.primary[0] && <TintStrip colour={tokens.colours.primary[0]} />}
             {accent && <TintStrip colour={accent} />}
+          </div>
+        </div>
+      )}
+      {tokens.colourRamps && Object.keys(tokens.colourRamps).length > 0 && (
+        <div>
+          <GroupLabel>Tonal scales</GroupLabel>
+          <div className="flex flex-col gap-3">
+            {Object.entries(tokens.colourRamps).map(([name, ramp]) => {
+              const stops = Object.entries(ramp).filter(([, v]) => isColour(v));
+              if (!stops.length) return null;
+              const first = stops[0][1];
+              const last = stops[stops.length - 1][1];
+              return (
+                <div key={name}>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium capitalize text-[var(--text-2)]">{name}</p>
+                    <p className="truncate text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
+                      {first} → {last}
+                    </p>
+                  </div>
+                  <div className="flex overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)]">
+                    {stops.map(([step, v]) => (
+                      <div key={step} title={`${step} · ${v}`} style={{ flex: 1, height: 40, background: v }} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -630,11 +663,52 @@ function ShadowsSection({ tokens }: { tokens: DesignTokens }) {
 
 // ── logo rules ────────────────────────────────────────────────────────────────
 
-function LogoSection({ tokens }: { tokens: DesignTokens }) {
-  const lr = tokens.logoRules!;
+function LogoSection({
+  tokens,
+  clientLogoUrl,
+  darkSurface,
+}: {
+  tokens: DesignTokens;
+  clientLogoUrl?: string | null;
+  darkSurface: string;
+}) {
+  const lr = tokens.logoRules;
+  const assets = lr?.assets ?? [];
+  // Prefer the brand's own lockups (from the skill); else preview the client's
+  // uploaded logo on light + dark surfaces.
+  const cards =
+    assets.length > 0
+      ? assets
+      : clientLogoUrl
+        ? [
+            { label: "On light", src: clientLogoUrl, background: "light" as const },
+            { label: "On dark", src: clientLogoUrl, background: "dark" as const },
+          ]
+        : [];
   return (
     <div className="flex flex-col gap-6">
-      {lr.minSizes && Object.keys(lr.minSizes).length > 0 && (
+      {cards.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {cards.map((a, i) => (
+            <div key={`${a.label}-${i}`} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+              <div
+                className="flex items-center justify-center"
+                style={{ height: 132, padding: 28, background: a.background === "dark" ? darkSurface : "#fff" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={a.src} alt={a.label} style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }} />
+              </div>
+              <p
+                className="px-3.5 py-2 text-[10px] uppercase tracking-[0.08em]"
+                style={{ fontFamily: mono, color: "var(--text-4)" }}
+              >
+                {a.label}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      {lr?.minSizes && Object.keys(lr.minSizes).length > 0 && (
         <div>
           <GroupLabel>Minimum sizes</GroupLabel>
           <div className="flex flex-wrap gap-2">
@@ -650,7 +724,7 @@ function LogoSection({ tokens }: { tokens: DesignTokens }) {
           </div>
         </div>
       )}
-      {lr.colourRules && lr.colourRules.length > 0 && (
+      {lr?.colourRules && lr.colourRules.length > 0 && (
         <div>
           <GroupLabel>Colour on surface</GroupLabel>
           <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
@@ -667,12 +741,46 @@ function LogoSection({ tokens }: { tokens: DesignTokens }) {
           </div>
         </div>
       )}
-      {lr.clearSpace && (
+      {lr?.formats && Object.keys(lr.formats).length > 0 && (
+        <div>
+          <GroupLabel>Formats</GroupLabel>
+          <div className="flex flex-col gap-1.5">
+            {Object.entries(lr.formats).map(([k, v]) => (
+              <p key={k} className="text-[12px]">
+                <span className="font-medium text-[var(--text-2)]">{k}</span>
+                <span className="text-[var(--text-3)]"> — {v}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {lr?.rules && lr.rules.length > 0 && (
+        <div>
+          <GroupLabel>Rules</GroupLabel>
+          <ul className="list-disc space-y-1 pl-4 text-[12px] text-[var(--text-3)]">
+            {lr.rules.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {lr?.brandStrapline && (
+        <p className="text-[12px] text-[var(--text-3)]">
+          <span className="font-semibold text-[var(--text-2)]">Strapline:</span> {lr.brandStrapline}
+        </p>
+      )}
+      {lr?.clearSpace && (
         <p className="text-[12px] text-[var(--text-3)]">
           <span className="font-semibold text-[var(--text-2)]">Clear space:</span> {lr.clearSpace}
         </p>
       )}
-      {lr.notes && <p className="text-[12px] text-[var(--text-3)]">{lr.notes}</p>}
+      {lr?.fileNamingConvention && (
+        <p className="text-[12px] text-[var(--text-3)]">
+          <span className="font-semibold text-[var(--text-2)]">File naming:</span>{" "}
+          <span style={{ fontFamily: mono }}>{lr.fileNamingConvention}</span>
+        </p>
+      )}
+      {lr?.notes && <p className="text-[12px] text-[var(--text-3)]">{lr.notes}</p>}
     </div>
   );
 }
@@ -713,8 +821,17 @@ function CssTokensSection({ tokens }: { tokens: DesignTokens }) {
 
 // ── hero ────────────────────────────────────────────────────────────────────
 
-function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: string }) {
+function Hero({
+  tokens,
+  gradientCss,
+  clientLogoUrl,
+}: {
+  tokens: DesignTokens;
+  gradientCss: string;
+  clientLogoUrl?: string | null;
+}) {
   const heroInk = readable(tokens.colours.primary[0]?.hex ?? "#0F172A");
+  const onDark = heroInk === "#FFFFFF";
   return (
     <section className="widget-card overflow-hidden">
       <div className="widget-header">
@@ -728,6 +845,21 @@ function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: stri
       </div>
       {/* Brand-coloured hero band — the client's own gradient. */}
       <div style={{ background: gradientCss, padding: "28px 32px" }}>
+        {clientLogoUrl && (
+          <div
+            className="mb-4 flex items-center justify-center overflow-hidden"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 12,
+              background: onDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+              border: `1px solid ${onDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.10)"}`,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={clientLogoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          </div>
+        )}
         <h1
           style={{
             fontFamily: `${tokens.typography.displayFont}, ${tokens.typography.systemFallback}`,
@@ -757,7 +889,13 @@ function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: stri
 
 // ── viewer ────────────────────────────────────────────────────────────────────
 
-export function DesignSystemViewer({ tokens }: { tokens: DesignTokens }) {
+export function DesignSystemViewer({
+  tokens,
+  clientLogoUrl = null,
+}: {
+  tokens: DesignTokens;
+  clientLogoUrl?: string | null;
+}) {
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -828,11 +966,11 @@ export function DesignSystemViewer({ tokens }: { tokens: DesignTokens }) {
       intro: "Elevation levels, lightest to heaviest.",
       node: <ShadowsSection tokens={tokens} />,
     });
-  if (tokens.logoRules)
+  if (tokens.logoRules || clientLogoUrl)
     sections.push({
-      title: "LOGO RULES",
-      intro: "Logo sizing, clear space, and colour-on-surface rules.",
-      node: <LogoSection tokens={tokens} />,
+      title: "LOGO",
+      intro: "Logo lockups on light and dark surfaces, plus sizing and usage rules.",
+      node: <LogoSection tokens={tokens} clientLogoUrl={clientLogoUrl} darkSurface={darkSurface} />,
     });
   sections.push({
     title: "CSS TOKENS",
@@ -842,7 +980,7 @@ export function DesignSystemViewer({ tokens }: { tokens: DesignTokens }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Hero tokens={tokens} gradientCss={gradientCss} />
+      <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} />
       {sections.map((s, i) => (
         <Section key={s.title} n={i + 1} title={s.title} intro={s.intro}>
           {s.node}
