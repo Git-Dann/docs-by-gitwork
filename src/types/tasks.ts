@@ -124,6 +124,15 @@ export type ClientTaskSummary = {
   openTotal: number;
 };
 
+/** Dashboard "needs attention" aggregate, scoped to the caller's clients. */
+export type TaskAttentionDTO = {
+  /** Overdue, soonest-first, capped (full count in overdueCount). */
+  overdue: TaskDTO[];
+  overdueCount: number;
+  dueSoonCount: number;
+  doingCount: number;
+};
+
 export type ClientAssignmentDTO = {
   clientId: string;
   clientName: string;

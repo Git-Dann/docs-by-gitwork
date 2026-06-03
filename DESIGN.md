@@ -224,6 +224,19 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 - Track: `{colors.hairline}`, height 4px, rounded full.
 - Fill: `{colors.primary}`.
 
+**Adaptive HQ dashboard.** Foundry HQ (`/app`) is composed per person, not one-size-fits-all
+(`src/components/app-overview.tsx` + `dashboard/dashboard-config.ts`):
+- A subtle **context strip** under the page band — date (mono) · greeting · "who's off today"
+  (from staffing alerts). Never a second page title.
+- A **"needs attention" row** of role-gated cards — Approvals (1-click approve/reject leave +
+  clear expenses), DevOps roll-up, On-your-plate (overdue + due-soon tasks), Sign-off (proposals
+  awaiting review). A card renders only if the viewer's role/permission passes (`can()` mirrors
+  the server `can*` helpers; Admins/Super Admins see all).
+- The **module bento filtered to the viewer's access** — a widget shows only if they hold its
+  module permission. Restricted developers get the focused `DevOverview` (My Day + My Clients).
+- Attention cards reuse the `widget-card` + `widget-header` grammar and surface live info + light
+  actions — not notifications.
+
 ### Inputs & Forms
 
 **`text-input`** — Standard text field.

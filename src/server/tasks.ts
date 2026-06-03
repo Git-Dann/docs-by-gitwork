@@ -20,6 +20,7 @@ import type {
   TaskPriority,
   TaskUserRef,
   ClientTaskSummary,
+  TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES } from "@/types/tasks";
 
@@ -227,6 +228,39 @@ export async function getClientTaskSummary(
   for (const g of grouped) counts[g.status as TaskStatus] = g._count._all;
   const total = TASK_STATUSES.reduce((sum, s) => sum + counts[s], 0);
   return { clientId, counts, total, openTotal: total - counts.DONE };
+}
+
+/**
+ * Dashboard "needs attention" — scoped (overdue list capped at 8) + due-soon and
+ * in-progress counts. One cheap pass; works for managers (whole scope), not just "me".
+ */
+export async function getTaskAttention(user: EffectiveUser): Promise<TaskAttentionDTO> {
+  await ensureBaseRecords();
+  const scope = await clientScopeWhere(user);
+  const now = new Date();
+  const startToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const in7 = new Date(startToday);
+  in7.setUTCDate(in7.getUTCDate() + 7);
+
+  const open: Prisma.TaskWhereInput = { ...scope, parentId: null, status: { not: "DONE" } };
+  const [overdueRows, overdueCount, dueSoonCount, doingCount] = await Promise.all([
+    prisma.task.findMany({
+      where: { ...open, dueDate: { lt: startToday } },
+      orderBy: { dueDate: "asc" },
+      take: 8,
+      include: taskInclude,
+    }),
+    prisma.task.count({ where: { ...open, dueDate: { lt: startToday } } }),
+    prisma.task.count({ where: { ...open, dueDate: { gte: startToday, lt: in7 } } }),
+    prisma.task.count({ where: { ...scope, parentId: null, status: { in: ["DOING", "IN_REVIEW"] } } }),
+  ]);
+
+  return {
+    overdue: overdueRows.map(taskRowToDTO),
+    overdueCount,
+    dueSoonCount,
+    doingCount,
+  };
 }
 
 // ─── Write ─────────────────────────────────────────────────────────────────

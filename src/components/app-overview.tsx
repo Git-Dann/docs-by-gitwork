@@ -11,8 +11,9 @@ import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import TasksWidget from "@/components/dashboard/tasks-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
-import { DailyRollup } from "@/components/tasks/daily-rollup";
+import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
+import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
 
 export type WidgetSize = "sm" | "md" | "lg";
@@ -22,22 +23,29 @@ type GridEntry = {
   cols: 1 | 2 | 3;
   rows: 1 | 2 | 3;
   size: WidgetSize;
+  /** Module permission required to see this widget (undefined = always shown). */
+  module?: string;
 };
 
 const ROW_HEIGHT = 220;
 
 const GRID: GridEntry[] = [
-  { component: PulseWidget,     cols: 2, rows: 1, size: "md" },
-  { component: CodeClearWidget, cols: 1, rows: 1, size: "sm" },
-  { component: StudyWidget,     cols: 1, rows: 1, size: "sm" },
-  { component: CareWidget,      cols: 1, rows: 1, size: "sm" },
-  { component: BackstageWidget, cols: 1, rows: 1, size: "sm" },
-  { component: TasksWidget,     cols: 1, rows: 1, size: "sm" },
-  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg" },
-  { component: ClientsWidget,   cols: 1, rows: 2, size: "md" },
+  { component: PulseWidget,     cols: 2, rows: 1, size: "md", module: "pulse" },
+  { component: CodeClearWidget, cols: 1, rows: 1, size: "sm", module: "codeclear" },
+  { component: StudyWidget,     cols: 1, rows: 1, size: "sm", module: "study" },
+  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
+  { component: BackstageWidget, cols: 1, rows: 1, size: "sm", module: "backstage" },
+  { component: TasksWidget,     cols: 1, rows: 1, size: "sm", module: "clients" },
+  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg", module: "proposals" },
+  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },
   { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
   { component: CalendarWidget,  cols: 2, rows: 2, size: "lg" },
 ];
+
+function greetingPart(): string {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
 
 export function AppOverview() {
   const account = useAccount();
@@ -48,27 +56,44 @@ export function AppOverview() {
     return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
   }
 
-  const role = account.data?.role;
+  const role = account.data?.role ?? "";
   const permissions = account.data?.permissions ?? [];
-  const isAdmin = isAtLeast(role ?? "", "ADMIN");
+  const isAdmin = isAtLeast(role, "ADMIN");
   // A restricted developer = the Developer role, or anyone without "see all clients".
   const isDeveloper = !isAdmin && (role === "DEVELOPER" || !permissions.includes("seeAllClients"));
-  const canPublishRollup = isAdmin || permissions.includes("tasks.publish");
 
   if (isDeveloper) {
     return <DevOverview />;
   }
 
-  return (
-    <div className="space-y-4">
-      {/* DevOps lead: end-of-day roll-up sits above the agency overview. */}
-      {canPublishRollup ? <DailyRollup /> : null}
+  const acct = { role, permissions };
+  const attention = ATTENTION_CARDS.filter((c) => c.when(acct));
+  // Only render module widgets the user can actually reach (admins see all).
+  const widgets = GRID.filter((g) => isAdmin || !g.module || permissions.includes(g.module));
+  const hasBackstage = isAdmin || permissions.includes("backstage");
 
-      {/*
-        Mobile: flex-col — widgets stack vertically, minHeight gives each sensible space.
-        lg+: grid kicks in with the 3-col layout and fixed row heights.
-        The page header is rendered by AppShell (same as every other module page).
-      */}
+  const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];
+  const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+
+  return (
+    <div className="space-y-5">
+      {/* Context strip — date · greeting · who's off (subtle, not a second title) */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[var(--text-4)]">
+        <span style={{ fontFamily: "var(--font-mono)" }}>{longDate}</span>
+        {firstName ? <span>· {greetingPart()}, {firstName}</span> : null}
+        {hasBackstage ? <WhoIsOffToday /> : null}
+      </div>
+
+      {/* Needs-attention row (role/permission gated) */}
+      {attention.length > 0 ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {attention.map(({ id, Component }) => (
+            <Component key={id} />
+          ))}
+        </div>
+      ) : null}
+
+      {/* Module bento — filtered to the user's access. */}
       <div
         className="flex flex-col gap-3 lg:grid lg:gap-3"
         style={{
@@ -77,7 +102,7 @@ export function AppOverview() {
           gridAutoFlow: "dense",
         }}
       >
-        {GRID.map(({ component: Widget, cols, rows, size }, i) => (
+        {widgets.map(({ component: Widget, cols, rows, size }, i) => (
           <div
             key={i}
             className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
@@ -92,5 +117,24 @@ export function AppOverview() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** "· N off today: names" — pulled from staffing alerts; renders nothing if all in. */
+function WhoIsOffToday() {
+  const { data } = useStaffingAlerts();
+  const ymd = new Date().toISOString().slice(0, 10);
+  const names = Array.from(
+    new Set(
+      (data?.alerts ?? [])
+        .filter((a) => a.kind === "leave" && a.startDate.slice(0, 10) <= ymd && a.endDate.slice(0, 10) >= ymd)
+        .map((a) => (a.kind === "leave" ? a.user.name : "")),
+    ),
+  ).filter(Boolean);
+  if (names.length === 0) return null;
+  return (
+    <span>
+      · <span className="font-medium text-[var(--text-3)]">{names.length} off today:</span> {names.join(", ")}
+    </span>
   );
 }
