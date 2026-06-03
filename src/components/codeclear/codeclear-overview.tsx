@@ -2,7 +2,6 @@
 
 import {
   ArrowRightIcon,
-  BeakerIcon,
   ClockIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
@@ -45,35 +44,23 @@ export function CodeClearOverview() {
         <CodeClearTabs />
       </div>
 
-      {/* Alerts (kept above the bento — operational signal) */}
-      {(neverScanned > 0 || (stats?.recheckDue ?? 0) > 0) ? (
+      {/* Alerts — the "needs source validation" amber banner was removed
+          June 2026 (felt like noise above the bento). Re-check overdue
+          is kept because it's a genuine action item that only appears
+          when something is actually overdue. */}
+      {(stats?.recheckDue ?? 0) > 0 ? (
         <div className="flex flex-col gap-2 sm:flex-row">
-          {neverScanned > 0 ? (
-            <Link
-              href="/app/codeclear/pipeline"
-              className="flex flex-1 items-center gap-3 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300"
-            >
-              <BeakerIcon className="h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-sm font-semibold text-amber-700">
-                {neverScanned} developer{neverScanned > 1 ? "s" : ""} still need source validation
-                <span className="ml-1.5 font-normal text-amber-600">— go to pipeline to request more signal</span>
-              </p>
-              <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-amber-500" />
-            </Link>
-          ) : null}
-          {(stats?.recheckDue ?? 0) > 0 ? (
-            <Link
-              href="/app/codeclear/candidates?status=RECHECK_DUE"
-              className="flex flex-1 items-center gap-3 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
-            >
-              <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />
-              <p className="text-sm font-semibold text-rose-700">
-                {stats!.recheckDue} re-check{stats!.recheckDue > 1 ? "s" : ""} overdue
-                <span className="ml-1.5 font-normal text-rose-600">— review these developers</span>
-              </p>
-              <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-rose-500" />
-            </Link>
-          ) : null}
+          <Link
+            href="/app/codeclear/candidates?status=RECHECK_DUE"
+            className="flex flex-1 items-center gap-3 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
+          >
+            <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />
+            <p className="text-sm font-semibold text-rose-700">
+              {stats!.recheckDue} re-check{stats!.recheckDue > 1 ? "s" : ""} overdue
+              <span className="ml-1.5 font-normal text-rose-600">— review these developers</span>
+            </p>
+            <ArrowRightIcon className="ml-auto h-3.5 w-3.5 shrink-0 text-rose-500" />
+          </Link>
         </div>
       ) : null}
 
