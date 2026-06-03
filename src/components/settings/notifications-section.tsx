@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { SettingsCard } from "@/components/settings/settings-card";
 import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
@@ -124,12 +125,8 @@ export function NotificationsSection() {
         </p>
       </div>
 
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Channels</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Where you can be reached
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="Channels">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Master switches per channel. Turn one off and Foundry won&apos;t send anything down it,
           regardless of per-event routing below.
         </p>
@@ -168,15 +165,11 @@ export function NotificationsSection() {
             );
           })}
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="app-card overflow-hidden p-0">
+      <SettingsCard number="02" title="Per-event routing" bodyClassName="p-0">
         <div className="border-b border-[var(--border-2)] p-6">
-          <p className="app-eyebrow">Per-event routing</p>
-          <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            What to send where
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+          <p className="text-sm leading-6 text-[var(--text-3)]">
             Pick which channel(s) deliver each event. Events with no channels selected stay
             silent.
           </p>
@@ -241,14 +234,10 @@ export function NotificationsSection() {
             </tbody>
           </table>
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Cadence &amp; quiet hours</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          When you hear from us
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="03" title="Cadence & quiet hours">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Roll multiple notifications into a digest, or mute non-urgent pings during quiet hours.
         </p>
 
@@ -332,7 +321,7 @@ export function NotificationsSection() {
             Refresh
           </Button>
         </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }

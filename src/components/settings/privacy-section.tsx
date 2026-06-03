@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { SettingsCard } from "@/components/settings/settings-card";
 
 const RETENTION_ROWS = [
   {
@@ -33,12 +34,8 @@ const RETENTION_ROWS = [
 export function PrivacySection() {
   return (
     <div className="proposal-form-theme space-y-6">
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Data export</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Export workspace data
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="01" title="Data export">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Export every workspace record as JSON — clients, proposals, Pulse scans, Study reports,
           Care conversations, rate cards, settings. Useful for GDPR, audits, or moving data
           between Gitwork workspaces.
@@ -50,14 +47,10 @@ export function PrivacySection() {
           </Button>
           <span className="text-xs text-[var(--text-4)]">Wired up in the next release.</span>
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="app-card p-6">
-        <p className="app-eyebrow">Retention</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Retention policy
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="02" title="Retention">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           What we keep, and for how long. Per-domain retention windows aren&apos;t enforced yet —
           this table shows what&apos;s coming.
         </p>
@@ -82,14 +75,10 @@ export function PrivacySection() {
             </tbody>
           </table>
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="app-card border-[var(--danger-200)] bg-[var(--danger-50)] p-6">
-        <p className="app-eyebrow text-[var(--danger-600)]">Danger zone</p>
-        <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-          Delete workspace
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+      <SettingsCard number="03" title="Danger zone" tone="danger">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
           Permanently removes every record in this workspace — proposals, clients, Pulse scans,
           Study reports, Care conversations, rate cards, team. Cannot be undone. Sign-in is
           revoked for all members.
@@ -103,7 +92,7 @@ export function PrivacySection() {
             Workspace deletion ships once multi-workspace lands.
           </span>
         </div>
-      </section>
+      </SettingsCard>
     </div>
   );
 }

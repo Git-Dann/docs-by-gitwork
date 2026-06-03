@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { SettingsCard } from "@/components/settings/settings-card";
 import { apiFetch } from "@/lib/api";
 import { cn, formatDate } from "@/lib/format";
 
@@ -41,11 +42,11 @@ function actionLabel(action: string): string {
 }
 
 function actionColor(action: string): string {
-  if (action.startsWith("team.")) return "bg-[var(--info-100)] text-[var(--info-700)]";
+  if (action.startsWith("team.")) return "bg-[var(--brand-200)] text-[var(--brand-700)]";
   if (action.startsWith("integration.")) return "bg-[var(--brand-200)] text-[var(--brand-700)]";
-  if (action.startsWith("settings.")) return "bg-[var(--warn-100)] text-[var(--warn-700)]";
-  if (action.startsWith("workspace.")) return "bg-[var(--danger-100)] text-[var(--danger-700)]";
-  if (action.startsWith("template.")) return "bg-[var(--success-100)] text-[var(--success-700)]";
+  if (action.startsWith("settings.")) return "bg-[var(--warning-50)] text-[var(--warning-500)]";
+  if (action.startsWith("workspace.")) return "bg-[var(--danger-50)] text-[var(--danger-500)]";
+  if (action.startsWith("template.")) return "bg-[var(--success-50)] text-[var(--success-500)]";
   return "bg-[var(--surface-2)] text-[var(--text-2)]";
 }
 
@@ -66,18 +67,11 @@ export function AuditLogSection() {
 
   return (
     <div className="proposal-form-theme space-y-4">
-      <section className="app-card overflow-hidden p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-2)] p-6">
-          <div>
-            <p className="app-eyebrow">Audit log</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              Workspace activity
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-              Settings changes, key rotations, team updates, and integration events. Read-only.
-            </p>
-          </div>
-
+      <SettingsCard
+        number="01"
+        title="Workspace activity"
+        bodyClassName="p-0"
+        right={
           <div className="flex items-center gap-2">
             <select
               value={filter}
@@ -101,7 +95,11 @@ export function AuditLogSection() {
               Refresh
             </Button>
           </div>
-        </div>
+        }
+      >
+        <p className="border-b border-[var(--border-2)] px-6 py-4 text-sm leading-6 text-[var(--text-3)]">
+          Settings changes, key rotations, team updates, and integration events. Read-only.
+        </p>
 
         {query.isLoading ? (
           <div className="p-6 text-sm text-[var(--text-3)]">Loading the audit log…</div>
@@ -122,7 +120,7 @@ export function AuditLogSection() {
               >
                 <span
                   className={cn(
-                    "inline-flex h-fit items-center rounded-full px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
+                    "inline-flex h-fit items-center rounded-[4px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
                     actionColor(entry.action),
                   )}
                 >
@@ -163,7 +161,7 @@ export function AuditLogSection() {
             ))}
           </ol>
         )}
-      </section>
+      </SettingsCard>
     </div>
   );
 }
