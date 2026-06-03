@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep the headless-Chromium packages out of the bundler so their binary + brotli assets
+  // resolve correctly in the serverless function (the /api/proposals/[id]/pdf route).
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   images: {
     remotePatterns: [
       {

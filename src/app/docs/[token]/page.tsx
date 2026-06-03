@@ -23,6 +23,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ token: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -67,9 +68,14 @@ export async function generateMetadata({ params }: PageProps) {
   };
 }
 
-export default async function PublicDocumentPage({ params }: PageProps) {
+export default async function PublicDocumentPage({ params, searchParams }: PageProps) {
   const { token } = await params;
   if (!token || token.length < 16) notFound();
+
+  // Print mode (used by the server-side PDF export): render just the document — no view-tracking
+  // beacon, accept bar, comments, or CTA footer — so the PDF is clean and the export doesn't
+  // register as a client "view".
+  const printMode = (await searchParams)?.print === "1";
 
   const record = await prisma.document.findFirst({
     where: { shareToken: token, isShared: true, archivedAt: null },
@@ -79,6 +85,21 @@ export default async function PublicDocumentPage({ params }: PageProps) {
   if (!record) notFound();
 
   const proposal = serializeProposal(record);
+
+  if (printMode) {
+    return (
+      <main className="min-h-screen bg-white">
+        <div className="px-4 py-8 sm:px-6">
+          <ProposalPreview
+            proposal={proposal}
+            showTableOfContents={false}
+            frame={false}
+            className="mx-auto w-full max-w-[880px]"
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
