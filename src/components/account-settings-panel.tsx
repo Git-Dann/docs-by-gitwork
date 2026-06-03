@@ -120,7 +120,7 @@ export function AccountSettingsPanel() {
               <ReadOnlyField
                 label="Role"
                 value={roleLabel(profile.role)}
-                hint="Workspace admins set roles in Settings → Team."
+                hint="Workspace admins set roles in Settings → People & access."
               />
             ) : null}
             <p className="text-xs text-[var(--text-4)]">

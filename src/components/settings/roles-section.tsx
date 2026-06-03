@@ -155,8 +155,8 @@ export function RolesSection() {
       >
         <p className="max-w-2xl text-xs text-[var(--text-4)]">
           Define what each role can do. Tick a box to grant that role a permission. Changes apply to
-          everyone with the role (plus any per-person overrides set on the Team tab). Super Admins
-          always have everything and can&apos;t be limited.
+          everyone with the role (plus any per-person overrides set on the Members tab). Super
+          Admins always have everything and can&apos;t be limited.
         </p>
 
         {loading || !matrix ? (

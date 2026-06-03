@@ -336,7 +336,7 @@ export function BrandingTab() {
           <p className="mt-6 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
             <strong>Cover accents moved to templates.</strong> Edit per-template branding in
             Settings → Templates so different document types can carry their own visual style.
-            Confidentiality copy lives under Content.
+            Confidentiality copy is now part of Document defaults.
           </p>
       </SettingsCard>
     </div>

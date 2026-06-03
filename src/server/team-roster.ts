@@ -101,7 +101,7 @@ export type SeedTeamReport = {
 /**
  * Idempotent. Creates/refreshes Foundry accounts for the roster and backfills
  * `Candidate.email` in the Code module by name. Never clobbers an existing
- * member's role/permissions (so manual tuning in Settings → Team survives).
+ * member's role/permissions (so manual tuning in Settings → People & access survives).
  */
 export async function seedGitworkTeam(): Promise<SeedTeamReport> {
   const workspace = await prisma.workspace.findUniqueOrThrow({

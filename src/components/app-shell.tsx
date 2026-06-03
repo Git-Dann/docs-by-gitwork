@@ -428,9 +428,9 @@ function ProfileMenu() {
 
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-          {/* Team management lives in Settings → Team. Profile menu stays minimal —
-              just sign-out. Add other personal actions (Account settings shortcut?) here
-              if/when we need them. */}
+          {/* Team management lives in Settings → People & access. Profile menu stays
+              minimal — just sign-out. Add other personal actions (Account settings shortcut?)
+              here if/when we need them. */}
           <button
             type="button"
             onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}

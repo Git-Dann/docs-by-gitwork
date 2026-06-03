@@ -235,7 +235,7 @@ export default async function SettingsSectionPage({
             <h2 className="text-lg font-semibold text-[var(--text-1)]">No access to this setting</h2>
             <p className="mt-2 text-sm text-[var(--text-3)]">
               Your role doesn&apos;t include this Settings area. A Super Admin can grant it under
-              Settings → Roles &amp; permissions.
+              Settings → People &amp; access → Roles &amp; permissions.
             </p>
           </div>
         </SettingsShell>
@@ -251,7 +251,7 @@ export default async function SettingsSectionPage({
             <h2 className="text-lg font-semibold text-[var(--text-1)]">Admins only</h2>
             <p className="mt-2 text-sm text-[var(--text-3)]">
               This section is restricted to workspace admins. If you need access, ask a workspace
-              admin to update your role on the Team tab.
+              admin to update your role under Settings → People &amp; access.
             </p>
           </div>
         </SettingsShell>
@@ -286,15 +286,16 @@ export default async function SettingsSectionPage({
 }
 
 // The old "workspace" mega-section is now broken up into individual entries in the left rail.
-// We keep the route alive so external bookmarks don't 404, but immediately point users to General.
+// We keep the route alive so external bookmarks don't 404, but immediately point users to one of
+// the new sections. Keep the listed names in sync with the rail in `settings-shell.tsx`.
 function LegacyWorkspaceRedirect() {
   return (
     <div className="app-card p-6">
       <h2 className="text-lg font-semibold text-[var(--text-1)]">Pick a section</h2>
       <p className="mt-2 text-sm text-[var(--text-3)]">
-        Workspace settings have been split into individual sections in the left rail — General,
-        Branding, Content, Templates, Onboarding, People &amp; access, Integrations, and Agents
-        &amp; checks.
+        Workspace settings have been split into individual sections in the left rail — Document
+        defaults, Templates, Onboarding, People &amp; access, Integrations, AI agents, and Pulse
+        checks.
       </p>
     </div>
   );
