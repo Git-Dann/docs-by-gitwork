@@ -23,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
+import { Modal } from "@/components/ui/modal";
 import { cn, formatDate, statusLabel } from "@/lib/format";
 import {
   useArchiveProposal,
@@ -227,6 +228,11 @@ export function ProposalList() {
     setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
 
     router.push(`/app/docs/${created.proposal.id}`);
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
   }
 
   const totalCount = proposals.length;
@@ -815,21 +821,11 @@ export function ProposalList() {
           product, but it cluttered the docs dashboard once the agency template library landed.
           Proof drafts still exist server-side; reachable from /app/proof if/when it returns. */}
 
-      {showCreate ? (
-        <div className="fixed inset-0 z-30">
-          <button
-            type="button"
-            aria-label="Close create document modal"
-            className="app-dialog-backdrop absolute inset-0"
-            onClick={() => { setShowCreate(false); setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null }); }}
-          />
-
-          <div className="absolute inset-0 flex items-center justify-center p-4">
-            {/* Fixed dimensions so the modal doesn't grow / shrink between renders. Width pinned
-                at max-w-4xl, height pinned at h-[640px] (capped by viewport on small screens).
-                Both columns scroll internally so changing template count doesn't resize the
-                container. */}
-            <div className="app-dialog-panel flex h-[640px] max-h-[calc(100vh-32px)] w-full max-w-4xl flex-col p-6">
+      <Modal
+        open={showCreate}
+        onClose={closeCreate}
+        panelClassName="flex h-[640px] max-h-[calc(100vh-32px)] w-full max-w-4xl flex-col p-6"
+      >
               {/* Compact header — eyebrow + title only, subtitle dropped so the form has room. */}
               <div className="flex items-baseline justify-between gap-3">
                 <div>
@@ -959,21 +955,7 @@ export function ProposalList() {
               {/* Footer — actions pinned at the bottom of the panel, independent of either
                   column's scroll. */}
               <div className="mt-5 flex justify-end gap-2 border-t border-[var(--border-2)] pt-4">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowCreate(false);
-                    setForm({
-                      title: "",
-                      clientName: "",
-                      clientId: undefined,
-                      documentType: "PROPOSAL",
-                      templateId: null,
-                    });
-                  }}
-                  variant="secondary"
-                  size="md"
-                >
+                <Button type="button" onClick={closeCreate} variant="secondary" size="md">
                   Cancel
                 </Button>
                 <Button
@@ -986,10 +968,7 @@ export function ProposalList() {
                   Create
                 </Button>
               </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+        </Modal>
 
       {selectedIds.length > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-6">
