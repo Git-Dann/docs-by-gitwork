@@ -29,6 +29,8 @@
   --border-3: rgba(0,0,0,0.05);
 
   /* Brand — Gitwork Blue */
+  --brand-50: #EFF6FF;
+  --brand-100: #DBEAFE;
   --brand-200: #DBEAFE;
   --brand-300: #BFDBFE;
   --brand-400: #3B82F6;
@@ -54,6 +56,10 @@
   --info-50: #eff8ff;
   --danger-500: #DC2626;
   --danger-50: #FEE2E2;
+  --danger-100: #FEE2E2;
+  --danger-200: #FECACA;
+  --danger-300: #FCA5A5;
+  --danger-700: #B91C1C;
 
   /* Shadows */
   --shadow-xs: 0 1px 2px rgba(10, 13, 18, 0.05);
