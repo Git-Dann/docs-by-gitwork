@@ -7,6 +7,8 @@ import {
   BeakerIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CodeBracketIcon,
   EyeIcon,
   EyeSlashIcon,
