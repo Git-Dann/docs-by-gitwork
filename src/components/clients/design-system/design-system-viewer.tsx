@@ -45,6 +45,11 @@ function rgba(hex: string, a: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
 }
 
+/** True when a ramp value is an actual colour (filters out prose keys like "source"). */
+function isColour(v: string): boolean {
+  return /^(#|rgb|hsl)/i.test((v || "").trim());
+}
+
 const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
 // ── chrome primitives (Foundry widget grammar) ─────────────────────────────────
@@ -192,6 +197,34 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
           <div className="flex flex-col gap-3">
             {tokens.colours.primary[0] && <TintStrip colour={tokens.colours.primary[0]} />}
             {accent && <TintStrip colour={accent} />}
+          </div>
+        </div>
+      )}
+      {tokens.colourRamps && Object.keys(tokens.colourRamps).length > 0 && (
+        <div>
+          <GroupLabel>Tonal scales</GroupLabel>
+          <div className="flex flex-col gap-3">
+            {Object.entries(tokens.colourRamps).map(([name, ramp]) => {
+              const stops = Object.entries(ramp).filter(([, v]) => isColour(v));
+              if (!stops.length) return null;
+              const first = stops[0][1];
+              const last = stops[stops.length - 1][1];
+              return (
+                <div key={name}>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium capitalize text-[var(--text-2)]">{name}</p>
+                    <p className="truncate text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
+                      {first} → {last}
+                    </p>
+                  </div>
+                  <div className="flex overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)]">
+                    {stops.map(([step, v]) => (
+                      <div key={step} title={`${step} · ${v}`} style={{ flex: 1, height: 40, background: v }} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -708,9 +741,43 @@ function LogoSection({
           </div>
         </div>
       )}
+      {lr?.formats && Object.keys(lr.formats).length > 0 && (
+        <div>
+          <GroupLabel>Formats</GroupLabel>
+          <div className="flex flex-col gap-1.5">
+            {Object.entries(lr.formats).map(([k, v]) => (
+              <p key={k} className="text-[12px]">
+                <span className="font-medium text-[var(--text-2)]">{k}</span>
+                <span className="text-[var(--text-3)]"> — {v}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {lr?.rules && lr.rules.length > 0 && (
+        <div>
+          <GroupLabel>Rules</GroupLabel>
+          <ul className="list-disc space-y-1 pl-4 text-[12px] text-[var(--text-3)]">
+            {lr.rules.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {lr?.brandStrapline && (
+        <p className="text-[12px] text-[var(--text-3)]">
+          <span className="font-semibold text-[var(--text-2)]">Strapline:</span> {lr.brandStrapline}
+        </p>
+      )}
       {lr?.clearSpace && (
         <p className="text-[12px] text-[var(--text-3)]">
           <span className="font-semibold text-[var(--text-2)]">Clear space:</span> {lr.clearSpace}
+        </p>
+      )}
+      {lr?.fileNamingConvention && (
+        <p className="text-[12px] text-[var(--text-3)]">
+          <span className="font-semibold text-[var(--text-2)]">File naming:</span>{" "}
+          <span style={{ fontFamily: mono }}>{lr.fileNamingConvention}</span>
         </p>
       )}
       {lr?.notes && <p className="text-[12px] text-[var(--text-3)]">{lr.notes}</p>}

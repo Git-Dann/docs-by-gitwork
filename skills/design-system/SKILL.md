@@ -85,6 +85,7 @@ Match Foundry's type at `src/types/design-tokens.ts`. Required core:
   },
   "spacing": { "base": 8, "scale": { "1": "4px", "2": "8px" } },
   "radius":  { "sm": "4px", "lg": "8px" },
+  "colourRamps": { "navy": { "50": "#…", "500": "#…", "900": "#…" } },  // optional full 50–900 tonal scales
   "shadows": [{ "name", "css", "usage" }],
   "buttons": [{ "name", "background", "textColour", "border?", "hoverBackground?",
                 "surfaces": ["light","dark","gradient"], "usage?" }],

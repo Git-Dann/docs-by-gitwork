@@ -103,6 +103,15 @@ export interface LogoRules {
   notes?: string;
   /** Logo lockups to render as images (primary / white / logomark …). */
   assets?: LogoAsset[];
+  // ── Richer rules captured by the generator ──
+  brandStrapline?: string;
+  /** Named formats → description, e.g. { "logomark-only": "Favicon, compact nav" }. */
+  formats?: Record<string, string>;
+  /** Do/don't usage rules. */
+  rules?: string[];
+  fileNamingConvention?: string;
+  colourCodes?: string[];
+  formatCodes?: Record<string, string>;
 }
 
 export type DesignTokenConfidence = "HIGH" | "MEDIUM" | "LOW";
@@ -131,6 +140,8 @@ export interface DesignTokens {
     scale: Record<string, string>; // { "1": "4px", "2": "8px", ... }
   };
   radius: Record<string, string>; // { "none": "0px", "sm": "2px", ... }
+  /** Full tonal ramps, e.g. { navy: { "50": "#…", … }, slate: {…} }. Optional. */
+  colourRamps?: Record<string, Record<string, string>>;
   shadows: ShadowToken[];
   buttons: ButtonVariant[];
 

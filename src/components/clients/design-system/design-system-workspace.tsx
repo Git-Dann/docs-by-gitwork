@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DesignSystemViewer } from "./design-system-viewer";
 import { ImportModal } from "./import-modal";
+import { LogoManagerModal } from "./logo-manager-modal";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
@@ -20,6 +21,7 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
   const share = useSetClientDesignSystemShare(slug);
 
   const [importOpen, setImportOpen] = useState(false);
+  const [logoOpen, setLogoOpen] = useState(false);
   const [copiedCss, setCopiedCss] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -61,6 +63,9 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
             </Button>
             <Button type="button" variant="secondary" size="sm" onClick={() => setImportOpen(true)}>
               Update
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setLogoOpen(true)}>
+              Logos
             </Button>
             <Button
               type="button"
@@ -128,6 +133,14 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
       )}
 
       {importOpen && <ImportModal slug={slug} onClose={() => setImportOpen(false)} />}
+      {logoOpen && ds?.tokens && (
+        <LogoManagerModal
+          slug={slug}
+          tokens={ds.tokens}
+          status={ds.status}
+          onClose={() => setLogoOpen(false)}
+        />
+      )}
     </div>
   );
 }
