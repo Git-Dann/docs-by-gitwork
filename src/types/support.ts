@@ -5,7 +5,8 @@ export type SupportSource =
   | "youtube"
   | "discord"
   | "clickup"
-  | "stripe";
+  | "stripe"
+  | "analytics";
 
 export type ConnectionHealth = "connected" | "needs_setup" | "error";
 export type ConversationSentiment = "positive" | "neutral" | "negative";
@@ -62,6 +63,10 @@ export interface Connection {
     // YouTube
     youtubeChannelId?: string;
     videoIds?: string[];
+    // Analytics API (product metrics for monthly reports)
+    adapter?: string;       // adapter key: "fellas" | "bigwedge" | "generic"
+    baseUrl?: string;       // API base URL (or full endpoint for the generic adapter)
+    apiToken?: string;      // bearer token, stored server-side on the connection
     // ── Shared filters (apply to all sources) ──
     keywords?: string[];          // include — only ingest items matching at least one
     excludeKeywords?: string[];   // exclude — drop items matching any
@@ -165,27 +170,22 @@ export interface SupportReportPayload {
   refundsProcessed: number;
   refundTotalValue: number;
   refundNotes: string;
-  // Usage & subscription (manual from Stripe/App Store)
-  usageTotalUsers: number;
-  usageVerifiedUsers: number;
-  usageActiveSubscriptions: number;
-  usageSubIosMonthly: number;
-  usageSubIosYearly: number;
-  usageSubAndroidMonthly: number;
-  usageSubAndroidYearly: number;
-  usageSubStripeMonthly: number;
-  usageSubStripeYearly: number;
-  usageEventsTotal: number;
-  usageEventsRenewals: number;
-  usageEventsNew: number;
-  usageIosTotal: number;
-  usageIosNew: number;
-  usageAndroidTotal: number;
-  usageAndroidNew: number;
-  usageStripeTotal: number;
-  usageStripeNew: number;
+  // Usage analytics — flexible per-client metrics, auto-filled from the client's
+  // analytics connection (or entered manually). Each carries the previous month's
+  // value so the report can show a trend.
+  metrics?: AnalyticsReportMetric[];
   // Summary narrative
   summaryText: string;
+}
+
+/** One analytics figure captured on a report (mirrors AnalyticsMetric server-side). */
+export interface AnalyticsReportMetric {
+  key: string;
+  label: string;
+  value: number;
+  previous?: number;
+  unit?: string;
+  group?: string;
 }
 
 export interface SupportReport {

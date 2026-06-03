@@ -96,6 +96,10 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 CLICKUP_TOKEN=""
 ```
 
+> **Care analytics tokens are NOT env vars.** Each Care client's product-analytics API
+> token is stored per-connection (on the `AccountConnection.scraperConfig`), set in the
+> Care **Connectors** tab via the "Analytics API" connector — see §15.
+
 ---
 
 ## 4. Module Map
@@ -490,3 +494,35 @@ In the last session, the following was completed:
 **Go/no-go:** `GET /api/dev/notes-spike?title=…&start=…` confirms Drive access + that the matching Gemini doc is reachable (`verdict: "GO …"`).
 
 **Prerequisites:** Meet AI ("Take notes for me") enabled on the Workspace tier (Gitwork has it — Gemini notes are already generated); each teammate signs out/in once to grant `drive.readonly`.
+
+## 15. Recent Changes (June 2026) — Care analytics connectors (multi-client reporting)
+
+The monthly Care report's usage section is now **API-driven per client**, replacing the
+hard-coded Fellas-only fetch. Each Care client can connect their product-analytics API and
+the report auto-fills metrics with **month-over-month trends**.
+
+- **New connector** — "Analytics API" source (`SupportSource.ANALYTICS`, added to the enum).
+  Set up in Care → **Connectors** → pick an adapter, paste the API base URL + bearer token.
+  Stored on `AccountConnection.scraperConfig` as `{ adapter, baseUrl, apiToken }` (token is
+  server-side, no longer in `localStorage`). Editable later via the Edit connector modal.
+- **Adapter framework** — `src/server/support-analytics/`: `types.ts` (`AnalyticsMetric`,
+  `AnalyticsSnapshot`, `AnalyticsAdapter`, `getJson`), `fellas.ts` (subscription/user metrics —
+  ported from the old client-side transform; replaces the deleted `/api/support/fellas-proxy`),
+  `bigwedge.ts` (Big Wedge Golf — month-scoped rounds-played via
+  `/api/v1/rounds/?date_from&date_to`, plus best-effort flattened `analytics/overall-report` +
+  `feedback/stats`), `generic.ts` (`flattenMetrics` helper + a "Generic JSON API" adapter that
+  turns any numeric field into a metric), `index.ts` (registry + `runAnalytics()` which fetches
+  the target month **and** the previous month, merging previous values by metric `key` for
+  trends). **Add a new client = add one adapter + register it.**
+- **Route** — `GET /api/support/clients/[clientId]/analytics?month=YYYY-MM` finds the client's
+  ANALYTICS connection, runs the adapter (current + previous month), returns a normalised
+  snapshot.
+- **Report payload** — `SupportReportPayload.metrics: AnalyticsReportMetric[]` (flexible
+  `{ key, label, value, previous?, unit?, group? }`) replaced the rigid `usage*` fields. The
+  builder's section 06 ("ANALYTICS") renders fetched metrics grouped, editable, with
+  `TrendBadge`s, plus manual "Add metric". Month is driven by the existing month picker. The
+  printable report (`/app/support/reports/[id]`) renders the metrics array with trend deltas.
+  Old reports keep their JSON (payload is loose, un-Zod'd) — just re-fetch to populate metrics.
+- **Caveat** — the Big Wedge adapter's `overall-report`/`feedback/stats` shapes are undocumented
+  in their OpenAPI spec, so those metrics are flattened best-effort and may want refining once a
+  live admin token + sample response are available. Rounds-played is clean and month-scoped.

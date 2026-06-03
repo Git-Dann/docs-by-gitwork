@@ -1,0 +1,88 @@
+// ─── Care analytics — shared adapter types ──────────────────────────────────────
+//
+// Each Care client can connect a product-analytics API (their SaaS backend) so the
+// monthly support report auto-fills usage metrics. Every client's API is shaped
+// differently, so we normalise each one to a flat list of `AnalyticsMetric`s via a
+// per-client `AnalyticsAdapter`. The report builder renders whatever metrics come
+// back and shows month-over-month trends — no hard-coded fields.
+
+/** One normalised number on a report (e.g. "Active subscriptions" = 1,240). */
+export interface AnalyticsMetric {
+  /** Stable id used to match the same metric across months for trends. */
+  key: string;
+  /** Human label shown on the report. */
+  label: string;
+  value: number;
+  /** Previous-period value, merged in by the runner for trend display. */
+  previous?: number;
+  /** Optional prefix/suffix unit, e.g. "£" or "%". */
+  unit?: string;
+  /** Optional section grouping, e.g. "Subscriptions" / "Players". */
+  group?: string;
+}
+
+/** A single month's snapshot for one connection. */
+export interface AnalyticsSnapshot {
+  /** e.g. "May 2026". */
+  periodLabel: string;
+  metrics: AnalyticsMetric[];
+}
+
+/** What an adapter needs to fetch a month — resolved from the connection. */
+export interface AnalyticsFetchContext {
+  baseUrl: string;
+  apiToken?: string;
+  /** Four-digit year, e.g. 2026. */
+  year: number;
+  /** 1–12. */
+  month: number;
+}
+
+/** A per-product adapter. Register in `index.ts`. */
+export interface AnalyticsAdapter {
+  /** Stable key stored on the connection's scraperConfig. */
+  key: string;
+  /** Label shown in the connector dropdown. */
+  label: string;
+  /** Pre-filled base URL when this adapter is chosen. */
+  defaultBaseUrl: string;
+  /** Whether the API needs a bearer token to return data. */
+  requiresToken: boolean;
+  /** One-line hint shown under the connector form. */
+  hint?: string;
+  fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot>;
+}
+
+/** Shape of the analytics connection's scraperConfig. */
+export interface AnalyticsConnectionConfig {
+  adapter?: string;
+  baseUrl?: string;
+  apiToken?: string;
+  /** Generic adapter only — endpoint path to GET. */
+  endpoint?: string;
+}
+
+/** Authenticated JSON GET with consistent error surfacing. */
+export async function getJson<T>(url: string, token?: string): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": "Foundry/1.0",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, { headers, cache: "no-store" });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${url} → ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function monthLabel(year: number, month: number): string {
+  return new Date(year, month - 1, 1).toLocaleString("en-GB", { month: "long", year: "numeric" });
+}
+
+/** Zero-padded "YYYY-MM" prefix for matching API rows. */
+export function monthPrefix(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
