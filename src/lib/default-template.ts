@@ -274,7 +274,9 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     title: "Sign-off / Footer",
     description: "Prepared by details and Gitwork branding block.",
     data: {
-      preparedBy: "Foundry Delivery Team",
+      // Blank by default → the footer inherits the cover's "Prepared by" (metadata.owner) so the
+      // document speaks with one voice. Set a value here only to override the footer line.
+      preparedBy: "",
       team: "Product and Delivery",
       contactDetails: "hello@gitwork.io",
       footerNote: "Foundry by Gitwork | Internal Business Proposal",
