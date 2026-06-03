@@ -369,30 +369,31 @@ export function ClientDetail({ slug }: { slug: string }) {
               )}
             </div>
 
-            {/* Design system — only shown once a client has tokens imported. */}
-            {designSystem?.exists && (
-              <Link
-                href={`/app/portal/${slug}/design-system`}
-                title="Open this client's brand design system"
-                className="inline-flex items-center gap-1 self-center rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-              >
-                Design system →
-              </Link>
-            )}
-
-            {/* Bank details — only rendered when on file. Opens the reveal
-                modal so it stays out of the way until it's actually needed. */}
-            {client.bank?.onFile && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="self-center"
-                onClick={() => setBankOpen(true)}
-              >
-                <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-                Bank details
-              </Button>
+            {/* Right-side action stack — bottom-aligned. Bank (when on file) sits on
+                top; the design system takes the priority bottom slot. */}
+            {(client.bank?.onFile || designSystem?.exists) && (
+              <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
+                {client.bank?.onFile && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setBankOpen(true)}
+                  >
+                    <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                    Bank details
+                  </Button>
+                )}
+                {designSystem?.exists && (
+                  <Link
+                    href={`/app/portal/${slug}/design-system`}
+                    title="Open this client's brand design system"
+                    className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+                  >
+                    Design system →
+                  </Link>
+                )}
+              </div>
             )}
           </div>
         </div>

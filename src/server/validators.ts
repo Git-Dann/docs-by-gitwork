@@ -1069,6 +1069,15 @@ const logoRulesSchema = z.object({
     .array(z.object({ surface: z.string(), logoVersion: z.string() }))
     .optional(),
   notes: z.string().optional(),
+  assets: z
+    .array(
+      z.object({
+        label: z.string(),
+        src: z.string(),
+        background: z.enum(["light", "dark"]).optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const designSystemStatusSchema = z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]);
