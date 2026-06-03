@@ -162,7 +162,7 @@ const GROUPS: SectionGroup[] = [
       {
         id: "developer",
         label: "Developer",
-        description: "API keys, demo cleanup.",
+        description: "API key, REST reference.",
         icon: CommandLineIcon,
         permission: "settings.developer",
       },

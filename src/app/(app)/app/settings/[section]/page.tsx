@@ -136,7 +136,7 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   },
   developer: {
     title: "Developer",
-    subtitle: "External API key, demo cleanup, REST reference.",
+    subtitle: "External API key, bulk dev import, REST reference.",
   },
   privacy: {
     title: "Privacy & data",
@@ -271,7 +271,8 @@ function LegacyWorkspaceRedirect() {
       <h2 className="text-lg font-semibold text-[var(--text-1)]">Pick a section</h2>
       <p className="mt-2 text-sm text-[var(--text-3)]">
         Workspace settings have been split into individual sections in the left rail — General,
-        Branding, Templates, Content, Rate card, Team, Integrations, and Agents &amp; checks.
+        Branding, Content, Templates, Onboarding, People &amp; access, Integrations, and Agents
+        &amp; checks.
       </p>
     </div>
   );
