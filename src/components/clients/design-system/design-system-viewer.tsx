@@ -2,7 +2,7 @@
 
 // Token-driven brand design system viewer.
 //
-// Renders a client's DesignTokens as a live, fully-branded design system inside
+// Renders a client's DesignTokens as a live, editorial design system inside
 // Foundry's widget chrome (`NN // SECTION` headers). Brand-agnostic by design:
 // every value comes from `tokens` — no hardcoded client colours/fonts. Shared by
 // the internal Portal workspace and the public /brand/[token] page.
@@ -34,23 +34,32 @@ function relLuminance(hex: string): number {
   return 0.2126 * f(rgb.r) + 0.7152 * f(rgb.g) + 0.0722 * f(rgb.b);
 }
 
+/** Near-black or white, whichever reads on the given background hex. */
+function readable(bg: string): string {
+  return relLuminance(bg) > 0.5 ? "#0B0F19" : "#FFFFFF";
+}
+
 function rgba(hex: string, a: number): string {
   const rgb = parseHex(hex);
   if (!rgb) return hex;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
 }
 
-// ── small chrome primitives (Foundry widget grammar) ───────────────────────────
+const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
+
+// ── chrome primitives (Foundry widget grammar) ─────────────────────────────────
 
 function Section({
   n,
   title,
-  action,
+  intro,
+  status,
   children,
 }: {
   n: number;
   title: string;
-  action?: ReactNode;
+  intro?: string;
+  status?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -62,56 +71,76 @@ function Section({
           </span>
           {` // ${title}`}
         </span>
-        {action}
+        {status}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-6">
+        {intro && (
+          <p className="mb-5 max-w-2xl text-[13px] leading-relaxed text-[var(--text-3)]">
+            {intro}
+          </p>
+        )}
+        {children}
+      </div>
     </section>
   );
 }
 
-const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
-
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <p
-      className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]"
-    >
+    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
       {children}
     </p>
   );
 }
 
-// ── sections ────────────────────────────────────────────────────────────────
-
-function Swatch({ c }: { c: ColourToken }) {
+/** Mono value pill — solid (default) or quiet (muted). */
+function Pill({ children, muted }: { children: ReactNode; muted?: boolean }) {
   return (
-    <div style={{ width: 132 }}>
+    <span
+      className="inline-block rounded-[4px] px-1.5 py-0.5 text-[10px]"
+      style={{
+        fontFamily: mono,
+        background: muted ? "transparent" : "var(--surface-1)",
+        color: muted ? "var(--text-4)" : "var(--text-2)",
+        border: muted ? "none" : "1px solid rgba(0,0,0,0.06)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+// ── colours ────────────────────────────────────────────────────────────────────
+
+function ColourCard({ c }: { c: ColourToken }) {
+  const veryLight = relLuminance(c.hex) > 0.9;
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-raised,#fff)]">
       <div
         style={{
-          height: 72,
-          borderRadius: 8,
+          height: 96,
           background: c.hex,
-          border: relLuminance(c.hex) > 0.9 ? "1px solid rgba(0,0,0,0.08)" : "none",
-          boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.02)",
+          borderBottom: veryLight ? "1px solid rgba(0,0,0,0.06)" : "none",
         }}
       />
-      <p className="mt-2 text-[12px] font-semibold text-[var(--text-1)]" style={{ margin: "8px 0 2px" }}>
-        {c.name}
-      </p>
-      <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)", margin: 0 }}>
-        {c.hex.toUpperCase()}
-      </p>
-      {c.rgb && (
-        <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)", margin: 0 }}>
-          {c.rgb}
-        </p>
-      )}
-      {c.pantone && (
-        <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)", margin: 0 }}>
-          PANTONE {c.pantone}
-        </p>
-      )}
-      {c.usage && <p className="mt-1 text-[11px] leading-snug text-[var(--text-3)]">{c.usage}</p>}
+      <div className="p-3.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-[13px] font-semibold text-[var(--text-1)]">{c.name}</p>
+          {c.role && (
+            <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
+              {c.role}
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Pill>{c.hex.toUpperCase()}</Pill>
+          {c.rgb && <Pill muted>{c.rgb}</Pill>}
+          {c.pantone && <Pill muted>PANTONE {c.pantone}</Pill>}
+        </div>
+        {c.usage && (
+          <p className="mt-2 text-[11px] leading-snug text-[var(--text-3)]">{c.usage}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -121,14 +150,14 @@ function TintStrip({ colour }: { colour: ColourToken }) {
   return (
     <div>
       <p className="mb-1.5 text-[11px] text-[var(--text-3)]">
-        {colour.name} — tint scale (10% → 100%)
+        {colour.name} <span className="text-[var(--text-4)]">· 10% → 100%</span>
       </p>
-      <div className="flex overflow-hidden rounded-[6px] border border-[rgba(0,0,0,0.08)]">
+      <div className="flex overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)]">
         {steps.map((a) => (
           <div
             key={a}
             title={`${Math.round(a * 100)}%`}
-            style={{ flex: 1, height: 40, background: rgba(colour.hex, a) }}
+            style={{ flex: 1, height: 44, background: rgba(colour.hex, a) }}
           />
         ))}
       </div>
@@ -144,14 +173,14 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
   ];
   const accent = tokens.colours.primary[1] ?? tokens.colours.secondary[0] ?? null;
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-8">
       {groups.map(([label, list]) =>
         list.length === 0 ? null : (
           <div key={label}>
             <GroupLabel>{label}</GroupLabel>
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {list.map((c, i) => (
-                <Swatch key={`${c.name}-${i}`} c={c} />
+                <ColourCard key={`${c.name}-${i}`} c={c} />
               ))}
             </div>
           </div>
@@ -170,24 +199,34 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
   );
 }
 
+// ── gradients ────────────────────────────────────────────────────────────────
+
 function GradientsSection({ tokens }: { tokens: DesignTokens }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {tokens.gradients.map((g, i) => (
-        <div key={`${g.name}-${i}`} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
-          <div style={{ height: 96, background: g.css }} />
-          <div className="p-3">
+        <div
+          key={`${g.name}-${i}`}
+          className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]"
+        >
+          <div style={{ height: 120, background: g.css }} />
+          <div className="p-4">
             <p className="text-[13px] font-semibold text-[var(--text-1)]">{g.name}</p>
-            <p className="mt-0.5 break-all text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
+            {g.usage && <p className="mt-1 text-[12px] text-[var(--text-3)]">{g.usage}</p>}
+            <p
+              className="mt-2 break-all rounded-[6px] bg-[var(--surface-1)] px-2 py-1.5 text-[10px] text-[var(--text-2)]"
+              style={{ fontFamily: mono }}
+            >
               {g.css}
             </p>
-            {g.usage && <p className="mt-1 text-[11px] text-[var(--text-3)]">{g.usage}</p>}
           </div>
         </div>
       ))}
     </div>
   );
 }
+
+// ── typography ──────────────────────────────────────────────────────────────
 
 function sampleFor(t: TypographyToken): string {
   if (t.sample) return t.sample;
@@ -203,7 +242,7 @@ function sampleFor(t: TypographyToken): string {
 function TypographySection({ tokens }: { tokens: DesignTokens }) {
   const { displayFont, bodyFont, monoFont, systemFallback } = tokens.typography;
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-wrap gap-2">
         {[
           ["Display", displayFont],
@@ -213,29 +252,29 @@ function TypographySection({ tokens }: { tokens: DesignTokens }) {
         ].map(([k, v]) => (
           <span
             key={k}
-            className="rounded-[4px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px] text-[var(--text-3)]"
+            className="rounded-[6px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px] text-[var(--text-3)]"
             style={{ fontFamily: mono }}
           >
-            {k}: {v}
+            <span className="text-[var(--text-4)]">{k}</span> · {v}
           </span>
         ))}
       </div>
-      <div className="flex flex-col">
+      <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
         {tokens.typography.scale.map((t, i) => (
           <div
             key={`${t.role}-${i}`}
-            className="grid items-center gap-5 border-b border-[rgba(0,0,0,0.06)] py-4 last:border-0"
-            style={{ gridTemplateColumns: "200px 1fr" }}
+            className="grid items-center gap-5 border-b border-[rgba(0,0,0,0.06)] px-5 py-4 last:border-0"
+            style={{ gridTemplateColumns: "210px 1fr" }}
           >
             <div>
-              <p className="text-[11px]" style={{ fontFamily: mono, color: "var(--brand-700)", margin: 0 }}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-2)]">
                 {t.role}
               </p>
-              <p className="text-[11px] text-[var(--text-4)]" style={{ margin: "2px 0 0" }}>
-                {t.fontSize} / {t.fontWeight}
-                {t.lineHeight ? ` / lh ${t.lineHeight}` : ""}
+              <p className="mt-1 text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
+                {t.fontFamily} {t.fontWeight} · {t.fontSize}
+                {t.lineHeight ? ` · lh ${t.lineHeight}` : ""}
+                {t.letterSpacing ? ` · ls ${t.letterSpacing}` : ""}
               </p>
-              <p className="truncate text-[10px] text-[var(--text-4)]">{t.fontFamily}</p>
             </div>
             <p
               className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--text-1)]"
@@ -258,24 +297,28 @@ function TypographySection({ tokens }: { tokens: DesignTokens }) {
   );
 }
 
+// ── spacing & radius ──────────────────────────────────────────────────────────
+
 function SpacingRadiusSection({ tokens }: { tokens: DesignTokens }) {
   const spacing = Object.entries(tokens.spacing.scale);
   const radius = Object.entries(tokens.radius);
   const px = (v: string) => {
     const m = /(-?\d+(\.\d+)?)/.exec(v);
-    return m ? Math.min(parseFloat(m[1]), 160) : 0;
+    return m ? Math.min(parseFloat(m[1]), 180) : 0;
   };
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-8">
       <div>
-        <GroupLabel>Spacing — base {tokens.spacing.base}px</GroupLabel>
-        <div className="flex flex-col gap-1.5">
+        <GroupLabel>Spacing — {tokens.spacing.base}px base</GroupLabel>
+        <div className="flex flex-col gap-2">
           {spacing.map(([k, v]) => (
             <div key={k} className="flex items-center gap-3">
-              <span className="w-16 text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
+              <span className="w-14 shrink-0 text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
                 {k}
               </span>
-              <div style={{ height: 12, width: Math.max(px(v), 2), background: "var(--brand-600)", borderRadius: 2 }} />
+              <div
+                style={{ height: 14, width: Math.max(px(v), 2), background: "var(--brand-600)", borderRadius: 3 }}
+              />
               <span className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
                 {v}
               </span>
@@ -285,23 +328,21 @@ function SpacingRadiusSection({ tokens }: { tokens: DesignTokens }) {
       </div>
       <div>
         <GroupLabel>Radius</GroupLabel>
-        <div className="flex flex-wrap items-end gap-5">
+        <div className="flex flex-wrap items-end gap-6">
           {radius.map(([k, v]) => (
             <div key={k} className="text-center">
               <div
                 style={{
-                  width: 64,
-                  height: 64,
+                  width: 68,
+                  height: 68,
                   background: "var(--surface-brand)",
                   border: "2px solid var(--brand-600)",
                   borderRadius: v,
                   margin: "0 auto 8px",
                 }}
               />
-              <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--brand-700)", margin: 0 }}>
-                {k}
-              </p>
-              <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)", margin: 0 }}>
+              <p className="text-[10px] font-semibold text-[var(--text-2)]">{k}</p>
+              <p className="text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
                 {v}
               </p>
             </div>
@@ -312,7 +353,17 @@ function SpacingRadiusSection({ tokens }: { tokens: DesignTokens }) {
   );
 }
 
-function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTokens; darkSurface: string; gradientCss: string }) {
+// ── buttons ────────────────────────────────────────────────────────────────────
+
+function ButtonsSection({
+  tokens,
+  darkSurface,
+  gradientCss,
+}: {
+  tokens: DesignTokens;
+  darkSurface: string;
+  gradientCss: string;
+}) {
   const renderBtn = (b: DesignTokens["buttons"][number], key: string) => (
     <button
       key={key}
@@ -321,8 +372,8 @@ function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTo
         background: b.background,
         color: b.textColour,
         border: b.border || "none",
-        borderRadius: 6,
-        padding: "9px 18px",
+        borderRadius: 8,
+        padding: "10px 20px",
         fontSize: 13,
         fontWeight: 600,
         cursor: "default",
@@ -334,10 +385,10 @@ function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTo
   const onSurface = (surface: string) =>
     tokens.buttons.filter((b) => (b.surfaces.length ? b.surfaces.includes(surface) : surface === "light"));
 
-  const surfaces: Array<{ key: string; label: string; bg: string; border?: string }> = [
-    { key: "light", label: "On light", bg: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)" },
-    { key: "dark", label: "On dark", bg: darkSurface },
-    { key: "gradient", label: "On gradient", bg: gradientCss },
+  const surfaces: Array<{ key: string; label: string; bg: string; border?: string; labelColor: string }> = [
+    { key: "light", label: "On light", bg: "var(--surface-raised,#fff)", border: "1px solid rgba(0,0,0,0.08)", labelColor: "var(--text-4)" },
+    { key: "dark", label: "On dark", bg: darkSurface, labelColor: "rgba(255,255,255,0.55)" },
+    { key: "gradient", label: "On gradient", bg: gradientCss, labelColor: "rgba(255,255,255,0.7)" },
   ];
 
   return (
@@ -348,22 +399,32 @@ function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTo
           if (!btns.length) return null;
           return (
             <div key={s.key} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
-              <div style={{ background: s.bg, border: s.border, padding: 20, minHeight: 96 }} className="flex flex-wrap items-center gap-2">
+              <div
+                style={{ background: s.bg, border: s.border, padding: 24, minHeight: 116 }}
+                className="flex flex-wrap content-center items-center gap-2.5"
+              >
                 {btns.map((b, i) => renderBtn(b, `${s.key}-${i}`))}
               </div>
-              <p className="px-3 py-2 text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
-                {s.label.toUpperCase()}
+              <p
+                className="px-3.5 py-2 text-[10px] uppercase tracking-[0.08em]"
+                style={{ fontFamily: mono, color: "var(--text-4)" }}
+              >
+                {s.label}
               </p>
             </div>
           );
         })}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
         <table className="w-full border-collapse text-[12px]">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
+            <tr style={{ background: darkSurface }}>
               {["Variant", "Background", "Text", "Border", "Surfaces", "Use"].map((h) => (
-                <th key={h} className="border-b border-[rgba(0,0,0,0.08)] px-2 py-1.5 font-semibold">
+                <th
+                  key={h}
+                  className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.06em]"
+                  style={{ color: "rgba(255,255,255,0.7)" }}
+                >
                   {h}
                 </th>
               ))}
@@ -372,12 +433,12 @@ function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTo
           <tbody>
             {tokens.buttons.map((b, i) => (
               <tr key={`${b.name}-${i}`} className="text-[var(--text-2)]">
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5 font-medium text-[var(--text-1)]">{b.name}</td>
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5" style={{ fontFamily: mono }}>{b.background}</td>
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5" style={{ fontFamily: mono }}>{b.textColour}</td>
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5" style={{ fontFamily: mono }}>{b.border || "—"}</td>
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5">{b.surfaces.join(", ") || "—"}</td>
-                <td className="border-b border-[rgba(0,0,0,0.05)] px-2 py-1.5 text-[var(--text-3)]">{b.usage || "—"}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2 font-medium text-[var(--text-1)]">{b.name}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2" style={{ fontFamily: mono }}>{b.background}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2" style={{ fontFamily: mono }}>{b.textColour}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2" style={{ fontFamily: mono }}>{b.border || "—"}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2">{b.surfaces.join(", ") || "—"}</td>
+                <td className="border-b border-[rgba(0,0,0,0.05)] px-3 py-2 text-[var(--text-3)]">{b.usage || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -386,6 +447,8 @@ function ButtonsSection({ tokens, darkSurface, gradientCss }: { tokens: DesignTo
     </div>
   );
 }
+
+// ── inputs ────────────────────────────────────────────────────────────────────
 
 function InputsSection({ tokens, darkSurface }: { tokens: DesignTokens; darkSurface: string }) {
   const primary = tokens.colours.primary[0]?.hex ?? "#1D4ED8";
@@ -415,7 +478,7 @@ function InputsSection({ tokens, darkSurface }: { tokens: DesignTokens; darkSurf
             style={{
               width: "100%",
               height: 44,
-              borderRadius: 6,
+              borderRadius: 8,
               padding: "0 14px",
               fontSize: 14,
               color: "var(--text-1)",
@@ -431,6 +494,7 @@ function InputsSection({ tokens, darkSurface }: { tokens: DesignTokens; darkSurf
         </div>
       ))}
       <div className="sm:col-span-2">
+        <p className="mb-1.5 text-[11px] font-medium text-[var(--text-2)]">On dark surface</p>
         <div style={{ background: darkSurface, borderRadius: 10, padding: 16 }}>
           <input
             readOnly
@@ -438,7 +502,7 @@ function InputsSection({ tokens, darkSurface }: { tokens: DesignTokens; darkSurf
             style={{
               width: "100%",
               height: 44,
-              borderRadius: 6,
+              borderRadius: 8,
               padding: "0 14px",
               fontSize: 14,
               color: "#fff",
@@ -453,6 +517,8 @@ function InputsSection({ tokens, darkSurface }: { tokens: DesignTokens; darkSurf
     </div>
   );
 }
+
+// ── badges + empty state ────────────────────────────────────────────────────
 
 function BadgesSection({ tokens }: { tokens: DesignTokens }) {
   const badges = tokens.badges ?? [];
@@ -473,9 +539,9 @@ function BadgesSection({ tokens }: { tokens: DesignTokens }) {
                       background: b.background,
                       color: b.textColour,
                       border: b.border || "none",
-                      borderRadius: 4,
-                      padding: "3px 9px",
-                      fontSize: 11,
+                      borderRadius: 9999,
+                      padding: "4px 12px",
+                      fontSize: 12,
                       fontWeight: 600,
                     }}
                   >
@@ -490,22 +556,22 @@ function BadgesSection({ tokens }: { tokens: DesignTokens }) {
         <div>
           <GroupLabel>Empty state</GroupLabel>
           <div className="flex flex-wrap items-start gap-4">
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               {[
                 ["background", tokens.emptyState.background],
                 ["stroke", tokens.emptyState.stroke],
               ].map(([k, v]) => (
                 <div key={k}>
-                  <div style={{ width: 56, height: 40, borderRadius: 6, background: v, border: "1px solid rgba(0,0,0,0.08)" }} />
+                  <div style={{ width: 60, height: 44, borderRadius: 8, background: v, border: "1px solid rgba(0,0,0,0.08)" }} />
                   <p className="mt-1 text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>{k}</p>
                 </div>
               ))}
             </div>
             <div
-              className="flex flex-1 items-center justify-center px-6 py-8 text-center"
+              className="flex flex-1 items-center justify-center px-6 py-9 text-center"
               style={{
-                minWidth: 220,
-                borderRadius: 10,
+                minWidth: 240,
+                borderRadius: 12,
                 background: tokens.emptyState.background,
                 border: `${tokens.emptyState.strokeWidth || "1.5px"} ${tokens.emptyState.strokeStyle || "dashed"} ${tokens.emptyState.stroke}`,
               }}
@@ -519,6 +585,8 @@ function BadgesSection({ tokens }: { tokens: DesignTokens }) {
   );
 }
 
+// ── alerts ────────────────────────────────────────────────────────────────────
+
 function AlertsSection({ tokens }: { tokens: DesignTokens }) {
   return (
     <div className="flex flex-col gap-2.5">
@@ -529,7 +597,7 @@ function AlertsSection({ tokens }: { tokens: DesignTokens }) {
             background: a.background,
             color: a.textColour,
             border: a.border || "none",
-            borderRadius: 8,
+            borderRadius: 10,
             padding: "12px 16px",
           }}
         >
@@ -541,33 +609,41 @@ function AlertsSection({ tokens }: { tokens: DesignTokens }) {
   );
 }
 
+// ── shadows ────────────────────────────────────────────────────────────────────
+
 function ShadowsSection({ tokens }: { tokens: DesignTokens }) {
   return (
-    <div className="flex flex-wrap gap-5">
+    <div className="flex flex-wrap gap-6">
       {tokens.shadows.map((s, i) => (
         <div
           key={`${s.name}-${i}`}
-          style={{ width: 210, padding: 18, background: "#fff", borderRadius: 10, boxShadow: s.css, border: "1px solid rgba(0,0,0,0.04)" }}
+          style={{ width: 220, padding: 20, background: "#fff", borderRadius: 12, boxShadow: s.css, border: "1px solid rgba(0,0,0,0.04)" }}
         >
-          <p className="text-[11px]" style={{ fontFamily: mono, color: "var(--brand-700)", margin: 0 }}>{s.name}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-2)]">{s.name}</p>
           {s.usage && <p className="mt-1 text-[12px] text-[var(--text-3)]">{s.usage}</p>}
-          <p className="mt-1 break-all text-[9px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>{s.css}</p>
+          <p className="mt-2 break-all text-[9px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>{s.css}</p>
         </div>
       ))}
     </div>
   );
 }
 
+// ── logo rules ────────────────────────────────────────────────────────────────
+
 function LogoSection({ tokens }: { tokens: DesignTokens }) {
   const lr = tokens.logoRules!;
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {lr.minSizes && Object.keys(lr.minSizes).length > 0 && (
         <div>
           <GroupLabel>Minimum sizes</GroupLabel>
           <div className="flex flex-wrap gap-2">
             {Object.entries(lr.minSizes).map(([k, v]) => (
-              <span key={k} className="rounded-[4px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px]" style={{ fontFamily: mono, color: "var(--text-3)" }}>
+              <span
+                key={k}
+                className="rounded-[6px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px]"
+                style={{ fontFamily: mono, color: "var(--text-3)" }}
+              >
                 {k}: {v}
               </span>
             ))}
@@ -577,23 +653,31 @@ function LogoSection({ tokens }: { tokens: DesignTokens }) {
       {lr.colourRules && lr.colourRules.length > 0 && (
         <div>
           <GroupLabel>Colour on surface</GroupLabel>
-          <table className="w-full max-w-md border-collapse text-[12px]">
-            <tbody>
-              {lr.colourRules.map((r, i) => (
-                <tr key={i}>
-                  <td className="border-b border-[rgba(0,0,0,0.06)] py-1.5 pr-4 text-[var(--text-2)]">{r.surface}</td>
-                  <td className="border-b border-[rgba(0,0,0,0.06)] py-1.5 text-[var(--text-1)]">{r.logoVersion}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+            <table className="w-full border-collapse text-[12px]">
+              <tbody>
+                {lr.colourRules.map((r, i) => (
+                  <tr key={i}>
+                    <td className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-[var(--text-2)] last:border-0">{r.surface}</td>
+                    <td className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-[var(--text-1)]">{r.logoVersion}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
-      {lr.clearSpace && <p className="text-[12px] text-[var(--text-3)]"><span className="font-semibold text-[var(--text-2)]">Clear space:</span> {lr.clearSpace}</p>}
+      {lr.clearSpace && (
+        <p className="text-[12px] text-[var(--text-3)]">
+          <span className="font-semibold text-[var(--text-2)]">Clear space:</span> {lr.clearSpace}
+        </p>
+      )}
       {lr.notes && <p className="text-[12px] text-[var(--text-3)]">{lr.notes}</p>}
     </div>
   );
 }
+
+// ── CSS tokens ──────────────────────────────────────────────────────────────
 
 function CssTokensSection({ tokens }: { tokens: DesignTokens }) {
   const [copied, setCopied] = useState(false);
@@ -618,12 +702,79 @@ function CssTokensSection({ tokens }: { tokens: DesignTokens }) {
         </button>
       </div>
       <pre
-        className="overflow-x-auto rounded-[10px] p-4 text-[12px] leading-relaxed text-[#E2E8F0]"
+        className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
         style={{ background: "#0F172A", fontFamily: mono }}
       >
         {tokens.cssVariables || "/* No CSS variables provided */"}
       </pre>
     </div>
+  );
+}
+
+// ── hero ────────────────────────────────────────────────────────────────────
+
+function Hero({ tokens, gradientCss }: { tokens: DesignTokens; gradientCss: string }) {
+  const heroInk = readable(tokens.colours.primary[0]?.hex ?? "#0F172A");
+  const dim = heroInk === "#FFFFFF" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.55)";
+  const fonts = [tokens.typography.displayFont, tokens.typography.bodyFont, tokens.typography.monoFont].filter(
+    (f): f is string => Boolean(f),
+  );
+  return (
+    <section className="widget-card overflow-hidden">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">00</span>
+          {" // OVERVIEW"}
+        </span>
+        <span className="widget-header__status" style={{ fontFamily: mono }}>
+          v{tokens.version}
+        </span>
+      </div>
+      {/* Brand-coloured hero band — the client's own gradient. */}
+      <div style={{ background: gradientCss, padding: "40px 32px" }}>
+        <p
+          className="text-[10px] uppercase tracking-[0.16em]"
+          style={{ fontFamily: mono, color: dim }}
+        >
+          Brand Design System
+        </p>
+        <h1
+          className="mt-2"
+          style={{
+            fontFamily: `${tokens.typography.displayFont}, ${tokens.typography.systemFallback}`,
+            fontSize: 48,
+            lineHeight: 1.05,
+            color: heroInk,
+            margin: "8px 0 0",
+          }}
+        >
+          {tokens.clientName}
+        </h1>
+        {tokens.brandVoice && (
+          <p
+            className="mt-3 max-w-xl text-[15px] leading-relaxed"
+            style={{
+              fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}`,
+              color: heroInk === "#FFFFFF" ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.7)",
+            }}
+          >
+            {tokens.brandVoice}
+          </p>
+        )}
+      </div>
+      {/* Meta strip */}
+      <div className="flex flex-wrap items-center gap-2 p-5">
+        {fonts.map((f) => (
+          <span
+            key={f}
+            className="rounded-[6px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px] text-[var(--text-3)]"
+            style={{ fontFamily: mono }}
+          >
+            {f}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -644,72 +795,79 @@ export function DesignSystemViewer({ tokens }: { tokens: DesignTokens }) {
     tokens.gradients[0]?.css ??
     `linear-gradient(135deg, ${tokens.colours.primary[0]?.hex ?? "#1D4ED8"} 0%, ${darkSurface} 100%)`;
 
+  const fontList = [tokens.typography.displayFont, tokens.typography.bodyFont]
+    .filter(Boolean)
+    .join(" · ");
+
   // Build numbered sections in order; only include ones with data.
-  const sections: Array<{ title: string; node: ReactNode }> = [];
-  sections.push({ title: "COLOURS", node: <ColoursSection tokens={tokens} /> });
-  if (tokens.gradients.length) sections.push({ title: "GRADIENTS", node: <GradientsSection tokens={tokens} /> });
-  sections.push({ title: "TYPOGRAPHY", node: <TypographySection tokens={tokens} /> });
-  sections.push({ title: "SPACING & RADIUS", node: <SpacingRadiusSection tokens={tokens} /> });
+  const sections: Array<{ title: string; intro?: string; node: ReactNode }> = [];
+  sections.push({
+    title: "COLOURS",
+    intro: "The brand palette — primary, secondary, and neutral roles, each with the hex and where to use it.",
+    node: <ColoursSection tokens={tokens} />,
+  });
+  if (tokens.gradients.length)
+    sections.push({
+      title: "GRADIENTS",
+      intro: "Signature gradients for heroes and full-bleed feature surfaces.",
+      node: <GradientsSection tokens={tokens} />,
+    });
+  sections.push({
+    title: "TYPOGRAPHY",
+    intro: `Type system — ${fontList}. Each role with its spec and a live specimen.`,
+    node: <TypographySection tokens={tokens} />,
+  });
+  sections.push({
+    title: "SPACING & RADIUS",
+    intro: "The spacing scale and corner radii that set the rhythm and geometry.",
+    node: <SpacingRadiusSection tokens={tokens} />,
+  });
   if (tokens.buttons.length)
-    sections.push({ title: "BUTTONS", node: <ButtonsSection tokens={tokens} darkSurface={darkSurface} gradientCss={gradientCss} /> });
-  sections.push({ title: "INPUTS", node: <InputsSection tokens={tokens} darkSurface={darkSurface} /> });
+    sections.push({
+      title: "BUTTONS",
+      intro: "Button variants and the surfaces — light, dark, gradient — they're built for.",
+      node: <ButtonsSection tokens={tokens} darkSurface={darkSurface} gradientCss={gradientCss} />,
+    });
+  sections.push({
+    title: "INPUTS",
+    intro: "Form-field states on light and dark surfaces.",
+    node: <InputsSection tokens={tokens} darkSurface={darkSurface} />,
+  });
   if ((tokens.badges && tokens.badges.length) || tokens.emptyState)
-    sections.push({ title: "BADGES & STATES", node: <BadgesSection tokens={tokens} /> });
-  if (tokens.alerts && tokens.alerts.length) sections.push({ title: "ALERTS", node: <AlertsSection tokens={tokens} /> });
-  if (tokens.shadows.length) sections.push({ title: "SHADOWS", node: <ShadowsSection tokens={tokens} /> });
-  if (tokens.logoRules) sections.push({ title: "LOGO RULES", node: <LogoSection tokens={tokens} /> });
-  sections.push({ title: "CSS TOKENS", node: <CssTokensSection tokens={tokens} /> });
+    sections.push({
+      title: "BADGES & STATES",
+      intro: "Status badges and the empty-state treatment.",
+      node: <BadgesSection tokens={tokens} />,
+    });
+  if (tokens.alerts && tokens.alerts.length)
+    sections.push({
+      title: "ALERTS",
+      intro: "Notification and alert banner styles.",
+      node: <AlertsSection tokens={tokens} />,
+    });
+  if (tokens.shadows.length)
+    sections.push({
+      title: "SHADOWS",
+      intro: "Elevation levels, lightest to heaviest.",
+      node: <ShadowsSection tokens={tokens} />,
+    });
+  if (tokens.logoRules)
+    sections.push({
+      title: "LOGO RULES",
+      intro: "Logo sizing, clear space, and colour-on-surface rules.",
+      node: <LogoSection tokens={tokens} />,
+    });
+  sections.push({
+    title: "CSS TOKENS",
+    intro: "The complete :root {} custom-property block — paste-ready for the build.",
+    node: <CssTokensSection tokens={tokens} />,
+  });
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Brand header — rendered in the client's own display font */}
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">00</span>
-            {" // OVERVIEW"}
-          </span>
-          <span className="widget-header__status" style={{ fontFamily: mono }}>
-            v{tokens.version}
-          </span>
-        </div>
-        <div className="p-5">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]" style={{ fontFamily: mono }}>
-            Brand design system
-          </p>
-          <h1
-            className="mt-1 text-[var(--text-1)]"
-            style={{
-              fontFamily: `${tokens.typography.displayFont}, ${tokens.typography.systemFallback}`,
-              fontSize: 44,
-              lineHeight: 1.1,
-              margin: "4px 0 0",
-            }}
-          >
-            {tokens.clientName}
-          </h1>
-          {tokens.brandVoice && (
-            <p
-              className="mt-2 max-w-2xl text-[15px] text-[var(--text-3)]"
-              style={{ fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}` }}
-            >
-              {tokens.brandVoice}
-            </p>
-          )}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[tokens.typography.displayFont, tokens.typography.bodyFont, tokens.typography.monoFont]
-              .filter((f): f is string => Boolean(f))
-              .map((f) => (
-                <span key={f} className="rounded-[4px] border border-[rgba(0,0,0,0.10)] px-2.5 py-1 text-[11px] text-[var(--text-3)]" style={{ fontFamily: mono }}>
-                  {f}
-                </span>
-              ))}
-          </div>
-        </div>
-      </section>
-
+      <Hero tokens={tokens} gradientCss={gradientCss} />
       {sections.map((s, i) => (
-        <Section key={s.title} n={i + 1} title={s.title}>
+        <Section key={s.title} n={i + 1} title={s.title} intro={s.intro}>
           {s.node}
         </Section>
       ))}
