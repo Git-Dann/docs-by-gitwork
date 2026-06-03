@@ -559,6 +559,11 @@ export interface ProposalDocument {
   title: string;
   productName?: string | null;
   clientName?: string | null;
+  /** Linked Portal client id (Document.clientId), if this doc is tied to a WorkspaceClient. */
+  clientId?: string | null;
+  /** Logo of the linked Portal client. Used to auto-fill the cover's client lockup when the
+   *  per-document `CoverSectionData.clientLogoUrl` override is blank. */
+  linkedClientLogoUrl?: string | null;
   summary?: string | null;
   version: string;
   /** Workspace-scoped, type-prefixed, year-scoped identifier (e.g. PROP-2026-014). */

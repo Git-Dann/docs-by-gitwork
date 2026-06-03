@@ -69,6 +69,8 @@ export const coverSection = defineSection<CoverSectionData>({
           metadata: { ...proposal.metadata, owner },
         })
       }
+      linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
+      linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
     />
   ),
   Preview: ({ data, proposal, section }) => {
@@ -89,6 +91,9 @@ export const coverSection = defineSection<CoverSectionData>({
       (data.brandLogoUrl ?? "").trim() ||
       (branding?.brandLogoUrl ?? "").trim() ||
       "/foundry-logo.png";
+    // Client lockup logo: per-document override → linked Portal client's logo → (none, show name).
+    const resolvedClientLogo =
+      (data.clientLogoUrl ?? "").trim() || (proposal.linkedClientLogoUrl ?? "").trim() || "";
     const mode = data.confidentialityMode ?? "INTERNAL";
     const confidentialityText =
       (mode === "EXTERNAL"
@@ -183,8 +188,8 @@ export const coverSection = defineSection<CoverSectionData>({
           logoUrl={brandLogoUrl}
           coBrand={
             data.brandLockup === "CLIENT_X_GITWORK" &&
-            ((data.clientLogoUrl ?? "").trim() || (clientName && clientName !== "Client"))
-              ? { clientName, clientLogoUrl: (data.clientLogoUrl ?? "").trim() || undefined }
+            (resolvedClientLogo || (clientName && clientName !== "Client"))
+              ? { clientName, clientLogoUrl: resolvedClientLogo || undefined }
               : undefined
           }
           variant="print"
