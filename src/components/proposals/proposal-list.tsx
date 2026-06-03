@@ -19,6 +19,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
@@ -123,6 +124,7 @@ export function ProposalList() {
     }
   }, [openCreate]);
 
+  const queryClient = useQueryClient();
   const { data, isPending, error } = useProposalList({
     search,
     status,
@@ -190,10 +192,10 @@ export function ProposalList() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Bulk action failed");
-      // Optimistic — clear selection + invalidate list via the hook's query key.
+      // Clear selection + invalidate the list query so it re-fetches in place — no full-page
+      // reload (which dropped scroll position and felt jarring).
       setSelectedIds([]);
-      // The useProposalList hook re-fetches when the query invalidates; force a reload.
-      window.location.reload();
+      await queryClient.invalidateQueries({ queryKey: ["proposals"] });
     } catch (err) {
       setBulkError((err as Error).message);
     } finally {

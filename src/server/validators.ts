@@ -7,6 +7,8 @@ export const documentStatusSchema = z.enum([
   "IN_REVIEW",
   "APPROVED",
   "SENT",
+  "ACCEPTED",
+  "DECLINED",
   "ARCHIVED",
 ]);
 
