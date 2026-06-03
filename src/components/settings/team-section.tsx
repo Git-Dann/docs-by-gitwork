@@ -52,6 +52,8 @@ interface Member {
   role: string;
   permissions: string[];
   createdAt: string;
+  /** True once the member has actually signed in (Google OAuth captured); false = provisioned/invited only. */
+  hasSignedIn: boolean;
   user: { id: string; name: string | null; email: string };
 }
 
@@ -260,9 +262,12 @@ export function TeamSection() {
                       {(m.user.name ?? m.user.email)[0].toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--text-1)]">
-                        {m.user.name ?? m.user.email}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-[var(--text-1)]">
+                          {m.user.name ?? m.user.email}
+                        </p>
+                        <MemberStatus active={m.hasSignedIn} />
+                      </div>
                       <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
                     </div>
                   </div>
@@ -388,6 +393,33 @@ function accessSummary(role: string, permissions: string[]): string {
   parts.push(permissions.includes("seeAllClients") ? "all clients" : "scoped");
   if (!permissions.includes("code.viewRates")) parts.push("no rates");
   return parts.join(" · ");
+}
+
+/**
+ * Activity marker for the members table — a sanctioned 6px status dot + mono micro-label.
+ * Solid green = the member has signed in (active on the platform); hollow steel ring =
+ * provisioned/invited but not yet signed in. Label hides below `sm` (the dot still shows).
+ */
+function MemberStatus({ active }: { active: boolean }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5"
+      title={active ? "Active — has signed in" : "Invited — hasn't signed in yet"}
+    >
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          active ? "bg-[var(--success-500)]" : "border-[1.5px] border-[var(--text-4)] bg-transparent",
+        )}
+      />
+      <span
+        className="hidden text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)] sm:inline"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {active ? "Active" : "Invited"}
+      </span>
+    </span>
+  );
 }
 
 function MemberAccessModal({

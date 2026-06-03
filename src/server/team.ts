@@ -19,17 +19,26 @@ export async function listMembers() {
       workspaceId: workspace.id,
       user: { email: { not: BOOTSTRAP_USER_EMAIL } },
     },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    // `googleOAuthEmail` is captured on a member's first successful Google sign-in (the auth
+    // jwt callback writes it whenever Google returns a refresh token — which `prompt: "consent"`
+    // forces every sign-in). Its presence is therefore a reliable "has actually signed in"
+    // signal, separating active members from those only provisioned/invited so far.
+    include: { user: { select: { id: true, name: true, email: true, googleOAuthEmail: true } } },
     orderBy: { createdAt: "asc" },
   });
-  // Normalise `permissions` (Json column) to a string array for the UI. Prisma returns
-  // unknown JSON; we trust admins to write sane values and silently coerce anything else.
-  return rows.map((row) => ({
-    ...row,
-    permissions: Array.isArray(row.permissions)
-      ? (row.permissions as unknown[]).filter((p): p is string => typeof p === "string")
-      : [],
-  }));
+  // Normalise `permissions` (Json column) to a string array for the UI, and surface a derived
+  // `hasSignedIn` flag — without exposing the raw OAuth email field beyond the member row.
+  return rows.map((row) => {
+    const { googleOAuthEmail, ...user } = row.user;
+    return {
+      ...row,
+      user,
+      hasSignedIn: Boolean(googleOAuthEmail),
+      permissions: Array.isArray(row.permissions)
+        ? (row.permissions as unknown[]).filter((p): p is string => typeof p === "string")
+        : [],
+    };
+  });
 }
 
 /**
@@ -170,12 +179,14 @@ export async function autoAcceptMatchingInvite(userId: string, userName: string 
 export async function listInvites() {
   const workspace = await getWorkspace();
 
-  // Backfill any orphaned PENDING invites whose label matches a current member's name.
-  // This catches cases where someone joined via direct OAuth (rather than the invite URL)
-  // BEFORE the auto-accept code shipped — so the cleanup never ran for them. Cheap to do
-  // on every list call; only mutates when there's an obvious match.
-  await reconcilePendingInvitesAgainstMembers(workspace.id);
-
+  // An invite's status only ever changes in response to a real action by the recipient:
+  // opening /invite/[token] (acceptInvite) or signing in directly with a name that matches
+  // a pending label (autoAcceptMatchingInvite, in the auth jwt callback). We deliberately do
+  // NOT auto-match pending invites against the existing member list here. That used to flip a
+  // freshly-generated link to "Accepted" the instant its label matched someone already in the
+  // workspace (e.g. a teammate seeded from the roster) — so the link never appeared and the
+  // invite looked auto-accepted by a person who'd done nothing. A generated link now stays
+  // PENDING until it's genuinely used.
   return prisma.workspaceInvite.findMany({
     where: { workspaceId: workspace.id },
     include: {
@@ -184,43 +195,6 @@ export async function listInvites() {
     },
     orderBy: { createdAt: "desc" },
   });
-}
-
-async function reconcilePendingInvitesAgainstMembers(workspaceId: string) {
-  const pending = await prisma.workspaceInvite.findMany({
-    where: { workspaceId, status: "PENDING" },
-    select: { id: true, label: true },
-  });
-  if (pending.length === 0) return;
-
-  const members = await prisma.workspaceMember.findMany({
-    where: {
-      workspaceId,
-      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
-    },
-    include: { user: { select: { id: true, name: true } } },
-  });
-
-  for (const invite of pending) {
-    const label = (invite.label ?? "").trim().toLowerCase();
-    if (!label) continue;
-    const labelFirst = label.split(/\s+/)[0] ?? "";
-
-    const match = members.find((m) => {
-      const name = (m.user.name ?? "").trim().toLowerCase();
-      if (!name) return false;
-      const nameFirst = name.split(/\s+/)[0] ?? "";
-      // Same first-name match the JWT callback uses — either direction.
-      return label.includes(nameFirst) || name.includes(labelFirst);
-    });
-
-    if (match) {
-      await prisma.workspaceInvite.update({
-        where: { id: invite.id },
-        data: { status: "ACCEPTED", acceptedById: match.user.id },
-      });
-    }
-  }
 }
 
 export async function createInvite(invitedById: string, label?: string) {
