@@ -986,8 +986,9 @@ export function DesignSystemViewer({
   return (
     <div className="flex flex-col gap-4">
       <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} />
-      {/* Jump nav — sticks under the page band while you scroll. */}
-      <nav className="sticky top-2 z-20 flex flex-wrap gap-1 rounded-[10px] border border-[rgba(0,0,0,0.06)] bg-[rgba(250,250,249,0.92)] px-2 py-1.5 backdrop-blur">
+      {/* Jump nav — sticks under the page band while you scroll. Near-opaque
+          surface + elevation shadow so it stays legible over the colour swatches. */}
+      <nav className="sticky top-2 z-20 flex flex-wrap gap-1 rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-[rgba(250,250,249,0.97)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-md">
         {sections.map((s) => (
           <a
             key={s.title}
