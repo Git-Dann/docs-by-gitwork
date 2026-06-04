@@ -5,13 +5,13 @@ import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { BackstageOverview, type BackstageArea } from "@/components/backstage/backstage-overview";
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
-import { ApprovalsTab } from "@/components/backstage/approvals-tab";
+import { InReviewTab } from "@/components/backstage/in-review-tab";
 import { useBackstageAccess } from "@/components/backstage/access";
 
 const AREA_LABEL: Record<BackstageArea, string> = {
   leave: "Leave",
   expenses: "Expenses",
-  approvals: "Approvals",
+  review: "In Review",
 };
 
 export function BackstageWorkspace() {
@@ -24,7 +24,7 @@ export function BackstageWorkspace() {
   }
 
   // Guard: if a non-permitted area is somehow selected, fall back to overview.
-  if ((area === "expenses" && !canManageExpenses) || (area === "approvals" && !canApprove)) {
+  if ((area === "expenses" && !canManageExpenses) || (area === "review" && !canApprove)) {
     setArea(null);
     return null;
   }
@@ -43,7 +43,7 @@ export function BackstageWorkspace() {
 
       {area === "leave" ? <LeaveTab /> : null}
       {area === "expenses" ? <ExpensesTab /> : null}
-      {area === "approvals" ? <ApprovalsTab /> : null}
+      {area === "review" ? <InReviewTab /> : null}
     </div>
   );
 }
