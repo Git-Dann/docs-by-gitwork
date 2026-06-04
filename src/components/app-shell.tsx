@@ -22,7 +22,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
-import { useViewAs, VIEW_AS_PERMISSIONS, VIEW_AS_OPTIONS, type ViewAsRole } from "@/lib/view-as";
+import { useViewAs, type ViewAsRole } from "@/lib/view-as";
+import { listTeamMembers } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 
 type NavItem = {
@@ -53,7 +55,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
-  const { viewAs, setViewAs } = useViewAs(isAdmin);
+  const { viewAs, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
 
   // Close drawer on route change
   useEffect(() => {
@@ -117,15 +119,20 @@ export function AppShell({
         module: "backstage",
       },
     ];
-    // When an admin is previewing as another role, apply that role's permissions.
-    // Otherwise admins see everything; restricted staff/devs see only their modules.
     if (account.isPending) return all;
-    if (isAdmin && !viewAs) return all;
-    const permissions = isAdmin && viewAs
-      ? VIEW_AS_PERMISSIONS[viewAs]
-      : (account.data?.permissions ?? []);
-    return all.filter((item) => !item.module || permissions.includes(item.module));
-  }, [isAdmin, viewAs, account.isPending, account.data]);
+
+    // When previewing as another role/user, use the effective permissions from the hook.
+    // Super Admin (isAdmin, no viewAs, empty permissions) → full access.
+    // Admin with non-empty permissions array → respect those permissions.
+    // Staff/Developer → filtered by their permissions.
+    if (effectivePermissions !== null) {
+      // In preview mode — apply whatever permissions the preview role/user has
+      return all.filter((item) => !item.module || effectivePermissions.includes(item.module));
+    }
+    const realPermissions = account.data?.permissions ?? [];
+    if (isAdmin && realPermissions.length === 0) return all; // Super Admin / full-access admin
+    return all.filter((item) => !item.module || realPermissions.includes(item.module));
+  }, [isAdmin, effectivePermissions, account.isPending, account.data]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
@@ -219,6 +226,7 @@ export function AppShell({
             secondaryNav={secondaryNav}
             viewAs={viewAs}
             setViewAs={setViewAs}
+            setViewAsUser={setViewAsUser}
             isAdmin={isAdmin}
           />
         </aside>
@@ -226,10 +234,10 @@ export function AppShell({
         {/* ── Content column ── */}
         <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
           {/* View-as preview banner */}
-          {isAdmin && viewAs && (
+          {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
               <p className="text-xs font-medium text-amber-800">
-                👁 Previewing as <strong>{VIEW_AS_OPTIONS.find(o => o.role === viewAs)?.label ?? viewAs}</strong> — you&apos;re seeing a restricted view of the platform
+                👁 Previewing as <strong>{previewLabel}</strong> — you&apos;re seeing a restricted view of the platform
               </p>
               <button
                 onClick={() => setViewAs(null)}
@@ -274,13 +282,15 @@ function ExpandedRail({
   secondaryNav,
   viewAs,
   setViewAs,
+  setViewAsUser,
   isAdmin,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
   viewAs: ViewAsRole;
-  setViewAs: (role: ViewAsRole) => void;
+  setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
+  setViewAsUser: (name: string, permissions: string[]) => void;
   isAdmin: boolean;
 }) {
   return (
@@ -319,7 +329,7 @@ function ExpandedRail({
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}
             />
-            <ProfileMenu viewAs={viewAs} setViewAs={setViewAs} isAdmin={isAdmin} />
+            <ProfileMenu viewAs={viewAs} setViewAs={setViewAs} setViewAsUser={setViewAsUser} isAdmin={isAdmin} />
           </div>
         </div>
       </div>
@@ -407,16 +417,29 @@ function Avatar({ name, url }: { name: string; url: string }) {
 function ProfileMenu({
   viewAs,
   setViewAs,
+  setViewAsUser,
   isAdmin,
 }: {
   viewAs: ViewAsRole;
-  setViewAs: (role: ViewAsRole) => void;
+  setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
+  setViewAsUser: (name: string, permissions: string[]) => void;
   isAdmin: boolean;
 }) {
   const { data: session } = useSession();
   const accountQuery = useAccount();
   const account = accountQuery.data;
   const [open, setOpen] = useState(false);
+
+  // Fetch team members so we can show real admin users in the preview switcher
+  const { data: teamData } = useQuery({
+    queryKey: ["team-members"],
+    queryFn: listTeamMembers,
+    enabled: isAdmin && open, // only fetch when the menu is open
+    staleTime: 1000 * 60 * 5,
+  });
+  const adminMembers = (teamData?.members ?? []).filter(
+    (m) => m.role === "ADMIN" && m.email !== session?.user?.email,
+  );
 
   // Identity reads from the live Google session by default. The account hook supplies the
   // user's custom avatar (if they've uploaded one in Account settings); React Query caches
@@ -465,33 +488,86 @@ function ProfileMenu({
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
 
-          {/* View as — admin only, tucked away */}
+          {/* View as — Super Admin only, tucked away */}
           {isAdmin && (
             <div className="mb-1 border-b border-[rgba(0,0,0,0.06)] pb-1">
               <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
                 View platform as
               </p>
-              {VIEW_AS_OPTIONS.map(({ role, label, description }) => {
-                const active = viewAs === role;
-                return (
-                  <button
-                    key={String(role)}
-                    type="button"
-                    onClick={() => { setViewAs(role); setOpen(false); }}
-                    className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
-                      active
-                        ? "bg-[#EFF6FF] text-[#1D4ED8]"
-                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-                    }`}
-                  >
-                    <div>
-                      <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
-                      <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>{description}</p>
-                    </div>
-                    {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
-                  </button>
-                );
-              })}
+
+              {/* Super Admin — always first, clears any preview */}
+              <button
+                type="button"
+                onClick={() => { setViewAs(null); setOpen(false); }}
+                className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
+                  viewAs === null ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                }`}
+              >
+                <div>
+                  <p className={`text-sm ${viewAs === null ? "font-semibold" : "font-medium"}`}>Super Admin (you)</p>
+                  <p className={`text-[11px] ${viewAs === null ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>Full platform access</p>
+                </div>
+                {viewAs === null && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+              </button>
+
+              {/* Real admin users — each with their actual stored permissions */}
+              {adminMembers.length > 0 && (
+                <div className="my-1 border-t border-[rgba(0,0,0,0.05)] pt-1">
+                  <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[#CBD5E1]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Admins
+                  </p>
+                  {adminMembers.map((m) => {
+                    const active = viewAs === "ADMIN_USER";
+                    const perms = m.permissions as string[];
+                    return (
+                      <button
+                        key={m.memberId}
+                        type="button"
+                        onClick={() => { setViewAsUser(m.name ?? m.email, perms); setOpen(false); }}
+                        className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
+                          active ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        }`}
+                      >
+                        <div>
+                          <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{m.name}</p>
+                          <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>
+                            {perms.length === 0 ? "Full access" : `${perms.length} module${perms.length !== 1 ? "s" : ""} enabled`}
+                          </p>
+                        </div>
+                        {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Preset role previews */}
+              <div className="my-1 border-t border-[rgba(0,0,0,0.05)] pt-1">
+                <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[#CBD5E1]" style={{ fontFamily: "var(--font-mono)" }}>
+                  Preset roles
+                </p>
+                {(["STAFF", "DEVELOPER"] as const).map((role) => {
+                  const label = role === "STAFF" ? "Staff" : "Developer";
+                  const desc = role === "STAFF" ? "All modules, no admin tools" : "Task board + assigned clients only";
+                  const active = viewAs === role;
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => { setViewAs(role); setOpen(false); }}
+                      className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
+                        active ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                      }`}
+                    >
+                      <div>
+                        <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
+                        <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>{desc}</p>
+                      </div>
+                      {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

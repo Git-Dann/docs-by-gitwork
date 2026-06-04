@@ -14,7 +14,7 @@ import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
-import { useViewAs, VIEW_AS_PERMISSIONS } from "@/lib/view-as";
+import { useViewAs } from "@/lib/view-as";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -52,7 +52,7 @@ function greetingPart(): string {
 export function AppOverview() {
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
-  const { viewAs } = useViewAs(isAdmin);
+  const { viewAs, effectivePermissions } = useViewAs(isAdmin);
 
   // Wait for role/permissions so a restricted developer never flashes the full
   // agency grid before their task-focused view loads.
@@ -63,28 +63,28 @@ export function AppOverview() {
   const role = account.data?.role ?? "";
   const realPermissions = account.data?.permissions ?? [];
 
-  // When an admin is previewing as another role, use that role's permissions.
-  const effectivePermissions = isAdmin && viewAs ? VIEW_AS_PERMISSIONS[viewAs] : realPermissions;
-  const effectiveIsAdmin = isAdmin && !viewAs;
+  // effectivePermissions is null when viewing as Super Admin (full access).
+  // Otherwise it's the preview role/user's permissions array.
+  const previewPerms = effectivePermissions; // from useViewAs
+  const resolvedPermissions = previewPerms ?? realPermissions;
+
 
   // Show developer view when previewing as Developer, or when actually a restricted dev.
   const isDeveloper = isAdmin
     ? viewAs === "DEVELOPER"
     : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
 
-  // Admin preview: treat same as full admin access (same permissions, useful for UI comparison)
-  // effectiveIsAdmin is already false when viewAs==="ADMIN", so the bento grid still shows
-  // but all widgets are visible since ADMIN permissions cover every module.
-
   if (isDeveloper) {
     return <DevOverview />;
   }
 
-  const acct = { role, permissions: effectivePermissions };
+  // Full unrestricted view: real Super Admin (isAdmin, no preview, empty permissions array).
+  const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;
+
+  const acct = { role, permissions: resolvedPermissions };
   const attention = ATTENTION_CARDS.filter((c) => c.when(acct));
-  // Only render module widgets the user can actually reach.
-  const widgets = GRID.filter((g) => effectiveIsAdmin || !g.module || effectivePermissions.includes(g.module));
-  const hasBackstage = effectiveIsAdmin || effectivePermissions.includes("backstage");
+  const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
+  const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
   const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];
   const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
