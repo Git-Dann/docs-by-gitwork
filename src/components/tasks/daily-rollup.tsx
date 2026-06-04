@@ -1,22 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircleIcon, MegaphoneIcon } from "@heroicons/react/24/outline";
+import {
+  CheckCircleIcon,
+  MegaphoneIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useRollupRoster, usePublishRollup } from "@/hooks/use-tasks";
 import { TaskAvatar } from "@/components/tasks/task-avatar";
+
+const PAGE_SIZE = 5;
 
 export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
   const { data, isPending } = useRollupRoster(enabled);
   const publish = usePublishRollup();
   const [result, setResult] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   const devs = data?.devs ?? [];
   const total = devs.length;
   const amCount = devs.filter((d) => d.amPushedAt).length;
   const pmCount = devs.filter((d) => d.pmPushedAt).length;
-  const pendingNames = devs.filter((d) => !d.pmPushedAt).map((d) => d.user.name);
+  const pending = devs.filter((d) => !d.pmPushedAt).map((d) => d.user.name);
   const allPushed = data?.allPushed ?? false;
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageRows = devs.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   async function doPublish(override: boolean) {
     setResult(null);
@@ -46,7 +58,7 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
         ) : null}
       </div>
 
-      <div className="widget-body space-y-4">
+      <div className="widget-body space-y-3">
         {isPending ? (
           <div className="h-32 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
         ) : total === 0 ? (
@@ -55,7 +67,7 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
           </p>
         ) : (
           <>
-            {/* Progress + gaps */}
+            {/* Progress + a SHORT pending summary (never the whole roster) */}
             <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[var(--text-2)]">End-of-day updates in</span>
@@ -67,24 +79,23 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
                 </span>
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all"
-                  style={{ width: `${total ? (pmCount / total) * 100 : 0}%` }}
-                />
+                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${total ? (pmCount / total) * 100 : 0}%` }} />
               </div>
-              {pendingNames.length > 0 ? (
-                <p className="mt-2 text-[11px] text-[var(--text-4)]">
-                  <span className="font-medium text-[var(--text-3)]">Pending:</span> {pendingNames.join(", ")}
+              {pending.length > 0 ? (
+                <p className="mt-2 truncate text-[11px] text-[var(--text-4)]">
+                  <span className="font-medium text-[var(--text-3)]">{pending.length} pending:</span>{" "}
+                  {pending.slice(0, 3).join(", ")}
+                  {pending.length > 3 ? ` +${pending.length - 3}` : ""}
                 </p>
               ) : (
                 <p className="mt-2 text-[11px] font-medium text-emerald-600">Everyone&rsquo;s in — ready to publish.</p>
               )}
             </div>
 
-            {/* Per-dev roster */}
-            <ul className="space-y-1.5">
-              {devs.map((d) => (
-                <li
+            {/* Paginated roster — 5 per page */}
+            <div className="space-y-1.5">
+              {pageRows.map((d) => (
+                <div
                   key={d.user.id}
                   className="flex items-center gap-2.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
                 >
@@ -97,12 +108,40 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
                   </div>
                   <PushDot label="AM" on={Boolean(d.amPushedAt)} />
                   <PushDot label="PM" on={Boolean(d.pmPushedAt)} />
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
+
+            {totalPages > 1 ? (
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="widget-timestamp">
+                  {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, total)} of {total}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => setPage((p) => p - 1)}
+                    title="Previous"
+                    className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] disabled:opacity-30"
+                  >
+                    <ChevronUpIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safePage >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                    title="Next"
+                    className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] disabled:opacity-30"
+                  >
+                    <ChevronDownIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {/* Publish — enabled at all-in; override always available beneath. */}
-            <div className="space-y-2 border-t border-[var(--border-2)] pt-4">
+            <div className="space-y-2 border-t border-[var(--border-2)] pt-3">
               <Button
                 type="button"
                 variant="primary"
@@ -111,7 +150,7 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
                 disabled={!allPushed || publish.isPending}
                 loading={publish.isPending}
               >
-                {allPushed ? "Publish roll-up" : `Waiting on ${pendingNames.length}…`}
+                {allPushed ? "Publish roll-up" : `Waiting on ${pending.length}…`}
               </Button>
               {!allPushed ? (
                 <button
@@ -144,10 +183,7 @@ function PushDot({ label, on }: { label: string; on: boolean }) {
       className="inline-flex items-center gap-1 text-[10px] font-medium"
       style={{ fontFamily: "var(--font-mono)", color: on ? "#16A34A" : "#94A3B8" }}
     >
-      <span
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: on ? "#16A34A" : "#CBD5E1" }}
-      />
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: on ? "#16A34A" : "#CBD5E1" }} />
       {label}
     </span>
   );
