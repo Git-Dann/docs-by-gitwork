@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
+import { useViewAs, VIEW_AS_PERMISSIONS, type ViewAsRole } from "@/lib/view-as";
 import { AiSpendCard } from "@/components/ai-spend-card";
 
 type NavItem = {
@@ -52,6 +53,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
+  const { viewAs, setViewAs } = useViewAs(isAdmin);
 
   // Close drawer on route change
   useEffect(() => {
@@ -115,12 +117,15 @@ export function AppShell({
         module: "backstage",
       },
     ];
-    // Admins (and the pre-load state) see everything; restricted staff/developers
-    // only see modules they hold. Mirrors the middleware's hasModuleAccess gate.
-    const permissions = account.data?.permissions ?? [];
-    if (isAdmin || account.isPending) return all;
+    // When an admin is previewing as another role, apply that role's permissions.
+    // Otherwise admins see everything; restricted staff/devs see only their modules.
+    if (account.isPending) return all;
+    if (isAdmin && !viewAs) return all;
+    const permissions = isAdmin && viewAs
+      ? VIEW_AS_PERMISSIONS[viewAs]
+      : (account.data?.permissions ?? []);
     return all.filter((item) => !item.module || permissions.includes(item.module));
-  }, [isAdmin, account.isPending, account.data]);
+  }, [isAdmin, viewAs, account.isPending, account.data]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [
@@ -212,11 +217,28 @@ export function AppShell({
             pathname={pathname}
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
+            viewAs={viewAs}
+            setViewAs={setViewAs}
+            isAdmin={isAdmin}
           />
         </aside>
 
         {/* ── Content column ── */}
         <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
+          {/* View-as preview banner */}
+          {isAdmin && viewAs && (
+            <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
+              <p className="text-xs font-medium text-amber-800">
+                👁 Previewing as <strong>{viewAs === "DEVELOPER" ? "Developer" : "Staff"}</strong> — you're seeing a restricted view of the platform
+              </p>
+              <button
+                onClick={() => setViewAs(null)}
+                className="shrink-0 rounded-[6px] bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-200"
+              >
+                Exit preview
+              </button>
+            </div>
+          )}
           {!hideContentHeader && (
             <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
@@ -250,10 +272,16 @@ function ExpandedRail({
   pathname,
   primaryNav,
   secondaryNav,
+  viewAs,
+  setViewAs,
+  isAdmin,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
+  viewAs: ViewAsRole;
+  setViewAs: (role: ViewAsRole) => void;
+  isAdmin: boolean;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -291,7 +319,7 @@ function ExpandedRail({
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}
             />
-            <ProfileMenu />
+            <ProfileMenu viewAs={viewAs} setViewAs={setViewAs} isAdmin={isAdmin} />
           </div>
         </div>
       </div>
@@ -376,7 +404,15 @@ function Avatar({ name, url }: { name: string; url: string }) {
   );
 }
 
-function ProfileMenu() {
+function ProfileMenu({
+  viewAs,
+  setViewAs,
+  isAdmin,
+}: {
+  viewAs: ViewAsRole;
+  setViewAs: (role: ViewAsRole) => void;
+  isAdmin: boolean;
+}) {
   const { data: session } = useSession();
   const accountQuery = useAccount();
   const account = accountQuery.data;
@@ -428,9 +464,35 @@ function ProfileMenu() {
 
       {open ? (
         <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
-          {/* Team management lives in Settings → People & access. Profile menu stays
-              minimal — just sign-out. Add other personal actions (Account settings shortcut?)
-              here if/when we need them. */}
+
+          {/* View as — admin only, tucked away */}
+          {isAdmin && (
+            <div className="mb-1 border-b border-[rgba(0,0,0,0.06)] pb-1">
+              <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                View platform as
+              </p>
+              {([null, "STAFF", "DEVELOPER"] as ViewAsRole[]).map((role) => {
+                const label = role === null ? "Admin (you)" : role === "STAFF" ? "Staff" : "Developer";
+                const active = viewAs === role;
+                return (
+                  <button
+                    key={String(role)}
+                    type="button"
+                    onClick={() => { setViewAs(role); setOpen(false); }}
+                    className={`flex w-full items-center justify-between rounded-[6px] px-3 py-2 text-sm transition ${
+                      active
+                        ? "bg-[#EFF6FF] font-semibold text-[#1D4ED8]"
+                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                    }`}
+                  >
+                    {label}
+                    {active && <span className="text-[10px] text-[#1D4ED8]">●</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}

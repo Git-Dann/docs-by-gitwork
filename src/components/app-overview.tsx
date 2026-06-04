@@ -14,6 +14,7 @@ import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
+import { useViewAs, VIEW_AS_PERMISSIONS } from "@/lib/view-as";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -50,6 +51,8 @@ function greetingPart(): string {
 
 export function AppOverview() {
   const account = useAccount();
+  const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
+  const { viewAs } = useViewAs(isAdmin);
 
   // Wait for role/permissions so a restricted developer never flashes the full
   // agency grid before their task-focused view loads.
@@ -58,20 +61,26 @@ export function AppOverview() {
   }
 
   const role = account.data?.role ?? "";
-  const permissions = account.data?.permissions ?? [];
-  const isAdmin = isAtLeast(role, "ADMIN");
-  // A restricted developer = the Developer role, or anyone without "see all clients".
-  const isDeveloper = !isAdmin && (role === "DEVELOPER" || !permissions.includes("seeAllClients"));
+  const realPermissions = account.data?.permissions ?? [];
+
+  // When an admin is previewing as another role, use that role's permissions.
+  const effectivePermissions = isAdmin && viewAs ? VIEW_AS_PERMISSIONS[viewAs] : realPermissions;
+  const effectiveIsAdmin = isAdmin && !viewAs;
+
+  // Show developer view when previewing as Developer, or when actually a restricted dev.
+  const isDeveloper = isAdmin
+    ? viewAs === "DEVELOPER"
+    : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
 
   if (isDeveloper) {
     return <DevOverview />;
   }
 
-  const acct = { role, permissions };
+  const acct = { role, permissions: effectivePermissions };
   const attention = ATTENTION_CARDS.filter((c) => c.when(acct));
-  // Only render module widgets the user can actually reach (admins see all).
-  const widgets = GRID.filter((g) => isAdmin || !g.module || permissions.includes(g.module));
-  const hasBackstage = isAdmin || permissions.includes("backstage");
+  // Only render module widgets the user can actually reach.
+  const widgets = GRID.filter((g) => effectiveIsAdmin || !g.module || effectivePermissions.includes(g.module));
+  const hasBackstage = effectiveIsAdmin || effectivePermissions.includes("backstage");
 
   const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];
   const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
