@@ -23,7 +23,6 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
   const total = devs.length;
   const amCount = devs.filter((d) => d.amPushedAt).length;
   const pmCount = devs.filter((d) => d.pmPushedAt).length;
-  const pending = devs.filter((d) => !d.pmPushedAt).map((d) => d.user.name);
   const allPushed = data?.allPushed ?? false;
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -67,31 +66,6 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
           </p>
         ) : (
           <>
-            {/* Progress + a SHORT pending summary (never the whole roster) */}
-            <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[var(--text-2)]">End-of-day updates in</span>
-                <span
-                  className="text-xs font-semibold"
-                  style={{ fontFamily: "var(--font-mono)", color: allPushed ? "#16A34A" : "var(--text-3)" }}
-                >
-                  {pmCount}/{total}
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
-                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${total ? (pmCount / total) * 100 : 0}%` }} />
-              </div>
-              {pending.length > 0 ? (
-                <p className="mt-2 truncate text-[11px] text-[var(--text-4)]">
-                  <span className="font-medium text-[var(--text-3)]">{pending.length} pending:</span>{" "}
-                  {pending.slice(0, 3).join(", ")}
-                  {pending.length > 3 ? ` +${pending.length - 3}` : ""}
-                </p>
-              ) : (
-                <p className="mt-2 text-[11px] font-medium text-emerald-600">Everyone&rsquo;s in — ready to publish.</p>
-              )}
-            </div>
-
             {/* Paginated roster — 5 per page */}
             <div className="space-y-1.5">
               {pageRows.map((d) => (
@@ -140,30 +114,32 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
               </div>
             ) : null}
 
-            {/* Publish — enabled at all-in; override always available beneath. */}
-            <div className="space-y-2 border-t border-[var(--border-2)] pt-3">
-              <Button
-                type="button"
-                variant="primary"
-                leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
-                onClick={() => doPublish(false)}
-                disabled={!allPushed || publish.isPending}
-                loading={publish.isPending}
-              >
-                {allPushed ? "Publish roll-up" : `Waiting on ${pending.length}…`}
-              </Button>
-              {!allPushed ? (
-                <button
+            {/* Publish — primary CTA left, override secondary right. */}
+            <div className="border-t border-[var(--border-2)] pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <Button
                   type="button"
-                  onClick={() => doPublish(true)}
-                  disabled={publish.isPending}
-                  className="block text-[11px] font-medium text-[var(--text-4)] underline-offset-2 transition hover:text-[var(--text-2)] hover:underline disabled:opacity-50"
+                  variant="primary"
+                  leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
+                  onClick={() => doPublish(false)}
+                  disabled={!allPushed || publish.isPending}
+                  loading={publish.isPending}
                 >
-                  Publish anyway (override — e.g. someone&rsquo;s off)
-                </button>
-              ) : null}
+                  Publish roll-up
+                </Button>
+                {!allPushed ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => doPublish(true)}
+                    disabled={publish.isPending}
+                  >
+                    Publish anyway
+                  </Button>
+                ) : null}
+              </div>
               {result ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
                   <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
                   {result}
                 </span>
