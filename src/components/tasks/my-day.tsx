@@ -56,7 +56,7 @@ export function MyDay() {
   const pmTime = timeOf(data.update.pmPushedAt);
 
   return (
-    <section className="widget-card">
+    <section className="widget-card self-start w-full">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">01</span>
