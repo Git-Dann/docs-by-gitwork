@@ -72,6 +72,10 @@ export function AppOverview() {
     ? viewAs === "DEVELOPER"
     : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
 
+  // Admin preview: treat same as full admin access (same permissions, useful for UI comparison)
+  // effectiveIsAdmin is already false when viewAs==="ADMIN", so the bento grid still shows
+  // but all widgets are visible since ADMIN permissions cover every module.
+
   if (isDeveloper) {
     return <DevOverview />;
   }

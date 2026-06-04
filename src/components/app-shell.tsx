@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
-import { useViewAs, VIEW_AS_PERMISSIONS, type ViewAsRole } from "@/lib/view-as";
+import { useViewAs, VIEW_AS_PERMISSIONS, VIEW_AS_OPTIONS, type ViewAsRole } from "@/lib/view-as";
 import { AiSpendCard } from "@/components/ai-spend-card";
 
 type NavItem = {
@@ -229,7 +229,7 @@ export function AppShell({
           {isAdmin && viewAs && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
               <p className="text-xs font-medium text-amber-800">
-                👁 Previewing as <strong>{viewAs === "DEVELOPER" ? "Developer" : "Staff"}</strong> — you&apos;re seeing a restricted view of the platform
+                👁 Previewing as <strong>{VIEW_AS_OPTIONS.find(o => o.role === viewAs)?.label ?? viewAs}</strong> — you&apos;re seeing a restricted view of the platform
               </p>
               <button
                 onClick={() => setViewAs(null)}
@@ -471,22 +471,24 @@ function ProfileMenu({
               <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
                 View platform as
               </p>
-              {([null, "STAFF", "DEVELOPER"] as ViewAsRole[]).map((role) => {
-                const label = role === null ? "Admin (you)" : role === "STAFF" ? "Staff" : "Developer";
+              {VIEW_AS_OPTIONS.map(({ role, label, description }) => {
                 const active = viewAs === role;
                 return (
                   <button
                     key={String(role)}
                     type="button"
                     onClick={() => { setViewAs(role); setOpen(false); }}
-                    className={`flex w-full items-center justify-between rounded-[6px] px-3 py-2 text-sm transition ${
+                    className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
                       active
-                        ? "bg-[#EFF6FF] font-semibold text-[#1D4ED8]"
+                        ? "bg-[#EFF6FF] text-[#1D4ED8]"
                         : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                     }`}
                   >
-                    {label}
-                    {active && <span className="text-[10px] text-[#1D4ED8]">●</span>}
+                    <div>
+                      <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
+                      <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>{description}</p>
+                    </div>
+                    {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
                   </button>
                 );
               })}
