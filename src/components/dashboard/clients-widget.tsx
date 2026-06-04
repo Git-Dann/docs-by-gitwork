@@ -5,7 +5,7 @@ import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
 import { useClientList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
 
-export default function ClientsWidget({ size }: { size: WidgetSize }) {
+export default function ClientsWidget(_: { size: WidgetSize }) {
   const { data, isLoading } = useClientList();
 
   if (isLoading) {

@@ -11,7 +11,7 @@ import type { WidgetSize } from "@/components/app-overview";
 import type { StaffingAlert } from "@/types/backstage";
 import { formatDateRange, formatDay } from "@/components/backstage/format";
 
-export default function BackstageWidget({ size }: { size: WidgetSize }) {
+export default function BackstageWidget(_: { size: WidgetSize }) {
   const { data, isLoading } = useStaffingAlerts();
 
   if (isLoading) {

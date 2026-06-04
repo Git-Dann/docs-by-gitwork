@@ -229,7 +229,7 @@ export function AppShell({
           {isAdmin && viewAs && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
               <p className="text-xs font-medium text-amber-800">
-                👁 Previewing as <strong>{viewAs === "DEVELOPER" ? "Developer" : "Staff"}</strong> — you're seeing a restricted view of the platform
+                👁 Previewing as <strong>{viewAs === "DEVELOPER" ? "Developer" : "Staff"}</strong> — you&apos;re seeing a restricted view of the platform
               </p>
               <button
                 onClick={() => setViewAs(null)}

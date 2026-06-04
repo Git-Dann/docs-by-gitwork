@@ -34,7 +34,7 @@ function ClientRow({ clientId, name }: { clientId: string; name: string }) {
   );
 }
 
-export default function CareWidget({ size }: { size: WidgetSize }) {
+export default function CareWidget(_: { size: WidgetSize }) {
   const { data: clientsData, isLoading } = useSupportClients();
 
   if (isLoading) {

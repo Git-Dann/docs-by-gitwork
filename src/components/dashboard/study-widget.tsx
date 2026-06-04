@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETE:         "Complete",
 };
 
-export default function StudyWidget({ size }: { size: WidgetSize }) {
+export default function StudyWidget(_: { size: WidgetSize }) {
   const { data: studies, isLoading } = useStudyList();
 
   if (isLoading) {
