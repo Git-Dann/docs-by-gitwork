@@ -102,19 +102,23 @@ export function AppOverview() {
           gridAutoFlow: "dense",
         }}
       >
-        {widgets.map(({ component: Widget, cols, rows, size }, i) => (
+        {widgets.map(({ component: Widget, cols, rows, size }, i) => {
+          const cellHeight = rows === 1 ? ROW_HEIGHT : ROW_HEIGHT * rows + (rows - 1) * 12;
+          return (
           <div
             key={i}
             className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
             style={{
               gridColumn: `span ${cols}`,
               gridRow: `span ${rows}`,
-              minHeight: rows === 1 ? ROW_HEIGHT : ROW_HEIGHT * rows + (rows - 1) * 12,
+              // Explicit height (not just min) so h-full works inside both flex-col and grid modes
+              height: `${cellHeight}px`,
             }}
           >
             <Widget size={size} />
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

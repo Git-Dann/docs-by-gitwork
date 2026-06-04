@@ -43,29 +43,6 @@ export default function CareWidget({ size }: { size: WidgetSize }) {
 
   const clients = clientsData?.clients ?? [];
 
-  if (size === "sm") {
-    return (
-      <div className="flex h-full flex-col">
-        {/* Widget header */}
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            04 // CARE
-          </span>
-        </div>
-        {/* Body */}
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          <div className="flex flex-1 flex-col items-center justify-center">
-            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{clients.length}</p>
-            <p className="text-xs text-[#475569]">clients</p>
-          </div>
-          <p className="text-center text-xs text-[#475569]">
-            {clients.length === 0 ? "No clients yet" : "Support active"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const displayCount = 7;
 
   return (

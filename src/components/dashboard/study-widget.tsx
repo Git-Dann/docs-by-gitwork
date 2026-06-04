@@ -29,35 +29,6 @@ export default function StudyWidget({ size }: { size: WidgetSize }) {
   const list = studies ?? [];
   const running = list.filter((s) => s.status === "RUNNING" || s.status === "PLAN_GENERATING");
 
-  if (size === "sm") {
-    return (
-      <div className="flex h-full flex-col">
-        {/* Widget header */}
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            03 // STUDY
-          </span>
-          {running.length > 0 && (
-            <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-              live
-            </span>
-          )}
-        </div>
-        {/* Body */}
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          <div className="flex flex-1 flex-col items-center justify-center">
-            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{list.length}</p>
-            <p className="text-xs text-[#475569]">studies</p>
-          </div>
-          <p className="text-center text-xs text-[#475569]">
-            {running.length > 0 ? `${running.length} running` : "None active"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const displayCount = 7;
 
   return (
