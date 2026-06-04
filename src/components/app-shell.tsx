@@ -439,8 +439,14 @@ function ProfileMenu({
   });
   // Only show admins who have actual restrictions (non-empty permissions array).
   // Full-access admins (empty = Super Admin equivalent) are identical to your own view — no point previewing.
+  // Also exclude the bootstrap placeholder (owner@gitwork.io) and yourself.
+  const BOOTSTRAP_EMAIL = "owner@gitwork.io";
   const adminMembers = (teamData?.members ?? []).filter(
-    (m) => m.role === "ADMIN" && m.email !== session?.user?.email && m.permissions.length > 0,
+    (m) =>
+      m.role === "ADMIN" &&
+      m.email !== session?.user?.email &&
+      m.email !== BOOTSTRAP_EMAIL &&
+      m.permissions.length > 0,
   );
 
   // Identity reads from the live Google session by default. The account hook supplies the

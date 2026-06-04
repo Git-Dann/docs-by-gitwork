@@ -133,6 +133,22 @@ export function TeamSection() {
   const pendingInvites = invites.filter((i) => i.status === "PENDING");
   const pastInvites = invites.filter((i) => i.status !== "PENDING");
 
+  // Sort: Super Admin → Admin → Staff → Developer, then A-Z within each group.
+  const ROLE_ORDER: Record<string, number> = {
+    SUPER_ADMIN: 0,
+    ADMIN: 1,
+    STAFF: 2,
+    DEVELOPER: 3,
+  };
+  const sortedMembers = [...members].sort((a, b) => {
+    const ra = ROLE_ORDER[a.role] ?? 99;
+    const rb = ROLE_ORDER[b.role] ?? 99;
+    if (ra !== rb) return ra - rb;
+    const na = (a.user.name ?? a.user.email).toLowerCase();
+    const nb = (b.user.name ?? b.user.email).toLowerCase();
+    return na.localeCompare(nb);
+  });
+
   return (
     <div className="proposal-form-theme space-y-6">
       {/* Create invite */}
@@ -234,23 +250,24 @@ export function TeamSection() {
         number="03"
         title="Members"
         right={<span className="text-xs text-[var(--text-4)]">{members.length} people</span>}
+        bodyClassName="p-0"
       >
         {loading ? (
-          <p className="text-sm text-[var(--text-3)]">Loading…</p>
+          <p className="px-6 py-5 text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
           <div>
-            {/* Header row */}
-            <div className="hidden items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_64px]">
+            {/* Header row — edge-to-edge, no extra inset */}
+            <div className="hidden items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-6 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_80px]">
               <span className="app-eyebrow">Member</span>
               <span className="app-eyebrow">Role</span>
               <span className="app-eyebrow">Access</span>
               <span />
             </div>
             <div className="divide-y divide-[var(--border-2)]">
-              {members.map((m) => (
+              {sortedMembers.map((m) => (
                 <div
                   key={m.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-3.5 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_64px]"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-6 py-3.5 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_80px]"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
