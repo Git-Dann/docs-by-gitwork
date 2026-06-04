@@ -44,6 +44,10 @@ export type CleanseOptions = {
   /** Grant assigned devs ClientAssignment access so the tasks show on their
    *  boards / My Day. Default true. */
   grantAccess?: boolean;
+  /** Render sections as sequential phase bars on the Gantt — each runs from the
+   *  previous section's deadline to its own — instead of the min/max task window
+   *  (which collapses to a single-day marker when a section shares one date). */
+  waterfall?: boolean;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,6 +105,7 @@ export async function runTaskCleanse(opts: CleanseOptions): Promise<CleanseRepor
   const dryRun = opts.dryRun !== false;
   const setBlockSpans = opts.setBlockSpans !== false;
   const grantAccess = opts.grantAccess !== false;
+  const waterfall = opts.waterfall === true;
 
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -227,17 +232,38 @@ export async function runTaskCleanse(opts: CleanseOptions): Promise<CleanseRepor
   });
   const blockSpan = new Map<string, { start: Date | null; end: Date | null }>();
   if (setBlockSpans) {
+    // Each block's task-derived window (min..max of its tasks' proposed dates).
+    const win = new Map<string, { min: Date; max: Date }>();
     for (const b of blocks) {
       const dues = tasks
         .filter((t) => t.featureBlock?.id === b.id)
         .map((t) => {
           const p = proposals.get(t.id);
-          const d = p?.delete ? null : p?.dueDate ? parseYmd(p.dueDate) : t.dueDate;
-          return d;
+          return p?.delete ? null : p?.dueDate ? parseYmd(p.dueDate) : t.dueDate;
         })
         .filter((d): d is Date => d != null)
         .sort((a, z) => a.getTime() - z.getTime());
-      blockSpan.set(b.id, { start: dues[0] ?? null, end: dues[dues.length - 1] ?? null });
+      if (dues.length) win.set(b.id, { min: dues[0], max: dues[dues.length - 1] });
+    }
+    if (waterfall) {
+      // Sequential phase bars: order dated blocks by deadline; each runs from the
+      // previous block's deadline to its own (the first starts a week before).
+      const WEEK = 7 * 24 * 60 * 60 * 1000;
+      const ordered = blocks
+        .filter((b) => win.has(b.id))
+        .sort((a, z) => win.get(a.id)!.max.getTime() - win.get(z.id)!.max.getTime());
+      let prevEnd: Date | null = null;
+      for (const b of ordered) {
+        const end = win.get(b.id)!.max;
+        const start = prevEnd && prevEnd.getTime() < end.getTime() ? prevEnd : new Date(end.getTime() - WEEK);
+        blockSpan.set(b.id, { start, end });
+        prevEnd = end;
+      }
+    } else {
+      for (const b of blocks) {
+        const w = win.get(b.id);
+        blockSpan.set(b.id, { start: w?.min ?? null, end: w?.max ?? null });
+      }
     }
   }
   const blockSpans = blocks
