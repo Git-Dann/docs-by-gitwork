@@ -26,12 +26,17 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
   defaultDescription: "Prepared-by line and on-document signature placeholders.",
   recommendedFor: ["PROPOSAL"],
   aiExpandable: false,
-  Editor: ({ data, onChange }) => (
+  Editor: ({ data, onChange, proposal }) => (
     <SimpleForm>
       <FormInput
         label="Prepared by"
         value={data.preparedBy}
         onChange={(preparedBy) => onChange({ ...data, preparedBy })}
+        placeholder={
+          proposal.metadata.owner?.trim()
+            ? `${proposal.metadata.owner.trim()} (from the cover)`
+            : "Add a name, or set it on the cover"
+        }
       />
       <FormInput
         label="Team / department"
@@ -77,12 +82,17 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
       </div>
     </SimpleForm>
   ),
-  Preview: ({ data }) => (
+  Preview: ({ data, proposal }) => (
     <div className="proposal-block-avoid grid gap-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5 md:grid-cols-[minmax(0,1fr)_220px]">
       <div className="space-y-3 text-sm leading-7 text-[var(--text-2)]">
+        {/* One source of truth for "prepared by": inherit the cover's owner (metadata.owner)
+            when the footer's own field is blank, so the document reads consistently top-to-bottom.
+            An explicit footer value still wins as an override. */}
         <p>
           Prepared by:{" "}
-          <span className="font-medium text-[var(--text-1)]">{data.preparedBy}</span>
+          <span className="font-medium text-[var(--text-1)]">
+            {data.preparedBy?.trim() || proposal.metadata.owner?.trim() || ""}
+          </span>
         </p>
         <p>Team: {data.team}</p>
         <p>Contact: {data.contactDetails}</p>
