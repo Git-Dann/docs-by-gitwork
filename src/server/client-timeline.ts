@@ -75,27 +75,36 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
     where: { clientId: client.id },
     orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
     include: {
-      tasks: { select: { title: true, status: true }, orderBy: { orderKey: "asc" } },
+      tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
     },
   });
 
-  // Only dated blocks render as bars on the public timeline.
+  // Sections render once they have a span — explicit dates, or derived from the
+  // date range of their tasks' due dates (so undated sections still appear).
   const publicBlocks: PublicTimelineBlock[] = blocks
-    .filter((b) => b.startDate && b.endDate)
     .map((b) => {
+      const dues = b.tasks
+        .map((t) => t.dueDate)
+        .filter((d): d is Date => d !== null)
+        .map((d) => d.getTime())
+        .sort((a, z) => a - z);
+      const start = b.startDate ?? (dues.length ? new Date(dues[0]) : null);
+      const end = b.endDate ?? (dues.length ? new Date(dues[dues.length - 1]) : null);
+      if (!start || !end) return null;
       const taskCount = b.tasks.length;
       const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
       return {
         id: b.id,
         name: b.name,
         description: b.description,
-        startDate: b.startDate!.toISOString(),
-        endDate: b.endDate!.toISOString(),
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
       };
-    });
+    })
+    .filter((b): b is PublicTimelineBlock => b !== null);
 
   const milestoneRows = await prisma.milestone.findMany({
     where: { clientId: client.id },

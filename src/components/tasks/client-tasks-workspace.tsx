@@ -77,21 +77,31 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   }, [tasks, filters]);
 
   // Only dated blocks become Gantt bars; undated ones are board-only groupings.
+  // A section shows on the Gantt once it has a span: explicit start/end, or — when
+  // undated — derived from the date range of its tasks' due dates.
   const ganttBlocks: GanttBlock[] = useMemo(
     () =>
       blocks
-        .filter((b) => b.startDate && b.endDate)
-        .map((b) => ({
-          id: b.id,
-          name: b.name,
-          startDate: b.startDate as string,
-          endDate: b.endDate as string,
-          color: b.color,
-          progress: b.progress,
-          tasks: tasks
-            .filter((t) => t.featureBlock?.id === b.id)
-            .map((t) => ({ title: t.title, done: t.status === "DONE" })),
-        })),
+        .map((b): GanttBlock | null => {
+          const blockTasks = tasks.filter((t) => t.featureBlock?.id === b.id);
+          const dues = blockTasks
+            .map((t) => t.dueDate)
+            .filter((d): d is string => Boolean(d))
+            .sort();
+          const startDate = b.startDate ?? (dues.length ? dues[0] : null);
+          const endDate = b.endDate ?? (dues.length ? dues[dues.length - 1] : null);
+          if (!startDate || !endDate) return null;
+          return {
+            id: b.id,
+            name: b.name,
+            startDate,
+            endDate,
+            color: b.color,
+            progress: b.progress,
+            tasks: blockTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+          };
+        })
+        .filter((b): b is GanttBlock => b !== null),
     [blocks, tasks],
   );
 
