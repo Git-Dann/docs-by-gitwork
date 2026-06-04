@@ -196,10 +196,11 @@ export function GanttChart({
           </span>
           {projectWeek != null ? (
             <span
-              className="rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-800)]"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--brand-200)] bg-[var(--surface-brand)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-800)]"
               style={{ fontFamily: "var(--font-mono)" }}
               title="Week of the project timeline (kickoff = week 1)"
             >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
               WEEK {projectWeek}
             </span>
           ) : null}
@@ -248,27 +249,16 @@ export function GanttChart({
               <div className="flex" style={{ height: HEADER_ROW_1 }}>
                 {/* Sticky left corner — spans both header rows */}
                 <div
-                  className="sticky left-0 z-50 shrink-0 border-r border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-3 text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
-                  style={{
-                    width: RAIL_W,
-                    height: HEADER_H,
-                    display: "flex",
-                    alignItems: "flex-start",
-                    paddingTop: 6,
-                    fontFamily: "var(--font-mono)",
-                    // Spans both header rows via absolute trick — handled by the row-1 cell only
-                    position: "sticky",
-                    top: 0,
-                  }}
+                  className="sticky left-0 z-[60] flex shrink-0 border-r border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] text-[10px] font-medium uppercase tracking-[1px] text-[var(--text-4)]"
+                  style={{ width: RAIL_W, height: HEADER_H, top: 0, fontFamily: "var(--font-mono)" }}
                 >
-                  Feature blocks
-                  {/* "Due" sub-column label */}
-                  <span
-                    className="absolute right-0 top-0 flex items-center justify-center border-l border-[rgba(0,0,0,0.08)] text-[9px]"
-                    style={{ width: DUE_COL_W, height: HEADER_H, fontFamily: "var(--font-mono)" }}
+                  <div className="flex flex-1 items-center px-3">Feature blocks</div>
+                  <div
+                    className="flex shrink-0 items-center justify-end border-l border-[rgba(0,0,0,0.08)] px-2"
+                    style={{ width: DUE_COL_W }}
                   >
                     Due
-                  </span>
+                  </div>
                 </div>
 
                 {/* Quarter bands */}
@@ -429,20 +419,25 @@ export function GanttChart({
 
                     {/* Track */}
                     <div className="relative" style={{ width: model.timelineWidth }}>
-                      <div
-                        className={cn("absolute top-2 h-7 overflow-hidden rounded-[6px]", t.bar)}
-                        style={{ left, width }}
-                        title={`${b.name}\n${fmtShort(b.startDate)} – ${fmtShort(b.endDate)} · ${b.progress}% complete`}
-                      >
-                        <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />
-                        <span
-                          className={cn(
-                            "pointer-events-none absolute inset-0 flex items-center truncate px-2 text-[11px] font-medium",
-                            t.text,
-                          )}
-                        >
-                          {width > 60 ? b.name : ""}
-                        </span>
+                      <div className="group absolute top-2 h-7" style={{ left, width }}>
+                        <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
+                          <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />
+                          <span
+                            className={cn(
+                              "pointer-events-none absolute inset-0 flex items-center truncate px-2 text-[11px] font-medium",
+                              t.text,
+                            )}
+                          >
+                            {width > 60 ? b.name : ""}
+                          </span>
+                        </div>
+                        {/* Instant styled tooltip (date range) */}
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-white shadow-lg group-hover:block">
+                          <span className="font-medium">{b.name}</span>
+                          <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                            {fmtShort(b.startDate)} – {fmtShort(b.endDate)} · {b.progress}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -462,15 +457,22 @@ export function GanttChart({
                       className="pointer-events-none absolute top-0 bottom-0 -translate-x-1/2 border-l border-dashed"
                       style={{ borderColor: c, opacity: 0.4 }}
                     />
-                    {/* Diamond marker — hover for name + date */}
-                    <button
-                      type="button"
-                      onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
-                      title={`${m.name} · ${dateFmt}`}
-                      aria-label={`${m.name} · ${dateFmt}`}
-                      className="absolute top-1 -translate-x-1/2 h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow-sm transition hover:scale-125"
-                      style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
-                    />
+                    {/* Diamond marker + upright instant tooltip */}
+                    <div className="group absolute top-1 left-0 -translate-x-1/2">
+                      <button
+                        type="button"
+                        onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
+                        aria-label={`${m.name} · ${dateFmt}`}
+                        className="block h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow-sm transition hover:scale-125"
+                        style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
+                      />
+                      <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-white shadow-lg group-hover:block">
+                        <span className="font-medium">{m.name}</span>
+                        <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                          {dateFmt}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
