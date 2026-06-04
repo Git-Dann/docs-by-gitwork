@@ -743,3 +743,52 @@ Before pushing, tell Dan:
 | "Homepage" / "marketing" | Public site | `src/app/page.tsx` |
 | "Sidebar" / "nav" | App shell | `src/components/app-shell.tsx` |
 | "Settings" | Settings | `src/components/settings-panel.tsx` |
+
+---
+
+## 19. Design System Isolation Rules
+
+> This section exists because a sweeping design-system merge in May 2026 replaced
+> working production pages with mockups, renamed shared TypeScript types, and removed
+> CSS tokens — requiring 15+ recovery commits. Read this before touching any CSS or
+> shared component.
+
+### File map — what to edit for what purpose
+
+| Goal | File to edit |
+|---|---|
+| Change a colour, shadow, or spacing value | `src/app/design/tokens.css` — change the value only |
+| Add a brand-new design token | `src/app/design/tokens.css` |
+| Change font families / Tailwind theme | `src/app/globals.css` `@theme` block |
+| Change how a button, card, or input looks | `src/app/design/components.css` |
+| Build a new feature | New files under `src/components/{feature}/` using existing tokens + classes |
+| Design system exploration / prototyping | `/app/design-system` page only — never touch production feature components |
+
+`globals.css` is intentionally thin — it's a wiring file. Do not add styles directly to it.
+
+### The stable contract (never break without explicit instruction)
+
+- **Token names** — renaming `--brand-700` to `--brand-primary` is a breaking change across 100+ components. Use the `--colors-*` canonical names for new code; keep legacy aliases intact.
+- **Component class names** — `.app-card`, `.app-button-primary` etc. are stable APIs used in 100+ places across every module.
+- **Exported TypeScript types shared across features** — e.g. `WidgetSize` — require an adapter layer when changing.
+
+### Safe vs. requires discussion
+
+- ✅ **Safe:** Change a token VALUE (hex, shadow blur) — propagates intentionally
+- ✅ **Safe:** Add a new `--colors-*` / `--spacing-*` / `--rounded-*` token
+- ✅ **Safe:** Add a new `.app-*` class to `components.css`
+- ✅ **Safe:** New feature component files that only consume existing tokens/classes
+- ⚠️ **Discuss first:** Remove or rename an existing token or class
+- ⚠️ **Discuss first:** Structurally change a shared `.app-*` class (e.g. changing `.app-card` border-radius affects every product)
+- ❌ **Never:** Replace a working feature component or page with a mockup/redesign without explicit instruction
+
+### Feature isolation rule
+
+Feature-specific styles (one-off colours, layouts unique to one module) go **inline as Tailwind utilities** in that feature's component file. They do NOT go in `components.css`. `components.css` is only for styles that are intentionally shared across multiple features.
+
+### Checklist before merging a design change
+
+1. Make the change in `tokens.css` or `components.css`
+2. Run `npm run build` — must pass with zero errors
+3. Spot-check at least one page from each product (Pulse, Study, Care, dashboard)
+4. Check the marketing homepage `/` — it uses inline styles and should be unaffected by token changes
