@@ -9,7 +9,6 @@ import ProposalsWidget from "@/components/dashboard/proposals-widget";
 import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
-import TasksWidget from "@/components/dashboard/tasks-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
@@ -29,17 +28,19 @@ type GridEntry = {
 
 const ROW_HEIGHT = 220;
 
+// 9 widgets × their col spans = 2+1+1+1+1+4+2+2+4 = 18 slots = exactly 6 rows × 3 cols.
+// Any deviation (adding a stray 1×1) breaks the packing and causes widowed columns.
+// Tasks is accessible via Portal — it stays off the bento to keep the grid clean.
 const GRID: GridEntry[] = [
-  { component: PulseWidget,     cols: 2, rows: 1, size: "md", module: "pulse" },
-  { component: CodeClearWidget, cols: 1, rows: 1, size: "sm", module: "codeclear" },
-  { component: StudyWidget,     cols: 1, rows: 1, size: "sm", module: "study" },
-  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
-  { component: BackstageWidget, cols: 1, rows: 1, size: "sm", module: "backstage" },
-  { component: TasksWidget,     cols: 1, rows: 1, size: "sm", module: "clients" },
-  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg", module: "proposals" },
-  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },
-  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
-  { component: CalendarWidget,  cols: 2, rows: 2, size: "lg" },
+  { component: PulseWidget,     cols: 2, rows: 1, size: "md", module: "pulse" },     // row 1: cols 1-2
+  { component: CodeClearWidget, cols: 1, rows: 1, size: "sm", module: "codeclear" }, // row 1: col 3
+  { component: StudyWidget,     cols: 1, rows: 1, size: "sm", module: "study" },     // row 2: col 1
+  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },   // row 2: col 2
+  { component: BackstageWidget, cols: 1, rows: 1, size: "sm", module: "backstage" }, // row 2: col 3
+  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg", module: "proposals" }, // rows 3-4: cols 1-2
+  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },   // rows 3-4: col 3
+  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },                      // rows 5-6: col 1
+  { component: CalendarWidget,  cols: 2, rows: 2, size: "lg" },                      // rows 5-6: cols 2-3
 ];
 
 function greetingPart(): string {
