@@ -6,7 +6,6 @@ const navLinks = [
   { label: "Pricing", href: "/pricing" },
   { label: "Case Studies", href: "/customers" },
   { label: "About", href: "/company" },
-  { label: "Foundry", href: "/foundry" },
 ];
 
 const footerColumns = [
