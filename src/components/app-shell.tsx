@@ -437,8 +437,10 @@ function ProfileMenu({
     enabled: isAdmin && open, // only fetch when the menu is open
     staleTime: 1000 * 60 * 5,
   });
+  // Only show admins who have actual restrictions (non-empty permissions array).
+  // Full-access admins (empty = Super Admin equivalent) are identical to your own view — no point previewing.
   const adminMembers = (teamData?.members ?? []).filter(
-    (m) => m.role === "ADMIN" && m.email !== session?.user?.email,
+    (m) => m.role === "ADMIN" && m.email !== session?.user?.email && m.permissions.length > 0,
   );
 
   // Identity reads from the live Google session by default. The account hook supplies the
