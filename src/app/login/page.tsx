@@ -10,7 +10,7 @@ const FEATURES = [
   {
     number: "01",
     name: "PULSE",
-    description: "150+ automated project checks — AI gap analysis and fix-agent PRs in minutes.",
+    description: "500+ automated project checks — AI gap analysis and fix-agent PRs in minutes.",
   },
   {
     number: "02",
@@ -153,7 +153,7 @@ function LoginForm() {
         </div>
 
         <div className="w-full max-w-[400px]">
-          <div className="mb-8">
+          <div className="mb-8 text-center">
             <h1
               className="text-[32px] font-normal leading-[1.15] tracking-[-0.02em] text-[var(--text-1)]"
               style={{ fontFamily: "var(--font-display)" }}
