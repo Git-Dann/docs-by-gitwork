@@ -159,13 +159,36 @@ export function GanttChart({
     model.timelineWidth,
   );
 
+  // Project week — kickoff (earliest section/milestone) is week 1. NOT the ISO
+  // week of the year; simply how many weeks into the project timeline we are.
+  const projectWeek = useMemo(() => {
+    const stamps = [
+      ...blocks.map((b) => new Date(b.startDate).getTime()),
+      ...milestones.map((m) => new Date(m.date).getTime()),
+    ].filter((n) => Number.isFinite(n));
+    if (stamps.length === 0) return null;
+    const wk = Math.floor((today.getTime() - Math.min(...stamps)) / (7 * DAY)) + 1;
+    return wk >= 1 ? wk : null;
+  }, [blocks, milestones, today]);
+
   return (
     <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
       {/* Controls */}
       <div className="flex items-center justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-3 py-2">
-        <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-4)]">
-          <span className="inline-block h-2.5 w-0.5 bg-red-500" />
-          Today
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-4)]">
+            <span className="inline-block h-2.5 w-0.5 bg-red-500" />
+            Today
+          </span>
+          {projectWeek != null ? (
+            <span
+              className="rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-800)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+              title="Week of the project timeline (kickoff = week 1)"
+            >
+              WEEK {projectWeek}
+            </span>
+          ) : null}
         </div>
         <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
           {(Object.keys(GANTT_SCALE_LABELS) as GanttScale[]).map((s, i) => (
