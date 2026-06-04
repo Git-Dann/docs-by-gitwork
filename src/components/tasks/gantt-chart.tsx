@@ -23,9 +23,9 @@ export type GanttMilestone = {
 
 const DAY = 86_400_000;
 /** Total left rail width — block name column + "Due" column. */
-const RAIL_W = 310;
-/** Width of the "Due" date column inside the rail. */
-const DUE_COL_W = 60;
+const RAIL_W = 360;
+/** Width of the "Due" date column inside the rail (fits "27 May 2026" on one line). */
+const DUE_COL_W = 96;
 /** Row height (min). */
 const ROW_MIN_H = 52;
 /** Heights of the two header rows. */
@@ -102,6 +102,8 @@ export function GanttChart({
   emptyHint?: string;
 }) {
   const [scale, setScale] = useState<GanttScale>(initialScale);
+  // Section ids whose task list is expanded. Default: all collapsed (compact rows).
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const today = useMemo(() => new Date(), []);
   const pxPerDay = PX_PER_DAY[scale];
 
@@ -171,6 +173,18 @@ export function GanttChart({
     return wk >= 1 ? wk : null;
   }, [blocks, milestones, today]);
 
+  // Rail order: chronological — earliest section first (by start, then end).
+  const ordered = useMemo(
+    () =>
+      [...blocks].sort(
+        (a, z) =>
+          new Date(a.startDate).getTime() - new Date(z.startDate).getTime() ||
+          new Date(a.endDate).getTime() - new Date(z.endDate).getTime(),
+      ),
+    [blocks],
+  );
+  const allOpen = blocks.length > 0 && open.size >= blocks.length;
+
   return (
     <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
       {/* Controls */}
@@ -188,6 +202,15 @@ export function GanttChart({
             >
               WEEK {projectWeek}
             </span>
+          ) : null}
+          {blocks.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setOpen(allOpen ? new Set() : new Set(blocks.map((b) => b.id)))}
+              className="rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+            >
+              {allOpen ? "Collapse all" : "Expand all"}
+            </button>
           ) : null}
         </div>
         <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
@@ -301,7 +324,7 @@ export function GanttChart({
 
             {/* ── Block rows + today line ─────────────────────────────────────── */}
             <div className="relative">
-              {blocks.map((b) => {
+              {ordered.map((b) => {
                 const start = new Date(b.startDate);
                 const end = new Date(b.endDate);
                 const left = Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0);
@@ -309,6 +332,7 @@ export function GanttChart({
                 const t = tone(b.color);
                 const shown = b.tasks.slice(0, 6);
                 const dueFmt = fmtShort(b.endDate);
+                const isOpen = open.has(b.id);
                 return (
                   <div
                     key={b.id}
@@ -320,26 +344,60 @@ export function GanttChart({
                       className="sticky left-0 z-30 flex shrink-0 border-r border-[rgba(0,0,0,0.08)] bg-white"
                       style={{ width: RAIL_W }}
                     >
-                      {/* Name + task list sub-column */}
+                      {/* Name + collapsible task list sub-column */}
                       <div className="min-w-0 flex-1 px-3 py-2">
-                        <button
-                          type="button"
-                          onClick={onBlockClick ? () => onBlockClick(b.id) : undefined}
-                          className={cn(
-                            "block w-full truncate text-left text-sm font-medium text-[var(--text-1)]",
-                            onBlockClick && "hover:text-[var(--brand-700)]",
-                          )}
-                        >
-                          {b.name}
-                        </button>
-                        <p
-                          className="mt-0.5 text-[10px] text-[var(--text-4)]"
-                          style={{ fontFamily: "var(--font-mono)" }}
-                        >
-                          {b.progress}% · {b.tasks.length} task{b.tasks.length === 1 ? "" : "s"}
-                        </p>
-                        {shown.length > 0 ? (
-                          <ul className="mt-1 space-y-0.5">
+                        <div className="flex items-start gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpen((prev) => {
+                                const n = new Set(prev);
+                                if (n.has(b.id)) n.delete(b.id);
+                                else n.add(b.id);
+                                return n;
+                              })
+                            }
+                            aria-expanded={isOpen}
+                            aria-label={isOpen ? "Collapse section" : "Expand section"}
+                            className="mt-[3px] shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                          >
+                            <svg
+                              width="10"
+                              height="10"
+                              viewBox="0 0 10 10"
+                              className={cn("transition-transform", isOpen && "rotate-90")}
+                            >
+                              <path
+                                d="M3 2l4 3-4 3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={onBlockClick ? () => onBlockClick(b.id) : undefined}
+                              className={cn(
+                                "block w-full truncate text-left text-sm font-medium text-[var(--text-1)]",
+                                onBlockClick && "hover:text-[var(--brand-700)]",
+                              )}
+                            >
+                              {b.name}
+                            </button>
+                            <p
+                              className="mt-0.5 text-[10px] text-[var(--text-4)]"
+                              style={{ fontFamily: "var(--font-mono)" }}
+                            >
+                              {b.progress}% · {b.tasks.length} task{b.tasks.length === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                        </div>
+                        {isOpen && shown.length > 0 ? (
+                          <ul className="mt-1.5 space-y-0.5 pl-[18px]">
                             {shown.map((task, i) => (
                               <li key={i} className="flex items-center gap-1.5 text-[11px] text-[var(--text-3)]">
                                 <span
@@ -362,7 +420,7 @@ export function GanttChart({
 
                       {/* Due date column */}
                       <div
-                        className="flex shrink-0 items-start justify-end border-l border-[rgba(0,0,0,0.06)] px-1.5 py-2 text-right text-[10px] leading-tight text-[var(--text-4)]"
+                        className="flex shrink-0 items-start justify-end whitespace-nowrap border-l border-[rgba(0,0,0,0.06)] px-2 py-2 text-right text-[10px] leading-tight text-[var(--text-4)]"
                         style={{ width: DUE_COL_W, fontFamily: "var(--font-mono)" }}
                       >
                         {dueFmt}
@@ -374,7 +432,7 @@ export function GanttChart({
                       <div
                         className={cn("absolute top-2 h-7 overflow-hidden rounded-[6px]", t.bar)}
                         style={{ left, width }}
-                        title={`${b.name} · ${b.progress}%`}
+                        title={`${b.name}\n${fmtShort(b.startDate)} – ${fmtShort(b.endDate)} · ${b.progress}% complete`}
                       >
                         <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />
                         <span
@@ -391,90 +449,31 @@ export function GanttChart({
                 );
               })}
 
-              {/* ── Milestones section ──────────────────────────────────────── */}
-              {milestones.length > 0 ? (
-                <>
-                  {/* Section header row */}
-                  <div
-                    className="flex border-b border-t border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]"
-                    style={{ minHeight: 28 }}
-                  >
+              {/* ── Milestones — diamonds overlaid on the timeline (no table rows) ── */}
+              {milestones.map((m) => {
+                const mx = daysBetween(model.domainStart, new Date(m.date)) * pxPerDay;
+                if (mx < 0 || mx > model.timelineWidth) return null;
+                const c = markColor(m.color);
+                const dateFmt = fmtShort(m.date);
+                return (
+                  <div key={m.id} className="absolute top-0 bottom-0 z-20" style={{ left: RAIL_W + mx }}>
+                    {/* Faint vertical guide down the timeline */}
                     <div
-                      className="sticky left-0 z-30 flex shrink-0 items-center border-r border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-3"
-                      style={{ width: RAIL_W, fontFamily: "var(--font-mono)" }}
-                    >
-                      <span className="text-[9px] font-semibold uppercase tracking-[1.4px] text-[var(--text-4)]">
-                        Milestones
-                      </span>
-                    </div>
-                    <div style={{ width: model.timelineWidth }} />
+                      className="pointer-events-none absolute top-0 bottom-0 -translate-x-1/2 border-l border-dashed"
+                      style={{ borderColor: c, opacity: 0.4 }}
+                    />
+                    {/* Diamond marker — hover for name + date */}
+                    <button
+                      type="button"
+                      onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
+                      title={`${m.name} · ${dateFmt}`}
+                      aria-label={`${m.name} · ${dateFmt}`}
+                      className="absolute top-1 -translate-x-1/2 h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow-sm transition hover:scale-125"
+                      style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
+                    />
                   </div>
-
-                  {/* One row per milestone */}
-                  {milestones.map((m) => {
-                    const mx = daysBetween(model.domainStart, new Date(m.date)) * pxPerDay;
-                    const c = markColor(m.color);
-                    const inView = mx >= 0 && mx <= model.timelineWidth;
-                    const dateFmt = new Date(m.date).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      timeZone: "UTC",
-                    });
-                    return (
-                      <div
-                        key={m.id}
-                        className="flex border-b border-[rgba(0,0,0,0.05)] last:border-b-0"
-                        style={{ minHeight: 36 }}
-                      >
-                        {/* Rail: name + date */}
-                        <div
-                          className="sticky left-0 z-30 flex shrink-0 items-center gap-2 border-r border-[rgba(0,0,0,0.08)] bg-white px-3"
-                          style={{ width: RAIL_W }}
-                        >
-                          <span
-                            className="inline-block h-2.5 w-2.5 shrink-0 rotate-45 rounded-sm"
-                            style={{ background: c }}
-                          />
-                          <button
-                            type="button"
-                            onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
-                            className={cn(
-                              "min-w-0 flex-1 truncate text-left text-[11px] font-medium text-[var(--text-1)]",
-                              onMilestoneClick && "hover:text-[var(--brand-700)]",
-                            )}
-                            style={{ cursor: onMilestoneClick ? "pointer" : "default" }}
-                          >
-                            {m.name}
-                          </button>
-                          <span
-                            className="shrink-0 text-[10px] text-[var(--text-4)]"
-                            style={{ fontFamily: "var(--font-mono)" }}
-                          >
-                            {dateFmt}
-                          </span>
-                        </div>
-
-                        {/* Track: diamond marker */}
-                        <div className="relative" style={{ width: model.timelineWidth }}>
-                          {inView ? (
-                            <div
-                              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-                              style={{ left: mx }}
-                            >
-                              {/* Diamond */}
-                              <div
-                                className="h-4 w-4 rotate-45 rounded-sm"
-                                style={{ background: c }}
-                                title={`${m.name} · ${dateFmt}`}
-                              />
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              ) : null}
+                );
+              })}
 
               {/* ── Today line — spans all rows ─────────────────────────────── */}
               <div

@@ -35,6 +35,7 @@ export async function POST(req: Request) {
       dryRun?: boolean;
       grantAccess?: boolean;
       setBlockSpans?: boolean;
+      waterfall?: boolean;
     };
 
     const dryRun = body.dryRun !== false; // default true unless explicitly false
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
         dryRun,
         grantAccess: body.grantAccess,
         setBlockSpans: body.setBlockSpans,
+        waterfall: body.waterfall,
       }),
     );
   } catch (e) {
