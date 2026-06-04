@@ -689,3 +689,106 @@ done (risky in a 4000-line file; the 19 extended modules + top-level agents alre
 bulk). The embed page inherits the global `SessionProvider` (harmless; a lighter provider tree would
 drop an unused `/api/auth/session` call from the iframe). Reconciler is daily on Hobby. Optional env
 `GOOGLE_PSI_API_KEY` improves PageSpeed quota (internal scans only; public path skips PSI).
+
+---
+
+## 14. Feature Request Protocol
+
+> Dan is not a developer. Before writing a single line of code for any new request,
+> Claude must complete this pre-flight checklist. No exceptions.
+
+### Step 1 — Understand before acting
+
+Read the request carefully. If anything below is unclear, **ask Dan before exploring the codebase or writing code**:
+
+- What is the end goal in plain language? (What should it do / look like when done?)
+- Which product / module is this for? (Pulse, Study, Care, Proposals, Portal, dashboard, marketing homepage, or something new?)
+- Is this a **visual change** (colours, layout, fonts), a **new feature** (new page, new capability), or a **bug fix**?
+
+### Step 2 — Scope check (say this out loud before starting)
+
+State explicitly:
+1. Which files will change
+2. Whether any shared files are involved (`globals.css`, `design/tokens.css`, `design/components.css`, `app-shell.tsx`, `middleware.ts`, `prisma/schema.prisma`)
+3. Whether any other module could be affected as a side effect
+
+If shared files are involved, **flag this to Dan** before proceeding — e.g.:
+> "This touches the shared button styles, which affects every module. Do you want me to proceed knowing that, or keep the change scoped to just Pulse?"
+
+### Step 3 — Confirm scope is locked
+
+Default rule: **a change to one module must not affect any other module** unless Dan explicitly says so.
+
+If the cleanest implementation would require touching shared code, present the trade-off and ask:
+> "I can do this in two ways: (A) change the shared component, which updates it everywhere, or (B) add a one-off style in just this feature. Which would you prefer?"
+
+### Step 4 — Flag risks before committing
+
+Before pushing, tell Dan:
+- What was changed and why
+- Whether anything else could look or behave differently as a result
+- If a database migration is involved (Prisma schema change = needs `db push`)
+
+### Module ownership quick-reference
+
+| Dan says… | Module | Key files |
+|---|---|---|
+| "Pulse" / "project scan" | Pulse | `src/components/pulse/`, `src/server/pulse*.ts` |
+| "Study" / "research" / "personas" | Study | `src/components/study/`, `src/server/study*.ts` |
+| "Care" / "support" / "tickets" | Care | `src/components/support/`, `src/server/support.ts` |
+| "Docs" / "proposals" | Proposals | `src/components/proposals/`, `src/server/proposals.ts` |
+| "Portal" / "clients" | Clients | `src/components/clients/`, `src/server/clients.ts` |
+| "Code" / "candidates" | CodeClear | `src/components/codeclear/`, `src/server/codeclear*.ts` |
+| "Dashboard" / "HQ" | App overview | `src/components/app-overview.tsx` |
+| "Homepage" / "marketing" | Public site | `src/app/page.tsx` |
+| "Sidebar" / "nav" | App shell | `src/components/app-shell.tsx` |
+| "Settings" | Settings | `src/components/settings-panel.tsx` |
+
+---
+
+## 19. Design System Isolation Rules
+
+> This section exists because a sweeping design-system merge in May 2026 replaced
+> working production pages with mockups, renamed shared TypeScript types, and removed
+> CSS tokens — requiring 15+ recovery commits. Read this before touching any CSS or
+> shared component.
+
+### File map — what to edit for what purpose
+
+| Goal | File to edit |
+|---|---|
+| Change a colour, shadow, or spacing value | `src/app/design/tokens.css` — change the value only |
+| Add a brand-new design token | `src/app/design/tokens.css` |
+| Change font families / Tailwind theme | `src/app/globals.css` `@theme` block |
+| Change how a button, card, or input looks | `src/app/design/components.css` |
+| Build a new feature | New files under `src/components/{feature}/` using existing tokens + classes |
+| Design system exploration / prototyping | `/app/design-system` page only — never touch production feature components |
+
+`globals.css` is intentionally thin — it's a wiring file. Do not add styles directly to it.
+
+### The stable contract (never break without explicit instruction)
+
+- **Token names** — renaming `--brand-700` to `--brand-primary` is a breaking change across 100+ components. Use the `--colors-*` canonical names for new code; keep legacy aliases intact.
+- **Component class names** — `.app-card`, `.app-button-primary` etc. are stable APIs used in 100+ places across every module.
+- **Exported TypeScript types shared across features** — e.g. `WidgetSize` — require an adapter layer when changing.
+
+### Safe vs. requires discussion
+
+- ✅ **Safe:** Change a token VALUE (hex, shadow blur) — propagates intentionally
+- ✅ **Safe:** Add a new `--colors-*` / `--spacing-*` / `--rounded-*` token
+- ✅ **Safe:** Add a new `.app-*` class to `components.css`
+- ✅ **Safe:** New feature component files that only consume existing tokens/classes
+- ⚠️ **Discuss first:** Remove or rename an existing token or class
+- ⚠️ **Discuss first:** Structurally change a shared `.app-*` class (e.g. changing `.app-card` border-radius affects every product)
+- ❌ **Never:** Replace a working feature component or page with a mockup/redesign without explicit instruction
+
+### Feature isolation rule
+
+Feature-specific styles (one-off colours, layouts unique to one module) go **inline as Tailwind utilities** in that feature's component file. They do NOT go in `components.css`. `components.css` is only for styles that are intentionally shared across multiple features.
+
+### Checklist before merging a design change
+
+1. Make the change in `tokens.css` or `components.css`
+2. Run `npm run build` — must pass with zero errors
+3. Spot-check at least one page from each product (Pulse, Study, Care, dashboard)
+4. Check the marketing homepage `/` — it uses inline styles and should be unaffected by token changes
