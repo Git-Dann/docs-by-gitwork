@@ -95,7 +95,7 @@ export function DevOverview() {
   const pageClients = clients.slice(clientsPage * PAGE_SIZE, (clientsPage + 1) * PAGE_SIZE);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div className="grid gap-4 lg:items-start lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {/* Left — My Day standup */}
       <MyDay />
 
