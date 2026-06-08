@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { GANTT_SCALE_LABELS, type GanttScale } from "@/types/tasks";
 
@@ -33,7 +33,7 @@ const HEADER_ROW_1 = 22; // quarter bands
 const HEADER_ROW_2 = 22; // month labels
 const HEADER_H = HEADER_ROW_1 + HEADER_ROW_2; // 44px total
 
-const PX_PER_DAY: Record<GanttScale, number> = {
+const PX_PER_DAY: Record<Exclude<GanttScale, "fit">, number> = {
   month: 26,
   quarter: 9,
   half: 4.5,
@@ -89,7 +89,7 @@ function fmtShort(iso: string): string {
 export function GanttChart({
   blocks,
   milestones = [],
-  initialScale = "quarter",
+  initialScale = "fit",
   onBlockClick,
   onMilestoneClick,
   emptyHint = "No feature blocks yet — add one to start the timeline.",
@@ -105,9 +105,23 @@ export function GanttChart({
   // Section ids whose task list is expanded. Default: all collapsed (compact rows).
   const [open, setOpen] = useState<Set<string>>(new Set());
   const today = useMemo(() => new Date(), []);
-  const pxPerDay = PX_PER_DAY[scale];
 
-  const model = useMemo(() => {
+  // Measure the scroll viewport so "Fit" can scale the timeline to the width
+  // (and re-fit whenever the container resizes — responsive on any screen).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setContainerW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Date domain — independent of zoom, so "Fit" can size px/day to it.
+  const domain = useMemo(() => {
     const stamps: number[] = [today.getTime()];
     for (const b of blocks) {
       stamps.push(new Date(b.startDate).getTime(), new Date(b.endDate).getTime());
@@ -119,6 +133,20 @@ export function GanttChart({
     const domainStart = addMonthsUTC(startOfMonthUTC(min), -1);
     const domainEnd = addMonthsUTC(startOfMonthUTC(max), 2);
     const totalDays = Math.max(daysBetween(domainStart, domainEnd), 1);
+    return { domainStart, domainEnd, totalDays };
+  }, [blocks, milestones, today]);
+
+  // px/day: fixed per zoom level, or computed to fit the whole timeline into the
+  // available width in "Fit" mode (clamped so it never collapses or over-zooms).
+  const pxPerDay = useMemo(() => {
+    if (scale !== "fit") return PX_PER_DAY[scale];
+    const avail = containerW - RAIL_W;
+    if (avail <= 0) return PX_PER_DAY.half; // pre-measure fallback
+    return Math.min(Math.max(avail / domain.totalDays, 1.2), 40);
+  }, [scale, containerW, domain.totalDays]);
+
+  const model = useMemo(() => {
+    const { domainStart, domainEnd, totalDays } = domain;
 
     // ── Row 2: month cells ────────────────────────────────────────────────────
     const months: { x: number; w: number; label: string; major: boolean }[] = [];
@@ -154,7 +182,7 @@ export function GanttChart({
     }
 
     return { domainStart, totalDays, months, quarters, timelineWidth: totalDays * pxPerDay };
-  }, [blocks, milestones, pxPerDay, today]);
+  }, [domain, pxPerDay]);
 
   const todayX = Math.min(
     Math.max(daysBetween(model.domainStart, today) * pxPerDay, 0),
@@ -188,7 +216,7 @@ export function GanttChart({
   return (
     <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
       {/* Controls */}
-      <div className="flex items-center justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[rgba(0,0,0,0.08)] px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-4)]">
             <span className="inline-block h-2.5 w-0.5 bg-red-500" />
@@ -237,8 +265,8 @@ export function GanttChart({
       {blocks.length === 0 && milestones.length === 0 ? (
         <p className="px-4 py-12 text-center text-sm text-[var(--text-4)]">{emptyHint}</p>
       ) : (
-        <div className="overflow-x-auto">
-          <div className="relative" style={{ width: RAIL_W + model.timelineWidth }}>
+        <div ref={scrollRef} className="overflow-x-auto">
+          <div className="relative" style={{ minWidth: "100%", width: RAIL_W + model.timelineWidth }}>
 
             {/* ── Two-row header ─────────────────────────────────────────────── */}
             <div

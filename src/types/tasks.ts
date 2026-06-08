@@ -180,9 +180,10 @@ export type MilestoneDTO = {
 };
 
 /** Gantt zoom levels. */
-export type GanttScale = "month" | "quarter" | "half" | "year";
+export type GanttScale = "fit" | "month" | "quarter" | "half" | "year";
 
 export const GANTT_SCALE_LABELS: Record<GanttScale, string> = {
+  fit: "Fit",
   month: "Month",
   quarter: "Quarter",
   half: "6 months",
