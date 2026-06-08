@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Keep the headless-Chromium packages out of the bundler so their code isn't relocated.
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "firebase-admin"],
   // …but Chromium's binary pack under bin/ is loaded by a computed path at runtime, so Next's
   // file tracer doesn't see it and leaves it out of the function ("/bin does not exist"). Force
   // it into ONLY the PDF route's function (the `*` matches the [id] segment; scoping it here
