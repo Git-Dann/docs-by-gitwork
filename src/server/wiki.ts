@@ -7,6 +7,7 @@
  */
 
 import { randomBytes } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { WikiPageType, WikiPlatform } from "@prisma/client";
 
@@ -186,11 +187,11 @@ export async function upsertWikiPage(
       wikiId: wiki.id,
       type: input.type,
       title: input.title,
-      content: input.content ?? null,
+      content: input.content as Prisma.InputJsonValue | undefined,
     },
     update: {
       title: input.title,
-      content: input.content ?? null,
+      content: input.content as Prisma.InputJsonValue | undefined,
     },
   });
 
