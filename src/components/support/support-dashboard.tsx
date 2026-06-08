@@ -3282,6 +3282,19 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                               : "No new items since last sync"}
                       </p>
                     )}
+                    {/* Persisted Sync Health — survives reloads, shows the last cron/manual run */}
+                    {!sr && conn.lastSyncStats && (() => {
+                      const st = conn.lastSyncStats!;
+                      const when = new Date(st.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+                      const hasErr = st.errors.length > 0;
+                      return (
+                        <p className={cn("mt-1 text-[11px]", hasErr ? "text-red-500" : "text-[var(--text-4)]")}>
+                          {hasErr
+                            ? `Last sync ${when} — error: ${st.errors[0]}`
+                            : `Last sync ${when} — ${st.ingested} added${st.filtered ? `, ${st.filtered} filtered` : ""}`}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
 

@@ -1,6 +1,5 @@
-import { callAI } from "./ai-client";
+import { callAI, type AiContext } from "./ai-client";
 import { prisma } from "@/lib/prisma";
-import type { AgentContext } from "./types";
 
 const SYSTEM_PROMPT = `You are a professional support agent at Gitwork, a UK-based digital design-and-build agency.
 You manage client support operations on Gitwork's behalf.
@@ -17,7 +16,7 @@ Sign off as: Gitwork Support
 Reply ONLY with the message body — no subject line, no metadata, no preamble.`;
 
 export async function generateDraftReply(
-  ctx: AgentContext,
+  ctx: AiContext,
   conversationId: string,
   ticketId?: string,
 ): Promise<string> {

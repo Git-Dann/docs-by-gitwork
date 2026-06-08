@@ -1,9 +1,26 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { AgentContext } from "./types";
+
+/** Minimal workspace AI config the agents need — a structural subset of both
+ *  the sync `SyncContext` and the old `AgentContext`, so either can be passed. */
+export interface AiWorkspaceConfig {
+  aiProvider: string;
+  anthropicApiKey?: string | null;
+  anthropicModel?: string | null;
+  openaiApiKey?: string | null;
+  openaiModel?: string | null;
+  geminiApiKey?: string | null;
+  geminiModel?: string | null;
+  localLlmUrl?: string | null;
+  localLlmModel?: string | null;
+}
+
+export interface AiContext {
+  workspace: AiWorkspaceConfig;
+}
 
 export async function callAI(
-  ctx: AgentContext,
+  ctx: AiContext,
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 2048,

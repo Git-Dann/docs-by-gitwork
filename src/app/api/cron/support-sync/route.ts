@@ -1,8 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { syncConnection } from "@/server/support-sync";
+import { enrichConversations } from "@/server/care-agents/enrich";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
     let totalIngested = 0;
     let totalFiltered = 0;
     const allErrors: string[] = [];
+    const allNewConversationIds: string[] = [];
 
     const results = await Promise.allSettled(
       connections.map(async (conn) => {
@@ -66,6 +68,7 @@ export async function GET(request: NextRequest) {
       if (res.status === "fulfilled") {
         totalIngested += res.value.result.ingested;
         totalFiltered += res.value.result.filtered;
+        allNewConversationIds.push(...(res.value.result.newConversationIds ?? []));
         if (res.value.result.errors.length > 0) {
           allErrors.push(
             ...res.value.result.errors.map((e) => `[${res.value.source}:${res.value.connId.slice(-6)}] ${e}`),
@@ -74,6 +77,13 @@ export async function GET(request: NextRequest) {
       } else {
         allErrors.push(String(res.reason));
       }
+    }
+
+    // Enrich newly-ingested conversations after the response (non-gating).
+    if (allNewConversationIds.length > 0) {
+      after(() =>
+        enrichConversations({ workspace }, allNewConversationIds, { max: 50 }).catch(console.error),
+      );
     }
 
     return apiOk({

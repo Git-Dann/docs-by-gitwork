@@ -108,6 +108,8 @@ export interface SyncResult {
   ingested: number;
   filtered: number;
   errors: string[];
+  /** IDs of conversations newly created this run — fed to the enrichment pass. */
+  newConversationIds?: string[];
 }
 
 export interface SyncContext {
@@ -193,6 +195,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
+  const newConversationIds: string[] = [];
   const updatedChannels = [...channels];
 
   const ignoreBots = config.ignoreBots ?? true;
@@ -237,6 +240,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
             tags: convTags,
           },
         });
+        newConversationIds.push(conv.id);
       } else {
         // Keep keyword tags in sync with current connector config on every sync
         await prisma.supportConversation.update({
@@ -314,7 +318,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
     },
   });
 
-  return { ingested, filtered, errors };
+  return { ingested, filtered, errors, newConversationIds };
 }
 
 // ─── Reddit sync ──────────────────────────────────────────────────────────────
@@ -338,6 +342,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
+  const newConversationIds: string[] = [];
   const include = normalizeKeywords(config?.keywords);
   const exclude = normalizeKeywords(config?.excludeKeywords);
   const maxItems = config?.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
@@ -409,6 +414,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
           });
         }
 
+        newConversationIds.push(conv.id);
         ingested++;
       }
     }
@@ -421,7 +427,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     data: { lastSyncedAt: new Date() },
   });
 
-  return { ingested, filtered, errors };
+  return { ingested, filtered, errors, newConversationIds };
 }
 
 // ─── Gmail sync ───────────────────────────────────────────────────────────────
@@ -514,6 +520,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   let ingested = 0;
   let filtered = 0;
   const errors: string[] = [];
+  const newConversationIds: string[] = [];
 
   try {
     const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults });
@@ -567,6 +574,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
               tags: gmailTags,
             },
           });
+          newConversationIds.push(conv.id);
           ingested++;
         } else {
           filtered++;
@@ -613,7 +621,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
       data: { lastSyncedAt: new Date() },
     });
 
-    return { fetched, ingested, filtered, errors };
+    return { fetched, ingested, filtered, errors, newConversationIds };
   } catch (err) {
     return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
@@ -622,18 +630,43 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
+  let result: SyncResult;
   switch (ctx.connection.source) {
     case "GMAIL":
-      return syncGmailConnection(ctx);
+      result = await syncGmailConnection(ctx);
+      break;
     case "DISCORD":
-      return syncDiscordConnection(ctx);
+      result = await syncDiscordConnection(ctx);
+      break;
     case "REDDIT":
-      return syncRedditConnection(ctx);
+      result = await syncRedditConnection(ctx);
+      break;
     default:
-      return {
+      result = {
         ingested: 0,
         filtered: 0,
         errors: [`Source ${ctx.connection.source} not yet implemented`],
       };
   }
+
+  // Persist a compact run summary so the UI can show sync health that survives reloads.
+  try {
+    await prisma.accountConnection.update({
+      where: { id: ctx.connection.id },
+      data: {
+        lastSyncStats: {
+          fetched: result.fetched ?? null,
+          ingested: result.ingested,
+          filtered: result.filtered,
+          errors: result.errors,
+          at: new Date().toISOString(),
+        } as object,
+        ...(result.errors.length > 0 ? {} : { health: "CONNECTED" }),
+      },
+    });
+  } catch {
+    // Never let stats-writing failure mask a successful sync.
+  }
+
+  return result;
 }

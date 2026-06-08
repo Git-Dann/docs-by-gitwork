@@ -1783,6 +1783,7 @@ model AccountConnection {
   scraperConfig Json?
   nextStep      String?
   lastSyncedAt  DateTime?
+  lastSyncStats Json?
   syncCursor    String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt

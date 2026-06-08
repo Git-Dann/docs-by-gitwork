@@ -47,6 +47,16 @@ export interface Connection {
   secretRef?: string;
   nextStep?: string;
   connectedEmail?: string;
+  /** ISO timestamp of the last sync run (from the server). */
+  lastSyncedAt?: string;
+  /** Compact summary of the last sync run, for the Sync Health card. */
+  lastSyncStats?: {
+    fetched?: number | null;
+    ingested: number;
+    filtered: number;
+    errors: string[];
+    at: string;
+  };
   scraperConfig?: {
     // Gmail
     query?: string;
