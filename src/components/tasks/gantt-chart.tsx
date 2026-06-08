@@ -189,6 +189,15 @@ export function GanttChart({
     model.timelineWidth,
   );
 
+  // Open the timeline at "today" (and re-centre when the zoom changes) so the
+  // view never starts months in the past. Completed work is reachable by
+  // scrolling left. In "Fit" the whole timeline shows, so this is a no-op there.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = Math.max(0, todayX - 80);
+  }, [scale, todayX]);
+
   // Project week — kickoff (earliest section/milestone) is week 1. NOT the ISO
   // week of the year; simply how many weeks into the project timeline we are.
   const projectWeek = useMemo(() => {
