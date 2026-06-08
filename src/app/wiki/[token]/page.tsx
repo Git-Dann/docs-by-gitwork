@@ -37,7 +37,7 @@ export default async function PublicWikiPage({
               className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
               style={{ fontFamily: "var(--font-mono)" }}
             >
-              {wiki.clientName} // Wiki
+              {wiki.clientName}{" // Wiki"}
             </p>
           </div>
           <p className="text-xs text-[var(--text-4)]">Powered by Gitwork</p>
