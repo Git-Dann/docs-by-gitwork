@@ -9,7 +9,8 @@ export default async function WikiPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { workspaceId } = await ensureBaseRecords();
+  const { workspace } = await ensureBaseRecords();
+  const workspaceId = workspace.id;
 
   const client = await prisma.workspaceClient.findUnique({
     where: { workspaceId_slug: { workspaceId, slug } },
