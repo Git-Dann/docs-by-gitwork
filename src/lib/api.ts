@@ -2277,3 +2277,62 @@ export async function setClientDesignSystemEnabled(
   });
 }
 
+// ─── Client Wiki ──────────────────────────────────────────────────────────────
+
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord };
+
+export async function getClientWiki(slug: string): Promise<WikiDTO> {
+  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
+}
+
+export async function upsertWikiPage(
+  slug: string,
+  payload: { type: string; title: string; content?: unknown },
+): Promise<WikiPageRecord> {
+  return apiFetch<WikiPageRecord>(`/api/clients/${slug}/wiki/pages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function setWikiShareApi(
+  slug: string,
+  enabled: boolean,
+): Promise<{ shareToken: string | null; shareEnabled: boolean }> {
+  return apiFetch<{ shareToken: string | null; shareEnabled: boolean }>(
+    `/api/clients/${slug}/wiki/share`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+}
+
+export async function addWikiChangelogEntry(
+  slug: string,
+  payload: {
+    platform: string;
+    version: string;
+    title: string;
+    body?: string;
+    releasedAt?: string;
+  },
+): Promise<ChangelogEntryRecord> {
+  return apiFetch<ChangelogEntryRecord>(`/api/clients/${slug}/wiki/changelog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteWikiChangelogEntry(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/changelog/${id}`, { method: "DELETE" });
+}
+
+export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
+  return apiFetch<WikiDTO>(`/api/wiki/${token}`);
+}
+

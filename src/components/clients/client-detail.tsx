@@ -5,6 +5,7 @@ import {
   ArrowTopRightOnSquareIcon,
   BanknotesIcon,
   BeakerIcon,
+  BookOpenIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   ChevronDownIcon,
@@ -40,7 +41,6 @@ import {
   useCreateClientPlatform,
   useDeleteClientDesign,
   useDeleteClientPlatform,
-  useOgPreview,
   useRevealClientBank,
   useSetClientStatus,
   useUpdateClient,
@@ -50,6 +50,7 @@ import {
 import { useCreateTask } from "@/hooks/use-tasks";
 import { useClientDesignSystem, useSetClientDesignSystemEnabled } from "@/hooks/use-design-system";
 import { cn, formatDate } from "@/lib/format";
+import { detectPlatformIcon } from "@/lib/platform-icons";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
 import type {
   ClientBankReveal,
@@ -378,32 +379,28 @@ export function ClientDetail({ slug }: { slug: string }) {
               )}
             </div>
 
-            {/* Right-side action stack — bottom-aligned. Bank (when on file) sits on
-                top; the design system takes the priority bottom slot. */}
-            {(client.bank?.onFile || designSystem?.enabled) && (
-              <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
-                {client.bank?.onFile && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setBankOpen(true)}
-                  >
-                    <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-                    Bank details
-                  </Button>
-                )}
-                {designSystem?.enabled && (
-                  <Link
-                    href={`/app/portal/${slug}/design-system`}
-                    title="Open this client's brand design system"
-                    className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-                  >
-                    Design system →
-                  </Link>
-                )}
-              </div>
-            )}
+            {/* Right-side action stack — bottom-aligned. */}
+            <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
+              {client.bank?.onFile && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setBankOpen(true)}
+                >
+                  <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                  Bank details
+                </Button>
+              )}
+              <Link
+                href={`/app/portal/${slug}/wiki`}
+                title="Open knowledge wiki"
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+              >
+                <BookOpenIcon className="h-3.5 w-3.5" />
+                Wiki →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -650,7 +647,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col divide-y divide-[rgba(0,0,0,0.05)]">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.id}
@@ -674,16 +671,18 @@ export function ClientDetail({ slug }: { slug: string }) {
             <span className="widget-header__label--number">11</span>
             {" // DESIGNS"}
           </span>
-          {!isSuggested && (
-            <button
-              type="button"
-              onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
-              className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-              title="Add design"
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {!isSuggested && (
+              <button
+                type="button"
+                onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
+                className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+                title="Add design"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-1 flex-col p-5">
@@ -702,7 +701,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col divide-y divide-[rgba(0,0,0,0.05)]">
               {designs.map((design) => (
                 <DesignCard
                   key={design.id}
@@ -1537,79 +1536,6 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// LinkPreviewArea — fixed 130px image strip at the top of platform/design cards
-// ---------------------------------------------------------------------------
-function LinkPreviewArea({
-  imageUrl,
-  domain,
-  label,
-}: {
-  imageUrl: string | null | undefined;
-  domain: string | null | undefined;
-  label: string | null | undefined;
-}) {
-  const domainLabel = domain
-    ? domain.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]
-    : label || "Link";
-
-  // Hash the label to pick a consistent gradient
-  let hash = 0;
-  for (let i = 0; i < domainLabel.length; i++) {
-    hash = domainLabel.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const gradients = [
-    "linear-gradient(135deg, #1D4ED8 0%, #1E3A8A 100%)",
-    "linear-gradient(135deg, #0F766E 0%, #134E4A 100%)",
-    "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)",
-    "linear-gradient(135deg, #B45309 0%, #78350F 100%)",
-    "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
-  ];
-  const gradient = gradients[Math.abs(hash) % gradients.length];
-
-  if (imageUrl) {
-    return (
-      <div
-        className="h-[130px] w-full overflow-hidden"
-        style={{ background: "#f1f5f9" }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt={domainLabel}
-          className="h-full w-full object-cover"
-          onError={(e) => {
-            // Hide broken image, let the parent show placeholder
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex h-[130px] w-full items-center justify-center"
-      style={{ background: gradient }}
-    >
-      <div className="text-center">
-        <p
-          className="text-2xl font-semibold text-white/90 tracking-[-0.02em]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          {domainLabel.charAt(0).toUpperCase()}
-        </p>
-        <p
-          className="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] text-white/50 max-w-[120px] truncate"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {domainLabel}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Slack helpers
 // ---------------------------------------------------------------------------
 
@@ -1834,7 +1760,7 @@ function SlackActivityBody({
 }
 
 // ---------------------------------------------------------------------------
-// PlatformCard — individual platform record widget
+// PlatformCard — compact icon-anchored card
 // ---------------------------------------------------------------------------
 function PlatformCard({
   platform,
@@ -1880,94 +1806,91 @@ function PlatformCard({
     }
   }
 
-  const linkForPreview = platform.url || platform.stagingUrl;
-  const ogQuery = useOgPreview(!platform.previewImageUrl ? linkForPreview : null);
-  const previewImage = platform.previewImageUrl || ogQuery.data?.imageUrl || null;
+  const primaryUrl = platform.url || platform.stagingUrl;
+  const { icon, color, bg } = detectPlatformIcon(primaryUrl, platform.platformType);
 
   return (
     <>
-      <article className="widget-card cursor-pointer overflow-hidden" onClick={() => setEditing(true)}>
-        {/* Preview image area — fixed 130px, always present */}
-        <LinkPreviewArea
-          imageUrl={previewImage}
-          domain={linkForPreview}
-          label={platform.platformType || platform.name}
-        />
+      <article
+        className="widget-card group flex cursor-pointer items-center gap-3 px-3 py-3 hover:bg-[var(--surface-0)] transition-colors"
+        onClick={() => setEditing(true)}
+      >
+        {/* Icon badge */}
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: bg, color }}
+        >
+          {icon}
+        </div>
 
-        {/* Card label + actions — compact, not a section header */}
-        <div className="flex items-center justify-between border-b border-[rgba(0,0,0,0.06)] px-3 py-1.5">
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{platform.name}</p>
+          {primaryUrl && (
+            <p className="truncate text-xs text-[var(--text-4)]">
+              {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+            </p>
+          )}
           {platform.platformType && (
-            <span className="rounded-[3px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}>
+            <span
+              className="inline-block mt-0.5 rounded-[3px] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
               {platform.platformType}
             </span>
           )}
-          <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-              title="Edit platform"
-            >
-              <PencilIcon className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={deletingId === platform.id}
-              className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
-              title="Delete platform"
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
         </div>
 
-        {/* Body */}
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <p className="font-semibold text-[var(--text-1)]">{platform.name}</p>
-
-          <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {platform.url && (
-              <a
-                href={platform.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
-              >
-                <GlobeAltIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{platform.url.replace(/^https?:\/\//, "")}</span>
-              </a>
-            )}
-            {platform.stagingUrl && (
-              <a
-                href={platform.stagingUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
-              >
-                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">Staging</span>
-              </a>
-            )}
-            {platform.repoUrl && (
-              <a
-                href={platform.repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
-              >
-                <CodeBracketIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">Repository</span>
-              </a>
-            )}
-          </div>
-
-          {platform.notes && (
-            <p className="border-t border-[rgba(0,0,0,0.06)] pt-3 text-xs leading-5 text-[var(--text-3)]">
-              {platform.notes}
-            </p>
+        {/* Link pills (staging + repo) */}
+        <div className="flex shrink-0 flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {platform.stagingUrl && (
+            <a
+              href={platform.stagingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
+              title="Staging"
+            >
+              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+              <span>Stage</span>
+            </a>
           )}
+          {platform.repoUrl && (
+            <a
+              href={platform.repoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
+              title="Repository"
+            >
+              <CodeBracketIcon className="h-3 w-3" />
+              <span>Repo</span>
+            </a>
+          )}
+        </div>
+
+        {/* Edit / delete — appear on hover */}
+        <div
+          className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
+            title="Edit"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete()}
+            disabled={deletingId === platform.id}
+            className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
+            title="Delete"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
         </div>
       </article>
 
@@ -1985,7 +1908,7 @@ function PlatformCard({
 }
 
 // ---------------------------------------------------------------------------
-// DesignCard — individual design record widget
+// DesignCard — compact icon-anchored card
 // ---------------------------------------------------------------------------
 function DesignCard({
   design,
@@ -2022,23 +1945,60 @@ function DesignCard({
     }
   }
 
-  const ogQuery = useOgPreview(!design.previewImageUrl ? design.url : null);
-  const previewImage = design.previewImageUrl || ogQuery.data?.imageUrl || null;
+  const { icon, color, bg } = detectPlatformIcon(design.url, null);
 
   return (
     <>
-      <article className="widget-card cursor-pointer overflow-hidden" onClick={() => setEditing(true)}>
-        {/* Preview image area */}
-        <LinkPreviewArea imageUrl={previewImage} domain={design.url} label={design.name} />
+      <article
+        className="widget-card group flex cursor-pointer items-center gap-3 px-3 py-3 hover:bg-[var(--surface-0)] transition-colors"
+        onClick={() => setEditing(true)}
+      >
+        {/* Icon badge */}
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: bg, color }}
+        >
+          {icon}
+        </div>
 
-        {/* Card label + actions — compact, not a section header */}
-        <div className="flex items-center justify-end border-b border-[rgba(0,0,0,0.06)] px-3 py-1.5 gap-0.5"
-          onClick={(e) => e.stopPropagation()}>
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{design.name}</p>
+          {design.url && (
+            <p className="truncate text-xs text-[var(--text-4)]">
+              {design.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+            </p>
+          )}
+          {design.notes && (
+            <p className="mt-0.5 truncate text-xs text-[var(--text-3)]">{design.notes}</p>
+          )}
+        </div>
+
+        {/* Open link */}
+        {design.url && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <a
+              href={design.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
+              title="Open design file"
+            >
+              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+            </a>
+          </div>
+        )}
+
+        {/* Edit / delete — appear on hover */}
+        <div
+          className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             onClick={() => setEditing(true)}
             className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-            title="Edit design"
+            title="Edit"
           >
             <PencilIcon className="h-3.5 w-3.5" />
           </button>
@@ -2047,35 +2007,10 @@ function DesignCard({
             onClick={() => void handleDelete()}
             disabled={deletingId === design.id}
             className="rounded-[6px] p-1.5 text-[var(--text-4)] hover:bg-red-50 hover:text-red-600 transition"
-            title="Delete design"
+            title="Delete"
           >
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <p className="font-semibold text-[var(--text-1)]">{design.name}</p>
-
-          <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {design.url && (
-              <a
-                href={design.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 text-xs text-[var(--brand-700)] hover:underline"
-              >
-                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{design.url.replace(/^https?:\/\//, "")}</span>
-              </a>
-            )}
-          </div>
-
-          {design.notes && (
-            <p className="border-t border-[rgba(0,0,0,0.06)] pt-3 text-xs leading-5 text-[var(--text-3)]">
-              {design.notes}
-            </p>
-          )}
         </div>
       </article>
 

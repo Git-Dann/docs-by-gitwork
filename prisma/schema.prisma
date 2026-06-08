@@ -892,6 +892,7 @@ model WorkspaceClient {
   bankAccount          ClientBankAccount?
   onboarding           ClientOnboarding?
   designSystem         ClientDesignSystem?
+  wiki                 ClientWiki?
   assignments          ClientAssignment[]
   tasks                Task[]
   featureBlocks        FeatureBlock[]
@@ -972,6 +973,81 @@ model ClientDesignSystem {
 
   @@index([shareToken])
   @@map("ClientDesignSystem")
+}
+
+// ─── Client Knowledge Wiki ────────────────────────────────────────────────────
+
+/// Per-client knowledge hub: app-store listings, changelog, IA guide, dev API
+/// guide. The design-system page is a separate route but linked from the wiki
+/// sidebar. `shareToken` follows the same pattern as ClientDesignSystem.timelineShareToken —
+/// NOT @unique to avoid the Prisma db push data-loss guard; lookups use findFirst.
+model ClientWiki {
+  id           String                 @id @default(cuid())
+  clientId     String                 @unique
+  client       WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  shareToken   String?
+  shareEnabled Boolean                @default(false)
+  pages        ClientWikiPage[]
+  changelog    ClientChangelogEntry[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([shareToken])
+  @@map("ClientWiki")
+}
+
+/// A single page/section within a ClientWiki. One row per type per wiki
+/// (enforced by the unique constraint). Content is a JSON blob whose shape
+/// varies by type: markdown string for IA_GUIDE / DEV_API_GUIDE, structured
+/// key-value record for APP_STORE_* pages.
+model ClientWikiPage {
+  id        String       @id @default(cuid())
+  wikiId    String
+  wiki      ClientWiki   @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  type      WikiPageType
+  title     String
+  content   Json?
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([wikiId, type])
+  @@index([wikiId])
+  @@map("ClientWikiPage")
+}
+
+/// A single version-release entry in the client's changelog. Linked to a wiki.
+model ClientChangelogEntry {
+  id         String        @id @default(cuid())
+  wikiId     String
+  wiki       ClientWiki    @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  platform   WikiPlatform
+  version    String
+  title      String
+  body       String?       @db.Text
+  releasedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([wikiId])
+  @@map("ClientChangelogEntry")
+}
+
+enum WikiPageType {
+  IA_GUIDE
+  DEV_API_GUIDE
+  APP_STORE_IOS
+  APP_STORE_ANDROID
+  APP_STORE_FIRESTICK
+  CUSTOM
+}
+
+enum WikiPlatform {
+  IOS
+  ANDROID
+  FIRESTICK
+  WEB
+  ALL
 }
 
 /// Self-serve client onboarding session. Created when the team mints an
