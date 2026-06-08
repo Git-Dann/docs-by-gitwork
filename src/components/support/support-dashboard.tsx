@@ -166,6 +166,7 @@ const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
 const ANALYTICS_ADAPTERS: { key: string; label: string; defaultBaseUrl: string; requiresToken: boolean; hint: string }[] = [
   { key: "fellas", label: "Fellas Loaded", defaultBaseUrl: "https://api.fellasloaded.com", requiresToken: true, hint: "Subscription & user analytics — paste the Fellas API JWT." },
   { key: "bigwedge", label: "Big Wedge Golf", defaultBaseUrl: "https://apiv1.bigwedgegolf.com", requiresToken: true, hint: "Golf analytics — paste an admin JWT. Rounds played is month-scoped for trends." },
+  { key: "firebase", label: "Firebase / Firestore", defaultBaseUrl: "", requiresToken: false, hint: "Paste a service-account JSON (from Firebase Console → Project settings → Service accounts). Then add collections to count per month in the metric specs below." },
   { key: "generic", label: "Generic JSON API", defaultBaseUrl: "", requiresToken: false, hint: "Enter the full endpoint URL — every numeric field becomes a metric." },
 ];
 
@@ -194,7 +195,7 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 // ─── tab types ───────────────────────────────────────────────────────────────
 
-type Tab = "inbox" | "tickets" | "conversations" | "reports";
+type Tab = "inbox" | "tickets" | "reports";
 
 const EMAIL_SOURCES: SupportSource[] = ["gmail"];
 const RSS_SOURCES: SupportSource[] = ["reddit"];
@@ -526,6 +527,11 @@ function AddConnectorModal({
   const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(ANALYTICS_ADAPTERS[0].defaultBaseUrl);
   const [analyticsToken, setAnalyticsToken] = useState("");
   const selectedAdapter = ANALYTICS_ADAPTERS.find((a) => a.key === analyticsAdapter) ?? ANALYTICS_ADAPTERS[0];
+  // Firebase-specific
+  const [firebaseServiceAccount, setFirebaseServiceAccount] = useState("");
+  const [firebaseMetrics, setFirebaseMetrics] = useState<Array<{ label: string; collection: string; timestampField: string }>>([
+    { label: "", collection: "", timestampField: "createdAt" },
+  ]);
 
   // Shared filters (keywords, exclude, lookback, max, ignore-bots)
   const [filters, setFilters] = useState<FilterState>(() => initFilterState(undefined));
@@ -587,6 +593,19 @@ function AddConnectorModal({
       return { subreddit: redditSubreddit.trim(), ...f };
     }
     if (source === "analytics") {
+      if (analyticsAdapter === "firebase") {
+        return {
+          adapter: "firebase",
+          serviceAccountJson: firebaseServiceAccount.trim() || undefined,
+          firebaseMetrics: firebaseMetrics
+            .filter((m) => m.label.trim() && m.collection.trim())
+            .map((m) => ({
+              label: m.label.trim(),
+              collection: m.collection.trim(),
+              timestampField: m.timestampField.trim() || "createdAt",
+            })),
+        };
+      }
       return {
         adapter: analyticsAdapter,
         baseUrl: analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl,
@@ -599,6 +618,11 @@ function AddConnectorModal({
   function initialHealth(): "connected" | "needs_setup" {
     if (source === "discord") return selectedChannelIds.size > 0 ? "connected" : "needs_setup";
     if (source === "analytics") {
+      if (analyticsAdapter === "firebase") {
+        return firebaseServiceAccount.trim() && firebaseMetrics.some((m) => m.label.trim() && m.collection.trim())
+          ? "connected"
+          : "needs_setup";
+      }
       const hasBase = Boolean(analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl);
       const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
       return hasBase && hasToken ? "connected" : "needs_setup";
@@ -610,6 +634,9 @@ function AddConnectorModal({
     if (createConnection.isPending) return true;
     if (source === "discord") return !discordToken.trim() || !discordGuildId.trim() || selectedChannelIds.size === 0;
     if (source === "analytics") {
+      if (analyticsAdapter === "firebase") {
+        return !firebaseServiceAccount.trim() || !firebaseMetrics.some((m) => m.label.trim() && m.collection.trim());
+      }
       const hasBase = Boolean(analyticsBaseUrl.trim() || selectedAdapter.defaultBaseUrl);
       const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
       return !hasBase || !hasToken;
@@ -880,30 +907,75 @@ function AddConnectorModal({
                     ))}
                   </select>
                 </label>
-                <label className="block space-y-1">
-                  <span className="app-field-label">
-                    {analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}
-                  </span>
-                  <input
-                    value={analyticsBaseUrl}
-                    onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
-                    className="app-input w-full font-mono text-xs"
-                    placeholder={analyticsAdapter === "generic" ? "https://api.example.com/v1/metrics/" : selectedAdapter.defaultBaseUrl}
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="app-field-label">
-                    API token (bearer){selectedAdapter.requiresToken ? "" : " — optional"}
-                  </span>
-                  <input
-                    type="password"
-                    value={analyticsToken}
-                    onChange={(e) => setAnalyticsToken(e.target.value)}
-                    className="app-input w-full font-mono text-xs"
-                    placeholder="eyJ… (stored securely on the connection)"
-                    autoComplete="off"
-                  />
-                </label>
+
+                {/* Firebase-specific fields */}
+                {analyticsAdapter === "firebase" && (
+                  <div className="space-y-3">
+                    <label className="block space-y-1">
+                      <span className="app-field-label">Service-account JSON</span>
+                      <textarea
+                        value={firebaseServiceAccount}
+                        onChange={(e) => setFirebaseServiceAccount(e.target.value)}
+                        rows={4}
+                        className="app-input w-full resize-none font-mono text-[11px]"
+                        placeholder={'{"type":"service_account","project_id":"my-app","private_key":"-----BEGIN RSA..."}'}
+                        autoComplete="off"
+                      />
+                      <p className="text-[11px] text-[var(--text-4)]">Firebase Console → Project settings → Service accounts → Generate new private key</p>
+                    </label>
+                    <div className="space-y-2">
+                      <p className="app-field-label">Metric collections <span className="font-normal text-[var(--text-4)]">— each row = one monthly count</span></p>
+                      <div className="grid grid-cols-[1fr_1fr_1fr_1.5rem] gap-x-1.5 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                        <span>Label</span><span>Collection</span><span>Timestamp field</span><span />
+                      </div>
+                      {firebaseMetrics.map((m, i) => (
+                        <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1.5rem] items-center gap-1.5">
+                          <input value={m.label} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))} className="app-input text-xs" placeholder="e.g. Subscribers" />
+                          <input value={m.collection} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, collection: e.target.value } : r))} className="app-input text-xs" placeholder="e.g. users" />
+                          <input value={m.timestampField} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, timestampField: e.target.value } : r))} className="app-input text-xs" placeholder="createdAt" />
+                          {firebaseMetrics.length > 1 ? (
+                            <button type="button" onClick={() => setFirebaseMetrics((prev) => prev.filter((_, j) => j !== i))} className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] hover:bg-red-50 hover:text-red-600">
+                              <TrashIcon className="h-3 w-3" />
+                            </button>
+                          ) : <span />}
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setFirebaseMetrics((prev) => [...prev, { label: "", collection: "", timestampField: "createdAt" }])} className="flex items-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]">
+                        <PlusIcon className="h-3 w-3" />Add metric
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Non-Firebase fields */}
+                {analyticsAdapter !== "firebase" && (
+                  <>
+                    <label className="block space-y-1">
+                      <span className="app-field-label">
+                        {analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}
+                      </span>
+                      <input
+                        value={analyticsBaseUrl}
+                        onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
+                        className="app-input w-full font-mono text-xs"
+                        placeholder={analyticsAdapter === "generic" ? "https://api.example.com/v1/metrics/" : selectedAdapter.defaultBaseUrl}
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="app-field-label">
+                        API token (bearer){selectedAdapter.requiresToken ? "" : " — optional"}
+                      </span>
+                      <input
+                        type="password"
+                        value={analyticsToken}
+                        onChange={(e) => setAnalyticsToken(e.target.value)}
+                        className="app-input w-full font-mono text-xs"
+                        placeholder="eyJ… (stored securely on the connection)"
+                        autoComplete="off"
+                      />
+                    </label>
+                  </>
+                )}
                 {selectedAdapter.hint && (
                   <p className="text-[11px] text-[var(--text-4)]">{selectedAdapter.hint}</p>
                 )}
@@ -1110,20 +1182,14 @@ function FilterOption<T extends string | boolean>({
 }
 
 function InboxFiltersDropdown({
-  filterSource,
   filterSentiment,
   filterUnread,
-  presentSources,
-  onSourceChange,
   onSentimentChange,
   onUnreadChange,
   onClear,
 }: {
-  filterSource: SupportSource | "all";
   filterSentiment: "all" | "positive" | "neutral" | "negative";
   filterUnread: boolean;
-  presentSources: SupportSource[];
-  onSourceChange: (v: SupportSource | "all") => void;
   onSentimentChange: (v: "all" | "positive" | "neutral" | "negative") => void;
   onUnreadChange: (v: boolean) => void;
   onClear: () => void;
@@ -1132,7 +1198,6 @@ function InboxFiltersDropdown({
   const ref = useRef<HTMLDivElement>(null);
 
   const activeCount = [
-    filterSource !== "all",
     filterSentiment !== "all",
     filterUnread,
   ].filter(Boolean).length;
@@ -1181,22 +1246,6 @@ function InboxFiltersDropdown({
           <FilterOption value={false} active={!filterUnread} onClick={onUnreadChange}>All messages</FilterOption>
           <FilterOption value={true} active={filterUnread} onClick={onUnreadChange}>Unread only</FilterOption>
 
-          {presentSources.length > 1 && (
-            <>
-              <div className="my-2 border-t border-[var(--border-2)]" />
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Source</p>
-              <FilterOption value={"all" as const} active={filterSource === "all"} onClick={onSourceChange}>All sources</FilterOption>
-              {presentSources.map((s) => (
-                <FilterOption key={s} value={s} active={filterSource === s} onClick={onSourceChange}>
-                  <span className="flex items-center gap-1.5">
-                    <SourceIcon source={s} className="h-3.5 w-3.5" />
-                    {SOURCE_LABEL[s]}
-                  </span>
-                </FilterOption>
-              ))}
-            </>
-          )}
-
           {activeCount > 0 && (
             <>
               <div className="my-2 border-t border-[var(--border-2)]" />
@@ -1215,16 +1264,17 @@ function InboxFiltersDropdown({
   );
 }
 
-function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientId: string; sourcesFilter?: SupportSource[]; emptyLabel?: string; listLabel?: string }) {
+function InboxView({ clientId }: { clientId: string }) {
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
   const syncConn = useSyncConnection(clientId);
   const { data: connectionsData } = useSupportConnections(clientId);
-  // For the empty-state sync button: first matching connected connector
+  const [filterSource, setFilterSource] = useState<SupportSource | "all">("all");
+  // For the empty-state sync button: connector matching the selected source chip
   const matchingConn = useMemo(() => {
-    if (!sourcesFilter) return null;
-    return (connectionsData?.connections ?? []).find((c) => sourcesFilter.includes(c.source)) ?? null;
-  }, [connectionsData, sourcesFilter]);
+    if (filterSource === "all") return null;
+    return (connectionsData?.connections ?? []).find((c) => c.source === filterSource) ?? null;
+  }, [connectionsData, filterSource]);
   const [syncResult, setSyncResult] = useState<{ ingested?: number; errors: string[] } | null>(null);
 
   async function handleEmptySync(connId: string) {
@@ -1241,26 +1291,24 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const deferred = useDeferredValue(search);
-  const [filterSource, setFilterSource] = useState<SupportSource | "all">("all");
   const [filterSentiment, setFilterSentiment] = useState<"all" | "positive" | "neutral" | "negative">("all");
   const [filterUnread, setFilterUnread] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 15;
 
-  // Derive which sources are present so we only show relevant chips
+  // All sources that have at least one conversation (drives the chip strip)
   const presentSources = useMemo(
-    () => [...new Set(convos.filter((c) => !sourcesFilter || sourcesFilter.includes(c.source)).map((c) => c.source))],
-    [convos, sourcesFilter],
+    () => [...new Set(convos.map((c) => c.source))],
+    [convos],
   );
 
   const filtered = useMemo(() => convos.filter((c) => {
-    if (sourcesFilter && !sourcesFilter.includes(c.source)) return false;
     if (deferred && !c.subject.toLowerCase().includes(deferred.toLowerCase()) && !c.tags.some((t) => t.includes(deferred.toLowerCase()))) return false;
     if (filterSource !== "all" && c.source !== filterSource) return false;
     if (filterSentiment !== "all" && c.sentiment !== filterSentiment) return false;
     if (filterUnread && !c.unread) return false;
     return true;
-  }), [convos, sourcesFilter, deferred, filterSource, filterSentiment, filterUnread]);
+  }), [convos, deferred, filterSource, filterSentiment, filterUnread]);
 
   // If a selected conversation is no longer in the filtered list, clear the selection.
   // We do NOT auto-select the first item — the user picks explicitly.
@@ -1303,7 +1351,57 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      {/* search + filter bar — full width above columns */}
+      {/* source chips — visible when multiple sources are present */}
+      {presentSources.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFilterSource("all")}
+            className={cn(
+              "flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition",
+              filterSource === "all"
+                ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+            )}
+          >
+            All
+            <span className={cn(
+              "flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold",
+              filterSource === "all" ? "bg-[var(--brand-700)] text-white" : "bg-[var(--surface-1)] text-[var(--text-4)]",
+            )}>
+              {convos.length}
+            </span>
+          </button>
+          {presentSources.map((src) => {
+            const active = filterSource === src;
+            const srcCount = convos.filter((c) => c.source === src).length;
+            return (
+              <button
+                key={src}
+                type="button"
+                onClick={() => setFilterSource(active ? "all" : src)}
+                className={cn(
+                  "flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition",
+                  active
+                    ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                )}
+              >
+                <SourceIcon source={src} className="h-3 w-3" />
+                {SOURCE_LABEL[src]}
+                <span className={cn(
+                  "flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                  active ? "bg-[var(--brand-700)] text-white" : "bg-[var(--surface-1)] text-[var(--text-4)]",
+                )}>
+                  {srcCount}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* search + filter bar */}
       <div className="flex items-center gap-2">
         <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
@@ -1315,14 +1413,11 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
           />
         </div>
         <InboxFiltersDropdown
-          filterSource={filterSource}
           filterSentiment={filterSentiment}
           filterUnread={filterUnread}
-          presentSources={presentSources}
-          onSourceChange={setFilterSource}
           onSentimentChange={setFilterSentiment}
           onUnreadChange={setFilterUnread}
-          onClear={() => { setFilterSource("all"); setFilterSentiment("all"); setFilterUnread(false); }}
+          onClear={() => { setFilterSentiment("all"); setFilterUnread(false); }}
         />
       </div>
 
@@ -1333,7 +1428,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
           {/* widget header */}
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-              01 // {listLabel ?? "CONVERSATIONS"}
+              01 // INBOX
             </span>
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
               {filtered.length}
@@ -1349,7 +1444,7 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
               </div>
             )}
             {!convosLoading && filtered.length === 0 && (
-              <p className="py-8 text-center text-sm text-[var(--text-4)]">{emptyLabel ?? "No conversations found."}</p>
+              <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
             )}
             {paginated.map((c) => (
               <ConversationCard
@@ -1489,10 +1584,6 @@ function InboxView({ clientId, sourcesFilter, emptyLabel, listLabel }: { clientI
       </div>
     </div>
   );
-}
-
-function ConversationsView({ clientId }: { clientId: string }) {
-  return <InboxView clientId={clientId} sourcesFilter={CHAT_SOURCES} listLabel="MESSAGES" emptyLabel="No chat conversations yet. Add a Discord connector in Connectors to start pulling in messages." />;
 }
 
 function ConversationCard({
@@ -2716,6 +2807,13 @@ function EditConnectorModal({
   const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(conn.scraperConfig?.baseUrl ?? "");
   const [analyticsToken, setAnalyticsToken] = useState(conn.scraperConfig?.apiToken ?? "");
   const editSelectedAdapter = ANALYTICS_ADAPTERS.find((a) => a.key === analyticsAdapter) ?? ANALYTICS_ADAPTERS[0];
+  // Firebase-specific (initialise from saved scraperConfig)
+  const [firebaseServiceAccount, setFirebaseServiceAccount] = useState(conn.scraperConfig?.serviceAccountJson ?? "");
+  const [firebaseMetrics, setFirebaseMetrics] = useState<Array<{ label: string; collection: string; timestampField: string }>>(
+    (conn.scraperConfig?.firebaseMetrics as Array<{ label: string; collection: string; timestampField: string }> | undefined)?.length
+      ? (conn.scraperConfig!.firebaseMetrics as Array<{ label: string; collection: string; timestampField: string }>)
+      : [{ label: "", collection: "", timestampField: "createdAt" }],
+  );
 
   // Shared filters (keywords, exclude, lookback, max, ignore-bots)
   const [filters, setFilters] = useState<FilterState>(() => initFilterState(conn.scraperConfig));
@@ -2790,6 +2888,20 @@ function EditConnectorModal({
       };
     }
     if (conn.source === "analytics") {
+      if (analyticsAdapter === "firebase") {
+        return {
+          ...conn.scraperConfig,
+          adapter: "firebase",
+          serviceAccountJson: firebaseServiceAccount.trim() || conn.scraperConfig?.serviceAccountJson,
+          firebaseMetrics: firebaseMetrics
+            .filter((m) => m.label.trim() && m.collection.trim())
+            .map((m) => ({
+              label: m.label.trim(),
+              collection: m.collection.trim(),
+              timestampField: m.timestampField.trim() || "createdAt",
+            })),
+        };
+      }
       return {
         ...conn.scraperConfig,
         adapter: analyticsAdapter,
@@ -3014,26 +3126,71 @@ function EditConnectorModal({
                 ))}
               </select>
             </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">{analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}</span>
-              <input
-                value={analyticsBaseUrl}
-                onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder={editSelectedAdapter.defaultBaseUrl || "https://api.example.com/v1/metrics/"}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="app-field-label">API token (bearer){editSelectedAdapter.requiresToken ? "" : " — optional"}</span>
-              <input
-                type="password"
-                value={analyticsToken}
-                onChange={(e) => setAnalyticsToken(e.target.value)}
-                className="app-input w-full font-mono text-xs"
-                placeholder="Leave blank to keep the existing token"
-                autoComplete="off"
-              />
-            </label>
+
+            {/* Firebase-specific fields */}
+            {analyticsAdapter === "firebase" && (
+              <div className="space-y-3">
+                <label className="block space-y-1">
+                  <span className="app-field-label">Service-account JSON</span>
+                  <textarea
+                    value={firebaseServiceAccount}
+                    onChange={(e) => setFirebaseServiceAccount(e.target.value)}
+                    rows={4}
+                    className="app-input w-full resize-none font-mono text-[11px]"
+                    placeholder={firebaseServiceAccount ? "● ● ● stored — paste to update" : '{"type":"service_account","project_id":"my-app",...}'}
+                    autoComplete="off"
+                  />
+                  <p className="text-[11px] text-[var(--text-4)]">Firebase Console → Project settings → Service accounts → Generate new private key</p>
+                </label>
+                <div className="space-y-2">
+                  <p className="app-field-label">Metric collections <span className="font-normal text-[var(--text-4)]">— each row = one monthly count</span></p>
+                  <div className="grid grid-cols-[1fr_1fr_1fr_1.5rem] gap-x-1.5 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                    <span>Label</span><span>Collection</span><span>Timestamp field</span><span />
+                  </div>
+                  {firebaseMetrics.map((m, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1.5rem] items-center gap-1.5">
+                      <input value={m.label} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))} className="app-input text-xs" placeholder="e.g. Subscribers" />
+                      <input value={m.collection} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, collection: e.target.value } : r))} className="app-input text-xs" placeholder="e.g. users" />
+                      <input value={m.timestampField} onChange={(e) => setFirebaseMetrics((prev) => prev.map((r, j) => j === i ? { ...r, timestampField: e.target.value } : r))} className="app-input text-xs" placeholder="createdAt" />
+                      {firebaseMetrics.length > 1 ? (
+                        <button type="button" onClick={() => setFirebaseMetrics((prev) => prev.filter((_, j) => j !== i))} className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] hover:bg-red-50 hover:text-red-600">
+                          <TrashIcon className="h-3 w-3" />
+                        </button>
+                      ) : <span />}
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setFirebaseMetrics((prev) => [...prev, { label: "", collection: "", timestampField: "createdAt" }])} className="flex items-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-3)] transition hover:border-[var(--brand-700)] hover:text-[var(--brand-700)]">
+                    <PlusIcon className="h-3 w-3" />Add metric
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Non-Firebase fields */}
+            {analyticsAdapter !== "firebase" && (
+              <>
+                <label className="block space-y-1">
+                  <span className="app-field-label">{analyticsAdapter === "generic" ? "Endpoint URL" : "API base URL"}</span>
+                  <input
+                    value={analyticsBaseUrl}
+                    onChange={(e) => setAnalyticsBaseUrl(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder={editSelectedAdapter.defaultBaseUrl || "https://api.example.com/v1/metrics/"}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">API token (bearer){editSelectedAdapter.requiresToken ? "" : " — optional"}</span>
+                  <input
+                    type="password"
+                    value={analyticsToken}
+                    onChange={(e) => setAnalyticsToken(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder="Leave blank to keep the existing token"
+                    autoComplete="off"
+                  />
+                </label>
+              </>
+            )}
             {editSelectedAdapter.hint && <p className="text-[11px] text-[var(--text-4)]">{editSelectedAdapter.hint}</p>}
           </div>
         )}
@@ -4051,7 +4208,6 @@ function SettingsView({ clientId }: { clientId: string }) {
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "inbox", label: "Inbox", icon: InboxIcon },
   { id: "tickets", label: "Tickets", icon: ClipboardDocumentListIcon },
-  { id: "conversations", label: "Conversations", icon: ChatBubbleLeftRightIcon },
   { id: "reports", label: "Reports", icon: DocumentTextIcon },
 ];
 
@@ -4317,9 +4473,8 @@ export function SupportDashboard() {
         <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
           {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
           {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
-          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} sourcesFilter={EMAIL_SOURCES} listLabel="EMAILS" />}
-          {!activePanel && activeTab === "tickets" && <TicketsView clientId={activeClientId} onGoToConnectors={() => setActivePanel("connectors")} />}
-          {!activePanel && activeTab === "conversations" && <ConversationsView clientId={activeClientId} />}
+          {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} />}
+          {!activePanel && activeTab === "tickets" && <TicketsTableView clientId={activeClientId} />}
           {!activePanel && activeTab === "reports" && <ReportsView client={client} />}
         </div>
       </div>
