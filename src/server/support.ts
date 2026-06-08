@@ -193,6 +193,8 @@ export function serializeConnection(row: {
   secretRef: string | null;
   nextStep: string | null;
   scraperConfig: unknown;
+  lastSyncedAt?: Date | null;
+  lastSyncStats?: unknown;
   channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
   const connectedEmail = (() => {
@@ -219,6 +221,8 @@ export function serializeConnection(row: {
     scraperConfig: row.scraperConfig
       ? (row.scraperConfig as Connection["scraperConfig"])
       : undefined,
+    lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : undefined,
+    lastSyncStats: (row.lastSyncStats as Connection["lastSyncStats"]) ?? undefined,
   };
 }
 

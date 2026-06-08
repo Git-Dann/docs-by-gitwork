@@ -1,6 +1,6 @@
-import { callAI, extractJson } from "./ai-client";
+import { callAI, extractJson, type AiContext } from "./ai-client";
 import { prisma } from "@/lib/prisma";
-import type { AgentContext, IssueType, AgentPriority, AgentSentiment } from "./types";
+import type { IssueType, AgentPriority, AgentSentiment } from "./types";
 import type {
   SupportTicketPriority,
   ConversationSentiment as PrismaSentiment,
@@ -34,7 +34,7 @@ const PRIORITY_MAP: Record<AgentPriority, SupportTicketPriority> = {
 };
 
 export async function triageConversation(
-  ctx: AgentContext,
+  ctx: AiContext,
   conversationId: string,
 ): Promise<{ ticketId?: string }> {
   const conversation = await prisma.supportConversation.findUniqueOrThrow({
