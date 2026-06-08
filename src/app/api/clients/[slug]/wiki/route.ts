@@ -10,7 +10,8 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
-    const { workspaceId } = await ensureBaseRecords();
+    const { workspace } = await ensureBaseRecords();
+    const workspaceId = workspace.id;
     const wiki = await getWikiBySlug(slug, workspaceId);
     if (!wiki) return apiError("Client not found", 404);
     return apiOk(wiki);

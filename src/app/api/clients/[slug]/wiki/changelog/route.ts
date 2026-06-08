@@ -19,7 +19,8 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const { workspaceId } = await ensureBaseRecords();
+    const { workspace } = await ensureBaseRecords();
+    const workspaceId = workspace.id;
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
