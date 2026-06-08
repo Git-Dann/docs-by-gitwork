@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { fetchNewMessages } from "@/server/discord-sync";
+import { fetchNewMessages, fetchChannelHistory, type DiscordMessage } from "@/server/discord-sync";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,13 +197,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
   const ignoreBots = config.ignoreBots ?? true;
   const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
-  // firstSyncAfter: used both for first-time syncs AND when lastSyncedAt has been cleared
-  // (i.e. the user hit "Sync Now"). We reach back `lookbackDays` (default 1 = last 24h).
-  const firstSyncAfter = dateToSnowflake(
-    new Date(lookbackSeconds(config.lookbackDays, 1) * 1000),
-  );
   // Treat lastSyncedAt === null as "start fresh" — covers both first sync and manual re-sync.
-  // This ensures re-sync actually goes back to the lookback window instead of being a no-op.
   const isFirstOrResync = !ctx.connection.lastSyncedAt;
   // Keywords stored as "kw:<term>" tags on the conversation for UI-side highlighting.
   // Discord ingests ALL messages — keyword filtering happens at display time, not here.
@@ -214,8 +208,14 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
     const ch = channels[i];
     if (maxItems && ingested >= maxItems) break;
     try {
-      const afterCursor = (!isFirstOrResync && ch.lastMessageId) ? ch.lastMessageId : firstSyncAfter;
-      const messages = await fetchNewMessages(ch.id, botToken, afterCursor);
+      // On first sync or resync: fetch full channel history via backwards pagination.
+      // On incremental syncs: only messages newer than the stored cursor.
+      let messages: DiscordMessage[];
+      if (isFirstOrResync) {
+        messages = await fetchChannelHistory(ch.id, botToken);
+      } else {
+        messages = await fetchNewMessages(ch.id, botToken, ch.lastMessageId ?? undefined);
+      }
       if (messages.length === 0) continue;
 
       // Find or create one conversation per Discord channel
@@ -327,11 +327,13 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     return { ingested: 0, filtered: 0, errors: ["No subreddit configured"] };
   }
 
-  // Use lastSyncedAt as cursor; on first sync / resync go back `lookbackDays` (default 1 = last 24h)
+  // On first sync / resync: ingest all posts from the feed (no date gate).
+  // On incremental: only posts newer than lastSyncedAt.
+  const isFirstOrResync = !ctx.connection.lastSyncedAt;
   const lastSyncedAt = ctx.connection.lastSyncedAt;
   const afterUtc = lastSyncedAt
     ? Math.floor(lastSyncedAt.getTime() / 1000)
-    : lookbackSeconds(config?.lookbackDays, 1);
+    : lookbackSeconds(config?.lookbackDays, 7);
 
   let ingested = 0;
   let filtered = 0;
@@ -355,7 +357,9 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     }
 
     const xml = await res.text();
-    const posts = parseRedditAtom(xml).filter((p) => p.created_utc > afterUtc);
+    const posts = isFirstOrResync
+      ? parseRedditAtom(xml)
+      : parseRedditAtom(xml).filter((p) => p.created_utc > afterUtc);
 
     for (const post of posts) {
       if (maxItems && ingested >= maxItems) break;

@@ -2081,6 +2081,7 @@ const SLACK_ROUTE_EVENTS: { id: string; label: string; module: string }[] = [
   { id: "pulse.scan_failed", label: "Pulse scan failed", module: "Pulse" },
   { id: "pulse.monitor_drift", label: "Pulse monitor drift", module: "Pulse" },
   { id: "study.report_ready", label: "Study report ready", module: "Study" },
+  { id: "care.digest", label: "Care hourly digest", module: "Care" },
   { id: "care.ticket_created", label: "Care ticket created", module: "Care" },
   { id: "care.ticket_escalated", label: "Care ticket escalated", module: "Care" },
   { id: "docs.viewed_by_client", label: "Doc viewed by client", module: "Docs" },

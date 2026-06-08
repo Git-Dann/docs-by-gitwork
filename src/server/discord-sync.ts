@@ -50,6 +50,36 @@ export async function fetchNewMessages(
   return all;
 }
 
+/**
+ * Fetches the entire message history of a Discord channel by paginating backwards
+ * with `before` cursors. Returns all messages oldest-first.
+ * Used on a first sync or manual resync so the full channel history is ingested.
+ */
+export async function fetchChannelHistory(
+  channelId: string,
+  botToken: string,
+): Promise<DiscordMessage[]> {
+  const all: DiscordMessage[] = [];
+  let before: string | undefined;
+  while (true) {
+    const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
+    url.searchParams.set("limit", "100");
+    if (before) url.searchParams.set("before", before);
+    const res = await fetch(url.toString(), { headers: authHeaders(botToken) });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Discord channels/${channelId}/messages → ${res.status}: ${err}`);
+    }
+    const batch = (await res.json()) as DiscordMessage[];
+    if (batch.length === 0) break;
+    // Discord returns newest-first; track the oldest ID in this batch for next page
+    all.push(...batch);
+    before = batch[batch.length - 1].id;
+    if (batch.length < 100) break;
+  }
+  return all.reverse(); // oldest-first for insertion order
+}
+
 export async function sendDiscordMessage(
   channelId: string,
   botToken: string,
