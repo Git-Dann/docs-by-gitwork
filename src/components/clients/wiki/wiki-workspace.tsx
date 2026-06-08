@@ -124,7 +124,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "changelog") {
       return (
         <ChangelogSection
-          entries={wiki.changelog}
+          entries={wiki!.changelog}
           onAdd={() => setShowChangelogForm(true)}
           onDelete={handleDeleteEntry}
           deletingId={deletingEntryId}
