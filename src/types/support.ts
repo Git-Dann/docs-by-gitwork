@@ -74,9 +74,19 @@ export interface Connection {
     youtubeChannelId?: string;
     videoIds?: string[];
     // Analytics API (product metrics for monthly reports)
-    adapter?: string;       // adapter key: "fellas" | "bigwedge" | "generic"
+    adapter?: string;       // adapter key: "fellas" | "bigwedge" | "firebase" | "generic"
     baseUrl?: string;       // API base URL (or full endpoint for the generic adapter)
     apiToken?: string;      // bearer token, stored server-side on the connection
+    serviceAccountJson?: string;  // Firebase: service-account JSON (stored server-side)
+    firebaseMetrics?: Array<{     // Firebase: collections to count per month
+      label: string;
+      collection: string;
+      timestampField: string;
+      collectionGroup?: boolean;
+      group?: string;
+      unit?: string;
+      where?: Array<{ field: string; value: string | number | boolean }>;
+    }>;
     // ── Shared filters (apply to all sources) ──
     keywords?: string[];          // include — only ingest items matching at least one
     excludeKeywords?: string[];   // exclude — drop items matching any
