@@ -379,32 +379,28 @@ export function ClientDetail({ slug }: { slug: string }) {
               )}
             </div>
 
-            {/* Right-side action stack — bottom-aligned. Bank (when on file) sits on
-                top; the design system takes the priority bottom slot. */}
-            {(client.bank?.onFile || designSystem?.enabled) && (
-              <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
-                {client.bank?.onFile && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setBankOpen(true)}
-                  >
-                    <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
-                    Bank details
-                  </Button>
-                )}
-                {designSystem?.enabled && (
-                  <Link
-                    href={`/app/portal/${slug}/design-system`}
-                    title="Open this client's brand design system"
-                    className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-                  >
-                    Design system →
-                  </Link>
-                )}
-              </div>
-            )}
+            {/* Right-side action stack — bottom-aligned. */}
+            <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
+              {client.bank?.onFile && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setBankOpen(true)}
+                >
+                  <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+                  Bank details
+                </Button>
+              )}
+              <Link
+                href={`/app/portal/${slug}/wiki`}
+                title="Open knowledge wiki"
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+              >
+                <BookOpenIcon className="h-3.5 w-3.5" />
+                Wiki →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -676,17 +672,6 @@ export function ClientDetail({ slug }: { slug: string }) {
             {" // DESIGNS"}
           </span>
           <div className="flex items-center gap-1">
-            {!isSuggested && (
-              <Link
-                href={`/app/portal/${slug}/wiki`}
-                className="flex h-6 items-center gap-1.5 rounded-[4px] px-2 text-[10px] font-medium text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-                style={{ fontFamily: "var(--font-mono)" }}
-                title="Open knowledge wiki"
-              >
-                <BookOpenIcon className="h-3.5 w-3.5" />
-                <span className="uppercase tracking-[0.06em]">Wiki</span>
-              </Link>
-            )}
             {!isSuggested && (
               <button
                 type="button"
