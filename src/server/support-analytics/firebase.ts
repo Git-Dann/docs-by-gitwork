@@ -7,7 +7,7 @@ import {
   monthLabel,
 } from "./types";
 import { initializeApp, cert, getApps, type App } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, type Firestore, type Query } from "firebase-admin/firestore";
 
 // ─── Firebase / Firestore — count docs per month ────────────────────────────────
 //
@@ -51,13 +51,13 @@ function monthBounds(year: number, month: number): { start: Date; end: Date } {
 }
 
 async function countSpec(
-  db: FirebaseFirestore.Firestore,
+  db: Firestore,
   spec: FirebaseMetricSpec,
   year: number,
   month: number,
 ): Promise<number> {
   const { start, end } = monthBounds(year, month);
-  let q: FirebaseFirestore.Query = spec.collectionGroup
+  let q: Query = spec.collectionGroup
     ? db.collectionGroup(spec.collection)
     : db.collection(spec.collection);
 
