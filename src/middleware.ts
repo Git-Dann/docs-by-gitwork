@@ -80,6 +80,8 @@ const PUBLIC_API_PATHS = [
   // Public Pulse lite scanner (embeddable widget). SSRF-guarded + rate-limited
   // inside the handlers; no API key. CORS '*' (below) lets it run cross-origin.
   "/api/public/pulse",
+  // Public wiki share — token in URL is its own auth (validated server-side).
+  "/api/wiki",
 ];
 
 const API_AUTH_COOKIE = "gitwork_api_session";

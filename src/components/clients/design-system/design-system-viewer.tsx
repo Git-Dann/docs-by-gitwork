@@ -787,35 +787,113 @@ function LogoSection({
   );
 }
 
+// ── Tailwind config generator ─────────────────────────────────────────────────
+
+function generateTailwindConfig(tokens: DesignTokens): string {
+  const lines: string[] = ["/** @type {import('tailwindcss').Config} */", "module.exports = {", "  theme: {", "    extend: {"];
+
+  // Colors
+  const colorEntries: string[] = [];
+  const allColours = [
+    ...tokens.colours.primary,
+    ...tokens.colours.secondary,
+    ...tokens.colours.neutrals,
+  ];
+  allColours.forEach((c) => {
+    const key = c.name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+    colorEntries.push(`        '${key}': '${c.hex}'`);
+    if (c.role) {
+      const roleKey = c.role.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      colorEntries.push(`        '${roleKey}': '${c.hex}'`);
+    }
+  });
+  if (colorEntries.length) {
+    lines.push("      colors: {");
+    lines.push(...colorEntries);
+    lines.push("      },");
+  }
+
+  // Font families
+  const fontFamilies: string[] = [];
+  if (tokens.typography.displayFont) {
+    fontFamilies.push(`        display: ['${tokens.typography.displayFont}', '${tokens.typography.systemFallback}'],`);
+  }
+  if (tokens.typography.bodyFont) {
+    fontFamilies.push(`        sans: ['${tokens.typography.bodyFont}', '${tokens.typography.systemFallback}'],`);
+  }
+  if (tokens.typography.monoFont) {
+    fontFamilies.push(`        mono: ['${tokens.typography.monoFont}', 'monospace'],`);
+  }
+  if (fontFamilies.length) {
+    lines.push("      fontFamily: {");
+    lines.push(...fontFamilies);
+    lines.push("      },");
+  }
+
+  // Spacing
+  const spacingEntries = Object.entries(tokens.spacing?.scale ?? {});
+  if (spacingEntries.length) {
+    lines.push("      spacing: {");
+    spacingEntries.forEach(([k, v]) => {
+      lines.push(`        '${k}': '${v}',`);
+    });
+    lines.push("      },");
+  }
+
+  // Border radius
+  const radiusEntries = Object.entries(tokens.radius ?? {});
+  if (radiusEntries.length) {
+    lines.push("      borderRadius: {");
+    radiusEntries.forEach(([k, v]) => {
+      lines.push(`        '${k}': '${v}',`);
+    });
+    lines.push("      },");
+  }
+
+  lines.push("    },");
+  lines.push("  },");
+  lines.push("};");
+  return lines.join("\n");
+}
+
 // ── CSS tokens ──────────────────────────────────────────────────────────────
 
-function CssTokensSection({ tokens }: { tokens: DesignTokens }) {
+function CssTokensSection({ tokens, lang }: { tokens: DesignTokens; lang: "css" | "tailwind" }) {
   const [copied, setCopied] = useState(false);
+
+  const cssCode = tokens.cssVariables || "/* No CSS variables provided */";
+  const tailwindCode = generateTailwindConfig(tokens);
+  const activeCode = lang === "tailwind" ? tailwindCode : cssCode;
+
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(tokens.cssVariables || "");
+      await navigator.clipboard.writeText(activeCode);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       /* clipboard unavailable */
     }
   };
+
   return (
     <div>
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={copy}
           className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
         >
-          {copied ? "Copied ✓" : "Copy CSS"}
+          {copied ? "Copied ✓" : lang === "tailwind" ? "Copy Tailwind config" : "Copy CSS"}
         </button>
       </div>
       <pre
         className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
         style={{ background: "#0F172A", fontFamily: mono }}
       >
-        {tokens.cssVariables || "/* No CSS variables provided */"}
+        {activeCode}
       </pre>
     </div>
   );
@@ -898,6 +976,7 @@ export function DesignSystemViewer({
   tokens: DesignTokens;
   clientLogoUrl?: string | null;
 }) {
+  const [codeLang, setCodeLang] = useState<"css" | "tailwind">("css");
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -976,8 +1055,10 @@ export function DesignSystemViewer({
     });
   sections.push({
     title: "CSS TOKENS",
-    intro: "The complete :root {} custom-property block — paste-ready for the build.",
-    node: <CssTokensSection tokens={tokens} />,
+    intro: codeLang === "css"
+      ? "The complete :root {} custom-property block — paste-ready for the build."
+      : "Generated tailwind.config.js theme.extend — paste into your Tailwind config.",
+    node: <CssTokensSection tokens={tokens} lang={codeLang} />,
   });
 
   const sectionId = (title: string) =>
@@ -988,7 +1069,7 @@ export function DesignSystemViewer({
       <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} />
       {/* Jump nav — sticks under the page band while you scroll. Near-opaque
           surface + elevation shadow so it stays legible over the colour swatches. */}
-      <nav className="sticky top-2 z-20 flex flex-wrap gap-1 rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-[rgba(250,250,249,0.97)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-md">
+      <nav className="sticky top-2 z-20 flex flex-wrap items-center gap-1 rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-[rgba(250,250,249,0.97)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-md">
         {sections.map((s) => (
           <a
             key={s.title}
@@ -999,6 +1080,35 @@ export function DesignSystemViewer({
             {s.title}
           </a>
         ))}
+        {/* CSS / Tailwind toggle — right-anchored */}
+        <div className="ml-auto flex items-center rounded-[6px] border border-[rgba(0,0,0,0.1)] bg-white p-0.5">
+          <button
+            type="button"
+            onClick={() => setCodeLang("css")}
+            className={[
+              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+              codeLang === "css"
+                ? "bg-[var(--text-1)] text-white"
+                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
+            ].join(" ")}
+            style={{ fontFamily: mono }}
+          >
+            CSS
+          </button>
+          <button
+            type="button"
+            onClick={() => setCodeLang("tailwind")}
+            className={[
+              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+              codeLang === "tailwind"
+                ? "bg-[var(--text-1)] text-white"
+                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
+            ].join(" ")}
+            style={{ fontFamily: mono }}
+          >
+            Tailwind
+          </button>
+        </div>
       </nav>
       {sections.map((s, i) => (
         <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro}>
