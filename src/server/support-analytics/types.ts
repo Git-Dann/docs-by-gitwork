@@ -28,6 +28,24 @@ export interface AnalyticsSnapshot {
   metrics: AnalyticsMetric[];
 }
 
+/** One Firestore metric to count per month (e.g. docs created in `users`). */
+export interface FirebaseMetricSpec {
+  /** Display label, e.g. "Subscribers". */
+  label: string;
+  /** Firestore collection (or collection-group) path. */
+  collection: string;
+  /** Timestamp field used to scope the month, e.g. "createdAt". */
+  timestampField: string;
+  /** Optional report grouping. */
+  group?: string;
+  /** Optional unit prefix/suffix, e.g. "£". */
+  unit?: string;
+  /** Treat `collection` as a collectionGroup query (sub-collections). */
+  collectionGroup?: boolean;
+  /** Optional equality filters applied before the date range. */
+  where?: Array<{ field: string; value: string | number | boolean }>;
+}
+
 /** What an adapter needs to fetch a month — resolved from the connection. */
 export interface AnalyticsFetchContext {
   baseUrl: string;
@@ -36,6 +54,9 @@ export interface AnalyticsFetchContext {
   year: number;
   /** 1–12. */
   month: number;
+  /** Firebase adapter — service-account JSON + metric specs from the connection. */
+  serviceAccountJson?: string;
+  firebaseMetrics?: FirebaseMetricSpec[];
 }
 
 /** A per-product adapter. Register in `index.ts`. */
@@ -60,6 +81,10 @@ export interface AnalyticsConnectionConfig {
   apiToken?: string;
   /** Generic adapter only — endpoint path to GET. */
   endpoint?: string;
+  /** Firebase adapter — service-account JSON (stored server-side on the connection). */
+  serviceAccountJson?: string;
+  /** Firebase adapter — collections to count per month. */
+  firebaseMetrics?: FirebaseMetricSpec[];
 }
 
 /** Authenticated JSON GET with consistent error surfacing. */

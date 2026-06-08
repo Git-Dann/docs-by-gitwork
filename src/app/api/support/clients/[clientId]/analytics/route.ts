@@ -31,7 +31,27 @@ export async function GET(
     }
 
     const config = (conn.scraperConfig ?? {}) as AnalyticsConnectionConfig;
-    const snapshot = await runAnalytics(config, year, month);
+
+    // Prefer a stored snapshot of the previous month for reliable trends.
+    const prevDate = new Date(year, month - 2, 1);
+    const prevPeriod = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const prevRow = await prisma.supportAnalyticsSnapshot.findUnique({
+      where: { clientId_period: { clientId, period: prevPeriod } },
+    });
+    const prevSnapshot = Array.isArray(prevRow?.metrics)
+      ? (prevRow!.metrics as Array<{ key: string; value: number }>)
+      : undefined;
+
+    const snapshot = await runAnalytics(config, year, month, prevSnapshot);
+
+    // Persist this month's capture so future runs (and trends) have real history.
+    const period = `${year}-${String(month).padStart(2, "0")}`;
+    await prisma.supportAnalyticsSnapshot.upsert({
+      where: { clientId_period: { clientId, period } },
+      create: { clientId, period, metrics: snapshot.metrics as object },
+      update: { metrics: snapshot.metrics as object, capturedAt: new Date() },
+    });
+
     return apiOk(snapshot);
   } catch (error) {
     return fromError(error);

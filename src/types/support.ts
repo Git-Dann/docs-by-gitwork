@@ -184,6 +184,8 @@ export interface SupportReportPayload {
   // analytics connection (or entered manually). Each carries the previous month's
   // value so the report can show a trend.
   metrics?: AnalyticsReportMetric[];
+  // AI-written one-paragraph trend summary of the metrics ("Subscribers up 12%…").
+  analyticsNarrative?: string;
   // Summary narrative
   summaryText: string;
 }
