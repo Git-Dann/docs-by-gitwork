@@ -150,6 +150,9 @@ function SupportReportDocument({ period, payload: p }: { period: string; payload
           return (
             <section className="proposal-block-avoid space-y-5 border-b border-[var(--border-2)] pb-10 last:border-0 last:pb-0 print:pb-8">
               <p className="app-eyebrow">05 // Analytics</p>
+              {p.analyticsNarrative && (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">{p.analyticsNarrative}</p>
+              )}
               {groups.map((groupName) => (
                 <div key={groupName} className="space-y-2">
                   {groups.length > 1 && (
@@ -160,6 +163,7 @@ function SupportReportDocument({ period, payload: p }: { period: string; payload
                       .filter((m) => (m.group ?? "Metrics") === groupName)
                       .map((m) => {
                         const delta = typeof m.previous === "number" ? m.value - m.previous : null;
+                        const pct = delta !== null && m.previous ? (delta / m.previous) * 100 : null;
                         return (
                           <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
                             <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">{m.label}</p>
@@ -168,7 +172,8 @@ function SupportReportDocument({ period, payload: p }: { period: string; payload
                             </p>
                             {delta !== null && delta !== 0 && (
                               <p className={`mt-0.5 text-[11px] font-medium ${delta > 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()} vs last month
+                                {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toLocaleString()}
+                                {pct !== null && ` (${pct > 0 ? "+" : ""}${pct.toFixed(0)}%)`} vs last month
                               </p>
                             )}
                           </div>

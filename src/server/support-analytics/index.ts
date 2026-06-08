@@ -6,11 +6,12 @@ import {
 import { fellasAdapter } from "./fellas";
 import { bigwedgeAdapter } from "./bigwedge";
 import { genericAdapter } from "./generic";
+import { firebaseAdapter } from "./firebase";
 
 export * from "./types";
 
 // Registry — add a new client's adapter here once written.
-const ADAPTERS: AnalyticsAdapter[] = [fellasAdapter, bigwedgeAdapter, genericAdapter];
+const ADAPTERS: AnalyticsAdapter[] = [fellasAdapter, bigwedgeAdapter, firebaseAdapter, genericAdapter];
 
 export function listAdapters() {
   return ADAPTERS.map((a) => ({
@@ -35,30 +36,47 @@ export async function runAnalytics(
   config: AnalyticsConnectionConfig,
   year: number,
   month: number,
+  /** Previous month's stored metrics (from a snapshot) — used for trends if present. */
+  prevSnapshot?: Array<{ key: string; value: number }>,
 ): Promise<AnalyticsSnapshot> {
   const adapter = getAdapter(config.adapter);
   if (!adapter) throw new Error(`Unknown analytics adapter: ${config.adapter ?? "(none)"}`);
 
   const baseUrl = (config.baseUrl?.trim() || adapter.defaultBaseUrl).replace(/\/$/, "");
-  if (!baseUrl) throw new Error("No base URL configured for this analytics connection");
+  // Firebase needs no base URL — it authenticates with a service account instead.
+  if (!baseUrl && adapter.key !== "firebase") {
+    throw new Error("No base URL configured for this analytics connection");
+  }
   if (adapter.requiresToken && !config.apiToken?.trim()) {
     throw new Error(`${adapter.label} requires an API token — add it in the connector`);
   }
 
-  const ctx = { baseUrl, apiToken: config.apiToken?.trim() || undefined, year, month };
+  const ctx = {
+    baseUrl,
+    apiToken: config.apiToken?.trim() || undefined,
+    serviceAccountJson: config.serviceAccountJson,
+    firebaseMetrics: config.firebaseMetrics,
+    year,
+    month,
+  };
   const current = await adapter.fetchMonth(ctx);
 
-  // Previous calendar month for trend comparison
+  // Previous calendar month for trend comparison.
+  // Prefer a stored snapshot (reliable, historical) and fall back to a live fetch.
   const prevDate = new Date(year, month - 2, 1);
   let prevMap = new Map<string, number>();
-  try {
-    const previous = await adapter.fetchMonth({
-      ...ctx,
-      year: prevDate.getFullYear(),
-      month: prevDate.getMonth() + 1,
-    });
-    prevMap = new Map(previous.metrics.map((m) => [m.key, m.value]));
-  } catch { /* trends are optional */ }
+  if (prevSnapshot && prevSnapshot.length > 0) {
+    prevMap = new Map(prevSnapshot.map((m) => [m.key, m.value]));
+  } else {
+    try {
+      const previous = await adapter.fetchMonth({
+        ...ctx,
+        year: prevDate.getFullYear(),
+        month: prevDate.getMonth() + 1,
+      });
+      prevMap = new Map(previous.metrics.map((m) => [m.key, m.value]));
+    } catch { /* trends are optional */ }
+  }
 
   return {
     periodLabel: current.periodLabel,

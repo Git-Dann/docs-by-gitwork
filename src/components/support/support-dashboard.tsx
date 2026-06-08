@@ -2133,8 +2133,31 @@ function ReportBuilder({
   );
   const [fetchingApi, setFetchingApi] = useState(false);
   const [apiMsg, setApiMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [writingSummary, setWritingSummary] = useState(false);
 
   const metrics = p.metrics ?? [];
+
+  async function handleWriteSummary() {
+    setWritingSummary(true);
+    setApiMsg(null);
+    try {
+      const res = await fetch(`/api/support/clients/${clientId}/analytics/narrative`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metrics, periodLabel: period }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { data?: { narrative?: string }; error?: string };
+      if (!res.ok) throw new Error(json.error ?? `AI: ${res.status}`);
+      if (json.data?.narrative) {
+        setP((prev) => ({ ...prev, analyticsNarrative: json.data!.narrative }));
+        setApiMsg({ type: "ok", text: "Trend summary written." });
+      }
+    } catch (err) {
+      setApiMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to write summary" });
+    } finally {
+      setWritingSummary(false);
+    }
+  }
 
   const createReport = useCreateSupportReport(clientId);
   const updateReport = useUpdateSupportReport(clientId);
@@ -2459,6 +2482,35 @@ function ReportBuilder({
             <PlusIcon className="h-3.5 w-3.5" />
             Add metric
           </button>
+
+          {/* AI trend narrative — "Subscribers up 12% (+142)…" */}
+          {metrics.length > 0 && (
+            <div className="border-t border-[var(--border-2)] pt-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-[11px] font-medium text-[var(--text-3)]">Trend summary</label>
+                <button
+                  type="button"
+                  onClick={() => void handleWriteSummary()}
+                  disabled={writingSummary}
+                  className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)] disabled:opacity-50"
+                >
+                  {writingSummary ? (
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                  ) : (
+                    <SparklesIcon className="h-3 w-3" />
+                  )}
+                  {writingSummary ? "Writing…" : "Write summary"}
+                </button>
+              </div>
+              <textarea
+                value={p.analyticsNarrative ?? ""}
+                onChange={(e) => update("analyticsNarrative", e.target.value)}
+                placeholder="One-paragraph trend summary — click “Write summary” to draft from the metrics above, or write your own."
+                rows={3}
+                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)] focus:bg-white"
+              />
+            </div>
+          )}
         </div>
       </div>
 

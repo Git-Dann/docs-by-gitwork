@@ -1830,6 +1830,7 @@ model SupportClient {
   auditLogs           SupportAuditLog[]
   memberships         SupportClientMembership[]
   reports             SupportReport[]
+  analyticsSnapshots  SupportAnalyticsSnapshot[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1992,6 +1993,20 @@ model SupportReport {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
+  @@index([clientId, period])
+}
+
+// Monthly capture of a client's analytics metrics, so trends use real historical
+// data (not a fragile live current-vs-previous fetch). Written by the snapshot cron.
+model SupportAnalyticsSnapshot {
+  id         String        @id @default(cuid())
+  clientId   String
+  client     SupportClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  period     String // "YYYY-MM"
+  metrics    Json // AnalyticsMetric[]
+  capturedAt DateTime      @default(now())
+
+  @@unique([clientId, period])
   @@index([clientId, period])
 }
 
