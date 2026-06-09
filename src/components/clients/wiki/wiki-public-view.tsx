@@ -59,7 +59,7 @@ export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
         content={existingContent}
         isNew={page === null}
         onSave={async () => {}}
-        mode="preview"
+        mode={"preview" as const}
         readOnly
       />
     );
