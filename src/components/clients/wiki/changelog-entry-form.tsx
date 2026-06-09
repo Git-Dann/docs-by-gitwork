@@ -50,30 +50,85 @@ function normaliseBullets(text: string): string {
     .join("\n");
 }
 
+/** Strip a leading "v" so we never produce "vv2.4.1". */
+function cleanVersion(v: string): string {
+  return v.trim().replace(/^v/i, "");
+}
+
 function assembleBody(
-  summary: string,
+  version: string,
+  changelog: string,
   newFeatures: string,
   improvements: string,
   fixes: string,
 ): string {
+  const v = cleanVersion(version);
   const parts: string[] = [];
-  if (summary.trim()) parts.push(`## Summary\n${summary.trim()}`);
+  // Always lead with the Changelog heading carrying the version number.
+  const heading = v ? `## Changelog v${v}` : "## Changelog";
+  parts.push(changelog.trim() ? `${heading}\n${changelog.trim()}` : heading);
   if (newFeatures.trim()) parts.push(`## New Features\n${normaliseBullets(newFeatures)}`);
   if (improvements.trim()) parts.push(`## Improvements\n${normaliseBullets(improvements)}`);
   if (fixes.trim()) parts.push(`## Fixes\n${normaliseBullets(fixes)}`);
   return parts.join("\n\n");
 }
 
+/** Inverse of assembleBody — parse a stored body back into the 4 structured fields. */
+function parseBodyToFields(body: string | null): PlatformFields {
+  const acc: Record<keyof PlatformFields, string[]> = {
+    changelog: [],
+    newFeatures: [],
+    improvements: [],
+    fixes: [],
+  };
+  if (!body) return { changelog: "", newFeatures: "", improvements: "", fixes: "" };
+
+  let current: keyof PlatformFields | null = null;
+  for (const line of body.split("\n")) {
+    const h = line.trim().match(/^#{2,3}\s+(.*)$/);
+    if (h) {
+      const name = h[1].toLowerCase();
+      // "## Changelog v2.4.1" (or legacy "## Summary") → changelog field
+      if (name.startsWith("changelog") || name.startsWith("summary")) current = "changelog";
+      else if (name.startsWith("new feature")) current = "newFeatures";
+      else if (name.startsWith("improvement")) current = "improvements";
+      else if (name.startsWith("fix")) current = "fixes";
+      else current = null;
+      continue;
+    }
+    if (current) {
+      // Lists store one item per line (strip bullet); changelog keeps prose verbatim.
+      acc[current].push(current === "changelog" ? line : line.replace(/^[-•*]\s+/, ""));
+    }
+  }
+
+  return {
+    changelog: acc.changelog.join("\n").trim(),
+    newFeatures: acc.newFeatures.join("\n").trim(),
+    improvements: acc.improvements.join("\n").trim(),
+    fixes: acc.fixes.join("\n").trim(),
+  };
+}
+
+/** ISO timestamp → YYYY-MM-DD for a <input type="date">. */
+function toDateInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PlatformFields {
-  summary: string;
+  changelog: string;
   newFeatures: string;
   improvements: string;
   fixes: string;
 }
 
 export interface ChangelogEntryPayload {
+  /** Present when this payload maps to an existing entry (edit mode). */
+  id?: string;
   platform: string;
   version: string;
   title: string;
@@ -82,57 +137,83 @@ export interface ChangelogEntryPayload {
   status: string;
 }
 
+/** Existing version-group data used to pre-fill the form in edit mode. */
+export interface ChangelogEditInitial {
+  version: string;
+  title: string;
+  releasedAt: string | null;
+  status: string;
+  /** One per platform that already has an entry for this version. */
+  entries: { id: string; platform: string; body: string | null }[];
+}
+
 interface Props {
   /**
    * Enabled platforms for this wiki — controls which tabs appear.
    * Defaults to ["IOS","ANDROID","WEB"].
    */
   platforms?: string[];
+  /** When provided, the form edits this existing version instead of adding one. */
+  initial?: ChangelogEditInitial;
   onSave: (entries: ChangelogEntryPayload[]) => Promise<void>;
   onClose: () => void;
   isSaving: boolean;
 }
 
+const EMPTY_FIELDS: PlatformFields = {
+  changelog: "",
+  newFeatures: "",
+  improvements: "",
+  fixes: "",
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ChangelogEntryForm({
   platforms: enabledPlatforms,
+  initial,
   onSave,
   onClose,
   isSaving,
 }: Props) {
+  const isEditing = !!initial;
+
   // Build ordered tab list from enabled platforms
   const tabPlatforms = PLATFORM_ORDER.filter(
     (p) => !enabledPlatforms || enabledPlatforms.includes(p) || p === "ALL",
   );
 
-  // Metadata (shared across all platforms)
-  const [version, setVersion] = useState("");
-  const [title, setTitle] = useState("");
-  const [releasedAt, setReleasedAt] = useState("");
-  const [status, setStatus] = useState<"PENDING" | "APPROVED">("PENDING");
-
-  // Per-platform content
-  const [activeTab, setActiveTab] = useState(tabPlatforms[0] ?? "IOS");
-  const [platformData, setPlatformData] = useState<Record<string, PlatformFields>>(
-    () =>
-      Object.fromEntries(
-        tabPlatforms.map((p) => [
-          p,
-          { summary: "", newFeatures: "", improvements: "", fixes: "" },
-        ]),
-      ),
+  // platform → existing entry id (edit mode), so saved payloads update in place
+  const [idByPlatform] = useState<Record<string, string>>(() =>
+    Object.fromEntries((initial?.entries ?? []).map((e) => [e.platform, e.id])),
   );
 
+  // Metadata (shared across all platforms)
+  const [version, setVersion] = useState(initial?.version ?? "");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [releasedAt, setReleasedAt] = useState(toDateInput(initial?.releasedAt ?? null));
+  const [status, setStatus] = useState<"PENDING" | "APPROVED">(
+    initial?.status === "APPROVED" ? "APPROVED" : "PENDING",
+  );
+
+  // Per-platform content — pre-filled from existing entries in edit mode
+  const [platformData, setPlatformData] = useState<Record<string, PlatformFields>>(() => {
+    const byPlatform = new Map(
+      (initial?.entries ?? []).map((e) => [e.platform, parseBodyToFields(e.body)]),
+    );
+    return Object.fromEntries(
+      tabPlatforms.map((p) => [p, byPlatform.get(p) ?? { ...EMPTY_FIELDS }]),
+    );
+  });
+
+  const [activeTab, setActiveTab] = useState(
+    initial?.entries[0]?.platform ?? tabPlatforms[0] ?? "IOS",
+  );
   const [error, setError] = useState<string | null>(null);
 
   const semver = getSemverType(version);
 
-  function updateField(
-    platform: string,
-    field: keyof PlatformFields,
-    value: string,
-  ) {
+  function updateField(platform: string, field: keyof PlatformFields, value: string) {
     setPlatformData((prev) => ({
       ...prev,
       [platform]: { ...prev[platform], [field]: value },
@@ -142,7 +223,7 @@ export function ChangelogEntryForm({
   function hasContent(platform: string): boolean {
     const d = platformData[platform];
     return !!(
-      d?.summary.trim() ||
+      d?.changelog.trim() ||
       d?.newFeatures.trim() ||
       d?.improvements.trim() ||
       d?.fixes.trim()
@@ -151,22 +232,24 @@ export function ChangelogEntryForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!version.trim()) { setError("Version is required"); return; }
-    if (!title.trim()) { setError("Title is required"); return; }
+    if (!version.trim()) {
+      setError("Version is required");
+      return;
+    }
+    if (!title.trim()) {
+      setError("Title is required");
+      return;
+    }
 
     const entries: ChangelogEntryPayload[] = tabPlatforms
       .filter(hasContent)
       .map((p) => {
         const d = platformData[p];
-        const body = assembleBody(
-          d.summary,
-          d.newFeatures,
-          d.improvements,
-          d.fixes,
-        );
+        const body = assembleBody(version, d.changelog, d.newFeatures, d.improvements, d.fixes);
         return {
+          ...(idByPlatform[p] ? { id: idByPlatform[p] } : {}),
           platform: p,
-          version: version.trim(),
+          version: cleanVersion(version),
           title: title.trim(),
           body: body || undefined,
           releasedAt: releasedAt || undefined,
@@ -183,19 +266,15 @@ export function ChangelogEntryForm({
     await onSave(entries);
   }
 
-  const activePlatformData = platformData[activeTab] ?? {
-    summary: "",
-    newFeatures: "",
-    improvements: "",
-    fixes: "",
-  };
+  const activePlatformData = platformData[activeTab] ?? EMPTY_FIELDS;
+  const filledPlatforms = tabPlatforms.filter(hasContent);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
         {/* Header */}
         <div className="widget-header shrink-0 rounded-t-[12px]">
-          <span className="widget-header__label">Add Version</span>
+          <span className="widget-header__label">{isEditing ? "Edit Version" : "Add Version"}</span>
           <button
             type="button"
             onClick={onClose}
@@ -331,19 +410,22 @@ export function ChangelogEntryForm({
 
             {/* ── Structured fields for active platform ─── */}
             <div className="space-y-5">
-              {/* Summary */}
+              {/* Changelog */}
               <div>
                 <label className={fieldLabel} style={{ fontFamily: MONO }}>
-                  Summary
+                  Changelog
                 </label>
                 <textarea
-                  key={activeTab + "-summary"}
-                  value={activePlatformData.summary}
-                  onChange={(e) => updateField(activeTab, "summary", e.target.value)}
+                  key={activeTab + "-changelog"}
+                  value={activePlatformData.changelog}
+                  onChange={(e) => updateField(activeTab, "changelog", e.target.value)}
                   rows={2}
                   placeholder="Brief overview of this release."
                   className={`${fieldInput} resize-none`}
                 />
+                <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                  Heading shows as “Changelog v{cleanVersion(version) || "x.y.z"}”
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-x-6 gap-y-5">
@@ -417,16 +499,13 @@ export function ChangelogEntryForm({
             <div className="flex items-center justify-between gap-2">
               {/* Hint: which platforms have notes */}
               <p className="text-[11px] text-[var(--text-4)]">
-                {tabPlatforms.filter(hasContent).length > 0 ? (
+                {filledPlatforms.length > 0 ? (
                   <>
-                    Will create{" "}
+                    {isEditing ? "Will save " : "Will create "}
                     <span className="font-medium text-[var(--text-2)]">
-                      {tabPlatforms
-                        .filter(hasContent)
-                        .map((p) => PLATFORM_LABELS[p] ?? p)
-                        .join(" + ")}
+                      {filledPlatforms.map((p) => PLATFORM_LABELS[p] ?? p).join(" + ")}
                     </span>{" "}
-                    entr{tabPlatforms.filter(hasContent).length === 1 ? "y" : "ies"}
+                    entr{filledPlatforms.length === 1 ? "y" : "ies"}
                   </>
                 ) : (
                   "Fill in at least one platform tab"
@@ -445,7 +524,7 @@ export function ChangelogEntryForm({
                   disabled={isSaving}
                   className="inline-flex items-center rounded-[6px] bg-[var(--brand-700)] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
                 >
-                  {isSaving ? "Saving…" : "Add entry"}
+                  {isSaving ? "Saving…" : isEditing ? "Save changes" : "Add entry"}
                 </button>
               </div>
             </div>

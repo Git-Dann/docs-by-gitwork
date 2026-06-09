@@ -257,6 +257,32 @@ export async function updateChangelogEntryStatus(
   return serializeEntry(entry);
 }
 
+/** Update an existing changelog entry's editable fields (by id). */
+export async function updateChangelogEntry(
+  entryId: string,
+  input: {
+    version?: string;
+    title?: string;
+    body?: string | null;
+    releasedAt?: string | null;
+    status?: WikiEntryStatus;
+  },
+): Promise<ChangelogEntryRecord> {
+  const entry = await prisma.clientChangelogEntry.update({
+    where: { id: entryId },
+    data: {
+      ...(input.version !== undefined ? { version: input.version } : {}),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.body !== undefined ? { body: input.body } : {}),
+      ...(input.releasedAt !== undefined
+        ? { releasedAt: input.releasedAt ? new Date(input.releasedAt) : null }
+        : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    },
+  });
+  return serializeEntry(entry);
+}
+
 /** Delete a changelog entry (by id). */
 export async function deleteChangelogEntry(entryId: string): Promise<void> {
   await prisma.clientChangelogEntry.delete({ where: { id: entryId } });

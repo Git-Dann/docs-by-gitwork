@@ -16,8 +16,9 @@ import {
   useDeleteChangelogEntry,
   useUpdateWikiPlatforms,
   useUpdateEntryStatus,
+  useUpdateChangelogEntry,
 } from "@/hooks/use-wiki";
-import type { ChangelogEntryPayload } from "./changelog-entry-form";
+import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -394,6 +395,8 @@ const ALL_PLATFORM_OPTIONS = [
 export function WikiWorkspace({ slug, clientName }: Props) {
   const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
+  /** Version string currently being edited, or null when adding a new one. */
+  const [editingVersion, setEditingVersion] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPlatformModal, setShowPlatformModal] = useState(false);
   const [pendingPlatforms, setPendingPlatforms] = useState<string[]>([]);
@@ -416,6 +419,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
   const updateStatus = useUpdateEntryStatus(slug);
+  const updateEntry = useUpdateChangelogEntry(slug);
 
   if (isPending) {
     return (
@@ -449,12 +453,70 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     await Promise.all(ids.map((id) => updateStatus.mutateAsync({ id, status: newStatus })));
   }
 
-  /** Create one entry per filled-in platform in the form. */
-  async function handleAddEntry(entries: ChangelogEntryPayload[]) {
+  function openAddForm() {
+    setEditingVersion(null);
+    setShowChangelogForm(true);
+  }
+
+  function openEditForm(version: string) {
+    setEditingVersion(version);
+    setShowChangelogForm(true);
+  }
+
+  function closeForm() {
+    setShowChangelogForm(false);
+    setEditingVersion(null);
+  }
+
+  /** Build the form's pre-fill data for the version currently being edited. */
+  function buildEditInitial(): ChangelogEditInitial | undefined {
+    if (!editingVersion) return undefined;
+    const groupEntries = wiki!.changelog.filter((e) => e.version === editingVersion);
+    if (groupEntries.length === 0) return undefined;
+    return {
+      version: editingVersion,
+      title: groupEntries[0].title,
+      releasedAt: groupEntries[0].releasedAt,
+      status: groupEntries[0].status ?? "PENDING",
+      entries: groupEntries.map((e) => ({ id: e.id, platform: e.platform, body: e.body })),
+    };
+  }
+
+  /**
+   * Save the form. When adding, creates one entry per filled platform. When
+   * editing, updates existing platform entries in place, creates entries for
+   * newly-filled platforms, and deletes entries for platforms that were cleared.
+   */
+  async function handleSaveEntries(entries: ChangelogEntryPayload[]) {
     setIsSubmitting(true);
     try {
-      await Promise.all(entries.map((e) => addEntry.mutateAsync(e)));
-      setShowChangelogForm(false);
+      if (editingVersion) {
+        const original = wiki!.changelog.filter((e) => e.version === editingVersion);
+        const returnedPlatforms = new Set(entries.map((e) => e.platform));
+        await Promise.all([
+          ...entries.map((e) =>
+            e.id
+              ? updateEntry.mutateAsync({
+                  id: e.id,
+                  data: {
+                    version: e.version,
+                    title: e.title,
+                    body: e.body ?? null,
+                    releasedAt: e.releasedAt ?? null,
+                    status: e.status,
+                  },
+                })
+              : addEntry.mutateAsync(e),
+          ),
+          // Platforms that had an entry but were cleared in the form → delete
+          ...original
+            .filter((o) => !returnedPlatforms.has(o.platform))
+            .map((o) => deleteEntry.mutateAsync(o.id)),
+        ]);
+      } else {
+        await Promise.all(entries.map((e) => addEntry.mutateAsync(e)));
+      }
+      closeForm();
     } finally {
       setIsSubmitting(false);
     }
@@ -500,7 +562,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => setShowChangelogForm(true)}
+              onClick={openAddForm}
               className={chipBtn}
             >
               <PlusIcon className="h-3.5 w-3.5" />
@@ -520,9 +582,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               <ChangelogSection
                 entries={wiki!.changelog}
                 platforms={wikiPlatforms}
-                onAdd={() => setShowChangelogForm(true)}
+                onAdd={openAddForm}
                 onDelete={handleDeleteVersion}
                 onToggleStatus={handleToggleStatus}
+                onEdit={openEditForm}
               />
             </div>
           </section>
@@ -661,8 +724,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       {showChangelogForm && (
         <ChangelogEntryForm
           platforms={wiki.platforms}
-          onSave={handleAddEntry}
-          onClose={() => setShowChangelogForm(false)}
+          initial={buildEditInitial()}
+          onSave={handleSaveEntries}
+          onClose={closeForm}
           isSaving={isSubmitting}
         />
       )}
