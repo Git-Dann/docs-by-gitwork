@@ -74,7 +74,7 @@ export default async function DownloadPage() {
       {/* Hero */}
       <section className="mx-auto max-w-[1180px] px-6 pt-16 pb-12 sm:px-8 sm:pt-20">
         <p className="text-[11px] font-medium uppercase tracking-[0.16em]" style={{ fontFamily: mono, color: "var(--brand-700)" }}>
-          // Foundry for Mac
+          {"// Foundry for Mac"}
         </p>
         <h1 className="mt-4 max-w-[15ch] text-[44px] leading-[1.08] tracking-[-0.02em] sm:text-[52px]" style={{ color: "var(--text-1)" }}>
           Install Foundry for Mac
@@ -112,7 +112,7 @@ export default async function DownloadPage() {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">01</span> // RELEASE
+                <span className="widget-header__label--number">01</span>{" // RELEASE"}
               </span>
               <span className="widget-header__status">
                 <span className={`widget-status-dot ${meta?.notarized ? "widget-status-dot--success" : "widget-status-dot--info"}`} />
@@ -134,7 +134,7 @@ export default async function DownloadPage() {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">02</span> // INSTALL
+                <span className="widget-header__label--number">02</span>{" // INSTALL"}
               </span>
             </div>
             <div className="widget-body">
@@ -153,7 +153,7 @@ export default async function DownloadPage() {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">03</span> // UPDATES
+                <span className="widget-header__label--number">03</span>{" // UPDATES"}
               </span>
               <span className="widget-header__status">Sparkle 2</span>
             </div>
@@ -180,7 +180,7 @@ export default async function DownloadPage() {
           <div className="widget-card mt-3">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">04</span> // INTEGRITY
+                <span className="widget-header__label--number">04</span>{" // INTEGRITY"}
               </span>
               <span className="widget-header__status">SHA-256</span>
             </div>
@@ -196,7 +196,7 @@ export default async function DownloadPage() {
           <div className="widget-card mt-3">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">05</span> // WHAT&rsquo;S NEW
+                <span className="widget-header__label--number">05</span>{" // WHAT’S NEW"}
               </span>
               <span className="widget-header__status">{meta.version ? `v${meta.version}` : ""}</span>
             </div>
@@ -221,7 +221,7 @@ export default async function DownloadPage() {
           style={{ background: "linear-gradient(135deg, #1D4ED8 0%, #1E3A8A 100%)", borderRadius: 14, color: "#fff" }}
         >
           <p className="text-[11px] font-medium uppercase tracking-[0.16em]" style={{ fontFamily: mono, color: "rgba(255,255,255,0.7)" }}>
-            // Already running Foundry?
+            {"// Already running Foundry?"}
           </p>
           <h2 className="mt-3 max-w-[20ch] text-[32px] leading-[1.15] tracking-[-0.01em]" style={{ fontFamily: "var(--font-display)" }}>
             The whole platform, in your browser too.
