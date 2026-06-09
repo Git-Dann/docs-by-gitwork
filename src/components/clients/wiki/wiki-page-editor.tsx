@@ -28,7 +28,7 @@ function renderMarkdown(md: string): string {
   let inCode = false;
 
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
+    const line = lines[i];
 
     // fenced code block
     if (line.trim().startsWith("```")) {
