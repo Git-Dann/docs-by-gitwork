@@ -57,7 +57,7 @@ export function DesignSystemWorkspace({
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-8 pt-6">
+    <div className="px-8 pt-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         {/* Back link — hidden when embedded inside the wiki */}
         {!embedded && (
@@ -70,7 +70,7 @@ export function DesignSystemWorkspace({
         )}
 
         {ds?.exists && (
-          <div className={`flex items-center gap-2 ${embedded ? "" : ""}`}>
+          <div className={`flex items-center gap-2${embedded ? " ml-auto" : ""}`}>
             {/* Share — toggle + link + open, folded into one menu */}
             <Menu as="div" className="relative">
               <MenuButton className={chipBtn}>

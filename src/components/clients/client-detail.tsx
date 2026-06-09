@@ -647,7 +647,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.id}
@@ -1831,41 +1831,41 @@ function PlatformCard({
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
-          {platform.platformType && (
-            <span
-              className="inline-block mt-1 rounded-[3px] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {platform.platformType}
-            </span>
-          )}
-        </div>
-
-        {/* Link pills (staging + repo) */}
-        <div className="flex shrink-0 flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
-          {platform.stagingUrl && (
-            <a
-              href={platform.stagingUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-              title="Staging"
-            >
-              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-              <span>Stage</span>
-            </a>
-          )}
-          {platform.repoUrl && (
-            <a
-              href={platform.repoUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-              title="Repository"
-            >
-              <CodeBracketIcon className="h-3 w-3" />
-              <span>Repo</span>
-            </a>
+          {(platform.platformType || platform.stagingUrl || platform.repoUrl) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {platform.platformType && (
+                <span
+                  className="rounded-[3px] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {platform.platformType}
+                </span>
+              )}
+              {platform.stagingUrl && (
+                <a
+                  href={platform.stagingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-0.5 text-[10px] text-[var(--text-4)] hover:text-[var(--brand-700)] transition"
+                  title="Staging"
+                >
+                  <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                  <span>Stage</span>
+                </a>
+              )}
+              {platform.repoUrl && (
+                <a
+                  href={platform.repoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-0.5 text-[10px] text-[var(--text-4)] hover:text-[var(--brand-700)] transition"
+                  title="Repository"
+                >
+                  <CodeBracketIcon className="h-3 w-3" />
+                  <span>Repo</span>
+                </a>
+              )}
+            </div>
           )}
         </div>
 

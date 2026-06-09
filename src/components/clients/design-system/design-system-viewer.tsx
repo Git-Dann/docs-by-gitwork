@@ -7,7 +7,7 @@
 // every value comes from `tokens` — no hardcoded client colours/fonts. Shared by
 // the internal Portal workspace and the public /brand/[token] page.
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type {
   ColourToken,
   DesignTokens,
@@ -48,6 +48,39 @@ function rgba(hex: string, a: number): string {
 /** True when a ramp value is an actual colour (filters out prose keys like "source"). */
 function isColour(v: string): boolean {
   return /^(#|rgb|hsl)/i.test((v || "").trim());
+}
+
+/** WCAG 2.1 contrast ratio between two hex colours. */
+function wcagRatio(hex1: string, hex2: string): number {
+  const l1 = relLuminance(hex1);
+  const l2 = relLuminance(hex2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** WCAG level of the better contrast pairing (white or black text). */
+function wcagLevel(hex: string): "AAA" | "AA" | "AA Large" | null {
+  const best = Math.max(wcagRatio(hex, "#FFFFFF"), wcagRatio(hex, "#000000"));
+  if (best >= 7) return "AAA";
+  if (best >= 4.5) return "AA";
+  if (best >= 3) return "AA Large";
+  return null;
+}
+
+/**
+ * Parse the `:root {}` CSS variables block and return a map of
+ * lowercase hex → first matching CSS variable name (e.g. "#1d4ed8" → "--color-primary").
+ */
+function parseVarMap(css: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const re = /--([\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const key = m[2].toLowerCase();
+    if (!map.has(key)) map.set(key, `--${m[1]}`);
+  }
+  return map;
 }
 
 const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
@@ -100,53 +133,94 @@ function GroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** Mono value pill — solid (default) or quiet (muted). */
-function Pill({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  return (
-    <span
-      className="inline-block rounded-[4px] px-1.5 py-0.5 text-[10px]"
-      style={{
-        fontFamily: mono,
-        background: muted ? "transparent" : "var(--surface-1)",
-        color: muted ? "var(--text-4)" : "var(--text-2)",
-        border: muted ? "none" : "1px solid rgba(0,0,0,0.06)",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
 
 // ── colours ────────────────────────────────────────────────────────────────────
 
-function ColourCard({ c }: { c: ColourToken }) {
+function ColourChip({ c, varName }: { c: ColourToken; varName?: string }) {
+  const [copiedSwatch, setCopiedSwatch] = useState(false);
+  const [copiedVar, setCopiedVar] = useState(false);
+
   const veryLight = relLuminance(c.hex) > 0.9;
+  const level = wcagLevel(c.hex);
+  const fgOnSwatch = readable(c.hex);
+
+  function copy(value: string, which: "swatch" | "var") {
+    void navigator.clipboard.writeText(value).then(() => {
+      if (which === "swatch") { setCopiedSwatch(true); setTimeout(() => setCopiedSwatch(false), 1400); }
+      else { setCopiedVar(true); setTimeout(() => setCopiedVar(false), 1400); }
+    });
+  }
+
   return (
-    <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-raised,#fff)]">
-      <div
+    <div className="flex flex-col gap-1.5">
+      {/* Swatch — click to copy hex */}
+      <button
+        type="button"
+        onClick={() => copy(c.hex.toUpperCase(), "swatch")}
+        className="relative w-full cursor-pointer transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
         style={{
-          height: 96,
+          height: 56,
           background: c.hex,
-          borderBottom: veryLight ? "1px solid rgba(0,0,0,0.06)" : "none",
+          borderRadius: 8,
+          border: veryLight ? "1px solid rgba(0,0,0,0.08)" : "none",
+          display: "block",
         }}
-      />
-      <div className="p-3.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-[13px] font-semibold text-[var(--text-1)]">{c.name}</p>
-          {c.role && (
-            <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
-              {c.role}
-            </span>
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Pill>{c.hex.toUpperCase()}</Pill>
-          {c.rgb && <Pill muted>{c.rgb}</Pill>}
-          {c.pantone && <Pill muted>PANTONE {c.pantone}</Pill>}
-        </div>
-        {c.usage && (
-          <p className="mt-2 text-[11px] leading-snug text-[var(--text-3)]">{c.usage}</p>
+        title={[
+          c.name,
+          c.hex.toUpperCase(),
+          c.rgb && `RGB ${c.rgb}`,
+          c.pantone && `PANTONE ${c.pantone}`,
+          c.usage && `Usage: ${c.usage}`,
+        ].filter(Boolean).join(" · ")}
+      >
+        {/* WCAG badge */}
+        {level && (
+          <span
+            className="absolute bottom-1.5 right-1.5 rounded-[3px] px-1 py-px text-[8px] font-bold uppercase tracking-[0.04em]"
+            style={{
+              background: veryLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.18)",
+              color: fgOnSwatch,
+              fontFamily: mono,
+            }}
+          >
+            {level}
+          </span>
         )}
+        {/* Copied flash */}
+        {copiedSwatch && (
+          <span
+            className="absolute inset-0 flex items-center justify-center rounded-[8px] text-[10px] font-semibold"
+            style={{ background: "rgba(0,0,0,0.45)", color: "#fff" }}
+          >
+            Copied ✓
+          </span>
+        )}
+      </button>
+
+      {/* Labels */}
+      <div className="min-w-0 space-y-0.5">
+        <p className="truncate text-[11px] font-medium text-[var(--text-2)]" title={c.name}>
+          {c.name}
+        </p>
+
+        {/* CSS variable — click to copy var(--name) */}
+        {varName && (
+          <button
+            type="button"
+            onClick={() => copy(`var(${varName})`, "var")}
+            className="block w-full truncate text-left text-[10px] text-[var(--brand-700)] transition hover:underline"
+            style={{ fontFamily: mono }}
+            title={`Copy var(${varName})`}
+          >
+            {copiedVar ? "Copied ✓" : varName}
+          </button>
+        )}
+
+        {/* Hex */}
+        <p className="truncate text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
+          {c.hex.toUpperCase()}
+          {c.rgb && <span className="ml-1 opacity-60">{c.rgb}</span>}
+        </p>
       </div>
     </div>
   );
@@ -173,6 +247,9 @@ function TintStrip({ colour }: { colour: ColourToken }) {
 }
 
 function ColoursSection({ tokens }: { tokens: DesignTokens }) {
+  // Parse the :root {} block once to map hex values → CSS variable names
+  const varMap = useMemo(() => parseVarMap(tokens.cssVariables ?? ""), [tokens.cssVariables]);
+
   const groups: Array<[string, ColourToken[]]> = [
     ["Primary", tokens.colours.primary],
     ["Secondary", tokens.colours.secondary],
@@ -180,14 +257,17 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
   ];
   const accent = tokens.colours.primary[1] ?? tokens.colours.secondary[0] ?? null;
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {groups.map(([label, list]) =>
         list.length === 0 ? null : (
           <div key={label}>
             <GroupLabel>{label}</GroupLabel>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}
+            >
               {list.map((c, i) => (
-                <ColourCard key={`${c.name}-${i}`} c={c} />
+                <ColourChip key={`${c.name}-${i}`} c={c} varName={varMap.get(c.hex.toLowerCase())} />
               ))}
             </div>
           </div>
@@ -862,40 +942,17 @@ function generateTailwindConfig(tokens: DesignTokens): string {
 // ── CSS tokens ──────────────────────────────────────────────────────────────
 
 function CssTokensSection({ tokens, lang }: { tokens: DesignTokens; lang: "css" | "tailwind" }) {
-  const [copied, setCopied] = useState(false);
-
   const cssCode = tokens.cssVariables || "/* No CSS variables provided */";
   const tailwindCode = generateTailwindConfig(tokens);
   const activeCode = lang === "tailwind" ? tailwindCode : cssCode;
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(activeCode);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={copy}
-          className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-        >
-          {copied ? "Copied ✓" : lang === "tailwind" ? "Copy Tailwind config" : "Copy CSS"}
-        </button>
-      </div>
-      <pre
-        className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
-        style={{ background: "#0F172A", fontFamily: mono }}
-      >
-        {activeCode}
-      </pre>
-    </div>
+    <pre
+      className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
+      style={{ background: "#0F172A", fontFamily: mono }}
+    >
+      {activeCode}
+    </pre>
   );
 }
 
@@ -977,6 +1034,7 @@ export function DesignSystemViewer({
   clientLogoUrl?: string | null;
 }) {
   const [codeLang, setCodeLang] = useState<"css" | "tailwind">("css");
+  const [copiedTokens, setCopiedTokens] = useState(false);
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -995,8 +1053,53 @@ export function DesignSystemViewer({
     .filter(Boolean)
     .join(" · ");
 
+  // For the CSS TOKENS section header controls
+  const tokensCssCode = tokens.cssVariables || "/* No CSS variables provided */";
+  const tokensTailwindCode = generateTailwindConfig(tokens);
+  const tokensActiveCode = codeLang === "tailwind" ? tokensTailwindCode : tokensCssCode;
+  const copyTokens = async () => {
+    try {
+      await navigator.clipboard.writeText(tokensActiveCode);
+      setCopiedTokens(true);
+      window.setTimeout(() => setCopiedTokens(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+  const cssTokensStatus = (
+    <div className="flex items-center gap-2">
+      {/* CSS / Tailwind toggle */}
+      <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
+        {(["css", "tailwind"] as const).map((l) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setCodeLang(l)}
+            className={[
+              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+              codeLang === l
+                ? "bg-[var(--text-1)] text-white"
+                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
+            ].join(" ")}
+            style={{ fontFamily: mono }}
+          >
+            {l === "css" ? "CSS" : "Tailwind"}
+          </button>
+        ))}
+      </div>
+      {/* Copy */}
+      <button
+        type="button"
+        onClick={() => void copyTokens()}
+        className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+      >
+        {copiedTokens ? "Copied ✓" : codeLang === "tailwind" ? "Copy Tailwind" : "Copy CSS"}
+      </button>
+    </div>
+  );
+
   // Build numbered sections in order; only include ones with data.
-  const sections: Array<{ title: string; intro?: string; node: ReactNode }> = [];
+  const sections: Array<{ title: string; intro?: string; status?: ReactNode; node: ReactNode }> = [];
   sections.push({
     title: "COLOURS",
     intro: "The brand palette — primary, secondary, and neutral roles, each with the hex and where to use it.",
@@ -1058,6 +1161,7 @@ export function DesignSystemViewer({
     intro: codeLang === "css"
       ? "The complete :root {} custom-property block — paste-ready for the build."
       : "Generated tailwind.config.js theme.extend — paste into your Tailwind config.",
+    status: cssTokensStatus,
     node: <CssTokensSection tokens={tokens} lang={codeLang} />,
   });
 
@@ -1080,38 +1184,9 @@ export function DesignSystemViewer({
             {s.title}
           </a>
         ))}
-        {/* CSS / Tailwind toggle — right-anchored */}
-        <div className="ml-auto flex items-center rounded-[6px] border border-[rgba(0,0,0,0.1)] bg-white p-0.5">
-          <button
-            type="button"
-            onClick={() => setCodeLang("css")}
-            className={[
-              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-              codeLang === "css"
-                ? "bg-[var(--text-1)] text-white"
-                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-            style={{ fontFamily: mono }}
-          >
-            CSS
-          </button>
-          <button
-            type="button"
-            onClick={() => setCodeLang("tailwind")}
-            className={[
-              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-              codeLang === "tailwind"
-                ? "bg-[var(--text-1)] text-white"
-                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-            style={{ fontFamily: mono }}
-          >
-            Tailwind
-          </button>
-        </div>
       </nav>
       {sections.map((s, i) => (
-        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro}>
+        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro} status={s.status}>
           {s.node}
         </Section>
       ))}

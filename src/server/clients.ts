@@ -1,3 +1,4 @@
+import { unstable_cache, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -390,25 +391,17 @@ function serializeClientPlatform(platform: {
   };
 }
 
-async function loadClientCollections() {
-  const { workspace } = await ensureBaseRecords();
-
+async function _loadClientCollectionsInner(workspaceId: string) {
   const [allClients, proposals] = await Promise.all([
     workspaceClients.findMany({
-      where: {
-        workspaceId: workspace.id,
-      },
-      orderBy: {
-        name: "asc",
-      },
+      where: { workspaceId },
+      orderBy: { name: "asc" },
     }),
     prisma.document.findMany({
       where: {
-        workspaceId: workspace.id,
+        workspaceId,
         documentType: "PROPOSAL",
-        clientName: {
-          not: null,
-        },
+        clientName: { not: null },
       },
       select: {
         clientName: true,
@@ -420,9 +413,41 @@ async function loadClientCollections() {
 
   const typedClients = allClients as Array<ManualClientRecord & { hidden: boolean }>;
   const manualClients = typedClients.filter((c) => !c.hidden) as ManualClientRecord[];
-  const hiddenSlugs = new Set(typedClients.filter((c) => c.hidden).map((c) => c.slug));
+  const hiddenSlugs = [...typedClients.filter((c) => c.hidden).map((c) => c.slug)];
 
-  return { workspace, manualClients, hiddenSlugs, proposals };
+  return { manualClients, hiddenSlugs, proposals };
+}
+
+// Cache the expensive proposals + clients fetch for 60 seconds. The full
+// client list is the same for all callers (per-user scoping happens in the
+// API route after the cache hit). Invalidated on every client mutation via
+// `revalidateTag("client-collections")`.
+const _cachedLoadCollections = unstable_cache(
+  _loadClientCollectionsInner,
+  ["client-collections"],
+  { revalidate: 60, tags: ["client-collections"] },
+);
+
+async function loadClientCollections() {
+  const { workspace } = await ensureBaseRecords();
+  const raw = await _cachedLoadCollections(workspace.id);
+  // unstable_cache JSON-serialises the return value, turning Date objects into
+  // ISO strings. Re-hydrate them so callers (mergeClients, toClientListItem)
+  // get the Date instances they expect.
+  return {
+    workspace,
+    manualClients: raw.manualClients.map((c) => ({
+      ...c,
+      createdAt: new Date(c.createdAt as unknown as string),
+      updatedAt: new Date(c.updatedAt as unknown as string),
+    })) as ManualClientRecord[],
+    hiddenSlugs: new Set(raw.hiddenSlugs),
+    proposals: raw.proposals.map((p) => ({
+      ...p,
+      createdAt: new Date(p.createdAt as unknown as string),
+      updatedAt: new Date(p.updatedAt as unknown as string),
+    })),
+  };
 }
 
 async function assertClientSlugAvailable(
@@ -525,6 +550,7 @@ export async function createClientRecord(input: {
     (proposal) => getClientLookupKey(proposal.clientName) === clientKey,
   ).length;
 
+  revalidateTag("client-collections");
   return toClientListItem({
     id: client.id,
     name: client.name,
@@ -643,6 +669,7 @@ export async function updateClientRecord(
     hiddenSlugs,
   );
 
+  revalidateTag("client-collections");
   return toClientListItem(
     updatedClients.find((client) => client.slug === persisted.slug) ?? {
       id: persisted.id,
@@ -699,6 +726,7 @@ export async function deleteClientRecord(slug: string): Promise<boolean> {
     },
   });
 
+  revalidateTag("client-collections");
   return true;
 }
 
@@ -1014,6 +1042,7 @@ export async function setClientStatus(
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     data: { status },
   });
+  revalidateTag("client-collections");
   return toClientListItem({
     id: persisted.id,
     name: persisted.name,
