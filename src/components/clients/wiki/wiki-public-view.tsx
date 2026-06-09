@@ -4,26 +4,19 @@ import { useState } from "react";
 import type { WikiDTO } from "@/lib/api";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
-import { AppStoreEditor } from "./app-store-editor";
 import { ChangelogSection } from "./changelog-section";
 
-type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "APP_STORE_IOS" | "APP_STORE_ANDROID" | "APP_STORE_FIRESTICK" | "CUSTOM";
+type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   ia: "IA_GUIDE",
   "dev-guide": "DEV_API_GUIDE",
-  "app-store-ios": "APP_STORE_IOS",
-  "app-store-android": "APP_STORE_ANDROID",
-  "app-store-firestick": "APP_STORE_FIRESTICK",
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
-  "app-store-ios": "iOS App Store",
-  "app-store-android": "Google Play",
-  "app-store-firestick": "Amazon Fire TV",
   changelog: "Changelog",
 };
 
@@ -57,35 +50,14 @@ export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
       );
     }
 
-    if (
-      activeSection === "app-store-ios" ||
-      activeSection === "app-store-android" ||
-      activeSection === "app-store-firestick"
-    ) {
-      const platformMap = {
-        "app-store-ios": "ios",
-        "app-store-android": "android",
-        "app-store-firestick": "firestick",
-      } as const;
-      const page = getPage(activeSection);
-      const content = (page?.content as Record<string, string>) ?? {};
-      return (
-        <AppStoreEditor
-          platform={platformMap[activeSection]}
-          content={content}
-          onSave={async () => {}}
-          isSaving={false}
-          readOnly
-        />
-      );
-    }
-
     const page = getPage(activeSection);
     const existingContent = typeof page?.content === "string" ? page.content : "";
     return (
       <WikiPageEditor
+        section={activeSection}
         title={page?.title ?? SECTION_TITLES[activeSection]}
         content={existingContent}
+        isNew={!page}
         onSave={async () => {}}
         isSaving={false}
         readOnly
