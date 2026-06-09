@@ -284,6 +284,8 @@ export function serializeTicket(row: {
   issueType: string | null;
   updatedAt: Date;
   assignedTo: string | null;
+  resolvedAt?: Date | null;
+  firstReplyAt?: Date | null;
 }): Ticket {
   return {
     id: row.id,
@@ -297,6 +299,8 @@ export function serializeTicket(row: {
     issueType: row.issueType ?? "",
     updatedAt: row.updatedAt.toISOString(),
     assignedTo: row.assignedTo ?? "",
+    resolvedAt: row.resolvedAt?.toISOString(),
+    firstReplyAt: row.firstReplyAt?.toISOString(),
   };
 }
 
@@ -603,6 +607,21 @@ export async function createMessage(
       body: data.body,
     },
   });
+
+  // Stamp firstReplyAt on any linked ticket the first time an outbound message is sent.
+  if (data.direction === "outbound") {
+    const ticket = await prisma.supportTicket.findFirst({
+      where: { conversationId: convId, firstReplyAt: null },
+      select: { id: true },
+    });
+    if (ticket) {
+      await prisma.supportTicket.update({
+        where: { id: ticket.id },
+        data: { firstReplyAt: row.createdAt },
+      });
+    }
+  }
+
   return serializeMessage(row);
 }
 
@@ -671,6 +690,7 @@ export async function updateTicket(
       ...(data.title !== undefined ? { title: data.title } : {}),
       ...(data.customerLabel !== undefined ? { customerLabel: data.customerLabel } : {}),
       ...(data.status !== undefined ? { status: toDbTicketStatus(data.status) } : {}),
+      ...(data.status === "resolved" ? { resolvedAt: new Date() } : {}),
       ...(data.priority !== undefined ? { priority: toDbTicketPriority(data.priority) } : {}),
       ...(data.source !== undefined ? { source: toDbSource(data.source) } : {}),
       ...(data.nextAction !== undefined ? { nextAction: data.nextAction } : {}),
@@ -1039,4 +1059,103 @@ export async function listWorkspaceMembers(): Promise<
     email: m.user.email,
     role: m.role,
   }));
+}
+
+// ─── Workflow rule evaluation ─────────────────────────────────────────────────
+//
+// Simple keyword/sentiment evaluator: each rule's triggerText is parsed for
+// quoted phrases and sentiment keywords. If the conversation matches, a ticket
+// is auto-created (requiresApproval:false) or a draft action queued (true).
+// Called non-blockingly after a new conversation is ingested.
+
+const SENTIMENT_KEYWORDS = ["negative", "upset", "angry", "frustrated", "escalate"];
+
+function extractTriggerKeywords(triggerText: string): string[] {
+  // Pull out "quoted" phrases and bare words that look like match criteria
+  const quoted = [...triggerText.matchAll(/"([^"]+)"/g)].map((m) => m[1].toLowerCase());
+  // Also grab any standalone notable words not in stop-list
+  const words = triggerText.toLowerCase().replace(/"[^"]*"/g, "").match(/\b[a-z]{4,}\b/g) ?? [];
+  const stopWords = new Set(["when", "message", "contains", "with", "that", "have", "been", "from", "this", "will", "they", "their", "there", "about", "after"]);
+  const bare = words.filter((w) => !stopWords.has(w));
+  return [...new Set([...quoted, ...bare])];
+}
+
+function conversationMatchesRule(
+  rule: { triggerText: string },
+  conv: { subject: string; preview: string | null; tags: string[]; sentiment: string },
+): boolean {
+  const text = `${conv.subject} ${conv.preview ?? ""}`.toLowerCase();
+  const keywords = extractTriggerKeywords(rule.triggerText);
+
+  // Sentiment-based rules
+  if (SENTIMENT_KEYWORDS.some((k) => rule.triggerText.toLowerCase().includes(k))) {
+    if (conv.sentiment === "NEGATIVE") return true;
+  }
+
+  // Keyword match — any trigger keyword found in conversation text
+  return keywords.some((kw) => text.includes(kw));
+}
+
+export async function evaluateWorkflowRules(
+  clientId: string,
+  convId: string,
+): Promise<void> {
+  const [conv, rules] = await Promise.all([
+    prisma.supportConversation.findUnique({
+      where: { id: convId },
+      select: { subject: true, preview: true, tags: true, sentiment: true, source: true, customerLabel: true },
+    }),
+    prisma.supportWorkflowRule.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } }),
+  ]);
+  if (!conv || rules.length === 0) return;
+
+  for (const rule of rules) {
+    if (!conversationMatchesRule(rule, conv)) continue;
+
+    // Don't fire the same rule twice for the same conversation (check existing tickets)
+    const alreadyFired = await prisma.supportTicket.findFirst({
+      where: { clientId, conversationId: convId, issueType: rule.name },
+      select: { id: true },
+    });
+    if (alreadyFired) continue;
+
+    const title = `${rule.name} — ${conv.subject.slice(0, 80)}`;
+
+    if (!rule.requiresApproval) {
+      await prisma.supportTicket.create({
+        data: {
+          clientId,
+          conversationId: convId,
+          title,
+          customerLabel: conv.customerLabel,
+          source: conv.source,
+          issueType: rule.name,
+          priority: rule.name.toLowerCase().includes("bug") ? "HIGH" : "NORMAL",
+          status: "OPEN",
+        },
+      });
+    } else {
+      // Queue as a draft action for human review
+      const existingTicket = await prisma.supportTicket.findFirst({
+        where: { clientId, conversationId: convId },
+        select: { id: true },
+      });
+      if (existingTicket) {
+        await prisma.draftSupportAction.create({
+          data: {
+            clientId,
+            ticketId: existingTicket.id,
+            type: "REPLY",
+            title: `Rule fired: ${rule.name}`,
+            body: rule.actionsText,
+            status: "PENDING_APPROVAL",
+            risk: "MEDIUM",
+          },
+        });
+      }
+    }
+
+    // Only fire the first matching rule per sync (avoid cascade of auto-tickets)
+    break;
+  }
 }

@@ -134,6 +134,8 @@ export interface Ticket {
   issueType: string;
   updatedAt: string;
   assignedTo: string;
+  resolvedAt?: string;
+  firstReplyAt?: string;
 }
 
 export interface DraftAction {
