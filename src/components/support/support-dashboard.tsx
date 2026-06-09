@@ -72,7 +72,9 @@ import {
   useSyncConnection,
   useSendMessage,
   useGenerateAiDraft,
+  useBatchUpdateTickets,
 } from "@/hooks/use-support";
+import { getTicketStats } from "@/lib/api";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -89,15 +91,16 @@ function formatShort(iso: string) {
   });
 }
 
-function TrendBadge({ delta }: { delta: number }) {
+function TrendBadge({ delta, previous }: { delta: number; previous?: number }) {
   if (delta === 0) return null;
   const up = delta > 0;
+  const pct = previous && previous !== 0 ? Math.round(Math.abs(delta / previous) * 100) : null;
   return (
     <span className={cn(
       "ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
       up ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600",
     )}>
-      {up ? "▲" : "▼"} {Math.abs(delta)}
+      {up ? "▲" : "▼"} {Math.abs(delta)}{pct !== null ? ` (${up ? "+" : "-"}${pct}%)` : ""}
     </span>
   );
 }
@@ -2059,6 +2062,20 @@ function TicketsTableView({ clientId }: { clientId: string }) {
     );
   }
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const batchUpdate = useBatchUpdateTickets(clientId);
+  const [batchAssign, setBatchAssign] = useState("");
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() { setSelectedIds(new Set()); }
+
   if (tickets.length === 0) {
     return (
       <div className="app-card flex h-40 items-center justify-center text-sm text-[var(--text-4)]">
@@ -2069,21 +2086,29 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
   const open = tickets.filter((t) => t.status !== "resolved");
   const resolved = tickets.filter((t) => t.status === "resolved");
+  const allIds = tickets.map((t) => t.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+  const someSelected = selectedIds.size > 0;
 
   function TicketTable({ rows }: { rows: Ticket[] }) {
+    const rowIds = rows.map((t) => t.id);
+    const allRowSelected = rowIds.every((id) => selectedIds.has(id));
     return (
       <div className="app-card overflow-hidden p-0">
-        {/* widget header */}
-        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-            01 // TICKETS
-          </span>
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-            {rows.length}
-          </span>
-        </div>
         {/* column header */}
-        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+        <div className="grid grid-cols-[1.5rem_1fr_auto_auto_auto_auto] items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+          <input
+            type="checkbox"
+            checked={allRowSelected}
+            onChange={() => {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                allRowSelected ? rowIds.forEach((id) => next.delete(id)) : rowIds.forEach((id) => next.add(id));
+                return next;
+              });
+            }}
+            className="h-3.5 w-3.5 cursor-pointer rounded"
+          />
           <span>Title</span>
           <span className="w-20 text-center">Priority</span>
           <span className="w-24 text-right">Updated</span>
@@ -2092,15 +2117,23 @@ function TicketsTableView({ clientId }: { clientId: string }) {
         </div>
         {rows.map((ticket) => {
           const isExpanded = expandedId === ticket.id;
+          const isSelected = selectedIds.has(ticket.id);
           return (
-            <div key={ticket.id} className="border-b border-[var(--border-2)] last:border-b-0">
+            <div key={ticket.id} className={cn("border-b border-[var(--border-2)] last:border-b-0", isSelected && "bg-[var(--mist)]")}>
               {/* main row */}
-              <button
-                type="button"
-                onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
-                className="grid w-full grid-cols-[1fr_auto_auto_auto_auto] items-center gap-4 px-4 py-3 text-left transition hover:bg-[var(--surface-1)]"
-              >
-                <div className="min-w-0">
+              <div className="grid w-full grid-cols-[1.5rem_1fr_auto_auto_auto_auto] items-center gap-3 px-4 py-3 transition hover:bg-[var(--surface-1)]">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelect(ticket.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-3.5 w-3.5 cursor-pointer rounded"
+                />
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
+                  className="min-w-0 text-left"
+                >
                   <p className="truncate text-sm font-semibold text-[var(--text-1)]">{ticket.title}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-[var(--text-4)]">{ticket.customerLabel}</span>
@@ -2114,19 +2147,19 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                       {SOURCE_LABEL[ticket.source]}
                     </span>
                   </div>
-                </div>
+                </button>
                 <span className={cn("inline-flex w-20 items-center justify-center rounded-md px-2 py-0.5 text-[10px] font-semibold", PRIORITY_TONE[ticket.priority])}>
                   {ticket.priority}
                 </span>
                 <span className="w-24 text-right text-[11px] text-[var(--text-4)]">{formatShort(ticket.updatedAt)}</span>
                 {/* chevron */}
-                <span className="flex w-8 justify-center text-[var(--text-4)]">
+                <button type="button" onClick={() => setExpandedId(isExpanded ? null : ticket.id)} className="flex w-8 justify-center text-[var(--text-4)]">
                   <svg className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "rotate-180")} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                </span>
+                </button>
                 {/* status dropdown */}
-                <div className="flex w-36 justify-end" onClick={(e) => e.stopPropagation()}>
+                <div className="flex w-36 justify-end">
                   <select
                     value={ticket.status}
                     onChange={(e) => updateTicket.mutate({ ticketId: ticket.id, data: { status: e.target.value as TicketStatus } })}
@@ -2140,7 +2173,7 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                     ))}
                   </select>
                 </div>
-              </button>
+              </div>
 
               {/* expanded detail */}
               {isExpanded && (
@@ -2200,6 +2233,26 @@ function TicketsTableView({ clientId }: { clientId: string }) {
         <TicketsKanban clientId={clientId} tickets={tickets} />
       ) : (
         <>
+          {/* Select-all row */}
+          {tickets.length > 0 && (
+            <div className="flex items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-3)]">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => {
+                    setSelectedIds(allSelected ? new Set() : new Set(allIds));
+                  }}
+                  className="h-3.5 w-3.5 cursor-pointer rounded"
+                />
+                {allSelected ? "Deselect all" : "Select all"}
+              </label>
+              {someSelected && (
+                <span className="text-[11px] text-[var(--text-4)]">{selectedIds.size} selected</span>
+              )}
+            </div>
+          )}
+
           {open.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
@@ -2214,6 +2267,75 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                 Resolved · {resolved.length}
               </p>
               <TicketTable rows={resolved} />
+            </div>
+          )}
+
+          {/* Batch bar */}
+          {someSelected && (
+            <div className="sticky bottom-4 z-20 flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2.5 shadow-lg">
+              <span className="text-[11px] font-semibold text-[var(--text-2)]">{selectedIds.size} selected</span>
+              <div className="h-4 w-px bg-[var(--border-2)]" />
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { status: e.target.value } })
+                    .then(clearSelection);
+                  e.target.value = "";
+                }}
+                className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              >
+                <option value="">Set status…</option>
+                {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { priority: e.target.value } })
+                    .then(clearSelection);
+                  e.target.value = "";
+                }}
+                className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              >
+                <option value="">Set priority…</option>
+                {(["urgent", "high", "normal", "low"] as TicketPriority[]).map((p) => (
+                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={batchAssign}
+                  onChange={(e) => setBatchAssign(e.target.value)}
+                  placeholder="Assign to…"
+                  className="h-7 w-32 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && batchAssign.trim()) {
+                      void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { assignedTo: batchAssign.trim() } })
+                        .then(() => { setBatchAssign(""); clearSelection(); });
+                    }
+                  }}
+                />
+                {batchAssign.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { assignedTo: batchAssign.trim() } })
+                      .then(() => { setBatchAssign(""); clearSelection(); })}
+                    className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--brand-700)] px-2 text-[11px] font-medium text-white transition hover:bg-[var(--brand-800)]"
+                  >
+                    Assign
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="ml-auto flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
             </div>
           )}
         </>
@@ -2436,6 +2558,58 @@ function ReportBuilder({
     }
   }
 
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setApiMsg(null);
+    try {
+      const month = p.periodStart.slice(0, 7);
+      const [statsRes, analyticsRes] = await Promise.allSettled([
+        getTicketStats(clientId, p.periodStart, p.periodEnd),
+        analyticsConn
+          ? fetch(`/api/support/clients/${clientId}/analytics?month=${month}`).then((r) => r.json() as Promise<{ data?: { metrics?: AnalyticsReportMetric[] }; error?: string }>)
+          : Promise.resolve(null),
+      ]);
+
+      const stats = statsRes.status === "fulfilled" ? statsRes.value.stats : null;
+      const analyticsMetrics = analyticsRes.status === "fulfilled" && analyticsRes.value
+        ? (analyticsRes.value as { data?: { metrics?: AnalyticsReportMetric[] } }).data?.metrics ?? []
+        : [];
+
+      setP((prev) => {
+        const next = { ...prev };
+        if (stats) {
+          next.totalTickets = stats.totalTickets;
+          next.catCancellations = stats.catCancellations;
+          next.catAccountQueries = stats.catAccountQueries;
+          next.catRefunds = stats.catRefunds;
+          next.catTechIssues = stats.catTechIssues;
+          next.catOther = stats.catOther;
+          next.prioUrgent = stats.prioUrgent;
+          next.prioHigh = stats.prioHigh;
+          next.prioMedium = stats.prioMedium;
+          next.prioLow = stats.prioLow;
+        }
+        if (analyticsMetrics.length > 0) {
+          const byKey = new Map((prev.metrics ?? []).map((m) => [m.key, m]));
+          for (const m of analyticsMetrics) byKey.set(m.key, m);
+          next.metrics = Array.from(byKey.values());
+        }
+        return next;
+      });
+
+      const parts: string[] = [];
+      if (stats) parts.push(`${stats.totalTickets} ticket${stats.totalTickets === 1 ? "" : "s"}`);
+      if (analyticsMetrics.length > 0) parts.push(`${analyticsMetrics.length} metric${analyticsMetrics.length === 1 ? "" : "s"}`);
+      setApiMsg({ type: "ok", text: `Generated: ${parts.join(" · ")} pre-filled for ${month}.` });
+    } catch (err) {
+      setApiMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to generate" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function handleSave() {
     // refundRequests / refundsProcessed are always equal to catCancellations — derive automatically
     const payload = { ...p, refundRequests: p.catCancellations, refundsProcessed: p.catCancellations };
@@ -2468,9 +2642,22 @@ function ReportBuilder({
           <ChevronDoubleLeftIcon className="h-4 w-4" />
           All reports
         </button>
-        <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
-          {report ? "Save changes" : "Save report"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={generating}
+            onClick={handleGenerate}
+            title="Pre-fill ticket stats + analytics for this month"
+          >
+            <SparklesIcon className="h-3.5 w-3.5 mr-1" />
+            {generating ? "Generating…" : "Generate"}
+          </Button>
+          <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
+            {report ? "Save changes" : "Save report"}
+          </Button>
+        </div>
       </div>
 
       {/* 01 // PERIOD & AUTHOR */}
@@ -2646,7 +2833,7 @@ function ReportBuilder({
                         className="min-w-0 flex-1 bg-transparent text-[11px] font-medium text-[var(--text-3)] outline-none focus:text-[var(--text-1)]"
                       />
                       {typeof m.previous === "number" && m.value !== m.previous && (
-                        <TrendBadge delta={m.value - m.previous} />
+                        <TrendBadge delta={m.value - m.previous} previous={m.previous} />
                       )}
                       <button
                         type="button"

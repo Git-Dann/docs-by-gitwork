@@ -1426,6 +1426,36 @@ export async function deleteSupportTicket(
   });
 }
 
+export async function batchUpdateSupportTickets(
+  clientId: string,
+  ticketIds: string[],
+  data: Partial<{ status: string; priority: string; assignedTo: string }>,
+): Promise<{ updated: number }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets/batch`, {
+    method: "PATCH",
+    body: JSON.stringify({ ticketIds, data }),
+  });
+}
+
+export async function getTicketStats(
+  clientId: string,
+  start: string,
+  end: string,
+): Promise<{ stats: {
+  totalTickets: number;
+  catCancellations: number;
+  catAccountQueries: number;
+  catRefunds: number;
+  catTechIssues: number;
+  catOther: number;
+  prioUrgent: number;
+  prioHigh: number;
+  prioMedium: number;
+  prioLow: number;
+} }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets/stats?start=${start}&end=${end}`);
+}
+
 export async function listSupportConnections(
   clientId: string,
 ): Promise<{ connections: Connection[] }> {
