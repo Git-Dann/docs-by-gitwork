@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   PlusIcon,
   TrashIcon,
+  PencilSquareIcon,
   ClipboardDocumentIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
@@ -205,6 +206,8 @@ interface Props {
   onDelete: (ids: string[]) => Promise<void>;
   /** Called with all entry IDs in the version group + the new target status. */
   onToggleStatus: (ids: string[], newStatus: string) => Promise<void>;
+  /** Called with the version string to edit the whole version group. */
+  onEdit?: (version: string) => void;
   readOnly?: boolean;
 }
 
@@ -216,6 +219,7 @@ export function ChangelogSection({
   onAdd,
   onDelete,
   onToggleStatus,
+  onEdit,
   readOnly = false,
 }: Props) {
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("ALL");
@@ -475,6 +479,19 @@ export function ChangelogSection({
                             ) : (
                               <ClipboardDocumentIcon className="h-3.5 w-3.5" />
                             )}
+                          </button>
+                        )}
+
+                        {/* Edit button */}
+                        {!readOnly && onEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onEdit(group.version)}
+                            disabled={isProcessing}
+                            className="rounded p-1 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-50"
+                            title="Edit this version"
+                          >
+                            <PencilSquareIcon className="h-3.5 w-3.5" />
                           </button>
                         )}
 

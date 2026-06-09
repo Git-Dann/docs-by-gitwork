@@ -9,6 +9,7 @@ import {
   deleteWikiChangelogEntry,
   updateWikiPlatformsApi,
   updateWikiEntryStatusApi,
+  updateWikiChangelogEntryApi,
 } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
@@ -73,6 +74,28 @@ export function useUpdateEntryStatus(slug: string) {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       updateWikiEntryStatusApi(slug, id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useUpdateChangelogEntry(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: {
+        version?: string;
+        title?: string;
+        body?: string | null;
+        releasedAt?: string | null;
+        status?: string;
+      };
+    }) => updateWikiChangelogEntryApi(slug, id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

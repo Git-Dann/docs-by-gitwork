@@ -2396,6 +2396,17 @@ export async function updateWikiEntryStatusApi(
   });
 }
 
+export async function updateWikiChangelogEntryApi(
+  slug: string,
+  id: string,
+  data: { version?: string; title?: string; body?: string | null; releasedAt?: string | null; status?: string },
+): Promise<ChangelogEntryRecord> {
+  return apiFetch<ChangelogEntryRecord>(`/api/clients/${slug}/wiki/changelog/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateWikiPlatformsApi(slug: string, platforms: string[]): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`, {
     method: "PATCH",
