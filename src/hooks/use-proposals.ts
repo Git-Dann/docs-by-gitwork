@@ -84,6 +84,9 @@ export function useClientList(filters?: {
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
     staleTime: 5 * 60 * 1000,
+    // Avoid blasting the server on every tab switch — the list rarely changes
+    // mid-session and mutations invalidate the cache when it matters.
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -161,10 +164,12 @@ export function useClientDetail(slug: string) {
     queryKey: ["client", slug],
     queryFn: () => getClientDetail(slug),
     enabled: Boolean(slug),
-    // Refetch on window focus so changes made in Code (dev removals, etc.)
-    // are reflected when switching back to the Portal tab.
-    refetchOnWindowFocus: true,
-    staleTime: 30 * 1000, // 30 s — fresh enough for active sessions
+    // 2-minute stale window — enough freshness for active sessions without
+    // hammering the Slack/enrichment APIs on every tab switch.
+    staleTime: 2 * 60 * 1000,
+    // Window-focus refetch was pulling Slack activity (41+ API calls) on every
+    // tab switch. Mutations and explicit navigations still invalidate the cache.
+    refetchOnWindowFocus: false,
   });
 }
 
