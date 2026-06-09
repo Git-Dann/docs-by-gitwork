@@ -1279,11 +1279,15 @@ function InboxView({ clientId }: { clientId: string }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 15;
 
-  // All sources that have at least one conversation (drives the chip strip)
-  const presentSources = useMemo(
-    () => [...new Set(convos.map((c) => c.source))],
-    [convos],
-  );
+  // Sources to show as filter chips: any configured connection (exc. analytics) + any source
+  // that already has conversations. This way Reddit shows even before its first sync.
+  const presentSources = useMemo(() => {
+    const fromConvos = convos.map((c) => c.source as SupportSource);
+    const fromConns = (connectionsData?.connections ?? [])
+      .map((c) => c.source as SupportSource)
+      .filter((s) => s !== "analytics");
+    return [...new Set([...fromConns, ...fromConvos])];
+  }, [convos, connectionsData]);
 
   const filtered = useMemo(() => convos.filter((c) => {
     if (deferred && !c.subject.toLowerCase().includes(deferred.toLowerCase()) && !c.tags.some((t) => t.includes(deferred.toLowerCase()))) return false;
