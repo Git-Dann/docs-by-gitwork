@@ -206,10 +206,6 @@ const PRIORITY_TONE: Record<TicketPriority, string> = {
 
 type Tab = "inbox" | "tickets" | "reports";
 
-const EMAIL_SOURCES: SupportSource[] = ["gmail"];
-const RSS_SOURCES: SupportSource[] = ["reddit"];
-const CHAT_SOURCES: SupportSource[] = ["discord", "youtube", "instagram"];
-
 // ─── shared modal wrapper ─────────────────────────────────────────────────────
 
 function CareModal({
@@ -1129,9 +1125,6 @@ function RuleModal({
   );
 }
 
-function AddRuleModal({ clientId, onClose }: { clientId: string; onClose: () => void }) {
-  return <RuleModal clientId={clientId} onClose={onClose} />;
-}
 
 // ─── inbox view ──────────────────────────────────────────────────────────────
 
@@ -2041,9 +2034,6 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
   );
 }
 
-function TicketsView({ clientId, onGoToConnectors }: { clientId: string; onGoToConnectors?: () => void }) {
-  return <SubredditView clientId={clientId} onGoToConnectors={onGoToConnectors} />;
-}
 
 function TicketsTableView({ clientId }: { clientId: string }) {
   const [view, setView] = useState<"board" | "table">("table");
@@ -2054,6 +2044,17 @@ function TicketsTableView({ clientId }: { clientId: string }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const batchUpdate = useBatchUpdateTickets(clientId);
   const [batchAssign, setBatchAssign] = useState("");
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  async function runBatch(data: Partial<{ status: string; priority: string; assignedTo: string }>) {
+    setBatchError(null);
+    try {
+      await batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data });
+      clearSelection();
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : "Batch update failed");
+    }
+  }
 
   if (isLoading) {
     return (
@@ -2271,70 +2272,73 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
           {/* Batch bar */}
           {someSelected && (
-            <div className="sticky bottom-4 z-20 flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2.5 shadow-lg">
-              <span className="text-[11px] font-semibold text-[var(--text-2)]">{selectedIds.size} selected</span>
-              <div className="h-4 w-px bg-[var(--border-2)]" />
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { status: e.target.value } })
-                    .then(clearSelection);
-                  e.target.value = "";
-                }}
-                className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
-              >
-                <option value="">Set status…</option>
-                {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                ))}
-              </select>
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { priority: e.target.value } })
-                    .then(clearSelection);
-                  e.target.value = "";
-                }}
-                className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
-              >
-                <option value="">Set priority…</option>
-                {(["urgent", "high", "normal", "low"] as TicketPriority[]).map((p) => (
-                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1.5">
-                <input
-                  value={batchAssign}
-                  onChange={(e) => setBatchAssign(e.target.value)}
-                  placeholder="Assign to…"
-                  className="h-7 w-32 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && batchAssign.trim()) {
-                      void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { assignedTo: batchAssign.trim() } })
-                        .then(() => { setBatchAssign(""); clearSelection(); });
-                    }
+            <div className="sticky bottom-4 z-20 flex flex-col gap-1.5">
+              {batchError && (
+                <p className="rounded-[6px] border border-red-200 bg-red-50 px-3 py-1 text-[11px] text-red-600">{batchError}</p>
+              )}
+              <div className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-2.5 shadow-lg">
+                <span className="text-[11px] font-semibold text-[var(--text-2)]">{selectedIds.size} selected</span>
+                <div className="h-4 w-px bg-[var(--border-2)]" />
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    const val = e.target.value;
+                    e.target.value = "";
+                    void runBatch({ status: val });
                   }}
-                />
-                {batchAssign.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => void batchUpdate.mutateAsync({ ticketIds: Array.from(selectedIds), data: { assignedTo: batchAssign.trim() } })
-                      .then(() => { setBatchAssign(""); clearSelection(); })}
-                    className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--brand-700)] px-2 text-[11px] font-medium text-white transition hover:bg-[var(--brand-800)]"
-                  >
-                    Assign
-                  </button>
-                )}
+                  className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                >
+                  <option value="">Set status…</option>
+                  {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => (
+                    <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  ))}
+                </select>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    const val = e.target.value;
+                    e.target.value = "";
+                    void runBatch({ priority: val });
+                  }}
+                  className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                >
+                  <option value="">Set priority…</option>
+                  {(["urgent", "high", "normal", "low"] as TicketPriority[]).map((p) => (
+                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    value={batchAssign}
+                    onChange={(e) => setBatchAssign(e.target.value)}
+                    placeholder="Assign to…"
+                    className="h-7 w-32 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && batchAssign.trim()) {
+                        void runBatch({ assignedTo: batchAssign.trim() }).then(() => setBatchAssign(""));
+                      }
+                    }}
+                  />
+                  {batchAssign.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => void runBatch({ assignedTo: batchAssign.trim() }).then(() => setBatchAssign(""))}
+                      className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--brand-700)] px-2 text-[11px] font-medium text-white transition hover:bg-[var(--brand-800)]"
+                    >
+                      Assign
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="ml-auto flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={clearSelection}
-                className="ml-auto flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
             </div>
           )}
         </>
