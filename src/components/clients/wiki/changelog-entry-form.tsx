@@ -22,6 +22,16 @@ const PLATFORM_LABELS: Record<string, string> = {
 // Platform display order — ALL last so individual platforms lead
 const PLATFORM_ORDER = ["IOS", "ANDROID", "FIRESTICK", "WEB", "ALL"];
 
+// Release-notes character limits for each store's "What's new" field.
+// null = no enforced limit (Web / All-platforms).
+const PLATFORM_LIMITS: Record<string, number | null> = {
+  IOS: 4000, // Apple App Store "What's New"
+  ANDROID: 500, // Google Play "What's new" (recent changes)
+  FIRESTICK: 4000, // Amazon Appstore "Recent changes"
+  WEB: null,
+  ALL: null,
+};
+
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
 const fieldLabel =
@@ -71,6 +81,23 @@ function assembleBody(
   if (improvements.trim()) parts.push(`## Improvements\n${normaliseBullets(improvements)}`);
   if (fixes.trim()) parts.push(`## Fixes\n${normaliseBullets(fixes)}`);
   return parts.join("\n\n");
+}
+
+/**
+ * Format the assembled body the way it actually lands in a store's "What's new"
+ * field (markdown stripped) — so the character count matches what gets pasted.
+ */
+function formatForStore(body: string): string {
+  return body
+    .split("\n")
+    .map((line) => {
+      if (/^#{2,3}\s/.test(line.trim())) return "\n" + line.replace(/^#{2,3}\s+/, "").toUpperCase();
+      if (/^[-•*]\s/.test(line.trim())) return "• " + line.replace(/^[-•*]\s+/, "").trim();
+      return line;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** Inverse of assembleBody — parse a stored body back into the 4 structured fields. */
@@ -262,6 +289,20 @@ export function ChangelogEntryForm({
       return;
     }
 
+    // Enforce each store's "What's new" character limit.
+    for (const entry of entries) {
+      const limit = PLATFORM_LIMITS[entry.platform];
+      if (limit != null && entry.body) {
+        const len = formatForStore(entry.body).length;
+        if (len > limit) {
+          setError(
+            `${PLATFORM_LABELS[entry.platform]} release notes are ${len}/${limit} characters — over the store limit. Trim before saving.`,
+          );
+          return;
+        }
+      }
+    }
+
     setError(null);
     await onSave(entries);
   }
@@ -269,9 +310,25 @@ export function ChangelogEntryForm({
   const activePlatformData = platformData[activeTab] ?? EMPTY_FIELDS;
   const filledPlatforms = tabPlatforms.filter(hasContent);
 
+  // Live store character count for the active platform's "What's new" text.
+  const activeLimit = PLATFORM_LIMITS[activeTab] ?? null;
+  const activeStoreLength = hasContent(activeTab)
+    ? formatForStore(
+        assembleBody(
+          version,
+          activePlatformData.changelog,
+          activePlatformData.newFeatures,
+          activePlatformData.improvements,
+          activePlatformData.fixes,
+        ),
+      ).length
+    : 0;
+  const overLimit = activeLimit !== null && activeStoreLength > activeLimit;
+  const nearLimit = activeLimit !== null && activeStoreLength > activeLimit * 0.9;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
+      <div className="flex h-[88vh] max-h-[760px] w-full max-w-3xl flex-col rounded-[12px] bg-white shadow-xl">
         {/* Header */}
         <div className="widget-header shrink-0 rounded-t-[12px]">
           <span className="widget-header__label">{isEditing ? "Edit Version" : "Add Version"}</span>
@@ -379,8 +436,8 @@ export function ChangelogEntryForm({
               </div>
             </div>
 
-            {/* ── Platform tabs ─────────────────────────── */}
-            <div className="mb-4 border-b border-[rgba(0,0,0,0.07)]">
+            {/* ── Platform tabs + store char count ──────── */}
+            <div className="mb-4 flex items-end justify-between border-b border-[rgba(0,0,0,0.07)]">
               <div className="flex gap-1 pb-0">
                 {tabPlatforms.map((p) => {
                   const filled = hasContent(p);
@@ -406,10 +463,24 @@ export function ChangelogEntryForm({
                   );
                 })}
               </div>
+
+              {/* Store "What's new" character count for the active platform */}
+              {activeLimit !== null && (
+                <span
+                  className="pb-2 text-[11px] font-semibold tabular-nums"
+                  style={{
+                    fontFamily: MONO,
+                    color: overLimit ? "#dc2626" : nearLimit ? "#d97706" : "var(--text-4)",
+                  }}
+                  title={`${PLATFORM_LABELS[activeTab]} store “What’s new” limit`}
+                >
+                  {activeStoreLength} / {activeLimit}
+                </span>
+              )}
             </div>
 
-            {/* ── Structured fields for active platform ─── */}
-            <div className="space-y-5">
+            {/* ── Structured fields for active platform — 2-column grid ── */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               {/* Changelog */}
               <div>
                 <label className={fieldLabel} style={{ fontFamily: MONO }}>
@@ -419,7 +490,7 @@ export function ChangelogEntryForm({
                   key={activeTab + "-changelog"}
                   value={activePlatformData.changelog}
                   onChange={(e) => updateField(activeTab, "changelog", e.target.value)}
-                  rows={2}
+                  rows={5}
                   placeholder="Brief overview of this release."
                   className={`${fieldInput} resize-none`}
                 />
@@ -428,44 +499,42 @@ export function ChangelogEntryForm({
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-                {/* New Features */}
-                <div>
-                  <label className={fieldLabel} style={{ fontFamily: MONO }}>
-                    New Features{" "}
-                    <span className="normal-case font-normal text-[var(--text-4)]">(optional)</span>
-                  </label>
-                  <textarea
-                    key={activeTab + "-newFeatures"}
-                    value={activePlatformData.newFeatures}
-                    onChange={(e) => updateField(activeTab, "newFeatures", e.target.value)}
-                    rows={4}
-                    placeholder={"Rounds history page\nProfile photo upload"}
-                    className={`${fieldInput} resize-none`}
-                  />
-                  <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                    One per line — auto-formatted as bullets
-                  </p>
-                </div>
+              {/* New Features */}
+              <div>
+                <label className={fieldLabel} style={{ fontFamily: MONO }}>
+                  New Features{" "}
+                  <span className="normal-case font-normal text-[var(--text-4)]">(optional)</span>
+                </label>
+                <textarea
+                  key={activeTab + "-newFeatures"}
+                  value={activePlatformData.newFeatures}
+                  onChange={(e) => updateField(activeTab, "newFeatures", e.target.value)}
+                  rows={5}
+                  placeholder={"Rounds history page\nProfile photo upload"}
+                  className={`${fieldInput} resize-none`}
+                />
+                <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                  One per line — auto-formatted as bullets
+                </p>
+              </div>
 
-                {/* Improvements */}
-                <div>
-                  <label className={fieldLabel} style={{ fontFamily: MONO }}>
-                    Improvements{" "}
-                    <span className="normal-case font-normal text-[var(--text-4)]">(optional)</span>
-                  </label>
-                  <textarea
-                    key={activeTab + "-improvements"}
-                    value={activePlatformData.improvements}
-                    onChange={(e) => updateField(activeTab, "improvements", e.target.value)}
-                    rows={4}
-                    placeholder={"Faster load time on home screen\nBetter error messages"}
-                    className={`${fieldInput} resize-none`}
-                  />
-                  <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                    One per line — auto-formatted as bullets
-                  </p>
-                </div>
+              {/* Improvements */}
+              <div>
+                <label className={fieldLabel} style={{ fontFamily: MONO }}>
+                  Improvements{" "}
+                  <span className="normal-case font-normal text-[var(--text-4)]">(optional)</span>
+                </label>
+                <textarea
+                  key={activeTab + "-improvements"}
+                  value={activePlatformData.improvements}
+                  onChange={(e) => updateField(activeTab, "improvements", e.target.value)}
+                  rows={5}
+                  placeholder={"Faster load time on home screen\nBetter error messages"}
+                  className={`${fieldInput} resize-none`}
+                />
+                <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                  One per line — auto-formatted as bullets
+                </p>
               </div>
 
               {/* Fixes */}
@@ -478,7 +547,7 @@ export function ChangelogEntryForm({
                   key={activeTab + "-fixes"}
                   value={activePlatformData.fixes}
                   onChange={(e) => updateField(activeTab, "fixes", e.target.value)}
-                  rows={3}
+                  rows={5}
                   placeholder={"Fixed crash on launch for some devices\nResolved incorrect badge count"}
                   className={`${fieldInput} resize-none`}
                 />
