@@ -48,8 +48,8 @@ One sentence describing what this product is, who it's for, and its core value.
 
 ## User Roles & Permissions
 
-| Role | Description | Access |
-|------|-------------|--------|
+| Role | Description | Access level |
+|------|-------------|--------------|
 | Admin | Full access — manages users, settings, and content | Full |
 | Member | Standard registered account | Standard |
 | Guest / Public | Unauthenticated or free-tier access | Limited |
@@ -80,8 +80,8 @@ One sentence describing what this product is, who it's for, and its core value.
 
 | Type | Description | Key Fields | Status States |
 |------|-------------|------------|---------------|
-| [Entity] | What this content type represents | title, body, author | draft / published |
-| [Entity] | What this content type represents | name, price, sku | active / archived |
+| [Entity] | What this represents | title, body, author | draft / published |
+| [Entity] | What this represents | name, price, sku | active / archived |
 
 ---
 
@@ -111,7 +111,8 @@ One sentence describing what this product is, who it's for, and its core value.
 3. Confirm / save → success state or error feedback
 
 ### [Second Key Flow]
-1. ...
+1. Step one
+2. Step two
 
 ---
 
@@ -126,6 +127,36 @@ Describe how users find content — global search, filters, category browse, aut
 - **Active state:** highlighted nav item / left border / underline
 - **Breadcrumbs:** shown on [pages] — format: Parent › Child
 - **Deep links:** describe any shareable or bookmarkable URLs
+
+---
+
+## Integrations & Third-Party Services
+
+| Service | Purpose | Auth method | Docs |
+|---------|---------|-------------|------|
+| [Service name] | What it does | API key / OAuth | [link] |
+| [Service name] | What it does | Webhook | [link] |
+
+---
+
+## Error & Empty States
+
+| State | Where it appears | Message / Treatment |
+|-------|-----------------|---------------------|
+| 404 Not found | Any invalid URL | "Page not found" + back link |
+| 500 Server error | API failure | "Something went wrong" + retry |
+| Empty list | No data yet | Illustration + CTA to create first item |
+| No results | Search / filter | "No results for [query]" + clear filter |
+| Offline | Network unavailable | [describe behaviour] |
+
+---
+
+## Notifications
+
+| Type | Channel | Trigger |
+|------|---------|---------|
+| [e.g. New message] | In-app / Email / Push | [when it fires] |
+| [e.g. Payment success] | Email | [when it fires] |
 `;
 
 const DEV_TEMPLATE = `## Prerequisites
@@ -235,10 +266,27 @@ Describe the auth approach — session model, protected routes, token refresh, r
 
 ---
 
+## Testing
+
+\`\`\`bash
+npm run test          # Run all tests
+npm run test:watch    # Watch mode
+npm run test:e2e      # End-to-end tests (Playwright/Cypress)
+\`\`\`
+
+Test files live alongside the source: \`*.test.ts\` / \`*.spec.ts\`. E2E tests in \`/e2e\` or \`/tests\`.
+
+**Conventions:**
+- Unit tests: pure functions and server logic
+- Integration tests: API routes with a test database
+- E2E: critical user journeys (sign in, core action, sign out)
+
+---
+
 ## Deployment
 
 ### Preview (auto)
-Push any branch → Vercel creates a preview URL automatically.
+Push any branch → a preview URL is created automatically.
 
 ### Production
 \`\`\`bash
@@ -247,6 +295,39 @@ Push any branch → Vercel creates a preview URL automatically.
 \`\`\`
 
 Build command runs \`prisma db push\` (additive-only) before \`next build\`. Destructive schema changes must be applied manually.
+
+---
+
+## CI / CD Pipeline
+
+| Trigger | What runs |
+|---------|-----------|
+| Every PR | Lint · TypeScript · Unit tests |
+| Merge to main | Full build · Deploy to production |
+| Nightly | [e.g. E2E test suite] |
+
+---
+
+## Performance Targets
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| LCP (Largest Contentful Paint) | < 2.5s | Measured on 4G mobile |
+| FID / INP | < 100ms | Interaction responsiveness |
+| CLS | < 0.1 | No layout shifts |
+| API p95 response time | < 500ms | Key read endpoints |
+| API p95 response time | < 2s | Write endpoints |
+
+---
+
+## Monitoring & Observability
+
+| Tool | What it tracks |
+|------|---------------|
+| [e.g. Sentry] | Runtime errors + stack traces |
+| [e.g. Vercel Analytics] | Web vitals + traffic |
+| [e.g. Logflare / Papertrail] | Server logs |
+| [e.g. PlanetScale Insights] | Slow queries |
 
 ---
 
@@ -268,6 +349,18 @@ Build command runs \`prisma db push\` (additive-only) before \`next build\`. Des
 | \`fix/*\` | Bug fixes → squash merge via PR |
 
 Rebase feature branches on \`main\` — do not merge \`main\` into the branch.
+
+---
+
+## Troubleshooting
+
+| Issue | Likely cause | Fix |
+|-------|-------------|-----|
+| \`prisma generate\` fails | Node version mismatch | Use Node 18+ via nvm |
+| \`next build\` fails on types | Strict mode violations | Run \`tsc --noEmit\` and fix errors |
+| Database connection refused | Wrong \`DATABASE_URL\` | Check .env.local matches Neon/DB credentials |
+| Stale data after update | React Query cache | Add \`queryClient.invalidateQueries()\` on mutation |
+| API returns 401 | Missing \`API_KEY\` header | Ensure \`Authorization: Bearer ...\` header is set |
 
 ---
 
@@ -360,9 +453,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   function renderContent() {
     // ── Design System — embedded inline (has its own action bar)
+    // -mt-6 cancels the parent pt-6 so DS workspace content starts flush at top;
+    // the DS workspace itself adds its own pt-6, keeping its action bar in line.
     if (activeSection === "design-system") {
       return (
-        <div className="-mx-8 -mt-8">
+        <div className="-mx-8 -mt-6">
           <DesignSystemWorkspace slug={slug} embedded />
         </div>
       );
@@ -528,8 +623,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           />
         </div>
 
-        {/* Main content */}
-        <div className="flex-1 overflow-auto p-8">{renderContent()}</div>
+        {/* Main content — pt-6 matches DesignSystemWorkspace's own pt-6 so action bars align */}
+        <div className="flex-1 overflow-auto px-8 pt-6 pb-8">{renderContent()}</div>
       </div>
 
       {/* Changelog entry form modal */}
