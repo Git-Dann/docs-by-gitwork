@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckIcon } from "@heroicons/react/24/outline";
 import type { WikiSection } from "./wiki-sidebar";
 
+// ─── Section labels (widget-header format) ───────────────────────────────────
+
+const SECTION_LABELS: Record<WikiSection, string> = {
+  "design-system": "DESIGN SYSTEM",
+  ia: "INFORMATION ARCHITECTURE",
+  "dev-guide": "DEVELOPER GUIDE",
+  changelog: "CHANGELOG",
+};
+
 // ─── Section hints ────────────────────────────────────────────────────────────
 
 const SECTION_HINTS: Partial<Record<WikiSection, string>> = {
@@ -161,13 +170,12 @@ export function WikiPageEditor({
   isSaving,
   readOnly = false,
 }: Props) {
-  const [editTitle, setEditTitle] = useState(title);
   const [editContent, setEditContent] = useState(initialContent);
   const [mode, setMode] = useState<"edit" | "preview">(readOnly ? "preview" : "edit");
   const [savedLabel, setSavedLabel] = useState<"" | "Saved" | "Auto-saved">("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef({ title, content: initialContent });
+  const lastSaved = useRef({ content: initialContent });
 
   // Auto-resize textarea
   useEffect(() => {
@@ -182,17 +190,14 @@ export function WikiPageEditor({
   const scheduleAutoSave = useCallback(() => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
-      if (
-        editTitle !== lastSaved.current.title ||
-        editContent !== lastSaved.current.content
-      ) {
-        await onSave(editTitle, editContent);
-        lastSaved.current = { title: editTitle, content: editContent };
+      if (editContent !== lastSaved.current.content) {
+        await onSave(title, editContent);
+        lastSaved.current = { content: editContent };
         setSavedLabel("Auto-saved");
         setTimeout(() => setSavedLabel(""), 2000);
       }
     }, 2500);
-  }, [editTitle, editContent, onSave]);
+  }, [editContent, onSave, title]);
 
   // Clear timer on unmount
   useEffect(() => () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); }, []);
@@ -200,8 +205,8 @@ export function WikiPageEditor({
   // Explicit save
   async function handleSave() {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    await onSave(editTitle, editContent);
-    lastSaved.current = { title: editTitle, content: editContent };
+    await onSave(title, editContent);
+    lastSaved.current = { content: editContent };
     setSavedLabel("Saved");
     setTimeout(() => setSavedLabel(""), 2000);
   }
@@ -228,41 +233,46 @@ export function WikiPageEditor({
     [scheduleAutoSave],
   );
 
+  const sectionLabel = SECTION_LABELS[section] ?? title.toUpperCase();
+  const hint = SECTION_HINTS[section];
+
+  // ── Read-only view ──────────────────────────────────────────────────────────
   if (readOnly) {
     return (
-      <div>
-        <h2 className="mb-5 text-[22px] font-semibold tracking-[-0.01em] text-[var(--text-1)]">{title}</h2>
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">01</span>
+            {` // ${sectionLabel}`}
+          </span>
+        </div>
         <div
-          className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
+          className="p-6"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(initialContent) }}
         />
-      </div>
+      </section>
     );
   }
 
-  const hint = SECTION_HINTS[section];
   const words = wordCount(editContent);
   const chars = editContent.length;
 
+  // ── Edit view ───────────────────────────────────────────────────────────────
   return (
-    <div>
-      {/* Page header — title + actions */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <input
-            type="text"
-            value={editTitle}
-            onChange={(e) => { setEditTitle(e.target.value); scheduleAutoSave(); }}
-            className="w-full border-0 bg-transparent p-0 text-[22px] font-semibold tracking-[-0.01em] text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)] focus:ring-0"
-            placeholder="Section title"
-          />
-          {hint && isNew && (
-            <p className="mt-1.5 text-[13px] text-[var(--text-4)]">{hint}</p>
+    <section className="widget-card">
+      {/* Widget header — section label + actions */}
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">01</span>
+          {` // ${sectionLabel}`}
+        </span>
+        <div className="flex items-center gap-2">
+          {savedLabel && (
+            <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+              <CheckIcon className="h-3 w-3" />
+              {savedLabel}
+            </span>
           )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex shrink-0 items-center gap-2">
           {/* Edit / Preview toggle */}
           <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
             {(["edit", "preview"] as const).map((m) => (
@@ -271,15 +281,15 @@ export function WikiPageEditor({
                 type="button"
                 onClick={() => setMode(m)}
                 className={[
-                  "rounded-[4px] px-2.5 py-1 text-xs font-medium capitalize transition",
-                  mode === m ? "bg-[var(--text-1)] text-white" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                  "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+                  mode === m ? "bg-[var(--text-1)] text-white" : "text-[var(--text-4)] hover:text-[var(--text-1)]",
                 ].join(" ")}
+                style={{ fontFamily: "var(--font-mono)" }}
               >
                 {m}
               </button>
             ))}
           </div>
-
           <button
             type="button"
             onClick={() => void handleSave()}
@@ -288,59 +298,59 @@ export function WikiPageEditor({
           >
             {isSaving ? "Saving…" : "Save"}
           </button>
-
-          {savedLabel && (
-            <span className="flex items-center gap-1 text-xs text-emerald-600">
-              <CheckIcon className="h-3.5 w-3.5" />
-              {savedLabel}
-            </span>
-          )}
         </div>
       </div>
 
-      {/* Markdown toolbar — only in edit mode */}
-      {mode === "edit" && (
-        <div className="mb-3 flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
-          <ToolbarBtn label="B" title="Bold (wrap in **)" onClick={() => insert("**", "**", "bold text")} />
-          <ToolbarBtn label="I" title="Italic (wrap in *)" onClick={() => insert("*", "*", "italic text")} />
-          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-          <ToolbarBtn label="H2" title="Heading 2" onClick={() => insert("## ", "", "Heading")} />
-          <ToolbarBtn label="H3" title="Heading 3" onClick={() => insert("### ", "", "Heading")} />
-          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-          <ToolbarBtn label="`c`" title="Inline code" onClick={() => insert("`", "`", "code")} />
-          <ToolbarBtn label="```" title="Code block" onClick={() => insert("```\n", "\n```", "code here")} />
-          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-          <ToolbarBtn label="•" title="Bullet list" onClick={() => insert("- ", "", "item")} mono={false} />
-          <ToolbarBtn label="1." title="Numbered list" onClick={() => insert("1. ", "", "item")} />
-          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-          <ToolbarBtn label="—" title="Divider" onClick={() => insert("\n---\n")} mono={false} />
-          <ToolbarBtn label="🔗" title="Link" onClick={() => insert("[", "](https://)", "link text")} mono={false} />
-          <span className="ml-auto pl-2 text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            {words}w · {chars}c
-          </span>
-        </div>
-      )}
+      {/* Content body */}
+      <div className="p-6">
+        {hint && isNew && (
+          <p className="mb-4 text-[13px] text-[var(--text-4)]">{hint}</p>
+        )}
 
-      {/* Editor / Preview card */}
-      {mode === "edit" ? (
-        <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
-          <textarea
-            ref={textareaRef}
-            value={editContent}
-            onChange={(e) => { setEditContent(e.target.value); scheduleAutoSave(); }}
-            onBlur={() => scheduleAutoSave()}
-            className="w-full resize-none bg-white p-5 text-sm leading-6 text-[var(--text-1)] outline-none"
-            style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", minHeight: "480px" }}
-            placeholder="Start writing… Markdown is supported."
-            spellCheck={false}
+        {/* Markdown toolbar — only in edit mode */}
+        {mode === "edit" && (
+          <div className="mb-3 flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
+            <ToolbarBtn label="B" title="Bold (wrap in **)" onClick={() => insert("**", "**", "bold text")} />
+            <ToolbarBtn label="I" title="Italic (wrap in *)" onClick={() => insert("*", "*", "italic text")} />
+            <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+            <ToolbarBtn label="H2" title="Heading 2" onClick={() => insert("## ", "", "Heading")} />
+            <ToolbarBtn label="H3" title="Heading 3" onClick={() => insert("### ", "", "Heading")} />
+            <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+            <ToolbarBtn label="`c`" title="Inline code" onClick={() => insert("`", "`", "code")} />
+            <ToolbarBtn label="```" title="Code block" onClick={() => insert("```\n", "\n```", "code here")} />
+            <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+            <ToolbarBtn label="•" title="Bullet list" onClick={() => insert("- ", "", "item")} mono={false} />
+            <ToolbarBtn label="1." title="Numbered list" onClick={() => insert("1. ", "", "item")} />
+            <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+            <ToolbarBtn label="—" title="Divider" onClick={() => insert("\n---\n")} mono={false} />
+            <ToolbarBtn label="🔗" title="Link" onClick={() => insert("[", "](https://)", "link text")} mono={false} />
+            <span className="ml-auto pl-2 text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              {words}w · {chars}c
+            </span>
+          </div>
+        )}
+
+        {/* Editor / Preview */}
+        {mode === "edit" ? (
+          <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+            <textarea
+              ref={textareaRef}
+              value={editContent}
+              onChange={(e) => { setEditContent(e.target.value); scheduleAutoSave(); }}
+              onBlur={() => scheduleAutoSave()}
+              className="w-full resize-none bg-white p-5 text-sm leading-6 text-[var(--text-1)] outline-none"
+              style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", minHeight: "480px" }}
+              placeholder="Start writing… Markdown is supported."
+              spellCheck={false}
+            />
+          </div>
+        ) : (
+          <div
+            className="min-h-[480px] rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(editContent) }}
           />
-        </div>
-      ) : (
-        <div
-          className="min-h-[480px] rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(editContent) }}
-        />
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
