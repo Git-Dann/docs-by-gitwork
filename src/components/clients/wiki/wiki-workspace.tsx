@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, Cog6ToothIcon, PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
@@ -14,7 +14,10 @@ import {
   useSetWikiShare,
   useAddChangelogEntry,
   useDeleteChangelogEntry,
+  useUpdateWikiPlatforms,
+  useUpdateEntryStatus,
 } from "@/hooks/use-wiki";
+import type { ChangelogEntryPayload } from "./changelog-entry-form";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -381,10 +384,19 @@ interface Props {
   clientName: string;
 }
 
+const ALL_PLATFORM_OPTIONS = [
+  { value: "IOS", label: "iOS App Store" },
+  { value: "ANDROID", label: "Google Play" },
+  { value: "FIRESTICK", label: "Amazon Fire TV" },
+  { value: "WEB", label: "Web" },
+];
+
 export function WikiWorkspace({ slug, clientName }: Props) {
   const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
-  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPlatformModal, setShowPlatformModal] = useState(false);
+  const [pendingPlatforms, setPendingPlatforms] = useState<string[]>([]);
 
   // Page editor state — controlled by this workspace, not the editor itself
   const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
@@ -402,6 +414,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setShare = useSetWikiShare(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
+  const updatePlatforms = useUpdateWikiPlatforms(slug);
+  const updateStatus = useUpdateEntryStatus(slug);
 
   if (isPending) {
     return (
@@ -425,24 +439,25 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     await upsertPage.mutateAsync({ type, title, content });
   }
 
-  async function handleDeleteEntry(id: string) {
-    setDeletingEntryId(id);
-    try {
-      await deleteEntry.mutateAsync(id);
-    } finally {
-      setDeletingEntryId(null);
-    }
+  /** Delete all entries in a version group (called with all their IDs). */
+  async function handleDeleteVersion(ids: string[]) {
+    await Promise.all(ids.map((id) => deleteEntry.mutateAsync(id)));
   }
 
-  async function handleAddEntry(payload: {
-    platform: string;
-    version: string;
-    title: string;
-    body?: string;
-    releasedAt?: string;
-  }) {
-    await addEntry.mutateAsync(payload);
-    setShowChangelogForm(false);
+  /** Toggle PENDING ↔ APPROVED for all entries in a version group. */
+  async function handleToggleStatus(ids: string[], newStatus: string) {
+    await Promise.all(ids.map((id) => updateStatus.mutateAsync({ id, status: newStatus })));
+  }
+
+  /** Create one entry per filled-in platform in the form. */
+  async function handleAddEntry(entries: ChangelogEntryPayload[]) {
+    setIsSubmitting(true);
+    try {
+      await Promise.all(entries.map((e) => addEntry.mutateAsync(e)));
+      setShowChangelogForm(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function getDefaultContent(section: WikiSection): string {
@@ -465,10 +480,24 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     // ── Changelog
     if (activeSection === "changelog") {
+      const wikiPlatforms = wiki!.platforms;
       return (
         <>
           {/* Page-level action bar */}
-          <div className="mb-5 flex items-center justify-end">
+          <div className="mb-5 flex items-center justify-end gap-2">
+            {/* Platform settings gear */}
+            <button
+              type="button"
+              onClick={() => {
+                setPendingPlatforms(wikiPlatforms);
+                setShowPlatformModal(true);
+              }}
+              className={chipBtn}
+              title="Manage platforms"
+            >
+              <Cog6ToothIcon className="h-3.5 w-3.5" />
+              Platforms
+            </button>
             <button
               type="button"
               onClick={() => setShowChangelogForm(true)}
@@ -490,9 +519,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             <div className="p-6">
               <ChangelogSection
                 entries={wiki!.changelog}
+                platforms={wikiPlatforms}
                 onAdd={() => setShowChangelogForm(true)}
-                onDelete={handleDeleteEntry}
-                deletingId={deletingEntryId}
+                onDelete={handleDeleteVersion}
+                onToggleStatus={handleToggleStatus}
               />
             </div>
           </section>
@@ -630,10 +660,78 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       {/* Changelog entry form modal */}
       {showChangelogForm && (
         <ChangelogEntryForm
+          platforms={wiki.platforms}
           onSave={handleAddEntry}
           onClose={() => setShowChangelogForm(false)}
-          isSaving={addEntry.isPending}
+          isSaving={isSubmitting}
         />
+      )}
+
+      {/* Platform management modal */}
+      {showPlatformModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-[12px] bg-white shadow-xl">
+            <div className="widget-header rounded-t-[12px]">
+              <span className="widget-header__label">Changelog Platforms</span>
+              <button
+                type="button"
+                onClick={() => setShowPlatformModal(false)}
+                className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="mb-4 text-[13px] text-[var(--text-3)]">
+                Choose which platforms appear in the changelog tabs and the &quot;Add version&quot; form.
+              </p>
+              <div className="space-y-3">
+                {ALL_PLATFORM_OPTIONS.map((opt) => (
+                  <label key={opt.value} className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={pendingPlatforms.includes(opt.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPendingPlatforms((prev) => [...prev, opt.value]);
+                        } else {
+                          // Must keep at least one platform
+                          if (pendingPlatforms.length > 1) {
+                            setPendingPlatforms((prev) =>
+                              prev.filter((p) => p !== opt.value),
+                            );
+                          }
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-[var(--border-2)] accent-[var(--brand-700)]"
+                    />
+                    <span className="text-sm text-[var(--text-1)]">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPlatformModal(false)}
+                  className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-white px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={pendingPlatforms.length === 0 || updatePlatforms.isPending}
+                  onClick={async () => {
+                    await updatePlatforms.mutateAsync(pendingPlatforms);
+                    setShowPlatformModal(false);
+                  }}
+                  className="inline-flex items-center rounded-[6px] bg-[var(--brand-700)] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
+                >
+                  {updatePlatforms.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

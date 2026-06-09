@@ -7,6 +7,8 @@ import {
   setWikiShareApi,
   addWikiChangelogEntry,
   deleteWikiChangelogEntry,
+  updateWikiPlatformsApi,
+  updateWikiEntryStatusApi,
 } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
@@ -60,6 +62,27 @@ export function useDeleteChangelogEntry(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteWikiChangelogEntry(slug, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useUpdateEntryStatus(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      updateWikiEntryStatusApi(slug, id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useUpdateWikiPlatforms(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (platforms: string[]) => updateWikiPlatformsApi(slug, platforms),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

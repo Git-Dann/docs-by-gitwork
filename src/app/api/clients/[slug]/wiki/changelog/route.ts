@@ -11,6 +11,7 @@ const bodySchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   releasedAt: z.string().optional(),
+  status: z.enum(["PENDING", "APPROVED"]).optional(),
 });
 
 export async function POST(

@@ -2374,6 +2374,24 @@ export async function deleteWikiChangelogEntry(slug: string, id: string): Promis
   await apiFetch(`/api/clients/${slug}/wiki/changelog/${id}`, { method: "DELETE" });
 }
 
+export async function updateWikiEntryStatusApi(
+  slug: string,
+  id: string,
+  status: string,
+): Promise<ChangelogEntryRecord> {
+  return apiFetch<ChangelogEntryRecord>(`/api/clients/${slug}/wiki/changelog/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function updateWikiPlatformsApi(slug: string, platforms: string[]): Promise<WikiDTO> {
+  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`, {
+    method: "PATCH",
+    body: JSON.stringify({ platforms }),
+  });
+}
+
 export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
 }
