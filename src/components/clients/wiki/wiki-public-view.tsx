@@ -54,8 +54,10 @@ export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
     const existingContent = typeof page?.content === "string" ? page.content : "";
     return (
       <WikiPageEditor
+        section={activeSection}
         title={page?.title ?? SECTION_TITLES[activeSection]}
         content={existingContent}
+        isNew={page === null}
         onSave={async () => {}}
         isSaving={false}
         readOnly
