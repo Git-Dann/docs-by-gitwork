@@ -163,7 +163,7 @@ export function DesignSystemWorkspace({
           </div>
           <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
             <p className="max-w-md text-[14px] leading-relaxed text-[var(--text-3)]">
-              No design system yet. Generate this client's tokens with the Cowork{" "}
+              No design system yet. Generate this client&apos;s tokens with the Cowork{" "}
               <span className="font-medium text-[var(--text-2)]">design-system</span> skill, then
               import the JSON here.
             </p>
