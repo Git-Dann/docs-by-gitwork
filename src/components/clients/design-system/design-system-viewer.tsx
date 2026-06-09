@@ -264,7 +264,7 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
             <GroupLabel>{label}</GroupLabel>
             <div
               className="grid gap-3"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(88px, 1fr))" }}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}
             >
               {list.map((c, i) => (
                 <ColourChip key={`${c.name}-${i}`} c={c} varName={varMap.get(c.hex.toLowerCase())} />
