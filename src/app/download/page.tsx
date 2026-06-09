@@ -80,8 +80,9 @@ export default async function DownloadPage() {
           Install Foundry for Mac
         </h1>
         <p className="mt-5 max-w-[54ch] text-[16px] leading-7" style={{ color: "var(--text-3)" }}>
-          A first-class native Mac app — native sidebar, windows, menus and keyboard shortcuts.
-          Install once from the DMG; every future version updates itself inside the app.
+          Write and track proposals, manage clients, run CodeClear hiring and keep your rate
+          card — your whole Foundry workspace, native on the Mac. Install once; every update
+          installs itself inside the app.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center gap-4">
@@ -175,28 +176,11 @@ export default async function DownloadPage() {
           </div>
         </div>
 
-        {/* 04 // INTEGRITY — checksum */}
-        {meta?.sha256 ? (
-          <div className="widget-card mt-3">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">04</span>{" // INTEGRITY"}
-              </span>
-              <span className="widget-header__status">SHA-256</span>
-            </div>
-            <div className="widget-body--compact">
-              <p className="break-all text-[12px] leading-5" style={{ fontFamily: mono, color: "var(--text-3)" }}>
-                {meta.sha256}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
         {meta?.notes && meta.notes.length > 0 ? (
           <div className="widget-card mt-3">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">05</span>{" // WHAT’S NEW"}
+                <span className="widget-header__label--number">04</span>{" // WHAT’S NEW"}
               </span>
               <span className="widget-header__status">{meta.version ? `v${meta.version}` : ""}</span>
             </div>
