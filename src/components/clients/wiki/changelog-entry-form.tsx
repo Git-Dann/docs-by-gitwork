@@ -295,6 +295,8 @@ export function ChangelogEntryForm({
       if (limit != null && entry.body) {
         const len = formatForStore(entry.body).length;
         if (len > limit) {
+          // Jump to the offending platform so the user sees what to trim.
+          setActiveTab(entry.platform);
           setError(
             `${PLATFORM_LABELS[entry.platform]} release notes are ${len}/${limit} characters — over the store limit. Trim before saving.`,
           );
@@ -490,9 +492,9 @@ export function ChangelogEntryForm({
                   key={activeTab + "-changelog"}
                   value={activePlatformData.changelog}
                   onChange={(e) => updateField(activeTab, "changelog", e.target.value)}
-                  rows={5}
+                  rows={7}
                   placeholder="Brief overview of this release."
-                  className={`${fieldInput} resize-none`}
+                  className={`${fieldInput} resize-y`}
                 />
                 <p className="mt-1 text-[11px] text-[var(--text-4)]">
                   Heading shows as “Changelog v{cleanVersion(version) || "x.y.z"}”
@@ -509,9 +511,9 @@ export function ChangelogEntryForm({
                   key={activeTab + "-newFeatures"}
                   value={activePlatformData.newFeatures}
                   onChange={(e) => updateField(activeTab, "newFeatures", e.target.value)}
-                  rows={5}
+                  rows={7}
                   placeholder={"Rounds history page\nProfile photo upload"}
-                  className={`${fieldInput} resize-none`}
+                  className={`${fieldInput} resize-y`}
                 />
                 <p className="mt-1 text-[11px] text-[var(--text-4)]">
                   One per line — auto-formatted as bullets
@@ -528,9 +530,9 @@ export function ChangelogEntryForm({
                   key={activeTab + "-improvements"}
                   value={activePlatformData.improvements}
                   onChange={(e) => updateField(activeTab, "improvements", e.target.value)}
-                  rows={5}
+                  rows={7}
                   placeholder={"Faster load time on home screen\nBetter error messages"}
-                  className={`${fieldInput} resize-none`}
+                  className={`${fieldInput} resize-y`}
                 />
                 <p className="mt-1 text-[11px] text-[var(--text-4)]">
                   One per line — auto-formatted as bullets
@@ -547,9 +549,9 @@ export function ChangelogEntryForm({
                   key={activeTab + "-fixes"}
                   value={activePlatformData.fixes}
                   onChange={(e) => updateField(activeTab, "fixes", e.target.value)}
-                  rows={5}
+                  rows={7}
                   placeholder={"Fixed crash on launch for some devices\nResolved incorrect badge count"}
-                  className={`${fieldInput} resize-none`}
+                  className={`${fieldInput} resize-y`}
                 />
                 <p className="mt-1 text-[11px] text-[var(--text-4)]">
                   One per line — auto-formatted as bullets
