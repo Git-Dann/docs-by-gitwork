@@ -39,6 +39,8 @@ export interface WikiDTO {
   clientSlug: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
+  platforms: string[];
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   updatedAt: string;
@@ -84,11 +86,14 @@ function serializeEntry(e: {
   };
 }
 
+const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
+
 async function buildDTO(wiki: {
   id: string;
   clientId: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  platforms: unknown;
   updatedAt: Date;
   client: { name: string; slug: string };
   pages: Array<{
@@ -116,6 +121,7 @@ async function buildDTO(wiki: {
     clientSlug: wiki.client.slug,
     shareToken: wiki.shareToken,
     shareEnabled: wiki.shareEnabled,
+    platforms: Array.isArray(wiki.platforms) ? (wiki.platforms as string[]) : DEFAULT_PLATFORMS,
     pages: wiki.pages.sort((a, b) => a.sortOrder - b.sortOrder).map(serializePage),
     changelog: wiki.changelog
       .sort((a, b) => {
@@ -133,6 +139,8 @@ const WIKI_INCLUDE = {
   client: { select: { name: true, slug: true } },
   pages: true,
   changelog: true,
+  // platforms is a scalar Json field — included automatically via `include` on
+  // the parent model, not via a relation. Listed here as a reminder.
 } as const;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -281,5 +289,22 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
     include: WIKI_INCLUDE,
   });
   if (!wiki) return null;
+  return buildDTO(wiki);
+}
+
+/**
+ * Update the set of enabled changelog platforms for a client's wiki.
+ * Auto-creates the wiki row if it doesn't exist.
+ */
+export async function updateWikiPlatforms(
+  clientId: string,
+  platforms: string[],
+): Promise<WikiDTO> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, platforms },
+    update: { platforms },
+    include: WIKI_INCLUDE,
+  });
   return buildDTO(wiki);
 }

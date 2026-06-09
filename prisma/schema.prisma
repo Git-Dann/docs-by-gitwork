@@ -987,6 +987,9 @@ model ClientWiki {
   client       WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   shareToken   String?
   shareEnabled Boolean                @default(false)
+  /// Enabled changelog platforms for this client, e.g. ["IOS","ANDROID","WEB"].
+  /// Null means the default set (IOS + ANDROID + WEB). FIRESTICK is opt-in.
+  platforms    Json?
   pages        ClientWikiPage[]
   changelog    ClientChangelogEntry[]
   createdAt    DateTime               @default(now())
