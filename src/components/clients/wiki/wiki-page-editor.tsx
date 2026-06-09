@@ -230,10 +230,10 @@ export function WikiPageEditor({
 
   if (readOnly) {
     return (
-      <div className="max-w-3xl">
-        <h2 className="mb-4 text-xl font-semibold text-[var(--text-1)]">{title}</h2>
+      <div>
+        <h2 className="mb-5 text-[22px] font-semibold tracking-[-0.01em] text-[var(--text-1)]">{title}</h2>
         <div
-          className="prose-custom"
+          className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(initialContent) }}
         />
       </div>
@@ -245,111 +245,102 @@ export function WikiPageEditor({
   const chars = editContent.length;
 
   return (
-    <div className="max-w-3xl">
-      {/* Section hint */}
-      {hint && isNew && (
-        <div className="mb-4 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-0)] px-4 py-3">
-          <p className="text-sm text-[var(--text-3)]">{hint}</p>
+    <div>
+      {/* Page header — title + actions */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => { setEditTitle(e.target.value); scheduleAutoSave(); }}
+            className="w-full border-0 bg-transparent p-0 text-[22px] font-semibold tracking-[-0.01em] text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)] focus:ring-0"
+            placeholder="Section title"
+          />
+          {hint && isNew && (
+            <p className="mt-1.5 text-[13px] text-[var(--text-4)]">{hint}</p>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Edit / Preview toggle */}
+          <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
+            {(["edit", "preview"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={[
+                  "rounded-[4px] px-2.5 py-1 text-xs font-medium capitalize transition",
+                  mode === m ? "bg-[var(--text-1)] text-white" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                ].join(" ")}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={isSaving}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+
+          {savedLabel && (
+            <span className="flex items-center gap-1 text-xs text-emerald-600">
+              <CheckIcon className="h-3.5 w-3.5" />
+              {savedLabel}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Markdown toolbar — only in edit mode */}
+      {mode === "edit" && (
+        <div className="mb-3 flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
+          <ToolbarBtn label="B" title="Bold (wrap in **)" onClick={() => insert("**", "**", "bold text")} />
+          <ToolbarBtn label="I" title="Italic (wrap in *)" onClick={() => insert("*", "*", "italic text")} />
+          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+          <ToolbarBtn label="H2" title="Heading 2" onClick={() => insert("## ", "", "Heading")} />
+          <ToolbarBtn label="H3" title="Heading 3" onClick={() => insert("### ", "", "Heading")} />
+          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+          <ToolbarBtn label="`c`" title="Inline code" onClick={() => insert("`", "`", "code")} />
+          <ToolbarBtn label="```" title="Code block" onClick={() => insert("```\n", "\n```", "code here")} />
+          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+          <ToolbarBtn label="•" title="Bullet list" onClick={() => insert("- ", "", "item")} mono={false} />
+          <ToolbarBtn label="1." title="Numbered list" onClick={() => insert("1. ", "", "item")} />
+          <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
+          <ToolbarBtn label="—" title="Divider" onClick={() => insert("\n---\n")} mono={false} />
+          <ToolbarBtn label="🔗" title="Link" onClick={() => insert("[", "](https://)", "link text")} mono={false} />
+          <span className="ml-auto pl-2 text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+            {words}w · {chars}c
+          </span>
         </div>
       )}
 
-      {/* Title */}
-      <input
-        type="text"
-        value={editTitle}
-        onChange={(e) => { setEditTitle(e.target.value); scheduleAutoSave(); }}
-        className="mb-4 w-full rounded-[6px] border border-[rgba(0,0,0,0.1)] bg-transparent px-3 py-2 text-lg font-semibold text-[var(--text-1)] outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
-        placeholder="Section title"
-      />
-
-      {/* Toolbar + Edit/Preview tabs */}
-      <div className="mb-2 flex items-center gap-2">
-        {/* Edit/Preview pill */}
-        <div className="flex rounded-[6px] border border-[rgba(0,0,0,0.1)] p-0.5">
-          <button
-            type="button"
-            onClick={() => setMode("edit")}
-            className={[
-              "rounded-[4px] px-3 py-1 text-xs font-medium transition",
-              mode === "edit" ? "bg-[var(--text-1)] text-white" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("preview")}
-            className={[
-              "rounded-[4px] px-3 py-1 text-xs font-medium transition",
-              mode === "preview" ? "bg-[var(--text-1)] text-white" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-          >
-            Preview
-          </button>
-        </div>
-
-        {/* Markdown toolbar — only in edit mode */}
-        {mode === "edit" && (
-          <div className="flex items-center gap-0.5 rounded-[6px] border border-[rgba(0,0,0,0.09)] bg-[var(--surface-0)] px-1 py-0.5">
-            <ToolbarBtn label="B" title="Bold (wrap in **)" onClick={() => insert("**", "**", "bold text")} />
-            <ToolbarBtn label="I" title="Italic (wrap in *)" onClick={() => insert("*", "*", "italic text")} />
-            <div className="mx-0.5 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-            <ToolbarBtn label="H2" title="Heading 2" onClick={() => insert("## ", "", "Heading")} />
-            <ToolbarBtn label="H3" title="Heading 3" onClick={() => insert("### ", "", "Heading")} />
-            <div className="mx-0.5 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-            <ToolbarBtn label="`c`" title="Inline code" onClick={() => insert("`", "`", "code")} />
-            <ToolbarBtn label="```" title="Code block" onClick={() => insert("```\n", "\n```", "code here")} />
-            <div className="mx-0.5 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-            <ToolbarBtn label="•" title="Bullet list" onClick={() => insert("- ", "", "item")} mono={false} />
-            <ToolbarBtn label="1." title="Numbered list" onClick={() => insert("1. ", "", "item")} />
-            <div className="mx-0.5 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
-            <ToolbarBtn label="—" title="Divider" onClick={() => insert("\n---\n")} mono={false} />
-            <ToolbarBtn label="🔗" title="Link" onClick={() => insert("[", "](https://)", "link text")} mono={false} />
-          </div>
-        )}
-      </div>
-
-      {/* Editor / Preview pane */}
+      {/* Editor / Preview card */}
       {mode === "edit" ? (
-        <textarea
-          ref={textareaRef}
-          value={editContent}
-          onChange={(e) => { setEditContent(e.target.value); scheduleAutoSave(); }}
-          onBlur={() => scheduleAutoSave()}
-          className="w-full resize-none rounded-[6px] border border-[rgba(0,0,0,0.1)] bg-[var(--surface-0)] p-4 text-sm leading-6 text-[var(--text-1)] outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
-          style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", minHeight: "420px" }}
-          placeholder="Start writing… Markdown is supported."
-          spellCheck={false}
-        />
+        <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+          <textarea
+            ref={textareaRef}
+            value={editContent}
+            onChange={(e) => { setEditContent(e.target.value); scheduleAutoSave(); }}
+            onBlur={() => scheduleAutoSave()}
+            className="w-full resize-none bg-white p-5 text-sm leading-6 text-[var(--text-1)] outline-none"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "12.5px", minHeight: "480px" }}
+            placeholder="Start writing… Markdown is supported."
+            spellCheck={false}
+          />
+        </div>
       ) : (
         <div
-          className="min-h-[420px] rounded-[6px] border border-[rgba(0,0,0,0.1)] bg-white p-6"
+          className="min-h-[480px] rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(editContent) }}
         />
       )}
-
-      {/* Status bar */}
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={isSaving}
-          className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--brand-800)] disabled:opacity-60 transition"
-        >
-          {isSaving ? "Saving…" : "Save"}
-        </button>
-
-        {savedLabel && (
-          <span className="flex items-center gap-1 text-xs text-emerald-600">
-            <CheckIcon className="h-3.5 w-3.5" />
-            {savedLabel}
-          </span>
-        )}
-
-        <span className="ml-auto text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          {words} words · {chars} chars
-        </span>
-      </div>
     </div>
   );
 }
