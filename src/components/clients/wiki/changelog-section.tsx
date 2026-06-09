@@ -488,7 +488,7 @@ export function ChangelogSection({
                             type="button"
                             onClick={() => onEdit(group.version)}
                             disabled={isProcessing}
-                            className="rounded p-1 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-50"
+                            className="rounded p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-50"
                             title="Edit this version"
                           >
                             <PencilSquareIcon className="h-3.5 w-3.5" />
@@ -501,7 +501,7 @@ export function ChangelogSection({
                             type="button"
                             onClick={() => void handleDelete(group)}
                             disabled={isProcessing}
-                            className="rounded p-1 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            className="rounded p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                             title="Delete this version"
                           >
                             <TrashIcon className="h-3.5 w-3.5" />
