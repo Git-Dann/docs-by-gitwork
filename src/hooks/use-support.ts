@@ -36,6 +36,7 @@ import {
   updateSupportTicket,
   batchUpdateSupportTickets,
   searchConversationsSemantic,
+  generateReportNarrative,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
@@ -227,6 +228,13 @@ export function useGenerateAiDraft(clientId: string | null) {
   return useMutation({
     mutationFn: (convId: string) =>
       generateAiDraft(clientId as string, convId),
+  });
+}
+
+export function useGenerateReportNarrative(clientId: string | null) {
+  return useMutation({
+    mutationFn: (data: { periodStart?: string; periodEnd?: string; periodLabel?: string }) =>
+      generateReportNarrative(clientId as string, data),
   });
 }
 

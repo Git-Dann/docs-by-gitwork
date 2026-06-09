@@ -22,6 +22,10 @@
     {
       "path": "/api/cron/analytics-snapshot",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/embed-conversations",
+      "schedule": "0 7 * * *"
     }
   ]
 }

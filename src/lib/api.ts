@@ -1382,6 +1382,17 @@ export async function searchConversationsSemantic(
   });
 }
 
+export async function generateReportNarrative(
+  clientId: string,
+  data: { periodStart?: string; periodEnd?: string; periodLabel?: string },
+): Promise<{ overviewText: string; performanceText: string; summaryText: string; ticketCount: number }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/generate-narrative`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateSupportConversation(
   clientId: string,
   convId: string,
