@@ -21,7 +21,14 @@ const menuPanel =
 const menuItem =
   "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)]";
 
-export function DesignSystemWorkspace({ slug }: { slug: string }) {
+export function DesignSystemWorkspace({
+  slug,
+  embedded = false,
+}: {
+  slug: string;
+  /** When true, hides the "← Client" back link (used when embedded in the wiki). */
+  embedded?: boolean;
+}) {
   const { data: clientData } = useClientDetail(slug);
   const client = clientData?.client;
   const { data: ds, isPending } = useClientDesignSystem(slug);
@@ -50,16 +57,20 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-5xl px-8 pt-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href={`/app/portal/${slug}`}
-          className="text-[13px] text-[var(--text-3)] transition hover:text-[var(--brand-700)]"
-        >
-          ← {client?.name ?? "Client"}
-        </Link>
+        {/* Back link — hidden when embedded inside the wiki */}
+        {!embedded && (
+          <Link
+            href={`/app/portal/${slug}`}
+            className="text-[13px] text-[var(--text-3)] transition hover:text-[var(--brand-700)]"
+          >
+            ← {client?.name ?? "Client"}
+          </Link>
+        )}
+
         {ds?.exists && (
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${embedded ? "" : ""}`}>
             {/* Share — toggle + link + open, folded into one menu */}
             <Menu as="div" className="relative">
               <MenuButton className={chipBtn}>
@@ -152,7 +163,7 @@ export function DesignSystemWorkspace({ slug }: { slug: string }) {
           </div>
           <div className="flex flex-col items-center justify-center gap-4 p-12 text-center">
             <p className="max-w-md text-[14px] leading-relaxed text-[var(--text-3)]">
-              No design system yet. Generate this client’s tokens with the Cowork{" "}
+              No design system yet. Generate this client's tokens with the Cowork{" "}
               <span className="font-medium text-[var(--text-2)]">design-system</span> skill, then
               import the JSON here.
             </p>
