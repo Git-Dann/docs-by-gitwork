@@ -5,9 +5,9 @@ import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
-import { AppStoreEditor } from "./app-store-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
+import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import {
   useClientWiki,
   useUpsertWikiPage,
@@ -15,26 +15,67 @@ import {
   useAddChangelogEntry,
   useDeleteChangelogEntry,
 } from "@/hooks/use-wiki";
-type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "APP_STORE_IOS" | "APP_STORE_ANDROID" | "APP_STORE_FIRESTICK" | "CUSTOM";
 
-// Map sidebar sections → WikiPageType enum values
+type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
+
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   ia: "IA_GUIDE",
   "dev-guide": "DEV_API_GUIDE",
-  "app-store-ios": "APP_STORE_IOS",
-  "app-store-android": "APP_STORE_ANDROID",
-  "app-store-firestick": "APP_STORE_FIRESTICK",
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
-  "app-store-ios": "iOS App Store",
-  "app-store-android": "Google Play",
-  "app-store-firestick": "Amazon Fire TV",
   changelog: "Changelog",
 };
+
+// Default starter templates — pre-filled when the page has never been saved
+const IA_TEMPLATE = `## Overview
+Describe the product's information hierarchy and navigation structure here.
+
+## Navigation Structure
+- Primary nav items
+- Secondary nav / sidebar items
+- Key user flows
+
+## Content Taxonomy
+List the content types, categories, and tags the product uses.
+
+## URL Structure
+Document URL patterns and routing conventions.
+
+## Search & Discovery
+How users find content — search, filters, browse.
+`;
+
+const DEV_TEMPLATE = `## Getting Started
+How to clone, install, and run the project locally.
+
+\`\`\`bash
+git clone https://github.com/org/repo
+npm install
+npm run dev
+\`\`\`
+
+## Architecture
+High-level overview of the technical stack and folder structure.
+
+## Environment Variables
+| Variable | Description | Required |
+|----------|-------------|----------|
+| DATABASE_URL | Postgres connection string | Yes |
+| API_KEY | External API auth token | Yes |
+
+## API Reference
+Key endpoints, request shapes, and response formats.
+
+## Deployment
+Steps to deploy to staging and production.
+
+## Key Contacts
+Who to contact for access, questions, or on-call incidents.
+`;
 
 interface Props {
   slug: string;
@@ -62,25 +103,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   if (!wiki) return null;
 
-  // Helper: find a page by type
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return null;
     return wiki!.pages.find((p) => p.type === type) ?? null;
   }
 
-  // Save handler for text pages (IA / Dev Guide)
   async function handleSavePage(section: WikiSection, title: string, content: string) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
-    await upsertPage.mutateAsync({ type, title, content });
-  }
-
-  // Save handler for app store pages
-  async function handleSaveAppStore(section: WikiSection, content: Record<string, string>) {
-    const type = SECTION_TO_TYPE[section];
-    if (!type) return;
-    const title = SECTION_TITLES[section];
     await upsertPage.mutateAsync({ type, title, content });
   }
 
@@ -104,23 +135,23 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     setShowChangelogForm(false);
   }
 
+  function getDefaultContent(section: WikiSection): string {
+    if (section === "ia") return IA_TEMPLATE;
+    if (section === "dev-guide") return DEV_TEMPLATE;
+    return "";
+  }
+
   function renderContent() {
+    // ── Design System — embedded inline (no external link)
     if (activeSection === "design-system") {
       return (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="mb-4 text-sm text-[var(--text-3)]">
-            The Design System lives on its own page.
-          </p>
-          <Link
-            href={`/app/portal/${slug}/design-system`}
-            className="rounded-[6px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-800)] transition"
-          >
-            Open Design System →
-          </Link>
+        <div className="-mx-8 -mt-8">
+          <DesignSystemWorkspace slug={slug} embedded />
         </div>
       );
     }
 
+    // ── Changelog
     if (activeSection === "changelog") {
       return (
         <ChangelogSection
@@ -132,32 +163,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       );
     }
 
-    if (activeSection === "app-store-ios" || activeSection === "app-store-android" || activeSection === "app-store-firestick") {
-      const platformMap = {
-        "app-store-ios": "ios",
-        "app-store-android": "android",
-        "app-store-firestick": "firestick",
-      } as const;
-      const page = getPage(activeSection);
-      const content = (page?.content as Record<string, string>) ?? {};
-      return (
-        <AppStoreEditor
-          platform={platformMap[activeSection]}
-          content={content}
-          onSave={(c) => handleSaveAppStore(activeSection, c)}
-          isSaving={upsertPage.isPending}
-        />
-      );
-    }
-
-    // IA / Dev Guide — text editor
+    // ── IA / Developer Guide — rich markdown editor
     const page = getPage(activeSection);
-    const existingContent =
-      typeof page?.content === "string" ? page.content : "";
+    const savedContent = typeof page?.content === "string" ? page.content : "";
+    const initialContent = savedContent || getDefaultContent(activeSection);
     return (
       <WikiPageEditor
+        key={activeSection}
+        section={activeSection}
         title={page?.title ?? SECTION_TITLES[activeSection]}
-        content={existingContent}
+        content={initialContent}
+        isNew={!page}
         onSave={(title, content) => handleSavePage(activeSection, title, content)}
         isSaving={upsertPage.isPending}
       />
