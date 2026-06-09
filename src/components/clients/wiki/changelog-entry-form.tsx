@@ -19,8 +19,8 @@ const PLATFORM_LABELS: Record<string, string> = {
   ALL: "All platforms",
 };
 
-// Platform display order — ALL last so individual platforms lead
-const PLATFORM_ORDER = ["IOS", "ANDROID", "FIRESTICK", "WEB", "ALL"];
+// Platform display order (Web covers the "all platforms" case — no ALL tab)
+const PLATFORM_ORDER = ["IOS", "ANDROID", "FIRESTICK", "WEB"];
 
 // Release-notes character limits for each store's "What's new" field.
 // null = no enforced limit (Web / All-platforms).
@@ -207,7 +207,7 @@ export function ChangelogEntryForm({
 
   // Build ordered tab list from enabled platforms
   const tabPlatforms = PLATFORM_ORDER.filter(
-    (p) => !enabledPlatforms || enabledPlatforms.includes(p) || p === "ALL",
+    (p) => !enabledPlatforms || enabledPlatforms.includes(p),
   );
 
   // platform → existing entry id (edit mode), so saved payloads update in place
@@ -455,9 +455,9 @@ export function ChangelogEntryForm({
                       ].join(" ")}
                     >
                       {PLATFORM_LABELS[p] ?? p}
-                      {/* Dot indicator when content has been filled in */}
+                      {/* Dot indicator when content is filled — absolute so it never shifts tabs */}
                       {filled && !isActive && (
-                        <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-500)]" />
+                        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[var(--brand-500)]" />
                       )}
                     </button>
                   );
