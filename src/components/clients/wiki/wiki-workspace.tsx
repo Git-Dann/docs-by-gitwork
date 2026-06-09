@@ -31,50 +31,244 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 };
 
 // Default starter templates — pre-filled when the page has never been saved
-const IA_TEMPLATE = `## Overview
-Describe the product's information hierarchy and navigation structure here.
+const IA_TEMPLATE = `## Product Overview
+One sentence describing what this product is, who it's for, and its core value.
 
-## Navigation Structure
-- Primary nav items
-- Secondary nav / sidebar items
-- Key user flows
+---
 
-## Content Taxonomy
-List the content types, categories, and tags the product uses.
+## User Roles & Permissions
+
+| Role | Description | Access |
+|------|-------------|--------|
+| Admin | Full access — manages users, settings, and content | Full |
+| Member | Standard registered account | Standard |
+| Guest / Public | Unauthenticated or free-tier access | Limited |
+
+---
+
+## Site Map
+
+### Primary Navigation
+- **Home** \`/\`
+- **Dashboard** \`/dashboard\`
+- **[Feature]** \`/feature\`
+- **Settings** \`/settings\`
+  - Profile
+  - Billing
+  - Notifications
+
+### Authenticated Areas
+- **[Area]** — describe what lives here
+- **[Area]** — describe what lives here
+
+### Admin / Internal
+- **[Admin area]** — accessible only to Admin role
+
+---
+
+## Content Types
+
+| Type | Description | Key Fields | Status States |
+|------|-------------|------------|---------------|
+| [Entity] | What this content type represents | title, body, author | draft / published |
+| [Entity] | What this content type represents | name, price, sku | active / archived |
+
+---
 
 ## URL Structure
-Document URL patterns and routing conventions.
+
+| Pattern | Description | Example |
+|---------|-------------|---------|
+| \`/\` | Marketing homepage | — |
+| \`/[slug]\` | Public content pages | \`/about\` |
+| \`/app\` | Authenticated app shell | — |
+| \`/app/[feature]\` | Feature pages | \`/app/dashboard\` |
+| \`/api/v1/[resource]\` | REST API | \`/api/v1/users\` |
+
+---
+
+## Key User Flows
+
+### Sign Up / Onboarding
+1. Land on homepage
+2. Click Sign up → enter email + password
+3. Verify email → complete profile
+4. Redirected to dashboard / onboarding checklist
+
+### Core Flow — [Primary Action]
+1. Navigate to [feature]
+2. [Action] → [Outcome]
+3. Confirm / save → success state or error feedback
+
+### [Second Key Flow]
+1. ...
+
+---
 
 ## Search & Discovery
-How users find content — search, filters, browse.
+Describe how users find content — global search, filters, category browse, autocomplete, empty states.
+
+---
+
+## Navigation Conventions
+- **Mobile:** bottom tab bar / hamburger menu / full-screen nav
+- **Desktop:** sidebar / top nav / split view
+- **Active state:** highlighted nav item / left border / underline
+- **Breadcrumbs:** shown on [pages] — format: Parent › Child
+- **Deep links:** describe any shareable or bookmarkable URLs
 `;
 
-const DEV_TEMPLATE = `## Getting Started
-How to clone, install, and run the project locally.
+const DEV_TEMPLATE = `## Prerequisites
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Node.js | 18+ | Use nvm or fnm for version management |
+| npm | Latest | Or pnpm — see package.json |
+| Git | Latest | — |
+| [Database] | — | See Database Setup below |
+
+---
+
+## Quick Start
 
 \`\`\`bash
-git clone https://github.com/org/repo
+# 1. Clone the repo
+git clone https://github.com/[org]/[repo]
+cd [repo]
+
+# 2. Install dependencies
 npm install
+
+# 3. Copy the env file and fill in values
+cp .env.example .env.local
+
+# 4. Push the database schema
+npm run db:push
+
+# 5. Start the dev server
 npm run dev
 \`\`\`
 
-## Architecture
-High-level overview of the technical stack and folder structure.
+Open **http://localhost:3000**
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | [e.g. Next.js 15 / React 19] |
+| Language | TypeScript |
+| Database | [e.g. PostgreSQL (Neon) + Prisma ORM] |
+| Styling | [e.g. Tailwind CSS] |
+| Deployment | [e.g. Vercel] |
+| Auth | [e.g. NextAuth / Clerk / custom JWT] |
+
+---
+
+## Folder Structure
+
+\`\`\`
+src/
+  app/         ← Pages and API routes (App Router)
+  components/  ← React components
+  server/      ← Server-side business logic
+  lib/         ← Shared utilities and helpers
+  hooks/       ← Data-fetching hooks
+prisma/
+  schema.prisma ← Database schema
+\`\`\`
+
+---
 
 ## Environment Variables
+
 | Variable | Description | Required |
 |----------|-------------|----------|
-| DATABASE_URL | Postgres connection string | Yes |
-| API_KEY | External API auth token | Yes |
+| \`DATABASE_URL\` | Postgres connection string (pooled) | ✓ |
+| \`DIRECT_URL\` | Postgres direct URL (for migrations) | ✓ |
+| \`NEXTAUTH_SECRET\` | Auth session signing secret | ✓ |
+| \`NEXTAUTH_URL\` | Base URL for auth callbacks | ✓ |
+| \`API_KEY\` | Internal API authentication | ✓ |
+| \`[SERVICE]_API_KEY\` | [Third-party service] | — |
 
-## API Reference
-Key endpoints, request shapes, and response formats.
+---
+
+## Database Setup
+
+\`\`\`bash
+npm run db:generate   # Regenerate Prisma client after schema changes
+npm run db:push       # Push schema changes to the database (dev / preview)
+npm run db:migrate    # Create a named migration (staging / production)
+\`\`\`
+
+Schema file: \`prisma/schema.prisma\`
+
+---
+
+## Key API Endpoints
+
+| Method | Route | Description | Auth |
+|--------|-------|-------------|------|
+| \`GET\` | \`/api/health\` | Health check | None |
+| \`GET\` | \`/api/[resource]\` | List resources | Bearer |
+| \`POST\` | \`/api/[resource]\` | Create resource | Bearer |
+| \`PATCH\` | \`/api/[resource]/[id]\` | Update resource | Bearer |
+| \`DELETE\` | \`/api/[resource]/[id]\` | Delete resource | Bearer |
+
+All authenticated routes require: \`Authorization: Bearer {API_KEY}\`
+
+---
+
+## Authentication
+Describe the auth approach — session model, protected routes, token refresh, role-based access.
+
+---
 
 ## Deployment
-Steps to deploy to staging and production.
+
+### Preview (auto)
+Push any branch → Vercel creates a preview URL automatically.
+
+### Production
+\`\`\`bash
+# Merge PR to main → auto-deploys to production
+# Manual: vercel --prod
+\`\`\`
+
+Build command runs \`prisma db push\` (additive-only) before \`next build\`. Destructive schema changes must be applied manually.
+
+---
+
+## Code Conventions
+- **TypeScript strict** — avoid \`any\`; use explicit types
+- **Absolute imports** — use \`@/\` prefix for cross-directory imports
+- **API responses** — use \`apiOk()\` / \`apiError()\` helpers consistently
+- **Components** — one component per file, PascalCase filenames
+- **Commits** — Conventional Commits format (\`feat:\`, \`fix:\`, \`chore:\`)
+
+---
+
+## Branching Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| \`main\` | Production — every merge auto-deploys |
+| \`feature/*\` | New features → squash merge via PR |
+| \`fix/*\` | Bug fixes → squash merge via PR |
+
+Rebase feature branches on \`main\` — do not merge \`main\` into the branch.
+
+---
 
 ## Key Contacts
-Who to contact for access, questions, or on-call incidents.
+
+| Role | Name | Contact |
+|------|------|---------|
+| Tech Lead | — | — |
+| DevOps / Infra | — | — |
+| Product / Design | — | — |
+| On-call / Incidents | — | — |
 `;
 
 interface Props {
