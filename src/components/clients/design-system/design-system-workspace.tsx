@@ -57,7 +57,7 @@ export function DesignSystemWorkspace({
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-8 pt-6">
+    <div className="px-8 pt-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         {/* Back link — hidden when embedded inside the wiki */}
         {!embedded && (
