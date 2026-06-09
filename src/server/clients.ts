@@ -431,12 +431,22 @@ const _cachedLoadCollections = unstable_cache(
 async function loadClientCollections() {
   const { workspace } = await ensureBaseRecords();
   const raw = await _cachedLoadCollections(workspace.id);
-  // hiddenSlugs is serialized as a plain array by the cache — reconstruct Set.
+  // unstable_cache JSON-serialises the return value, turning Date objects into
+  // ISO strings. Re-hydrate them so callers (mergeClients, toClientListItem)
+  // get the Date instances they expect.
   return {
     workspace,
-    manualClients: raw.manualClients,
+    manualClients: raw.manualClients.map((c) => ({
+      ...c,
+      createdAt: new Date(c.createdAt as unknown as string),
+      updatedAt: new Date(c.updatedAt as unknown as string),
+    })) as ManualClientRecord[],
     hiddenSlugs: new Set(raw.hiddenSlugs),
-    proposals: raw.proposals,
+    proposals: raw.proposals.map((p) => ({
+      ...p,
+      createdAt: new Date(p.createdAt as unknown as string),
+      updatedAt: new Date(p.updatedAt as unknown as string),
+    })),
   };
 }
 
