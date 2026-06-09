@@ -727,7 +727,7 @@ export async function getTicketStatsForPeriod(
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
   const tickets = await prisma.supportTicket.findMany({
-    where: { clientId, createdAt: { gte: start, lte: end } },
+    where: { clientId, updatedAt: { gte: start, lte: end } },
     select: { issueType: true, priority: true },
   });
 
