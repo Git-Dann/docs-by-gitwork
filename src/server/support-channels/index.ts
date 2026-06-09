@@ -4,10 +4,12 @@ import type { ChannelAdapter, SyncContext, SyncResult, FilterReasons } from "./t
 import { discordAdapter } from "./discord";
 import { redditAdapter } from "./reddit";
 import { gmailAdapter } from "./gmail";
+import { appReviewsAdapter } from "./app-reviews";
+import { webhookAdapter } from "./webhook";
 
-// Register a channel = add it here. New connectors (App reviews, webhook) implement
-// `fetchItems` and ride the shared ingest core below.
-const ADAPTERS: ChannelAdapter[] = [discordAdapter, redditAdapter, gmailAdapter];
+// Register a channel = add it here. New connectors implement `fetchItems` (or
+// `run` for self-contained flows) and ride the shared ingest core below.
+const ADAPTERS: ChannelAdapter[] = [discordAdapter, redditAdapter, gmailAdapter, appReviewsAdapter, webhookAdapter];
 
 export function getChannelAdapter(source: string): ChannelAdapter | null {
   return ADAPTERS.find((a) => a.key === source) ?? null;

@@ -6,7 +6,9 @@ export type SupportSource =
   | "discord"
   | "clickup"
   | "stripe"
-  | "analytics";
+  | "analytics"
+  | "app_reviews"
+  | "webhook";
 
 export type ConnectionHealth = "connected" | "needs_setup" | "error";
 export type ConversationSentiment = "positive" | "neutral" | "negative";
@@ -102,6 +104,12 @@ export interface Connection {
     lookbackDays?: number;        // how far back to pull on first sync / re-sync
     maxItems?: number;            // cap items fetched per sync
     ignoreBots?: boolean;         // Discord only — skip bot-authored messages (default true)
+    // App Reviews
+    store?: "app_store" | "play_store";
+    appId?: string;
+    country?: string;
+    // Webhook
+    webhookToken?: string;
     // Legacy / generic
     intervalHours?: number;
     channelId?: string;
