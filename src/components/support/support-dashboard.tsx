@@ -76,6 +76,7 @@ import {
   useGenerateAiDraft,
   useBatchUpdateTickets,
   useSemanticSearch,
+  useGenerateReportNarrative,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
@@ -2679,6 +2680,29 @@ function ReportBuilder({
     }
   }
 
+  const generateNarrative = useGenerateReportNarrative(clientId);
+  const [narrativeMsg, setNarrativeMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  async function handleWriteNarrative() {
+    setNarrativeMsg(null);
+    try {
+      const res = await generateNarrative.mutateAsync({
+        periodStart: p.periodStart,
+        periodEnd: p.periodEnd,
+        periodLabel: period,
+      });
+      setP((prev) => ({
+        ...prev,
+        overviewText: res.overviewText || prev.overviewText,
+        performanceText: res.performanceText || prev.performanceText,
+        summaryText: res.summaryText || prev.summaryText,
+      }));
+      setNarrativeMsg({ type: "ok", text: `Narrative drafted from ${res.ticketCount} ticket${res.ticketCount === 1 ? "" : "s"} — review and edit before saving.` });
+    } catch (err) {
+      setNarrativeMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to generate narrative" });
+    }
+  }
+
   const createReport = useCreateSupportReport(clientId);
   const updateReport = useUpdateSupportReport(clientId);
   const saving = createReport.isPending || updateReport.isPending;
@@ -2851,11 +2875,28 @@ function ReportBuilder({
             <SparklesIcon className="h-3.5 w-3.5 mr-1" />
             {generating ? "Generating…" : "Generate"}
           </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={generateNarrative.isPending}
+            onClick={() => void handleWriteNarrative()}
+            title="AI-draft overview, performance, and summary narratives from triage data"
+          >
+            <SparklesIcon className="h-3.5 w-3.5 mr-1" />
+            {generateNarrative.isPending ? "Writing…" : "Write narratives"}
+          </Button>
           <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
             {report ? "Save changes" : "Save report"}
           </Button>
         </div>
       </div>
+
+      {narrativeMsg && (
+        <p className={`rounded-[6px] px-3 py-2 text-xs ${narrativeMsg.type === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
+          {narrativeMsg.type === "ok" ? "✓" : "✗"} {narrativeMsg.text}
+        </p>
+      )}
 
       {/* 01 // PERIOD & AUTHOR */}
       <div className="app-card overflow-hidden p-0">
