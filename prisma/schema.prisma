@@ -987,6 +987,9 @@ model ClientWiki {
   client       WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   shareToken   String?
   shareEnabled Boolean                @default(false)
+  /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
+  /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
+  platforms    Json?
   pages        ClientWikiPage[]
   changelog    ClientChangelogEntry[]
   createdAt    DateTime               @default(now())
@@ -1024,10 +1027,12 @@ model ClientChangelogEntry {
   platform   WikiPlatform
   version    String
   title      String
-  body       String?       @db.Text
+  body       String?         @db.Text
   releasedAt DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  /// Review state — PENDING until the release notes are approved for publishing.
+  status     WikiEntryStatus @default(PENDING)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@index([wikiId])
   @@map("ClientChangelogEntry")
@@ -1048,6 +1053,11 @@ enum WikiPlatform {
   FIRESTICK
   WEB
   ALL
+}
+
+enum WikiEntryStatus {
+  PENDING
+  APPROVED
 }
 
 /// Self-serve client onboarding session. Created when the team mints an

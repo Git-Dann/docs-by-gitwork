@@ -9,7 +9,7 @@
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { WikiPageType, WikiPlatform } from "@prisma/client";
+import type { WikiPageType, WikiPlatform, WikiEntryStatus } from "@prisma/client";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -24,12 +24,14 @@ export interface WikiPageRecord {
 
 export interface ChangelogEntryRecord {
   id: string;
-  platform: WikiPlatform;
+  platform: string; // WikiPlatform
   version: string;
   title: string;
   body: string | null;
   releasedAt: string | null;
   createdAt: string;
+  /** "PENDING" | "APPROVED" */
+  status: string;
 }
 
 export interface WikiDTO {
@@ -39,6 +41,8 @@ export interface WikiDTO {
   clientSlug: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
+  platforms: string[];
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   updatedAt: string;
@@ -72,6 +76,7 @@ function serializeEntry(e: {
   body: string | null;
   releasedAt: Date | null;
   createdAt: Date;
+  status: WikiEntryStatus;
 }): ChangelogEntryRecord {
   return {
     id: e.id,
@@ -81,14 +86,18 @@ function serializeEntry(e: {
     body: e.body,
     releasedAt: e.releasedAt ? e.releasedAt.toISOString() : null,
     createdAt: e.createdAt.toISOString(),
+    status: e.status,
   };
 }
+
+const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
 
 async function buildDTO(wiki: {
   id: string;
   clientId: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  platforms: unknown;
   updatedAt: Date;
   client: { name: string; slug: string };
   pages: Array<{
@@ -107,6 +116,7 @@ async function buildDTO(wiki: {
     body: string | null;
     releasedAt: Date | null;
     createdAt: Date;
+    status: WikiEntryStatus;
   }>;
 }): Promise<WikiDTO> {
   return {
@@ -116,6 +126,7 @@ async function buildDTO(wiki: {
     clientSlug: wiki.client.slug,
     shareToken: wiki.shareToken,
     shareEnabled: wiki.shareEnabled,
+    platforms: Array.isArray(wiki.platforms) ? (wiki.platforms as string[]) : DEFAULT_PLATFORMS,
     pages: wiki.pages.sort((a, b) => a.sortOrder - b.sortOrder).map(serializePage),
     changelog: wiki.changelog
       .sort((a, b) => {
@@ -133,6 +144,8 @@ const WIKI_INCLUDE = {
   client: { select: { name: true, slug: true } },
   pages: true,
   changelog: true,
+  // platforms is a scalar Json field — included automatically via `include` on
+  // the parent model, not via a relation. Listed here as a reminder.
 } as const;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -207,6 +220,7 @@ export async function addChangelogEntry(
     title: string;
     body?: string;
     releasedAt?: string;
+    status?: WikiEntryStatus;
   },
 ): Promise<ChangelogEntryRecord> {
   const wiki = await prisma.clientWiki.upsert({
@@ -224,9 +238,22 @@ export async function addChangelogEntry(
       title: input.title,
       body: input.body ?? null,
       releasedAt: input.releasedAt ? new Date(input.releasedAt) : null,
+      status: input.status ?? "PENDING",
     },
   });
 
+  return serializeEntry(entry);
+}
+
+/** Update the status of a single changelog entry. */
+export async function updateChangelogEntryStatus(
+  entryId: string,
+  status: WikiEntryStatus,
+): Promise<ChangelogEntryRecord> {
+  const entry = await prisma.clientChangelogEntry.update({
+    where: { id: entryId },
+    data: { status },
+  });
   return serializeEntry(entry);
 }
 
@@ -281,5 +308,22 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
     include: WIKI_INCLUDE,
   });
   if (!wiki) return null;
+  return buildDTO(wiki);
+}
+
+/**
+ * Update the set of enabled changelog platforms for a client's wiki.
+ * Auto-creates the wiki row if it doesn't exist.
+ */
+export async function updateWikiPlatforms(
+  clientId: string,
+  platforms: string[],
+): Promise<WikiDTO> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, platforms },
+    update: { platforms },
+    include: WIKI_INCLUDE,
+  });
   return buildDTO(wiki);
 }
