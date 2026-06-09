@@ -705,6 +705,82 @@ export async function deleteTicket(ticketId: string): Promise<void> {
   await prisma.supportTicket.delete({ where: { id: ticketId } });
 }
 
+// ─── Ticket stats for report pre-fill ────────────────────────────────────────
+
+export async function getTicketStatsForPeriod(
+  clientId: string,
+  periodStart: string,
+  periodEnd: string,
+): Promise<{
+  totalTickets: number;
+  catCancellations: number;
+  catAccountQueries: number;
+  catRefunds: number;
+  catTechIssues: number;
+  catOther: number;
+  prioUrgent: number;
+  prioHigh: number;
+  prioMedium: number;
+  prioLow: number;
+}> {
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd + "T23:59:59.999Z");
+
+  const tickets = await prisma.supportTicket.findMany({
+    where: { clientId, createdAt: { gte: start, lte: end } },
+    select: { issueType: true, priority: true },
+  });
+
+  const result = {
+    totalTickets: tickets.length,
+    catCancellations: 0,
+    catAccountQueries: 0,
+    catRefunds: 0,
+    catTechIssues: 0,
+    catOther: 0,
+    prioUrgent: 0,
+    prioHigh: 0,
+    prioMedium: 0,
+    prioLow: 0,
+  };
+
+  for (const t of tickets) {
+    const it = (t.issueType ?? "").toLowerCase();
+    if (it.includes("cancel") || it.includes("churn")) result.catCancellations++;
+    else if (it.includes("billing") || it.includes("refund") || it.includes("payment")) result.catRefunds++;
+    else if (it.includes("account") || it.includes("login") || it.includes("password")) result.catAccountQueries++;
+    else if (it.includes("tech") || it.includes("bug") || it.includes("crash") || it.includes("error")) result.catTechIssues++;
+    else result.catOther++;
+
+    switch (t.priority) {
+      case "URGENT": result.prioUrgent++; break;
+      case "HIGH": result.prioHigh++; break;
+      case "NORMAL": result.prioMedium++; break;
+      case "LOW": result.prioLow++; break;
+    }
+  }
+
+  return result;
+}
+
+// ─── Batch ticket update ──────────────────────────────────────────────────────
+
+export async function batchUpdateTickets(
+  clientId: string,
+  ticketIds: string[],
+  data: Partial<{ status: TicketStatus; priority: TicketPriority; assignedTo: string }>,
+): Promise<{ updated: number }> {
+  const result = await prisma.supportTicket.updateMany({
+    where: { id: { in: ticketIds }, clientId },
+    data: {
+      ...(data.status ? { status: toDbTicketStatus(data.status), ...(data.status === "resolved" ? { resolvedAt: new Date() } : {}) } : {}),
+      ...(data.priority ? { priority: toDbTicketPriority(data.priority) } : {}),
+      ...(data.assignedTo !== undefined ? { assignedTo: data.assignedTo || null } : {}),
+    },
+  });
+  return { updated: result.count };
+}
+
 // ─── Connections ──────────────────────────────────────────────────────────────
 
 export async function listConnections(clientId: string): Promise<Connection[]> {

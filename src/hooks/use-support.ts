@@ -34,6 +34,7 @@ import {
   updateSupportDraftAction,
   updateSupportReport,
   updateSupportTicket,
+  batchUpdateSupportTickets,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
@@ -149,6 +150,22 @@ export function useDeleteTicket(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ticketId: string) => deleteSupportTicket(clientId as string, ticketId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
+    },
+  });
+}
+
+export function useBatchUpdateTickets(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ticketIds,
+      data,
+    }: {
+      ticketIds: string[];
+      data: Partial<{ status: string; priority: string; assignedTo: string }>;
+    }) => batchUpdateSupportTickets(clientId as string, ticketIds, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
     },
