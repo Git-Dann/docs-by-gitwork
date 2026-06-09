@@ -3800,12 +3800,28 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       const st = conn.lastSyncStats!;
                       const when = new Date(st.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
                       const hasErr = st.errors.length > 0;
+                      const r = st.filterReasons;
+                      const breakdown = r
+                        ? [
+                            r.bots ? `${r.bots} bots` : null,
+                            r.empty ? `${r.empty} empty` : null,
+                            r.duplicate ? `${r.duplicate} dupes` : null,
+                            r.excluded ? `${r.excluded} excluded` : null,
+                          ].filter(Boolean).join(", ")
+                        : "";
                       return (
-                        <p className={cn("mt-1 text-[11px]", hasErr ? "text-red-500" : "text-[var(--text-4)]")}>
-                          {hasErr
-                            ? `Last sync ${when} — error: ${st.errors[0]}`
-                            : `Last sync ${when} — ${st.ingested} added${st.filtered ? `, ${st.filtered} filtered` : ""}`}
-                        </p>
+                        <>
+                          <p className={cn("mt-1 break-words text-[11px]", hasErr ? "text-red-500" : "text-[var(--text-4)]")}>
+                            {hasErr
+                              ? `Last sync ${when} — error: ${st.errors[0]}`
+                              : `Last sync ${when} — ${st.ingested} added${st.filtered ? `, ${st.filtered} filtered` : ""}${breakdown ? ` (${breakdown})` : ""}`}
+                          </p>
+                          {(st.hints ?? []).map((hint, i) => (
+                            <p key={i} className="mt-1 break-words rounded-[6px] border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                              {hint}
+                            </p>
+                          ))}
+                        </>
                       );
                     })()}
                   </div>

@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { fetchNewMessages, fetchChannelHistory, type DiscordMessage } from "@/server/discord-sync";
+import { fetchNewMessages, fetchChannelHistory, discordMessageBody, type DiscordMessage } from "@/server/discord-sync";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,9 +76,13 @@ function stripHtml(html: string): string {
 function parseRedditAtom(xml: string): RedditRssPost[] {
   const posts: RedditRssPost[] = [];
   for (const [, entry] of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
-    const permalink = decodeXmlEntities(xmlTag(entry, "id"));
-    const postIdMatch = permalink.match(/\/comments\/([a-z0-9]+)\//i);
-    if (!postIdMatch) continue;
+    // The real permalink is in <link href="...">; the <id> tag is a "t3_xxx" URN, NOT a
+    // /comments/ URL. Prefer the link's post id, fall back to stripping the URN prefix.
+    const linkHref = decodeXmlEntities(entry.match(/<link[^>]*href="([^"]+)"/i)?.[1] ?? "");
+    const idTag = decodeXmlEntities(xmlTag(entry, "id"));
+    const postId = linkHref.match(/\/comments\/([a-z0-9]+)\b/i)?.[1] ?? (idTag.replace(/^t\d+_/, "").trim() || "");
+    if (!postId) continue;
+    const permalink = linkHref || idTag;
     const title = decodeXmlEntities(xmlTag(entry, "title"));
     if (!title) continue;
     const author = decodeXmlEntities(xmlTag(entry, "name")).replace(/^\/u\//, "");
@@ -86,7 +90,7 @@ function parseRedditAtom(xml: string): RedditRssPost[] {
     const created_utc = updatedStr ? Math.floor(new Date(updatedStr).getTime() / 1000) : Math.floor(Date.now() / 1000);
     const contentHtml = decodeXmlEntities(xmlTag(entry, "content"));
     const body = stripHtml(contentHtml);
-    posts.push({ id: postIdMatch[1], title, author: author || "unknown", body, permalink, created_utc });
+    posts.push({ id: postId, title, author: author || "unknown", body, permalink, created_utc });
   }
   return posts;
 }
@@ -103,10 +107,22 @@ interface DiscordScraperConfig {
   ignoreBots?: boolean;
 }
 
+/** Why items were skipped this run — surfaced on the connector card so "N filtered" is explainable. */
+export interface FilterReasons {
+  bots?: number;
+  empty?: number;
+  duplicate?: number;
+  excluded?: number;
+}
+
 export interface SyncResult {
   fetched?: number;
   ingested: number;
   filtered: number;
+  /** Per-reason breakdown of `filtered`. */
+  filterReasons?: FilterReasons;
+  /** Actionable diagnostics (e.g. missing Discord Message Content Intent). */
+  hints?: string[];
   errors: string[];
   /** IDs of conversations newly created this run — fed to the enrichment pass. */
   newConversationIds?: string[];
@@ -194,9 +210,14 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
 
   let ingested = 0;
   let filtered = 0;
+  const reasons: FilterReasons = { bots: 0, empty: 0, duplicate: 0 };
   const errors: string[] = [];
+  const hints: string[] = [];
   const newConversationIds: string[] = [];
   const updatedChannels = [...channels];
+  // For Message-Content-Intent detection: how many non-bot messages carried nothing at all.
+  let nonBotEvaluated = 0;
+  let emptyNoMedia = 0;
 
   const ignoreBots = config.ignoreBots ?? true;
   const maxItems = config.maxItems && config.maxItems > 0 ? config.maxItems : undefined;
@@ -234,7 +255,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
             externalId: ch.id,
             customerLabel: config.guildName ?? ctx.client.name,
             subject: `#${ch.name}`,
-            preview: messages[0].content.slice(0, 150),
+            preview: discordMessageBody(messages[0]).slice(0, 150),
             receivedAt: new Date(messages[0].timestamp),
             unread: true,
             tags: convTags,
@@ -260,22 +281,28 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
         // so filtered noise isn't re-evaluated on every sync.
         lastMessageId = msg.id;
 
-        if (ignoreBots && msg.author.bot) { filtered++; continue; }
-        if (!msg.content.trim()) { filtered++; continue; }
+        if (ignoreBots && msg.author.bot) { filtered++; reasons.bots = (reasons.bots ?? 0) + 1; continue; }
+
+        nonBotEvaluated++;
+        // Media-only messages (images, links, stickers) get a placeholder body so they're
+        // ingested rather than dropped. Only truly-empty messages are filtered — and a high
+        // rate of those signals the missing Message Content Intent (see hint below).
+        const body = discordMessageBody(msg);
+        if (!body.trim()) { filtered++; reasons.empty = (reasons.empty ?? 0) + 1; emptyNoMedia++; continue; }
 
         // Skip already-ingested messages (guards against partial sync failures)
         const already = await prisma.supportMessage.findFirst({
           where: { conversationId: conv.id, externalId: msg.id },
           select: { id: true },
         });
-        if (already) { filtered++; continue; }
+        if (already) { filtered++; reasons.duplicate = (reasons.duplicate ?? 0) + 1; continue; }
 
         await prisma.supportMessage.create({
           data: {
             conversationId: conv.id,
             direction: "inbound",
             authorLabel: msg.author.global_name ?? msg.author.username,
-            body: msg.content,
+            body,
             externalId: msg.id,
             createdAt: new Date(msg.timestamp),
           },
@@ -288,7 +315,7 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
         const lastMsg = messages[messages.length - 1];
         await prisma.supportConversation.update({
           where: { id: conv.id },
-          data: { unread: true, preview: lastMsg.content.slice(0, 150) },
+          data: { unread: true, preview: discordMessageBody(lastMsg).slice(0, 150) },
         });
       }
 
@@ -318,7 +345,18 @@ async function syncDiscordConnection(ctx: SyncContext): Promise<SyncResult> {
     },
   });
 
-  return { ingested, filtered, errors, newConversationIds };
+  // If almost every non-bot message came back contentless, the bot is almost certainly
+  // missing the privileged Message Content Intent (Discord blanks content + attachments +
+  // embeds without it). A real channel can't be ~all contentless, so this is a safe signal.
+  if (nonBotEvaluated >= 20 && emptyNoMedia / nonBotEvaluated >= 0.8) {
+    hints.push(
+      "Most messages came back empty — the bot is likely missing the Message Content Intent. " +
+        "In the Discord Developer Portal → your app → Bot → Privileged Gateway Intents, enable " +
+        '"Message Content Intent", then Re-sync history.',
+    );
+  }
+
+  return { ingested, filtered, filterReasons: reasons, hints, errors, newConversationIds };
 }
 
 // ─── Reddit sync ──────────────────────────────────────────────────────────────
@@ -341,6 +379,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
 
   let ingested = 0;
   let filtered = 0;
+  const reasons: FilterReasons = { empty: 0, excluded: 0, duplicate: 0 };
   const errors: string[] = [];
   const newConversationIds: string[] = [];
   const include = normalizeKeywords(config?.keywords);
@@ -369,10 +408,10 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     for (const post of posts) {
       if (maxItems && ingested >= maxItems) break;
 
-      if (!post.title.trim()) { filtered++; continue; }
+      if (!post.title.trim()) { filtered++; reasons.empty = (reasons.empty ?? 0) + 1; continue; }
 
       // Exclude keywords: skip posts matching any exclude term
-      if (exclude.length > 0 && !passesKeywordFilters(`${post.title} ${post.body}`, [], exclude)) { filtered++; continue; }
+      if (exclude.length > 0 && !passesKeywordFilters(`${post.title} ${post.body}`, [], exclude)) { filtered++; reasons.excluded = (reasons.excluded ?? 0) + 1; continue; }
 
       // Include keywords: ingest everything, tag matches (same pattern as Discord — no filtering)
       const text = `${post.title} ${post.body}`.toLowerCase();
@@ -401,21 +440,24 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
           },
         });
 
-        if (post.body.trim()) {
-          await prisma.supportMessage.create({
-            data: {
-              conversationId: conv.id,
-              direction: "inbound",
-              authorLabel: `u/${post.author}`,
-              body: post.body,
-              externalId: `${externalId}:post`,
-              createdAt: new Date(post.created_utc * 1000),
-            },
-          });
-        }
+        // Always seed a message so the thread isn't "No messages yet" — link/image posts
+        // with no selftext fall back to the title + permalink.
+        await prisma.supportMessage.create({
+          data: {
+            conversationId: conv.id,
+            direction: "inbound",
+            authorLabel: `u/${post.author}`,
+            body: post.body.trim() || `${post.title}\n\n${post.permalink}`,
+            externalId: `${externalId}:post`,
+            createdAt: new Date(post.created_utc * 1000),
+          },
+        });
 
         newConversationIds.push(conv.id);
         ingested++;
+      } else {
+        filtered++;
+        reasons.duplicate = (reasons.duplicate ?? 0) + 1;
       }
     }
   } catch (err) {
@@ -427,7 +469,7 @@ async function syncRedditConnection(ctx: SyncContext): Promise<SyncResult> {
     data: { lastSyncedAt: new Date() },
   });
 
-  return { ingested, filtered, errors, newConversationIds };
+  return { ingested, filtered, filterReasons: reasons, errors, newConversationIds };
 }
 
 // ─── Gmail sync ───────────────────────────────────────────────────────────────
@@ -520,6 +562,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 
   let ingested = 0;
   let filtered = 0;
+  const reasons: FilterReasons = { duplicate: 0 };
   const errors: string[] = [];
   const newConversationIds: string[] = [];
 
@@ -530,7 +573,6 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
     const allMessageItems: Array<{ id?: string | null; threadId?: string | null }> = [];
     let pageToken: string | undefined;
     do {
-      // eslint-disable-next-line no-await-in-loop
       const page = await gmail.users.messages.list({
         userId: "me",
         q: fullQuery,
@@ -546,7 +588,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
 
     for (const item of allMessageItems) {
       if (!item.id || !item.threadId) continue;
-      if (threadsSeen.has(item.threadId)) { filtered++; continue; }
+      if (threadsSeen.has(item.threadId)) { filtered++; reasons.duplicate = (reasons.duplicate ?? 0) + 1; continue; }
       threadsSeen.add(item.threadId);
 
       try {
@@ -594,6 +636,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
           ingested++;
         } else {
           filtered++;
+          reasons.duplicate = (reasons.duplicate ?? 0) + 1;
         }
 
         for (const msg of threadMessages) {
@@ -637,7 +680,7 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
       data: { lastSyncedAt: new Date() },
     });
 
-    return { fetched, ingested, filtered, errors, newConversationIds };
+    return { fetched, ingested, filtered, filterReasons: reasons, errors, newConversationIds };
   } catch (err) {
     return { fetched: 0, ingested: 0, filtered: 0, errors: [`Gmail sync failed: ${err instanceof Error ? err.message : String(err)}`] };
   }
@@ -674,6 +717,8 @@ export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
           fetched: result.fetched ?? null,
           ingested: result.ingested,
           filtered: result.filtered,
+          filterReasons: result.filterReasons ?? null,
+          hints: result.hints ?? [],
           errors: result.errors,
           at: new Date().toISOString(),
         } as object,
