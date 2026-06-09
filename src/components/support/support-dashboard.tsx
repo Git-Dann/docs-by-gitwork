@@ -19,6 +19,8 @@ import {
   InboxIcon,
   KeyIcon,
   MagnifyingGlassIcon,
+  PaperAirplaneIcon,
+  ClipboardDocumentIcon,
   PencilSquareIcon,
   PlusIcon,
   SparklesIcon,
@@ -66,6 +68,8 @@ import {
   useSupportWorkflowRules,
   useSupportAuditLogs,
   useSyncConnection,
+  useSendMessage,
+  useGenerateAiDraft,
 } from "@/hooks/use-support";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
@@ -1321,6 +1325,30 @@ function InboxView({ clientId }: { clientId: string }) {
   const { data: msgData, isLoading: msgsLoading } = useSupportMessages(clientId, selectedConvId);
   const messages = msgData?.messages ?? [];
 
+  const sendMessage = useSendMessage(clientId, selectedConvId);
+  const generateDraft = useGenerateAiDraft(clientId);
+  const [replyText, setReplyText] = useState("");
+  const [replyError, setReplyError] = useState<string | null>(null);
+
+  async function handleSend() {
+    if (!replyText.trim() || !selectedConvId) return;
+    setReplyError(null);
+    try {
+      await sendMessage.mutateAsync({ direction: "outbound", authorLabel: "Gitwork Support", body: replyText.trim() });
+      setReplyText("");
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "Send failed");
+    }
+  }
+
+  async function handleAiDraft() {
+    if (!selectedConvId) return;
+    try {
+      const { draft } = await generateDraft.mutateAsync(selectedConvId);
+      setReplyText(draft);
+    } catch { /* ignore — if AI fails, the textarea stays empty */ }
+  }
+
   const updateConversation = useUpdateConversation(clientId);
 
   // Mark conversation as read when opened
@@ -1578,6 +1606,72 @@ function InboxView({ clientId }: { clientId: string }) {
                   );
                 })}
               </div>
+
+              {/* ── Reply Composer ─────────────────────────────────────── */}
+              {(() => {
+                const source = activeConvo.source;
+                const canSend = source === "discord" || source === "gmail";
+                return (
+                  <div className="shrink-0 border-t border-[var(--border-2)] bg-[var(--surface-0,#fafafa)] px-4 py-3">
+                    <div className="flex items-center justify-between pb-2">
+                      <span className="font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">
+                        Reply
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {!canSend && (
+                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                            Manual — reply on {source}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleAiDraft()}
+                          disabled={generateDraft.isPending || !selectedConvId}
+                          title="Generate AI draft"
+                          className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                        >
+                          <SparklesIcon className={cn("h-3.5 w-3.5 text-violet-500", generateDraft.isPending && "animate-spin")} />
+                          {generateDraft.isPending ? "Drafting…" : "AI Draft"}
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleSend(); }}
+                      placeholder={canSend ? "Write a reply… (⌘↵ to send)" : "Draft your reply, then copy it to send manually…"}
+                      rows={3}
+                      className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--brand-600)] focus:outline-none"
+                    />
+                    {replyError && (
+                      <p className="mt-1 text-[11px] text-red-600">{replyError}</p>
+                    )}
+                    <div className="mt-2 flex justify-end gap-2">
+                      {!canSend ? (
+                        <button
+                          type="button"
+                          disabled={!replyText.trim()}
+                          onClick={() => { void navigator.clipboard.writeText(replyText); }}
+                          className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                        >
+                          <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                          Copy
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!replyText.trim() || sendMessage.isPending}
+                          onClick={() => void handleSend()}
+                          className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-40"
+                        >
+                          <PaperAirplaneIcon className="h-3.5 w-3.5" />
+                          {sendMessage.isPending ? "Sending…" : "Send"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
