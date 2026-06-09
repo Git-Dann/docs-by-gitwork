@@ -20,8 +20,17 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   changelog: "Changelog",
 };
 
-export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
-  const [activeSection, setActiveSection] = useState<WikiSection>("ia");
+export function WikiPublicView({
+  wiki,
+  onlySection,
+}: {
+  wiki: WikiDTO;
+  /** When set, render only this one section (per-page share) — no sidebar nav. */
+  onlySection?: string | null;
+}) {
+  const [activeSection, setActiveSection] = useState<WikiSection>(
+    (onlySection as WikiSection) ?? "ia",
+  );
 
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
@@ -65,6 +74,11 @@ export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
     );
   }
 
+  // Per-page share: render just the one section, no sidebar nav.
+  if (onlySection) {
+    return <div className="overflow-auto p-8">{renderContent()}</div>;
+  }
+
   return (
     <div className="flex">
       <div className="shrink-0 border-r border-[rgba(0,0,0,0.08)] px-2">
@@ -72,10 +86,6 @@ export function WikiPublicView({ wiki }: { wiki: WikiDTO }) {
           slug={wiki.clientSlug}
           active={activeSection}
           onSelect={setActiveSection}
-          shareEnabled={false}
-          shareToken={null}
-          onToggleShare={() => {}}
-          isTogglingShare={false}
         />
       </div>
       <div className="flex-1 overflow-auto p-8">

@@ -7,6 +7,7 @@ import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
+import { WikiShareMenu } from "./wiki-share-menu";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import {
   useClientWiki,
@@ -17,6 +18,7 @@ import {
   useUpdateWikiPlatforms,
   useUpdateEntryStatus,
   useUpdateChangelogEntry,
+  useSetWikiSectionShare,
 } from "@/hooks/use-wiki";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 
@@ -420,6 +422,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const updatePlatforms = useUpdateWikiPlatforms(slug);
   const updateStatus = useUpdateEntryStatus(slug);
   const updateEntry = useUpdateChangelogEntry(slug);
+  const sectionShare = useSetWikiSectionShare(slug);
 
   if (isPending) {
     return (
@@ -528,6 +531,22 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     return "";
   }
 
+  /** Share dropdown for a wiki page — per-page link + whole-wiki link. */
+  function renderShareMenu(section: "ia" | "dev-guide" | "changelog") {
+    return (
+      <WikiShareMenu
+        pageLabel={SECTION_TITLES[section]}
+        pageToken={(wiki!.pageShares?.[section] as string | undefined) ?? null}
+        pageBusy={sectionShare.isPending}
+        onTogglePage={(enabled) => void sectionShare.mutateAsync({ section, enabled })}
+        wikiEnabled={wiki!.shareEnabled}
+        wikiToken={wiki!.shareToken}
+        wikiBusy={setShare.isPending}
+        onToggleWiki={(enabled) => void setShare.mutateAsync(enabled)}
+      />
+    );
+  }
+
   function renderContent() {
     // ── Design System — embedded inline (has its own action bar)
     // -mt-6 cancels the parent pt-6 so DS workspace content starts flush at top;
@@ -568,6 +587,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               <PlusIcon className="h-3.5 w-3.5" />
               Add version
             </button>
+            {renderShareMenu("changelog")}
           </div>
 
           {/* Widget card */}
@@ -649,6 +669,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {upsertPage.isPending ? "Saving…" : "Save"}
           </button>
+          {(activeSection === "ia" || activeSection === "dev-guide") &&
+            renderShareMenu(activeSection)}
         </div>
 
         {/* Widget card */}
@@ -709,10 +731,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             slug={slug}
             active={activeSection}
             onSelect={setActiveSection}
-            shareEnabled={wiki.shareEnabled}
-            shareToken={wiki.shareToken}
-            onToggleShare={() => void setShare.mutateAsync(!wiki.shareEnabled)}
-            isTogglingShare={setShare.isPending}
           />
         </div>
 

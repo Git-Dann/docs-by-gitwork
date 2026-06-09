@@ -1,8 +1,14 @@
 import { notFound } from "next/navigation";
-import { getPublicWiki } from "@/server/wiki";
+import { resolvePublicWiki } from "@/server/wiki";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
+
+const SECTION_LABELS: Record<string, string> = {
+  ia: "Information Architecture",
+  "dev-guide": "Developer Guide",
+  changelog: "Changelog",
+};
 
 export async function generateMetadata({
   params,
@@ -10,10 +16,13 @@ export async function generateMetadata({
   params: Promise<{ token: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
-  const wiki = await getPublicWiki(token);
-  if (!wiki) return { title: "Not found" };
+  const resolved = await resolvePublicWiki(token);
+  if (!resolved) return { title: "Not found" };
+  const suffix = resolved.onlySection
+    ? ` — ${SECTION_LABELS[resolved.onlySection] ?? "Wiki"}`
+    : " — Wiki";
   return {
-    title: `${wiki.clientName} — Wiki`,
+    title: `${resolved.wiki.clientName}${suffix}`,
     robots: { index: false },
   };
 }
@@ -24,8 +33,9 @@ export default async function PublicWikiPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const wiki = await getPublicWiki(token);
-  if (!wiki) notFound();
+  const resolved = await resolvePublicWiki(token);
+  if (!resolved) notFound();
+  const { wiki, onlySection } = resolved;
 
   return (
     <div className="min-h-screen bg-[var(--surface-0)]">
@@ -44,7 +54,7 @@ export default async function PublicWikiPage({
         </div>
       </div>
 
-      <WikiPublicView wiki={wiki} />
+      <WikiPublicView wiki={wiki} onlySection={onlySection} />
 
       {/* Footer */}
       <div className="mt-16 border-t border-[rgba(0,0,0,0.08)] bg-white px-8 py-6">

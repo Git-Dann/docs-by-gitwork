@@ -43,6 +43,8 @@ export interface WikiDTO {
   shareEnabled: boolean;
   /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
   platforms: string[];
+  /** Per-page public share tokens, keyed by section (ia / dev-guide / changelog). */
+  pageShares: Record<string, string>;
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   updatedAt: string;
@@ -98,6 +100,7 @@ async function buildDTO(wiki: {
   shareToken: string | null;
   shareEnabled: boolean;
   platforms: unknown;
+  pageShares?: unknown;
   updatedAt: Date;
   client: { name: string; slug: string };
   pages: Array<{
@@ -127,6 +130,10 @@ async function buildDTO(wiki: {
     shareToken: wiki.shareToken,
     shareEnabled: wiki.shareEnabled,
     platforms: Array.isArray(wiki.platforms) ? (wiki.platforms as string[]) : DEFAULT_PLATFORMS,
+    pageShares:
+      wiki.pageShares && typeof wiki.pageShares === "object"
+        ? (wiki.pageShares as Record<string, string>)
+        : {},
     pages: wiki.pages.sort((a, b) => a.sortOrder - b.sortOrder).map(serializePage),
     changelog: wiki.changelog
       .sort((a, b) => {
@@ -324,8 +331,48 @@ export async function setWikiShare(
   return { shareToken: created.shareToken, shareEnabled: created.shareEnabled };
 }
 
+/** Sections that can be individually shared (Design System has its own share). */
+const SHAREABLE_SECTIONS = ["ia", "dev-guide", "changelog"] as const;
+
 /**
- * Public read — requires `shareEnabled: true` and a valid token.
+ * Toggle a per-page (per-section) public share. Mints a token for the section
+ * on first enable; removes it on disable. Returns the section→token map.
+ */
+export async function setWikiSectionShare(
+  clientId: string,
+  section: string,
+  enabled: boolean,
+): Promise<Record<string, string>> {
+  if (!SHAREABLE_SECTIONS.includes(section as (typeof SHAREABLE_SECTIONS)[number])) {
+    throw new Error(`Section "${section}" is not shareable`);
+  }
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true, pageShares: true },
+  });
+
+  const map: Record<string, string> =
+    wiki.pageShares && typeof wiki.pageShares === "object"
+      ? { ...(wiki.pageShares as Record<string, string>) }
+      : {};
+
+  if (enabled) {
+    if (!map[section]) map[section] = randomBytes(18).toString("base64url");
+  } else {
+    delete map[section];
+  }
+
+  await prisma.clientWiki.update({
+    where: { id: wiki.id },
+    data: { pageShares: map, pageShareTokens: Object.values(map) },
+  });
+  return map;
+}
+
+/**
+ * Public read — requires `shareEnabled: true` and a valid whole-wiki token.
  * Returns null if the token is invalid or sharing is off.
  */
 export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
@@ -335,6 +382,35 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
   });
   if (!wiki) return null;
   return buildDTO(wiki);
+}
+
+/**
+ * Resolve any public wiki token — whole-wiki or a single shared section.
+ * Returns the wiki DTO plus `onlySection` (null = whole wiki).
+ */
+export async function resolvePublicWiki(
+  token: string,
+): Promise<{ wiki: WikiDTO; onlySection: string | null } | null> {
+  // Whole-wiki share takes precedence.
+  const whole = await prisma.clientWiki.findFirst({
+    where: { shareToken: token, shareEnabled: true },
+    include: WIKI_INCLUDE,
+  });
+  if (whole) return { wiki: await buildDTO(whole), onlySection: null };
+
+  // Otherwise look for a per-section token.
+  const bySection = await prisma.clientWiki.findFirst({
+    where: { pageShareTokens: { has: token } },
+    include: WIKI_INCLUDE,
+  });
+  if (!bySection) return null;
+  const map =
+    bySection.pageShares && typeof bySection.pageShares === "object"
+      ? (bySection.pageShares as Record<string, string>)
+      : {};
+  const section = Object.keys(map).find((k) => map[k] === token) ?? null;
+  if (!section) return null;
+  return { wiki: await buildDTO(bySection), onlySection: section };
 }
 
 /**
