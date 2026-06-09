@@ -7,7 +7,7 @@
 // every value comes from `tokens` — no hardcoded client colours/fonts. Shared by
 // the internal Portal workspace and the public /brand/[token] page.
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type {
   ColourToken,
   DesignTokens,
@@ -48,6 +48,39 @@ function rgba(hex: string, a: number): string {
 /** True when a ramp value is an actual colour (filters out prose keys like "source"). */
 function isColour(v: string): boolean {
   return /^(#|rgb|hsl)/i.test((v || "").trim());
+}
+
+/** WCAG 2.1 contrast ratio between two hex colours. */
+function wcagRatio(hex1: string, hex2: string): number {
+  const l1 = relLuminance(hex1);
+  const l2 = relLuminance(hex2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** WCAG level of the better contrast pairing (white or black text). */
+function wcagLevel(hex: string): "AAA" | "AA" | "AA Large" | null {
+  const best = Math.max(wcagRatio(hex, "#FFFFFF"), wcagRatio(hex, "#000000"));
+  if (best >= 7) return "AAA";
+  if (best >= 4.5) return "AA";
+  if (best >= 3) return "AA Large";
+  return null;
+}
+
+/**
+ * Parse the `:root {}` CSS variables block and return a map of
+ * lowercase hex → first matching CSS variable name (e.g. "#1d4ed8" → "--color-primary").
+ */
+function parseVarMap(css: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const re = /--([\w-]+)\s*:\s*(#[0-9a-fA-F]{3,8})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const key = m[2].toLowerCase();
+    if (!map.has(key)) map.set(key, `--${m[1]}`);
+  }
+  return map;
 }
 
 const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
@@ -103,50 +136,91 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 // ── colours ────────────────────────────────────────────────────────────────────
 
-function ColourChip({ c }: { c: ColourToken }) {
+function ColourChip({ c, varName }: { c: ColourToken; varName?: string }) {
+  const [copiedSwatch, setCopiedSwatch] = useState(false);
+  const [copiedVar, setCopiedVar] = useState(false);
+
   const veryLight = relLuminance(c.hex) > 0.9;
-  const tooltip = [
-    c.name,
-    c.hex.toUpperCase(),
-    c.rgb && `RGB ${c.rgb}`,
-    c.pantone && `PANTONE ${c.pantone}`,
-    c.role && `Role: ${c.role}`,
-    c.usage,
-  ].filter(Boolean).join(" · ");
+  const level = wcagLevel(c.hex);
+  const fgOnSwatch = readable(c.hex);
+
+  function copy(value: string, which: "swatch" | "var") {
+    void navigator.clipboard.writeText(value).then(() => {
+      if (which === "swatch") { setCopiedSwatch(true); setTimeout(() => setCopiedSwatch(false), 1400); }
+      else { setCopiedVar(true); setTimeout(() => setCopiedVar(false), 1400); }
+    });
+  }
+
   return (
-    <div className="group flex flex-col gap-1.5" title={tooltip}>
-      {/* Swatch */}
-      <div
+    <div className="flex flex-col gap-1.5">
+      {/* Swatch — click to copy hex */}
+      <button
+        type="button"
+        onClick={() => copy(c.hex.toUpperCase(), "swatch")}
+        className="relative w-full cursor-pointer transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-600)]"
         style={{
           height: 56,
           background: c.hex,
           borderRadius: 8,
           border: veryLight ? "1px solid rgba(0,0,0,0.08)" : "none",
-          flexShrink: 0,
+          display: "block",
         }}
-      />
+        title={[
+          c.name,
+          c.hex.toUpperCase(),
+          c.rgb && `RGB ${c.rgb}`,
+          c.pantone && `PANTONE ${c.pantone}`,
+          c.usage && `Usage: ${c.usage}`,
+        ].filter(Boolean).join(" · ")}
+      >
+        {/* WCAG badge */}
+        {level && (
+          <span
+            className="absolute bottom-1.5 right-1.5 rounded-[3px] px-1 py-px text-[8px] font-bold uppercase tracking-[0.04em]"
+            style={{
+              background: veryLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.18)",
+              color: fgOnSwatch,
+              fontFamily: mono,
+            }}
+          >
+            {level}
+          </span>
+        )}
+        {/* Copied flash */}
+        {copiedSwatch && (
+          <span
+            className="absolute inset-0 flex items-center justify-center rounded-[8px] text-[10px] font-semibold"
+            style={{ background: "rgba(0,0,0,0.45)", color: "#fff" }}
+          >
+            Copied ✓
+          </span>
+        )}
+      </button>
+
       {/* Labels */}
-      <div className="min-w-0">
-        <p
-          className="truncate text-[11px] font-medium text-[var(--text-2)]"
-          title={c.name}
-        >
+      <div className="min-w-0 space-y-0.5">
+        <p className="truncate text-[11px] font-medium text-[var(--text-2)]" title={c.name}>
           {c.name}
         </p>
-        <p
-          className="truncate text-[10px] text-[var(--text-4)]"
-          style={{ fontFamily: mono }}
-        >
-          {c.hex.toUpperCase()}
-        </p>
-        {c.role && (
-          <p
-            className="truncate text-[9px] uppercase tracking-[0.06em] text-[var(--text-4)]"
+
+        {/* CSS variable — click to copy var(--name) */}
+        {varName && (
+          <button
+            type="button"
+            onClick={() => copy(`var(${varName})`, "var")}
+            className="block w-full truncate text-left text-[10px] text-[var(--brand-700)] transition hover:underline"
             style={{ fontFamily: mono }}
+            title={`Copy var(${varName})`}
           >
-            {c.role}
-          </p>
+            {copiedVar ? "Copied ✓" : varName}
+          </button>
         )}
+
+        {/* Hex */}
+        <p className="truncate text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
+          {c.hex.toUpperCase()}
+          {c.rgb && <span className="ml-1 opacity-60">{c.rgb}</span>}
+        </p>
       </div>
     </div>
   );
@@ -173,6 +247,9 @@ function TintStrip({ colour }: { colour: ColourToken }) {
 }
 
 function ColoursSection({ tokens }: { tokens: DesignTokens }) {
+  // Parse the :root {} block once to map hex values → CSS variable names
+  const varMap = useMemo(() => parseVarMap(tokens.cssVariables ?? ""), [tokens.cssVariables]);
+
   const groups: Array<[string, ColourToken[]]> = [
     ["Primary", tokens.colours.primary],
     ["Secondary", tokens.colours.secondary],
@@ -187,10 +264,10 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
             <GroupLabel>{label}</GroupLabel>
             <div
               className="grid gap-3"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))" }}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(88px, 1fr))" }}
             >
               {list.map((c, i) => (
-                <ColourChip key={`${c.name}-${i}`} c={c} />
+                <ColourChip key={`${c.name}-${i}`} c={c} varName={varMap.get(c.hex.toLowerCase())} />
               ))}
             </div>
           </div>
