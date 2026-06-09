@@ -861,72 +861,18 @@ function generateTailwindConfig(tokens: DesignTokens): string {
 
 // ── CSS tokens ──────────────────────────────────────────────────────────────
 
-function CssTokensSection({
-  tokens,
-  lang,
-  onLangChange,
-}: {
-  tokens: DesignTokens;
-  lang: "css" | "tailwind";
-  onLangChange: (lang: "css" | "tailwind") => void;
-}) {
-  const [copied, setCopied] = useState(false);
-
+function CssTokensSection({ tokens, lang }: { tokens: DesignTokens; lang: "css" | "tailwind" }) {
   const cssCode = tokens.cssVariables || "/* No CSS variables provided */";
   const tailwindCode = generateTailwindConfig(tokens);
   const activeCode = lang === "tailwind" ? tailwindCode : cssCode;
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(activeCode);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-
   return (
-    <div>
-      <pre
-        className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
-        style={{ background: "#0F172A", fontFamily: mono }}
-      >
-        {activeCode}
-      </pre>
-
-      {/* CSS / Tailwind toggle + copy — sits below the code block */}
-      <div className="mt-4 flex items-center justify-between gap-3">
-        {/* Toggle */}
-        <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
-          {(["css", "tailwind"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => onLangChange(l)}
-              className={[
-                "rounded-[4px] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] transition",
-                lang === l
-                  ? "bg-[var(--text-1)] text-white"
-                  : "text-[var(--text-4)] hover:text-[var(--text-1)]",
-              ].join(" ")}
-              style={{ fontFamily: mono }}
-            >
-              {l === "css" ? "CSS" : "Tailwind"}
-            </button>
-          ))}
-        </div>
-
-        {/* Copy */}
-        <button
-          type="button"
-          onClick={copy}
-          className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-        >
-          {copied ? "Copied ✓" : lang === "tailwind" ? "Copy Tailwind config" : "Copy CSS"}
-        </button>
-      </div>
-    </div>
+    <pre
+      className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
+      style={{ background: "#0F172A", fontFamily: mono }}
+    >
+      {activeCode}
+    </pre>
   );
 }
 
@@ -1008,6 +954,7 @@ export function DesignSystemViewer({
   clientLogoUrl?: string | null;
 }) {
   const [codeLang, setCodeLang] = useState<"css" | "tailwind">("css");
+  const [copiedTokens, setCopiedTokens] = useState(false);
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -1026,8 +973,53 @@ export function DesignSystemViewer({
     .filter(Boolean)
     .join(" · ");
 
+  // For the CSS TOKENS section header controls
+  const tokensCssCode = tokens.cssVariables || "/* No CSS variables provided */";
+  const tokensTailwindCode = generateTailwindConfig(tokens);
+  const tokensActiveCode = codeLang === "tailwind" ? tokensTailwindCode : tokensCssCode;
+  const copyTokens = async () => {
+    try {
+      await navigator.clipboard.writeText(tokensActiveCode);
+      setCopiedTokens(true);
+      window.setTimeout(() => setCopiedTokens(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+  const cssTokensStatus = (
+    <div className="flex items-center gap-2">
+      {/* CSS / Tailwind toggle */}
+      <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
+        {(["css", "tailwind"] as const).map((l) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setCodeLang(l)}
+            className={[
+              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+              codeLang === l
+                ? "bg-[var(--text-1)] text-white"
+                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
+            ].join(" ")}
+            style={{ fontFamily: mono }}
+          >
+            {l === "css" ? "CSS" : "Tailwind"}
+          </button>
+        ))}
+      </div>
+      {/* Copy */}
+      <button
+        type="button"
+        onClick={() => void copyTokens()}
+        className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+      >
+        {copiedTokens ? "Copied ✓" : codeLang === "tailwind" ? "Copy Tailwind" : "Copy CSS"}
+      </button>
+    </div>
+  );
+
   // Build numbered sections in order; only include ones with data.
-  const sections: Array<{ title: string; intro?: string; node: ReactNode }> = [];
+  const sections: Array<{ title: string; intro?: string; status?: ReactNode; node: ReactNode }> = [];
   sections.push({
     title: "COLOURS",
     intro: "The brand palette — primary, secondary, and neutral roles, each with the hex and where to use it.",
@@ -1089,7 +1081,8 @@ export function DesignSystemViewer({
     intro: codeLang === "css"
       ? "The complete :root {} custom-property block — paste-ready for the build."
       : "Generated tailwind.config.js theme.extend — paste into your Tailwind config.",
-    node: <CssTokensSection tokens={tokens} lang={codeLang} onLangChange={setCodeLang} />,
+    status: cssTokensStatus,
+    node: <CssTokensSection tokens={tokens} lang={codeLang} />,
   });
 
   const sectionId = (title: string) =>
@@ -1113,7 +1106,7 @@ export function DesignSystemViewer({
         ))}
       </nav>
       {sections.map((s, i) => (
-        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro}>
+        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro} status={s.status}>
           {s.node}
         </Section>
       ))}
