@@ -514,7 +514,6 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   const include = normalizeKeywords(config.keywords);
   const exclude = normalizeKeywords(config.excludeKeywords);
   const excludeClause = exclude.map((k) => `-"${k}"`).join(" ");
-  const maxResults = config.maxItems && config.maxItems > 0 ? Math.min(config.maxItems, 100) : 50;
   const fullQuery = [queryBase, excludeClause, `after:${afterSeconds}`]
     .filter(Boolean)
     .join(" ");
@@ -525,12 +524,27 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   const newConversationIds: string[] = [];
 
   try {
-    const listRes = await gmail.users.messages.list({ userId: "me", q: fullQuery, maxResults });
-    const messageItems = listRes.data.messages ?? [];
-    const fetched = messageItems.length;
+    // Paginate through all matching messages (100 per page, cap at 500 total) so a
+    // busy inbox with many non-support emails can't push support emails off the first page.
+    const MAX_THREADS = 500;
+    const allMessageItems: Array<{ id?: string | null; threadId?: string | null }> = [];
+    let pageToken: string | undefined;
+    do {
+      // eslint-disable-next-line no-await-in-loop
+      const page = await gmail.users.messages.list({
+        userId: "me",
+        q: fullQuery,
+        maxResults: 100,
+        pageToken,
+      });
+      allMessageItems.push(...(page.data.messages ?? []));
+      pageToken = page.data.nextPageToken ?? undefined;
+    } while (pageToken && allMessageItems.length < MAX_THREADS);
+
+    const fetched = allMessageItems.length;
     const threadsSeen = new Set<string>();
 
-    for (const item of messageItems) {
+    for (const item of allMessageItems) {
       if (!item.id || !item.threadId) continue;
       if (threadsSeen.has(item.threadId)) { filtered++; continue; }
       threadsSeen.add(item.threadId);
