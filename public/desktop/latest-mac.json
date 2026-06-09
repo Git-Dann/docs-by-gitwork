@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "build": "1",
+  "platform": "macos",
+  "arch": "universal",
+  "minimumMacOS": "26.0",
+  "dmgUrl": "https://github.com/Git-Dann/foundry-mac/releases/download/mac-v0.1.0/Foundry-0.1.0-universal-unsigned-internal.dmg",
+  "sha256": "c249c09797916192e065934995e80b884507bc5ecaf1a68c7c9e317040c4508d",
+  "releaseDate": "2026-06-09",
+  "notarized": false,
+  "sparkleAppcastUrl": "https://github.com/Git-Dann/foundry-mac/releases/latest/download/appcast.xml",
+  "notes": [
+    "First internal build — native sign-in via your default browser; Proposals, Clients, Rate Card and CodeClear.",
+    "Unsigned internal build: on first launch, right-click Foundry and choose Open."
+  ]
+}
