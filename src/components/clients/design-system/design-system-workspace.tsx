@@ -70,7 +70,7 @@ export function DesignSystemWorkspace({
         )}
 
         {ds?.exists && (
-          <div className={`flex items-center gap-2 ${embedded ? "" : ""}`}>
+          <div className={`flex items-center gap-2${embedded ? " ml-auto" : ""}`}>
             {/* Share — toggle + link + open, folded into one menu */}
             <Menu as="div" className="relative">
               <MenuButton className={chipBtn}>
