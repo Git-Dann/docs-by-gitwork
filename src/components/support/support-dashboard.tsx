@@ -3760,6 +3760,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
+  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const { data: logsData } = useSupportAuditLogs(clientId);
   const agentLogs = (logsData?.logs ?? []).filter((l: AuditLog) => l.actor.startsWith("agent:")).slice(0, 10);
 
@@ -3877,31 +3878,111 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         </div>
       )}
 
-      {connections.length > 0 && (
-        <div className="app-card overflow-visible p-0">
-          {/* widget header */}
-          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-              01 // CONNECTORS
-            </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-              {connections.length}
-            </span>
+      {/* ── Monitoring strip ── */}
+      {connections.length > 0 && (() => {
+        const nConnected = connections.filter((c) => c.health === "connected").length;
+        const nError = connections.filter((c) => c.health === "error").length;
+        const nSetup = connections.filter((c) => c.health === "needs_setup").length;
+        const lastChecked = connections.reduce((best, c) => {
+          if (!c.lastSyncedAt) return best;
+          const t = new Date(c.lastSyncedAt).getTime();
+          return t > best ? t : best;
+        }, 0);
+        return (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-2.5 text-[12px]">
+            {nConnected > 0 && (
+              <span className="flex items-center gap-1.5 font-medium text-emerald-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />{nConnected} connected
+              </span>
+            )}
+            {nError > 0 && (
+              <span className="flex items-center gap-1.5 font-medium text-red-600">
+                <span className="h-2 w-2 rounded-full bg-red-500" />{nError} error
+              </span>
+            )}
+            {nSetup > 0 && (
+              <span className="flex items-center gap-1.5 font-medium text-amber-700">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />{nSetup} needs setup
+              </span>
+            )}
+            {lastChecked > 0 && (
+              <span className="ml-auto text-[var(--text-4)]">
+                Last synced {new Date(lastChecked).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
-          {connections.map((conn, idx) => {
+        );
+      })()}
+
+      {/* ── Connector cards — 3-column responsive grid ── */}
+      {connections.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {connections.map((conn) => {
             const sr = syncResults[conn.id];
+            const st = !sr ? conn.lastSyncStats ?? null : null;
+            const isExpanded = expandedErrors.has(conn.id);
+
+            // Derive the error text (live result or persisted)
+            const liveError = sr?.errors?.[0];
+            const persistedError = st?.errors?.[0];
+            const errorText = liveError ?? (st && st.errors.length > 0 ? persistedError : undefined);
+            const hints: string[] = sr
+              ? []
+              : (st?.hints ?? []);
+
+            // Sync stats summary line
+            const syncLine = (() => {
+              if (sr) {
+                if (sr.errors.length > 0) return null; // shown as errorText
+                if ((sr.ingested ?? 0) > 0) return `${sr.ingested} added, ${sr.filtered ?? 0} filtered`;
+                if (sr.fetched !== undefined) return sr.fetched === 0 ? "0 messages found" : `${sr.fetched} found, 0 new`;
+                return "No new items";
+              }
+              if (st && st.errors.length === 0) {
+                const when = new Date(st.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+                const r = st.filterReasons;
+                const breakdown = r
+                  ? [r.bots ? `${r.bots} bots` : null, r.empty ? `${r.empty} empty` : null, r.duplicate ? `${r.duplicate} dupes` : null, r.excluded ? `${r.excluded} excl` : null].filter(Boolean).join(", ")
+                  : "";
+                return `${when} — ${st.ingested} added${st.filtered ? `, ${st.filtered} filtered` : ""}${breakdown ? ` (${breakdown})` : ""}`;
+              }
+              return null;
+            })();
+
+            // Source detail line (channels / subreddit / appId / webhook URL)
+            const detailLine = (() => {
+              const cfg = conn.scraperConfig;
+              if (!cfg) return null;
+              if (conn.source === "discord" && cfg.channels?.length) return cfg.channels.map((c) => `#${c.name}`).join(", ");
+              if (conn.source === "reddit" && cfg.subreddit) return `r/${cfg.subreddit}`;
+              if (conn.source === "app_reviews") return [cfg.store === "play_store" ? "Play Store" : "App Store", cfg.appId].filter(Boolean).join(" · ");
+              if (conn.source === "webhook" && cfg.webhookToken) return `/api/support/webhook/${cfg.webhookToken.slice(0, 8)}…`;
+              if (conn.source === "analytics" && cfg.adapter) return cfg.adapter;
+              if (conn.source === "gmail" && cfg.intakeAddress) return cfg.intakeAddress;
+              return null;
+            })();
+
+            const pendingVars = syncConn.isPending ? syncConn.variables : null;
+            const pendingConnId = typeof pendingVars === "string" ? pendingVars : pendingVars?.connId;
+            const pendingResync = typeof pendingVars === "string" ? false : (pendingVars?.resync ?? false);
+            const isThisPending = pendingConnId === conn.id;
+            const isSyncPending = isThisPending && !pendingResync;
+            const isResyncPending = isThisPending && pendingResync;
+            const menuOpen = openMenuId === conn.id;
+
             return (
               <div
                 key={conn.id}
                 className={cn(
-                  "flex flex-wrap items-start justify-between gap-4 px-5 py-4",
-                  idx > 0 && "border-t border-[var(--border-2)]",
+                  "app-card overflow-visible p-0 flex flex-col",
+                  conn.health === "error" && "ring-1 ring-red-200",
                 )}
               >
-                <div className="flex items-start gap-3">
+                {/* ── Card header ── */}
+                <div className="flex min-w-0 items-center gap-3 px-4 py-3 border-b border-[var(--border-2)]">
                   <div
                     className={cn(
-                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px]",
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px]",
                       conn.health === "connected"
                         ? "bg-emerald-50 text-emerald-600"
                         : conn.health === "error"
@@ -3911,193 +3992,114 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                   >
                     <SourceIcon source={conn.source} className="h-4 w-4" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-[var(--text-1)]">{conn.label}</span>
-                      <span className="text-xs text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-[var(--text-3)]">{AUTH_MODE_LABEL[conn.authMode]}</p>
-                    {conn.source === "gmail" && (
-                      <p className={cn("mt-1 text-[11px]", conn.connectedEmail ? "text-emerald-600" : "text-amber-600")}>
-                        {conn.connectedEmail
-                          ? `✓ ${conn.connectedEmail}`
-                          : "No Gmail account connected — click Edit to connect one"}
-                      </p>
-                    )}
-                    {conn.scraperConfig?.intakeAddress && (
-                      <p className="mt-1 select-all font-mono text-[11px] text-[var(--brand-700)]">
-                        {conn.scraperConfig.intakeAddress}
-                      </p>
-                    )}
-                    {conn.source === "gmail" && (
-                      <div className="mt-2 flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          {conn.scraperConfig?.query?.trim() ? (
-                            <p className="break-all font-mono text-[11px] text-[var(--text-3)]">
-                              <span className="text-[var(--text-4)]">filter: </span>
-                              {conn.scraperConfig.query}
-                            </p>
-                          ) : (
-                            <p className="text-[11px] text-amber-600">
-                              No filter set — ingesting all mail
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setEditingConn(conn)}
-                          className="shrink-0 rounded-[4px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
-                        >
-                          Edit filter
-                        </button>
-                      </div>
-                    )}
-                    {conn.scraperConfig?.channels && conn.scraperConfig.channels.length > 0 && (
-                      <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                        {conn.scraperConfig.channels.map((c) => `#${c.name}`).join(", ")}
-                      </p>
-                    )}
-                    {conn.scraperConfig?.subreddit && (
-                      <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                        r/{conn.scraperConfig.subreddit}
-                      </p>
-                    )}
-                    {(() => {
-                      const cfg = conn.scraperConfig;
-                      if (!cfg) return null;
-                      const parts: string[] = [];
-                      if (cfg.keywords?.length) parts.push(`incl: ${cfg.keywords.join(", ")}`);
-                      if (cfg.excludeKeywords?.length) parts.push(`excl: ${cfg.excludeKeywords.join(", ")}`);
-                      if (cfg.lookbackDays) parts.push(`${cfg.lookbackDays}d lookback`);
-                      if (cfg.maxItems) parts.push(`max ${cfg.maxItems}`);
-                      if (conn.source === "discord" && cfg.ignoreBots === false) parts.push("includes bots");
-                      if (parts.length === 0) return null;
-                      return (
-                        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.4px] text-[var(--text-4)]">
-                          {parts.join("  ·  ")}
-                        </p>
-                      );
-                    })()}
-                    {sr && (
-                      <p className={cn("mt-1 text-[11px]", sr.errors.length > 0 ? "text-red-500" : (sr.ingested ?? 0) > 0 ? "text-emerald-600" : "text-[var(--text-4)]")}>
-                        {sr.errors.length > 0
-                          ? `Error: ${sr.errors[0]}`
-                          : (sr.ingested ?? 0) > 0
-                            ? `Synced — ${sr.ingested ?? 0} added, ${sr.filtered ?? 0} filtered`
-                            : sr.fetched !== undefined
-                              ? sr.fetched === 0
-                                ? "0 messages found — check your query or Re-sync history"
-                                : `${sr.fetched} found, 0 new conversations`
-                              : "No new items since last sync"}
-                      </p>
-                    )}
-                    {/* Persisted Sync Health — survives reloads, shows the last cron/manual run */}
-                    {!sr && conn.lastSyncStats && (() => {
-                      const st = conn.lastSyncStats!;
-                      const when = new Date(st.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-                      const hasErr = st.errors.length > 0;
-                      const r = st.filterReasons;
-                      const breakdown = r
-                        ? [
-                            r.bots ? `${r.bots} bots` : null,
-                            r.empty ? `${r.empty} empty` : null,
-                            r.duplicate ? `${r.duplicate} dupes` : null,
-                            r.excluded ? `${r.excluded} excluded` : null,
-                          ].filter(Boolean).join(", ")
-                        : "";
-                      return (
-                        <>
-                          <p className={cn("mt-1 break-words text-[11px]", hasErr ? "text-red-500" : "text-[var(--text-4)]")}>
-                            {hasErr
-                              ? `Last sync ${when} — error: ${st.errors[0]}`
-                              : `Last sync ${when} — ${st.ingested} added${st.filtered ? `, ${st.filtered} filtered` : ""}${breakdown ? ` (${breakdown})` : ""}`}
-                          </p>
-                          {(st.hints ?? []).map((hint, i) => (
-                            <p key={i} className="mt-1 break-words rounded-[6px] border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-                              {hint}
-                            </p>
-                          ))}
-                        </>
-                      );
-                    })()}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--text-1)]">{conn.label}</p>
+                    <p className="text-[11px] text-[var(--text-4)]">{SOURCE_LABEL[conn.source]}</p>
                   </div>
+                  {conn.health === "connected" ? (
+                    <span className="shrink-0 flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      <CheckCircleIcon className="h-3 w-3" />Connected
+                    </span>
+                  ) : conn.health === "error" ? (
+                    <span className="shrink-0 flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                      <ExclamationTriangleIcon className="h-3 w-3" />Error
+                    </span>
+                  ) : (
+                    <span className="shrink-0 flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <ExclamationTriangleIcon className="h-3 w-3" />Setup
+                    </span>
+                  )}
                 </div>
 
-                {(() => {
-                  const pendingVars = syncConn.isPending ? syncConn.variables : null;
-                  const pendingConnId = typeof pendingVars === "string" ? pendingVars : pendingVars?.connId;
-                  const pendingResync = typeof pendingVars === "string" ? false : (pendingVars?.resync ?? false);
-                  const isThisPending = pendingConnId === conn.id;
-                  const isSyncPending = isThisPending && !pendingResync;
-                  const isResyncPending = isThisPending && pendingResync;
-                  const menuOpen = openMenuId === conn.id;
-                  return (
-                    <div className="flex items-center gap-2">
-                      {conn.health === "connected" ? (
-                        <span className="flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                          <CheckCircleIcon className="h-3.5 w-3.5" />
-                          Connected
-                        </span>
-                      ) : conn.health === "error" ? (
-                        <span className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600">
-                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                          Error
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
-                          Needs setup
-                        </span>
-                      )}
-                      {canManageSupport ? (
-                      <button
-                        type="button"
-                        onClick={() => handleSync(conn.id)}
-                        disabled={isThisPending}
-                        className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                      >
-                        <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
-                        {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
-                      </button>
-                      ) : null}
-                      {/* kebab menu */}
-                      {canManageSupport ? (
-                      <div className="relative">
+                {/* ── Card body ── */}
+                <div className="flex-1 space-y-1.5 px-4 py-3">
+                  {/* Source detail */}
+                  {detailLine && (
+                    <p className="truncate font-mono text-[11px] text-[var(--text-3)]">{detailLine}</p>
+                  )}
+                  {conn.source === "gmail" && !conn.scraperConfig?.query?.trim() && (
+                    <p className="text-[11px] text-amber-600">No filter set — ingesting all mail</p>
+                  )}
+
+                  {/* Sync result / persisted stats */}
+                  {errorText ? (
+                    <div>
+                      <p className={cn("break-words text-[11px] text-red-500", !isExpanded && "line-clamp-2")}>
+                        {errorText}
+                      </p>
+                      {errorText.length > 120 && (
                         <button
                           type="button"
-                          onClick={() => setOpenMenuId(menuOpen ? null : conn.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+                          onClick={() => setExpandedErrors((prev) => { const n = new Set(prev); n.has(conn.id) ? n.delete(conn.id) : n.add(conn.id); return n; })}
+                          className="mt-0.5 text-[10px] font-medium text-[var(--text-4)] hover:text-[var(--text-2)]"
                         >
-                          <EllipsisVerticalIcon className="h-4 w-4" />
+                          {isExpanded ? "Show less" : "Show more"}
                         </button>
-                        {menuOpen && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-                            <div className="absolute right-0 bottom-full z-50 mb-1 w-44 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
-                              <button
-                                type="button"
-                                onClick={() => { setOpenMenuId(null); void handleSync(conn.id, true); }}
-                                disabled={isThisPending}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                              >
-                                <ArrowPathIcon className="h-3.5 w-3.5 shrink-0" />
-                                Re-sync history
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => { setOpenMenuId(null); setEditingConn(conn); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                              >
-                                <PencilSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                                Edit connector
-                              </button>
-                              <div className="border-t border-[var(--border-2)]" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMenuId(null);
-                                  if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
-                                    deleteConn.mutate(conn.id);
+                      )}
+                    </div>
+                  ) : syncLine ? (
+                    <p className="text-[11px] text-[var(--text-4)]">{syncLine}</p>
+                  ) : null}
+
+                  {/* Hints */}
+                  {hints.map((hint, i) => (
+                    <p key={i} className="break-words rounded-[6px] border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                      {hint}
+                    </p>
+                  ))}
+                </div>
+
+                {/* ── Card footer ── */}
+                <div className="flex items-center border-t border-[var(--border-2)] px-4 py-2.5 gap-2">
+                  {canManageSupport ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSync(conn.id)}
+                      disabled={isThisPending}
+                      className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    >
+                      <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
+                      {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
+                    </button>
+                  ) : null}
+                  <div className="ml-auto">
+                    {canManageSupport ? (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenuId(menuOpen ? null : conn.id)}
+                        className="flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        <EllipsisVerticalIcon className="h-4 w-4" />
+                      </button>
+                      {menuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                          <div className="absolute right-0 bottom-full z-50 mb-1 w-44 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
+                            <button
+                              type="button"
+                              onClick={() => { setOpenMenuId(null); void handleSync(conn.id, true); }}
+                              disabled={isThisPending}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                            >
+                              <ArrowPathIcon className="h-3.5 w-3.5 shrink-0" />
+                              Re-sync history
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setOpenMenuId(null); setEditingConn(conn); }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                            >
+                              <PencilSquareIcon className="h-3.5 w-3.5 shrink-0" />
+                              Edit connector
+                            </button>
+                            <div className="border-t border-[var(--border-2)]" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                if (window.confirm(`Delete "${conn.label}"? This cannot be undone.`)) {
+                                  deleteConn.mutate(conn.id);
                                   }
                                 }}
                                 disabled={deleteConn.isPending}
@@ -4112,8 +4114,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       </div>
                       ) : null}
                     </div>
-                  );
-                })()}
+                  </div>
               </div>
             );
           })}
