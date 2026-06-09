@@ -100,52 +100,52 @@ function GroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** Mono value pill — solid (default) or quiet (muted). */
-function Pill({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  return (
-    <span
-      className="inline-block rounded-[4px] px-1.5 py-0.5 text-[10px]"
-      style={{
-        fontFamily: mono,
-        background: muted ? "transparent" : "var(--surface-1)",
-        color: muted ? "var(--text-4)" : "var(--text-2)",
-        border: muted ? "none" : "1px solid rgba(0,0,0,0.06)",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
 
 // ── colours ────────────────────────────────────────────────────────────────────
 
-function ColourCard({ c }: { c: ColourToken }) {
+function ColourChip({ c }: { c: ColourToken }) {
   const veryLight = relLuminance(c.hex) > 0.9;
+  const tooltip = [
+    c.name,
+    c.hex.toUpperCase(),
+    c.rgb && `RGB ${c.rgb}`,
+    c.pantone && `PANTONE ${c.pantone}`,
+    c.role && `Role: ${c.role}`,
+    c.usage,
+  ].filter(Boolean).join(" · ");
   return (
-    <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-raised,#fff)]">
+    <div className="group flex flex-col gap-1.5" title={tooltip}>
+      {/* Swatch */}
       <div
         style={{
-          height: 96,
+          height: 56,
           background: c.hex,
-          borderBottom: veryLight ? "1px solid rgba(0,0,0,0.06)" : "none",
+          borderRadius: 8,
+          border: veryLight ? "1px solid rgba(0,0,0,0.08)" : "none",
+          flexShrink: 0,
         }}
       />
-      <div className="p-3.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-[13px] font-semibold text-[var(--text-1)]">{c.name}</p>
-          {c.role && (
-            <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
-              {c.role}
-            </span>
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Pill>{c.hex.toUpperCase()}</Pill>
-          {c.rgb && <Pill muted>{c.rgb}</Pill>}
-          {c.pantone && <Pill muted>PANTONE {c.pantone}</Pill>}
-        </div>
-        {c.usage && (
-          <p className="mt-2 text-[11px] leading-snug text-[var(--text-3)]">{c.usage}</p>
+      {/* Labels */}
+      <div className="min-w-0">
+        <p
+          className="truncate text-[11px] font-medium text-[var(--text-2)]"
+          title={c.name}
+        >
+          {c.name}
+        </p>
+        <p
+          className="truncate text-[10px] text-[var(--text-4)]"
+          style={{ fontFamily: mono }}
+        >
+          {c.hex.toUpperCase()}
+        </p>
+        {c.role && (
+          <p
+            className="truncate text-[9px] uppercase tracking-[0.06em] text-[var(--text-4)]"
+            style={{ fontFamily: mono }}
+          >
+            {c.role}
+          </p>
         )}
       </div>
     </div>
@@ -180,14 +180,17 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
   ];
   const accent = tokens.colours.primary[1] ?? tokens.colours.secondary[0] ?? null;
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {groups.map(([label, list]) =>
         list.length === 0 ? null : (
           <div key={label}>
             <GroupLabel>{label}</GroupLabel>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div
+              className="grid gap-3"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))" }}
+            >
               {list.map((c, i) => (
-                <ColourCard key={`${c.name}-${i}`} c={c} />
+                <ColourChip key={`${c.name}-${i}`} c={c} />
               ))}
             </div>
           </div>
