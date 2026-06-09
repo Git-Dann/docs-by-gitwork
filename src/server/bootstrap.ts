@@ -97,6 +97,10 @@ async function ensurePortalSchema() {
     // PulseScan: track who triggered the scan so we can target push notifications
     `ALTER TABLE "PulseScan" ADD COLUMN IF NOT EXISTS "triggeredByUserId" TEXT`,
     `CREATE INDEX IF NOT EXISTS "PulseScan_triggeredByUserId_idx" ON "PulseScan"("triggeredByUserId")`,
+    // pgvector — semantic search for Care conversations
+    `CREATE EXTENSION IF NOT EXISTS vector`,
+    `ALTER TABLE "SupportConversation" ADD COLUMN IF NOT EXISTS embedding vector(1536)`,
+    `CREATE INDEX IF NOT EXISTS "SupportConversation_embedding_hnsw" ON "SupportConversation" USING hnsw (embedding vector_cosine_ops)`,
     // DeviceToken table — one row per (user, APNs device)
     `CREATE TABLE IF NOT EXISTS "DeviceToken" (
       "id" TEXT NOT NULL,

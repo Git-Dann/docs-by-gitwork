@@ -1370,6 +1370,18 @@ export async function listSupportConversations(
   return apiFetch(`/api/support/clients/${clientId}/conversations`);
 }
 
+export async function searchConversationsSemantic(
+  clientId: string,
+  query: string,
+  limit = 10,
+): Promise<{ results: Array<{ id: string; subject: string; preview: string | null; source: string; customerLabel: string; receivedAt: string; score: number }> }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit }),
+  });
+}
+
 export async function updateSupportConversation(
   clientId: string,
   convId: string,

@@ -35,6 +35,7 @@ import {
   updateSupportReport,
   updateSupportTicket,
   batchUpdateSupportTickets,
+  searchConversationsSemantic,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
@@ -87,6 +88,13 @@ export function useSupportConversations(clientId: string | null) {
     queryFn: () => listSupportConversations(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 1000 * 15,
+  });
+}
+
+export function useSemanticSearch(clientId: string | null) {
+  return useMutation({
+    mutationFn: ({ query, limit }: { query: string; limit?: number }) =>
+      searchConversationsSemantic(clientId as string, query, limit),
   });
 }
 
