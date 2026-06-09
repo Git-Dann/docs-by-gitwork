@@ -647,7 +647,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col divide-y divide-[rgba(0,0,0,0.05)]">
+            <div className="grid grid-cols-2 gap-3">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.id}
@@ -701,7 +701,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col divide-y divide-[rgba(0,0,0,0.05)]">
+            <div className="flex flex-col gap-2">
               {designs.map((design) => (
                 <DesignCard
                   key={design.id}
@@ -1812,12 +1812,12 @@ function PlatformCard({
   return (
     <>
       <article
-        className="widget-card group flex cursor-pointer items-center gap-3 px-3 py-3 hover:bg-[var(--surface-0)] transition-colors"
+        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
         onClick={() => setEditing(true)}
       >
         {/* Icon badge */}
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px]"
           style={{ background: bg, color }}
         >
           {icon}
@@ -1825,15 +1825,15 @@ function PlatformCard({
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{platform.name}</p>
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]">{platform.name}</p>
           {primaryUrl && (
-            <p className="truncate text-xs text-[var(--text-4)]">
+            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5">
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
           {platform.platformType && (
             <span
-              className="inline-block mt-0.5 rounded-[3px] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
+              className="inline-block mt-1 rounded-[3px] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]"
               style={{ fontFamily: "var(--font-mono)" }}
             >
               {platform.platformType}
@@ -1950,12 +1950,12 @@ function DesignCard({
   return (
     <>
       <article
-        className="widget-card group flex cursor-pointer items-center gap-3 px-3 py-3 hover:bg-[var(--surface-0)] transition-colors"
+        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
         onClick={() => setEditing(true)}
       >
         {/* Icon badge */}
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px]"
           style={{ background: bg, color }}
         >
           {icon}
@@ -1963,14 +1963,14 @@ function DesignCard({
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{design.name}</p>
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]">{design.name}</p>
           {design.url && (
-            <p className="truncate text-xs text-[var(--text-4)]">
+            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5">
               {design.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
           {design.notes && (
-            <p className="mt-0.5 truncate text-xs text-[var(--text-3)]">{design.notes}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{design.notes}</p>
           )}
         </div>
 
