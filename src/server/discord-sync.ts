@@ -30,16 +30,21 @@ export interface DiscordChannel {
   accessible: boolean; // false = bot cannot read messages (missing View Channel / Read Message History)
 }
 
+/**
+ * Fetches messages newer than `afterSnowflake`, oldest-first, capped at `maxMessages`.
+ * Capping prevents serverless timeouts on channels with large backlogs — the cursor
+ * advances per run so subsequent syncs pick up where this one left off.
+ */
 export async function fetchNewMessages(
   channelId: string,
   botToken: string,
   afterSnowflake?: string | null,
+  maxMessages = 500,
 ): Promise<DiscordMessage[]> {
   const all: DiscordMessage[] = [];
   let cursor = afterSnowflake ?? undefined;
 
-  // Paginate in batches of 100 until the channel is exhausted
-  while (true) {
+  while (all.length < maxMessages) {
     const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("after", cursor);
@@ -63,17 +68,18 @@ export async function fetchNewMessages(
 }
 
 /**
- * Fetches the entire message history of a Discord channel by paginating backwards
- * with `before` cursors. Returns all messages oldest-first.
- * Used on a first sync or manual resync so the full channel history is ingested.
+ * Fetches channel history backwards from the newest message, oldest-first, capped at
+ * `maxMessages`. Used on first sync / manual resync. Capping prevents timeouts on
+ * large channels — each subsequent incremental sync catches up further.
  */
 export async function fetchChannelHistory(
   channelId: string,
   botToken: string,
+  maxMessages = 500,
 ): Promise<DiscordMessage[]> {
   const all: DiscordMessage[] = [];
   let before: string | undefined;
-  while (true) {
+  while (all.length < maxMessages) {
     const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
     url.searchParams.set("limit", "100");
     if (before) url.searchParams.set("before", before);
