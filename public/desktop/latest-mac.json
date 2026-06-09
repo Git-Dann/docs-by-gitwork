@@ -1,0 +1,8 @@
+{
+  "version": "0.1.1",
+  "build": "2",
+  "releaseDate": "2026-06-09",
+  "channel": "stable",
+  "downloadUrl": "https://github.com/Git-Dann/foundry-mac/releases/download/mac-v0.1.1/Foundry-0.1.1.dmg",
+  "releaseNotes": "Initial release — dashboard, tasks, Pulse, Portal and Backstage modules."
+}
