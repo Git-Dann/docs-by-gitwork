@@ -83,7 +83,7 @@ interface Props {
 }
 
 export function WikiWorkspace({ slug, clientName }: Props) {
-  const [activeSection, setActiveSection] = useState<WikiSection>("ia");
+  const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
