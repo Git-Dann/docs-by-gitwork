@@ -1,5 +1,6 @@
 import { triageConversation } from "./triage-agent";
 import { generateDraftReply } from "./draft-agent";
+import { embedConversation } from "./embeddings";
 import { prisma } from "@/lib/prisma";
 import type { AiContext } from "./ai-client";
 
@@ -34,6 +35,8 @@ export async function enrichConversations(
         await generateDraftReply(ctx, convId, ticketId);
         draftsGenerated++;
       }
+      // Generate semantic embedding non-blockingly (no OpenAI key = silent no-op).
+      embedConversation(convId, ctx.workspace).catch(() => undefined);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`enrich ${convId}: ${msg}`);

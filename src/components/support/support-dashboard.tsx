@@ -75,6 +75,7 @@ import {
   useSendMessage,
   useGenerateAiDraft,
   useBatchUpdateTickets,
+  useSemanticSearch,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
@@ -1404,6 +1405,25 @@ function InboxView({ clientId }: { clientId: string }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 15;
 
+  // Semantic (vector) search state
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<{ id: string; score: number }[] | null>(null);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
+  const semanticSearch = useSemanticSearch(clientId);
+
+  function clearSemantic() { setSemanticResults(null); setSemanticError(null); }
+
+  async function handleSemanticSearch() {
+    if (!search.trim()) return;
+    setSemanticError(null);
+    try {
+      const res = await semanticSearch.mutateAsync({ query: search });
+      setSemanticResults(res.results.map((r) => ({ id: r.id, score: r.score })));
+    } catch (e) {
+      setSemanticError(e instanceof Error ? e.message : "Semantic search failed");
+    }
+  }
+
   // Sources to show as filter chips: any configured connection (exc. analytics) + any source
   // that already has conversations. This way Reddit shows even before its first sync.
   const presentSources = useMemo(() => {
@@ -1477,7 +1497,14 @@ function InboxView({ clientId }: { clientId: string }) {
   // Reset to first page when filters or search changes
   useEffect(() => { setPage(0); }, [deferred, filterSource, filterSentiment, filterUnread]);
 
-  const activeConvo = filtered.find((c) => c.id === selectedConvId) ?? null;
+  // When semantic results are active, show only matched convos ordered by similarity score.
+  const displayedConvos = semanticResults
+    ? semanticResults
+        .map((r) => ({ ...convos.find((c) => c.id === r.id)!, _score: r.score }))
+        .filter((c) => c.id)
+    : paginated;
+
+  const activeConvo = (semanticResults ? displayedConvos : filtered).find((c) => c.id === selectedConvId) ?? null;
 
   // Keywords stored in conversation tags as "kw:<term>" by Discord sync
   const activeKeywords = useMemo(
@@ -1540,14 +1567,36 @@ function InboxView({ clientId }: { clientId: string }) {
       {/* search + filter bar */}
       <div className="flex items-center gap-2">
         <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+          {semanticMode
+            ? <SparklesIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500" />
+            : <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+          }
           <input
-            className="h-9 w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-700)] focus:bg-white"
-            placeholder="Search inbox…"
+            className={cn(
+              "h-9 w-full rounded-[6px] border bg-[var(--surface-1)] pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)]",
+              semanticMode
+                ? "border-violet-300 focus:border-violet-500 focus:bg-white"
+                : "border-[var(--border-2)] focus:border-[var(--brand-700)] focus:bg-white",
+            )}
+            placeholder={semanticMode ? "Ask anything… (press Enter)" : "Search inbox…"}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); if (semanticResults) clearSemantic(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && semanticMode && search.trim()) void handleSemanticSearch(); }}
           />
         </div>
+        <button
+          type="button"
+          title={semanticMode ? "AI semantic search on — click for text search" : "Switch to AI semantic search"}
+          onClick={() => { setSemanticMode((m) => !m); clearSemantic(); setSearch(""); }}
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border transition",
+            semanticMode
+              ? "border-violet-400 bg-violet-50 text-violet-600"
+              : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+          )}
+        >
+          <SparklesIcon className="h-4 w-4" />
+        </button>
         <InboxFiltersDropdown
           filterSentiment={filterSentiment}
           filterUnread={filterUnread}
@@ -1556,6 +1605,9 @@ function InboxView({ clientId }: { clientId: string }) {
           onClear={() => { setFilterSentiment("all"); setFilterUnread(false); }}
         />
       </div>
+      {semanticError && (
+        <p className="rounded-[6px] bg-red-50 px-3 py-2 text-xs text-red-600">{semanticError}</p>
+      )}
 
       {/* two-column layout */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -1564,25 +1616,38 @@ function InboxView({ clientId }: { clientId: string }) {
           {/* widget header */}
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-              01 // INBOX
+              {semanticResults ? "AI SEARCH" : "01 // INBOX"}
             </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
-              {filtered.length}
-            </span>
+            <div className="flex items-center gap-2">
+              {semanticResults && (
+                <button
+                  type="button"
+                  onClick={clearSemantic}
+                  className="flex h-4 items-center gap-0.5 rounded-full bg-violet-100 px-1.5 text-[10px] font-semibold text-violet-600 hover:bg-violet-200"
+                >
+                  <XMarkIcon className="h-2.5 w-2.5" /> clear
+                </button>
+              )}
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+                {semanticResults ? semanticResults.length : filtered.length}
+              </span>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             <div className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-0.5">
-            {convosLoading && (
+            {(convosLoading || semanticSearch.isPending) && (
               <div className="space-y-2">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="h-14 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
                 ))}
               </div>
             )}
-            {!convosLoading && filtered.length === 0 && (
-              <p className="py-8 text-center text-sm text-[var(--text-4)]">No conversations found.</p>
+            {!convosLoading && !semanticSearch.isPending && displayedConvos.length === 0 && (
+              <p className="py-8 text-center text-sm text-[var(--text-4)]">
+                {semanticResults ? "No matching conversations found." : "No conversations found."}
+              </p>
             )}
-            {paginated.map((c) => (
+            {displayedConvos.map((c) => (
               <ConversationCard
                 key={c.id}
                 convo={c}
