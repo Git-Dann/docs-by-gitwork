@@ -2364,6 +2364,18 @@ export async function setWikiShareApi(
   );
 }
 
+export async function setWikiSectionShareApi(
+  slug: string,
+  section: string,
+  enabled: boolean,
+): Promise<Record<string, string>> {
+  return apiFetch<Record<string, string>>(`/api/clients/${slug}/wiki/share`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled, section }),
+  });
+}
+
 export async function addWikiChangelogEntry(
   slug: string,
   payload: {

@@ -5,6 +5,7 @@ import {
   getClientWiki,
   upsertWikiPage,
   setWikiShareApi,
+  setWikiSectionShareApi,
   addWikiChangelogEntry,
   deleteWikiChangelogEntry,
   updateWikiPlatformsApi,
@@ -37,6 +38,17 @@ export function useSetWikiShare(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiShareApi(slug, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useSetWikiSectionShare(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ section, enabled }: { section: string; enabled: boolean }) =>
+      setWikiSectionShareApi(slug, section, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { setWikiShare } from "@/server/wiki";
+import { setWikiShare, setWikiSectionShare } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
 
-const bodySchema = z.object({ enabled: z.boolean() });
+// `section` present → per-page share; absent → whole-wiki share.
+const bodySchema = z.object({
+  enabled: z.boolean(),
+  section: z.enum(["ia", "dev-guide", "changelog"]).optional(),
+});
 
 export async function PATCH(
   req: NextRequest,
@@ -21,8 +25,10 @@ export async function PATCH(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const { enabled } = bodySchema.parse(await req.json());
-    const result = await setWikiShare(client.id, enabled);
+    const { enabled, section } = bodySchema.parse(await req.json());
+    const result = section
+      ? await setWikiSectionShare(client.id, section, enabled)
+      : await setWikiShare(client.id, enabled);
     return apiOk(result);
   } catch (err) {
     return fromError(err);

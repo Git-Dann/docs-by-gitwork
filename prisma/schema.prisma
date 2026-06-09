@@ -990,6 +990,11 @@ model ClientWiki {
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
   platforms    Json?
+  /// Per-page public share tokens: { "<section>": "<token>" } for individually
+  /// shared sections (ia / dev-guide / changelog). shareToken above is whole-wiki.
+  pageShares       Json?
+  /// Flat list of the per-page tokens above, for fast public lookup by token.
+  pageShareTokens  String[] @default([])
   pages        ClientWikiPage[]
   changelog    ClientChangelogEntry[]
   createdAt    DateTime               @default(now())
