@@ -72,10 +72,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const auth = { Authorization: `Bearer ${token}` };
 
-    // 1. Channel history.
+    // 1. Channel history — cached for 2 min so multiple teammates viewing the
+    //    same client page share one Slack response per cache window.
     const historyRes = await fetch(
       `${SLACK_API}/conversations.history?channel=${encodeURIComponent(channelId)}&limit=40`,
-      { headers: auth, cache: "no-store" },
+      { headers: auth, next: { revalidate: 120 } },
     );
     const history = (await historyRes.json()) as {
       ok: boolean;
@@ -109,7 +110,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     await Promise.all(
       userIds.map(async (uid) => {
         try {
-          const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, { headers: auth, cache: "no-store" });
+          // Display names change rarely — cache for 1 hour per user.
+          const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, { headers: auth, next: { revalidate: 3600 } });
           const data = (await res.json()) as {
             ok: boolean;
             user?: {
@@ -136,9 +138,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // 3. Channel name (best-effort).
     let channelName: string | null = client?.name ?? null;
     try {
+      // Channel name changes very rarely — cache for 1 hour.
       const infoRes = await fetch(
         `${SLACK_API}/conversations.info?channel=${encodeURIComponent(channelId)}`,
-        { headers: auth, cache: "no-store" },
+        { headers: auth, next: { revalidate: 3600 } },
       );
       const info = (await infoRes.json()) as { ok: boolean; channel?: { name?: string } };
       if (info.ok && info.channel?.name) channelName = `#${info.channel.name}`;
