@@ -1942,6 +1942,8 @@ model SupportTicket {
   nextAction     String?
   issueType      String?
   assignedTo     String?
+  resolvedAt     DateTime?
+  firstReplyAt   DateTime?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   draftActions   DraftSupportAction[]

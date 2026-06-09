@@ -27,6 +27,8 @@ import {
   TrashIcon,
   UsersIcon,
   XMarkIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
@@ -74,6 +76,7 @@ import {
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
+import { TicketsKanban } from "./tickets-kanban";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +156,6 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
 };
 
 const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "analytics"];
-const COMING_SOON_SOURCES: SupportSource[] = ["youtube", "instagram", "clickup", "stripe"];
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
@@ -703,25 +705,6 @@ function AddConnectorModal({
               </button>
             ))}
 
-            {/* coming soon */}
-            <p className="!mt-4 mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
-              <span className="h-px flex-1 bg-[var(--border-2)]" />
-              Coming soon
-              <span className="h-px flex-1 bg-[var(--border-2)]" />
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {COMING_SOON_SOURCES.map((s) => (
-                <div
-                  key={s}
-                  className="flex flex-col items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-2.5 opacity-50"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-white text-[var(--text-4)]">
-                    <SourceIcon source={s} className="h-3.5 w-3.5" />
-                  </div>
-                  <p className="text-[11px] font-medium text-[var(--text-3)]">{SOURCE_LABEL[s]}</p>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* ── Right: config ── */}
@@ -2060,6 +2043,7 @@ function TicketsView({ clientId, onGoToConnectors }: { clientId: string; onGoToC
 }
 
 function TicketsTableView({ clientId }: { clientId: string }) {
+  const [view, setView] = useState<"board" | "table">("table");
   const { data, isLoading } = useSupportTickets(clientId);
   const tickets = data?.tickets ?? [];
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -2186,21 +2170,53 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
-      {open.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
-            Open · {open.length}
-          </p>
-          <TicketTable rows={open} />
-        </div>
-      )}
-      {resolved.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
-            Resolved · {resolved.length}
-          </p>
-          <TicketTable rows={resolved} />
-        </div>
+      {/* view toggle */}
+      <div className="flex items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={() => setView("table")}
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-[6px] transition",
+            view === "table" ? "bg-[var(--mist)] text-[var(--brand-700)]" : "text-[var(--text-4)] hover:bg-[var(--surface-1)]",
+          )}
+          title="List view"
+        >
+          <ListBulletIcon className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("board")}
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-[6px] transition",
+            view === "board" ? "bg-[var(--mist)] text-[var(--brand-700)]" : "text-[var(--text-4)] hover:bg-[var(--surface-1)]",
+          )}
+          title="Board view"
+        >
+          <Squares2X2Icon className="h-4 w-4" />
+        </button>
+      </div>
+
+      {view === "board" ? (
+        <TicketsKanban clientId={clientId} tickets={tickets} />
+      ) : (
+        <>
+          {open.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                Open · {open.length}
+              </p>
+              <TicketTable rows={open} />
+            </div>
+          )}
+          {resolved.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                Resolved · {resolved.length}
+              </p>
+              <TicketTable rows={resolved} />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

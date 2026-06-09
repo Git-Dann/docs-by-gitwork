@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { syncConnection } from "@/server/support-sync";
 import { enrichConversations } from "@/server/care-agents/enrich";
+import { evaluateWorkflowRules } from "@/server/support";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,6 +52,8 @@ export async function GET(request: NextRequest) {
     let totalFiltered = 0;
     const allErrors: string[] = [];
     const allNewConversationIds: string[] = [];
+    // Track clientId per new conversation so rules are evaluated against the right client
+    const newConvByClient: Array<{ clientId: string; convId: string }> = [];
 
     const results = await Promise.allSettled(
       connections.map(async (conn) => {
@@ -60,7 +63,7 @@ export async function GET(request: NextRequest) {
           workspace,
         };
         const result = await syncConnection(ctx);
-        return { connId: conn.id, source: conn.source, result };
+        return { connId: conn.id, source: conn.source, clientId: conn.client.id, result };
       }),
     );
 
@@ -68,7 +71,10 @@ export async function GET(request: NextRequest) {
       if (res.status === "fulfilled") {
         totalIngested += res.value.result.ingested;
         totalFiltered += res.value.result.filtered;
-        allNewConversationIds.push(...(res.value.result.newConversationIds ?? []));
+        for (const convId of res.value.result.newConversationIds ?? []) {
+          allNewConversationIds.push(convId);
+          newConvByClient.push({ clientId: res.value.clientId, convId });
+        }
         if (res.value.result.errors.length > 0) {
           allErrors.push(
             ...res.value.result.errors.map((e) => `[${res.value.source}:${res.value.connId.slice(-6)}] ${e}`),
@@ -79,11 +85,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Enrich newly-ingested conversations after the response (non-gating).
+    // Enrich and evaluate workflow rules for newly-ingested conversations
+    // after the response — non-gating, never blocks sync.
     if (allNewConversationIds.length > 0) {
-      after(() =>
-        enrichConversations({ workspace }, allNewConversationIds, { max: 50 }).catch(console.error),
-      );
+      after(async () => {
+        await enrichConversations({ workspace }, allNewConversationIds, { max: 50 }).catch(console.error);
+        await Promise.allSettled(
+          newConvByClient.map(({ clientId, convId }) => evaluateWorkflowRules(clientId, convId)),
+        );
+      });
     }
 
     return apiOk({
