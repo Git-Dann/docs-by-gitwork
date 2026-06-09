@@ -683,7 +683,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             </div>
             <div className="p-6">
               <p className="mb-4 text-[13px] text-[var(--text-3)]">
-                Choose which platforms appear in the changelog tabs and the "Add version" form.
+                Choose which platforms appear in the changelog tabs and the &quot;Add version&quot; form.
               </p>
               <div className="space-y-3">
                 {ALL_PLATFORM_OPTIONS.map((opt) => (
