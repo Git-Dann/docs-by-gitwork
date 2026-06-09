@@ -2051,6 +2051,9 @@ function TicketsTableView({ clientId }: { clientId: string }) {
   const tickets = data?.tickets ?? [];
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const updateTicket = useUpdateTicket(clientId);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const batchUpdate = useBatchUpdateTickets(clientId);
+  const [batchAssign, setBatchAssign] = useState("");
 
   if (isLoading) {
     return (
@@ -2061,10 +2064,6 @@ function TicketsTableView({ clientId }: { clientId: string }) {
       </div>
     );
   }
-
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const batchUpdate = useBatchUpdateTickets(clientId);
-  const [batchAssign, setBatchAssign] = useState("");
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
