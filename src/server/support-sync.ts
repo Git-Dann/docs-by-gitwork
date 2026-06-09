@@ -503,8 +503,10 @@ async function syncGmailConnection(ctx: SyncContext): Promise<SyncResult> {
   // would return zero results, silently appearing to "not work".
   const queryBase = config.query?.trim() ?? "";
   const lastSyncedAt = connection.lastSyncedAt;
+  // Subtract 10 min so incremental syncs overlap with the previous run — catches emails
+  // that arrived just before the last sync completed. Upsert by externalId prevents duplicates.
   const afterSeconds = lastSyncedAt
-    ? Math.floor(lastSyncedAt.getTime() / 1000)
+    ? Math.floor((lastSyncedAt.getTime() - 10 * 60 * 1000) / 1000)
     : lookbackSeconds(config.lookbackDays, 30);
 
   // Include keywords are used for flagging only — ingest all mail matching the base query.

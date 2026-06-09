@@ -1,5 +1,21 @@
 const DISCORD_API = "https://discord.com/api/v10";
 
+function authHeaders(botToken: string) {
+  return { Authorization: `Bot ${botToken}`, "Content-Type": "application/json" };
+}
+
+/** Fetch wrapper that honours Discord's 429 Retry-After header (up to 4 retries). */
+async function discordFetch(url: string, botToken: string, attempt = 0): Promise<Response> {
+  const res = await fetch(url, { headers: authHeaders(botToken) });
+  if (res.status === 429 && attempt < 4) {
+    const body = await res.clone().json().catch(() => ({})) as { retry_after?: number };
+    const waitMs = Math.ceil((body.retry_after ?? 5) * 1000) + 300;
+    await new Promise((r) => setTimeout(r, waitMs));
+    return discordFetch(url, botToken, attempt + 1);
+  }
+  return res;
+}
+
 export interface DiscordMessage {
   id: string;
   content: string;
@@ -12,10 +28,6 @@ export interface DiscordChannel {
   name: string;
   type: number;
   accessible: boolean; // false = bot cannot read messages (missing View Channel / Read Message History)
-}
-
-function authHeaders(botToken: string) {
-  return { Authorization: `Bot ${botToken}`, "Content-Type": "application/json" };
 }
 
 export async function fetchNewMessages(
@@ -32,7 +44,7 @@ export async function fetchNewMessages(
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("after", cursor);
 
-    const res = await fetch(url.toString(), { headers: authHeaders(botToken) });
+    const res = await discordFetch(url.toString(), botToken);
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Discord channels/${channelId}/messages → ${res.status}: ${err}`);
@@ -65,7 +77,7 @@ export async function fetchChannelHistory(
     const url = new URL(`${DISCORD_API}/channels/${channelId}/messages`);
     url.searchParams.set("limit", "100");
     if (before) url.searchParams.set("before", before);
-    const res = await fetch(url.toString(), { headers: authHeaders(botToken) });
+    const res = await discordFetch(url.toString(), botToken);
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Discord channels/${channelId}/messages → ${res.status}: ${err}`);
