@@ -21,6 +21,36 @@ export interface DiscordMessage {
   content: string;
   author: { id: string; username: string; global_name: string | null; bot?: boolean };
   timestamp: string;
+  attachments?: Array<{ filename?: string; content_type?: string; url?: string }>;
+  embeds?: Array<{ url?: string; title?: string; description?: string; type?: string }>;
+  sticker_items?: Array<{ id: string; name: string }>;
+  type?: number;
+}
+
+/**
+ * Returns a displayable body for a Discord message. Falls back to a placeholder
+ * synthesised from attachments / embeds / stickers when `content` is empty (image-only
+ * posts, link shares, stickers). Returns "" only when the message carries nothing at
+ * all — which, in bulk, signals the bot is missing the Message Content Intent (without
+ * it Discord blanks content AND attachments AND embeds).
+ */
+export function discordMessageBody(msg: DiscordMessage): string {
+  if (msg.content && msg.content.trim()) return msg.content;
+  const parts: string[] = [];
+  for (const a of msg.attachments ?? []) {
+    const name = a.filename ?? "file";
+    const type = a.content_type ?? "";
+    if (type.startsWith("image/")) parts.push(`[image: ${name}]`);
+    else if (type.startsWith("video/")) parts.push(`[video: ${name}]`);
+    else parts.push(`[attachment: ${name}]`);
+  }
+  for (const e of msg.embeds ?? []) {
+    if (e.url) parts.push(`[link: ${e.url}]`);
+    else if (e.title) parts.push(`[embed: ${e.title}]`);
+    else parts.push("[embed]");
+  }
+  if ((msg.sticker_items ?? []).length > 0) parts.push("[sticker]");
+  return parts.join(" ");
 }
 
 export interface DiscordChannel {

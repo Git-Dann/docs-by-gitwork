@@ -54,6 +54,15 @@ export interface Connection {
     fetched?: number | null;
     ingested: number;
     filtered: number;
+    /** Per-reason breakdown of `filtered` (bots / empty / duplicate / excluded). */
+    filterReasons?: {
+      bots?: number;
+      empty?: number;
+      duplicate?: number;
+      excluded?: number;
+    } | null;
+    /** Actionable diagnostics surfaced on the connector card. */
+    hints?: string[];
     errors: string[];
     at: string;
   };
