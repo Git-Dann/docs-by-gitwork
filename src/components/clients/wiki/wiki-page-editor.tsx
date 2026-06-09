@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckIcon } from "@heroicons/react/24/outline";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { WikiSection } from "./wiki-sidebar";
-
-// ─── Section labels (widget-header format) ───────────────────────────────────
-
-const SECTION_LABELS: Record<WikiSection, string> = {
-  "design-system": "DESIGN SYSTEM",
-  ia: "INFORMATION ARCHITECTURE",
-  "dev-guide": "DEVELOPER GUIDE",
-  changelog: "CHANGELOG",
-};
 
 // ─── Section hints ────────────────────────────────────────────────────────────
 
@@ -149,6 +146,12 @@ function ToolbarBtn({
   );
 }
 
+// ─── Public handle ────────────────────────────────────────────────────────────
+
+export interface WikiPageEditorHandle {
+  save: () => Promise<void>;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -157,152 +160,100 @@ interface Props {
   content: string;
   isNew: boolean;
   onSave: (title: string, content: string) => Promise<void>;
-  isSaving: boolean;
+  /** Controlled by the parent (WikiWorkspace renders the toggle in its action bar). */
+  mode: "edit" | "preview";
+  /** Called after a successful save so the parent can show the saved label. */
+  onSaved?: (label: "Saved" | "Auto-saved") => void;
   readOnly?: boolean;
 }
 
-export function WikiPageEditor({
-  section,
-  title,
-  content: initialContent,
-  isNew,
-  onSave,
-  isSaving,
-  readOnly = false,
-}: Props) {
-  const [editContent, setEditContent] = useState(initialContent);
-  const [mode, setMode] = useState<"edit" | "preview">(readOnly ? "preview" : "edit");
-  const [savedLabel, setSavedLabel] = useState<"" | "Saved" | "Auto-saved">("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef({ content: initialContent });
+export const WikiPageEditor = forwardRef<WikiPageEditorHandle, Props>(
+  function WikiPageEditor(
+    { section, title, content: initialContent, isNew, onSave, mode, onSaved, readOnly = false },
+    ref,
+  ) {
+    const [editContent, setEditContent] = useState(initialContent);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastSaved = useRef({ content: initialContent });
+    // Keep a ref to the latest editContent so the imperative handle always saves fresh data
+    const editContentRef = useRef(editContent);
+    useEffect(() => { editContentRef.current = editContent; }, [editContent]);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (ta && mode === "edit") {
-      ta.style.height = "auto";
-      ta.style.height = `${Math.max(ta.scrollHeight, 420)}px`;
-    }
-  }, [editContent, mode]);
-
-  // Auto-save: trigger 2.5s after last change, only if content differs from last save
-  const scheduleAutoSave = useCallback(() => {
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      if (editContent !== lastSaved.current.content) {
-        await onSave(title, editContent);
-        lastSaved.current = { content: editContent };
-        setSavedLabel("Auto-saved");
-        setTimeout(() => setSavedLabel(""), 2000);
-      }
-    }, 2500);
-  }, [editContent, onSave, title]);
-
-  // Clear timer on unmount
-  useEffect(() => () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); }, []);
-
-  // Explicit save
-  async function handleSave() {
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    await onSave(title, editContent);
-    lastSaved.current = { content: editContent };
-    setSavedLabel("Saved");
-    setTimeout(() => setSavedLabel(""), 2000);
-  }
-
-  // Insert markdown snippet at cursor
-  const insert = useCallback(
-    (before: string, after = "", placeholder = "") => {
+    // Auto-resize textarea
+    useEffect(() => {
       const ta = textareaRef.current;
-      if (!ta) return;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const selected = ta.value.slice(start, end) || placeholder;
-      const newVal =
-        ta.value.slice(0, start) + before + selected + after + ta.value.slice(end);
-      setEditContent(newVal);
-      // restore cursor after state update
-      requestAnimationFrame(() => {
-        ta.focus();
-        const cur = start + before.length + selected.length;
-        ta.setSelectionRange(cur, cur);
-      });
-      scheduleAutoSave();
-    },
-    [scheduleAutoSave],
-  );
+      if (ta && mode === "edit") {
+        ta.style.height = "auto";
+        ta.style.height = `${Math.max(ta.scrollHeight, 420)}px`;
+      }
+    }, [editContent, mode]);
 
-  const sectionLabel = SECTION_LABELS[section] ?? title.toUpperCase();
-  const hint = SECTION_HINTS[section];
+    // Auto-save: 2.5s after last change
+    const scheduleAutoSave = useCallback(() => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(async () => {
+        const current = editContentRef.current;
+        if (current !== lastSaved.current.content) {
+          await onSave(title, current);
+          lastSaved.current = { content: current };
+          onSaved?.("Auto-saved");
+        }
+      }, 2500);
+    }, [onSave, title, onSaved]);
 
-  // ── Read-only view ──────────────────────────────────────────────────────────
-  if (readOnly) {
-    return (
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">01</span>
-            {` // ${sectionLabel}`}
-          </span>
-        </div>
+    useEffect(() => () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); }, []);
+
+    // Expose save() to parent via ref
+    useImperativeHandle(ref, () => ({
+      save: async () => {
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+        const current = editContentRef.current;
+        await onSave(title, current);
+        lastSaved.current = { content: current };
+        onSaved?.("Saved");
+      },
+    }), [onSave, title, onSaved]);
+
+    // Insert markdown snippet at cursor
+    const insert = useCallback(
+      (before: string, after = "", placeholder = "") => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const selected = ta.value.slice(start, end) || placeholder;
+        const newVal =
+          ta.value.slice(0, start) + before + selected + after + ta.value.slice(end);
+        setEditContent(newVal);
+        requestAnimationFrame(() => {
+          ta.focus();
+          const cur = start + before.length + selected.length;
+          ta.setSelectionRange(cur, cur);
+        });
+        scheduleAutoSave();
+      },
+      [scheduleAutoSave],
+    );
+
+    const hint = SECTION_HINTS[section];
+
+    // ── Read-only view ──────────────────────────────────────────────────────────
+    if (readOnly) {
+      return (
         <div
-          className="p-6"
+          className="min-h-[200px]"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(initialContent) }}
         />
-      </section>
-    );
-  }
+      );
+    }
 
-  const words = wordCount(editContent);
-  const chars = editContent.length;
+    const words = wordCount(editContent);
+    const chars = editContent.length;
 
-  // ── Edit view ───────────────────────────────────────────────────────────────
-  return (
-    <section className="widget-card">
-      {/* Widget header — section label + actions */}
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">01</span>
-          {` // ${sectionLabel}`}
-        </span>
-        <div className="flex items-center gap-2">
-          {savedLabel && (
-            <span className="flex items-center gap-1 text-[11px] text-emerald-600">
-              <CheckIcon className="h-3 w-3" />
-              {savedLabel}
-            </span>
-          )}
-          {/* Edit / Preview toggle */}
-          <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
-            {(["edit", "preview"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={[
-                  "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-                  mode === m ? "bg-[var(--text-1)] text-white" : "text-[var(--text-4)] hover:text-[var(--text-1)]",
-                ].join(" ")}
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={isSaving}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-          >
-            {isSaving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-
-      {/* Content body */}
-      <div className="p-6">
+    // ── Edit / Preview ──────────────────────────────────────────────────────────
+    return (
+      <div>
         {hint && isNew && (
           <p className="mb-4 text-[13px] text-[var(--text-4)]">{hint}</p>
         )}
@@ -310,8 +261,8 @@ export function WikiPageEditor({
         {/* Markdown toolbar — only in edit mode */}
         {mode === "edit" && (
           <div className="mb-3 flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
-            <ToolbarBtn label="B" title="Bold (wrap in **)" onClick={() => insert("**", "**", "bold text")} />
-            <ToolbarBtn label="I" title="Italic (wrap in *)" onClick={() => insert("*", "*", "italic text")} />
+            <ToolbarBtn label="B" title="Bold" onClick={() => insert("**", "**", "bold text")} />
+            <ToolbarBtn label="I" title="Italic" onClick={() => insert("*", "*", "italic text")} />
             <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
             <ToolbarBtn label="H2" title="Heading 2" onClick={() => insert("## ", "", "Heading")} />
             <ToolbarBtn label="H3" title="Heading 3" onClick={() => insert("### ", "", "Heading")} />
@@ -351,6 +302,6 @@ export function WikiPageEditor({
           />
         )}
       </div>
-    </section>
-  );
-}
+    );
+  },
+);
