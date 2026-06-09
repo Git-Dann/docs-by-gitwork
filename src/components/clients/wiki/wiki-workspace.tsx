@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
-import { WikiPageEditor } from "./wiki-page-editor";
+import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
@@ -30,7 +30,17 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   changelog: "Changelog",
 };
 
-// Default starter templates — pre-filled when the page has never been saved
+const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
+  ia: "IA GUIDE",
+  "dev-guide": "DEVELOPER GUIDE",
+  changelog: "CHANGELOG",
+};
+
+const chipBtn =
+  "inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
+
+// ─── Default starter templates ────────────────────────────────────────────────
+
 const IA_TEMPLATE = `## Product Overview
 One sentence describing what this product is, who it's for, and its core value.
 
@@ -271,6 +281,8 @@ Rebase feature branches on \`main\` — do not merge \`main\` into the branch.
 | On-call / Incidents | — | — |
 `;
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 interface Props {
   slug: string;
   clientName: string;
@@ -280,6 +292,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+
+  // Page editor state — controlled by this workspace, not the editor itself
+  const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
+  const [pageSavedLabel, setPageSavedLabel] = useState<string | null>(null);
+  const editorRef = useRef<WikiPageEditorHandle>(null);
+
+  // Reset editor state when switching sections
+  useEffect(() => {
+    setPageMode("edit");
+    setPageSavedLabel(null);
+  }, [activeSection]);
 
   const { data: wiki, isPending } = useClientWiki(slug);
   const upsertPage = useUpsertWikiPage(slug);
@@ -336,7 +359,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function renderContent() {
-    // ── Design System — embedded inline (no external link)
+    // ── Design System — embedded inline (has its own action bar)
     if (activeSection === "design-system") {
       return (
         <div className="-mx-8 -mt-8">
@@ -348,12 +371,37 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Changelog
     if (activeSection === "changelog") {
       return (
-        <ChangelogSection
-          entries={wiki!.changelog}
-          onAdd={() => setShowChangelogForm(true)}
-          onDelete={handleDeleteEntry}
-          deletingId={deletingEntryId}
-        />
+        <>
+          {/* Page-level action bar */}
+          <div className="mb-5 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setShowChangelogForm(true)}
+              className={chipBtn}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add version
+            </button>
+          </div>
+
+          {/* Widget card */}
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">01</span>
+                {" // CHANGELOG"}
+              </span>
+            </div>
+            <div className="p-6">
+              <ChangelogSection
+                entries={wiki!.changelog}
+                onAdd={() => setShowChangelogForm(true)}
+                onDelete={handleDeleteEntry}
+                deletingId={deletingEntryId}
+              />
+            </div>
+          </section>
+        </>
       );
     }
 
@@ -361,16 +409,87 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     const page = getPage(activeSection);
     const savedContent = typeof page?.content === "string" ? page.content : "";
     const initialContent = savedContent || getDefaultContent(activeSection);
+    const widgetLabel = SECTION_WIDGET_LABELS[activeSection] ?? activeSection.toUpperCase();
+
     return (
-      <WikiPageEditor
-        key={activeSection}
-        section={activeSection}
-        title={page?.title ?? SECTION_TITLES[activeSection]}
-        content={initialContent}
-        isNew={!page}
-        onSave={(title, content) => handleSavePage(activeSection, title, content)}
-        isSaving={upsertPage.isPending}
-      />
+      <>
+        {/* Page-level action bar — mirrors the DS workspace pattern */}
+        <div className="mb-5 flex items-center justify-end gap-2">
+          {pageSavedLabel && (
+            <span
+              className="text-[11px] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {pageSavedLabel}
+            </span>
+          )}
+
+          {/* Edit | Preview segmented toggle */}
+          <div className="flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
+            <button
+              type="button"
+              onClick={() => setPageMode("edit")}
+              className={[
+                "px-3 py-1.5 text-[13px] font-medium transition",
+                pageMode === "edit"
+                  ? "bg-[var(--text-1)] text-white"
+                  : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+              ].join(" ")}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setPageMode("preview")}
+              className={[
+                "border-l border-[var(--border-2)] px-3 py-1.5 text-[13px] font-medium transition",
+                pageMode === "preview"
+                  ? "bg-[var(--text-1)] text-white"
+                  : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+              ].join(" ")}
+            >
+              Preview
+            </button>
+          </div>
+
+          {/* Save */}
+          <button
+            type="button"
+            onClick={() => void editorRef.current?.save()}
+            disabled={upsertPage.isPending}
+            className={chipBtn}
+          >
+            {upsertPage.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+
+        {/* Widget card */}
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">01</span>
+              {` // ${widgetLabel}`}
+            </span>
+          </div>
+          <div className="p-6">
+            <WikiPageEditor
+              key={activeSection}
+              ref={editorRef}
+              section={activeSection}
+              title={page?.title ?? SECTION_TITLES[activeSection]}
+              content={initialContent}
+              isNew={!page}
+              onSave={(title, content) => handleSavePage(activeSection, title, content)}
+              mode={pageMode}
+              onSaved={(label) => {
+                setPageSavedLabel(label);
+                // Clear after 2s
+                setTimeout(() => setPageSavedLabel(null), 2000);
+              }}
+            />
+          </div>
+        </section>
+      </>
     );
   }
 
@@ -381,7 +500,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         <div className="flex items-center gap-3">
           <Link
             href={`/app/portal/${slug}`}
-            className="flex items-center gap-1.5 text-xs text-[var(--text-4)] hover:text-[var(--text-1)] transition"
+            className="flex items-center gap-1.5 text-xs text-[var(--text-4)] transition hover:text-[var(--text-1)]"
           >
             <ArrowLeftIcon className="h-3.5 w-3.5" />
             {clientName}
@@ -404,15 +523,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             onSelect={setActiveSection}
             shareEnabled={wiki.shareEnabled}
             shareToken={wiki.shareToken}
-            onToggleShare={() => setShare.mutateAsync(!wiki.shareEnabled)}
+            onToggleShare={() => void setShare.mutateAsync(!wiki.shareEnabled)}
             isTogglingShare={setShare.isPending}
           />
         </div>
 
         {/* Main content */}
-        <div className="flex-1 overflow-auto p-8">
-          {renderContent()}
-        </div>
+        <div className="flex-1 overflow-auto p-8">{renderContent()}</div>
       </div>
 
       {/* Changelog entry form modal */}
