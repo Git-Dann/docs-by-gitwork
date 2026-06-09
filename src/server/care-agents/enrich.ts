@@ -1,5 +1,6 @@
 import { triageConversation } from "./triage-agent";
 import { generateDraftReply } from "./draft-agent";
+import { prisma } from "@/lib/prisma";
 import type { AiContext } from "./ai-client";
 
 /**
@@ -34,7 +35,27 @@ export async function enrichConversations(
         draftsGenerated++;
       }
     } catch (err) {
-      errors.push(`enrich ${convId}: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`enrich ${convId}: ${msg}`);
+      try {
+        const conv = await prisma.supportConversation.findUnique({
+          where: { id: convId },
+          select: { clientId: true },
+        });
+        if (conv) {
+          await prisma.supportAuditLog.create({
+            data: {
+              clientId: conv.clientId,
+              actorId: "agent:enrich",
+              action: "enrichment_error",
+              target: convId,
+              metadata: { error: msg.slice(0, 500) },
+            },
+          });
+        }
+      } catch {
+        // Audit log failure is non-fatal
+      }
     }
   }
 

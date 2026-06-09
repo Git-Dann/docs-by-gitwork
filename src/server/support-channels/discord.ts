@@ -1,4 +1,4 @@
-import { fetchNewMessages, fetchChannelHistory, discordMessageBody, type DiscordMessage } from "@/server/discord-sync";
+import { fetchNewMessages, fetchChannelHistory, discordMessageBody, sendDiscordMessage, type DiscordMessage } from "@/server/discord-sync";
 import type { ChannelAdapter, ChannelFetchResult, RawConversationItem, RawMessageItem } from "./types";
 
 interface DiscordChannelCursor {
@@ -140,5 +140,12 @@ export const discordAdapter: ChannelAdapter = {
       diagnostics: { fetched, filterReasons: { bots: botCount, empty: emptyCount }, hints, errors },
       configPatch: { channels: updatedChannels },
     };
+  },
+
+  async sendReply(ctx, channelId, body) {
+    const config = ctx.connection.scraperConfig as DiscordScraperConfig | null;
+    const botToken = config?.botToken;
+    if (!botToken) throw new Error("Discord sendReply: no botToken in scraperConfig");
+    await sendDiscordMessage(channelId, botToken, body);
   },
 };

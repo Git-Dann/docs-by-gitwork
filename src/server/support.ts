@@ -940,33 +940,39 @@ export async function createWorkflowRule(
 const DEFAULT_WORKFLOW_RULES: Array<{ name: string; when: string; then: string; requiresApproval: boolean }> = [
   {
     name: "Bug report → ticket",
-    when: 'Message contains "bug", "broken", "crash", or "not working"',
+    when: 'Message contains "bug", "broken", "crash", or "not working", or triage tags the conversation as a bug',
     then: "Create a high-priority ticket tagged `bug`. Draft a response acknowledging the issue and asking for reproduction steps.",
     requiresApproval: true,
   },
   {
     name: "Billing query",
-    when: 'Message contains "invoice", "charge", "refund", "payment", or "billing"',
+    when: 'Message contains "invoice", "charge", "refund", "payment", or "billing", or triage tags the conversation as billing',
     then: "Create a ticket tagged `billing`. Require human approval before sending any reply.",
     requiresApproval: true,
   },
   {
     name: "Negative sentiment → escalate",
-    when: "Ingest agent scores the conversation sentiment as negative, or message contains words like \"frustrated\", \"angry\", \"disappointed\", or \"terrible\"",
+    when: "Triage agent scores the conversation sentiment as negative, or message contains words like \"frustrated\", \"angry\", \"disappointed\", or \"terrible\"",
     then: "Set priority to urgent. Flag conversation as unread. Draft an empathetic apology response for approval.",
     requiresApproval: true,
   },
   {
     name: "Feature request",
-    when: 'Message contains "feature", "wish", "could you add", "would love", or "suggestion"',
+    when: 'Message contains "feature", "wish", "could you add", "would love", or "suggestion", or triage tags the conversation as feature_request',
     then: "Tag conversation `feature-request`. Draft a warm acknowledgement thanking them for the feedback. No ticket needed unless priority is high.",
     requiresApproval: false,
   },
   {
     name: "Social mention (Reddit / Discord)",
-    when: "Source is Reddit or Discord",
+    when: "Source is reddit or discord",
     then: "Summarise the context in the ticket title. Tag `social`. Set priority to normal. Draft a friendly, community-appropriate reply.",
     requiresApproval: true,
+  },
+  {
+    name: "Low app review (≤2 stars) → urgent ticket",
+    when: "Source is app_reviews and rating tag is 1 or 2 stars",
+    then: "Create an urgent ticket. Flag for immediate follow-up response.",
+    requiresApproval: false,
   },
   {
     name: "No reply after 48 hours",
@@ -1158,14 +1164,32 @@ function extractTriggerKeywords(triggerText: string): string[] {
 
 function conversationMatchesRule(
   rule: { triggerText: string },
-  conv: { subject: string; preview: string | null; tags: string[]; sentiment: string },
+  conv: { subject: string; preview: string | null; tags: string[]; sentiment: string; source: string },
 ): boolean {
   const text = `${conv.subject} ${conv.preview ?? ""}`.toLowerCase();
+  const trigger = rule.triggerText.toLowerCase();
   const keywords = extractTriggerKeywords(rule.triggerText);
 
   // Sentiment-based rules
-  if (SENTIMENT_KEYWORDS.some((k) => rule.triggerText.toLowerCase().includes(k))) {
+  if (SENTIMENT_KEYWORDS.some((k) => trigger.includes(k))) {
     if (conv.sentiment === "NEGATIVE") return true;
+  }
+
+  // Source-based rules: "source is reddit", "source is discord", "source is app_reviews"
+  const sourceRuleMatch = trigger.match(/source is ([\w_]+)/);
+  if (sourceRuleMatch) {
+    if (conv.source.toUpperCase() === sourceRuleMatch[1].toUpperCase()) return true;
+  }
+
+  // Rating-based rules: "rating tag is 1 or 2 stars", "≤2 stars"
+  if (trigger.includes("rating") && (trigger.includes("≤") || trigger.includes("1 or 2") || trigger.includes("star"))) {
+    if (conv.tags.some((t) => t === "rating:1" || t === "rating:2")) return true;
+  }
+
+  // Triage tag-based rules: "triage tags the conversation as bug", "triage tags ... as billing"
+  if (trigger.includes("triage tag")) {
+    const issueMatch = trigger.match(/\bas\s+(?:a\s+)?([\w_]+)/);
+    if (issueMatch && conv.tags.includes(issueMatch[1])) return true;
   }
 
   // Keyword match — any trigger keyword found in conversation text
