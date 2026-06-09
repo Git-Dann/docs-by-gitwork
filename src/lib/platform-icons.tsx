@@ -200,6 +200,19 @@ export function detectPlatformIcon(
     };
   }
 
+  // ── App store platform types (from platform form) ─────────────────────────
+  if (pt === "IOS APP STORE" || pt === "IOS") {
+    return { icon: <AppleSvg />, label: "App Store", color: "#1a1a1a", bg: "#f5f5f7" };
+  }
+
+  if (pt === "GOOGLE PLAY" || pt === "ANDROID") {
+    return { icon: <GooglePlaySvg />, label: "Google Play", color: "#34A853", bg: "#f0fdf4" };
+  }
+
+  if (pt === "AMAZON FIRE TV" || pt === "FIRETV" || pt === "FIRE TV") {
+    return { icon: <AmazonSvg />, label: "Amazon Fire TV", color: "#c45500", bg: "#fff7ed" };
+  }
+
   // ── Default: globe ───────────────────────────────────────────────────────
   return {
     icon: <GlobeAltIcon className="h-[18px] w-[18px]" />,
