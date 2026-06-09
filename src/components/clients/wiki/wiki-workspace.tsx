@@ -15,7 +15,9 @@ import {
   useAddChangelogEntry,
   useDeleteChangelogEntry,
   useUpdateWikiPlatforms,
+  useUpdateEntryStatus,
 } from "@/hooks/use-wiki";
+import type { ChangelogEntryPayload } from "./changelog-entry-form";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -392,7 +394,7 @@ const ALL_PLATFORM_OPTIONS = [
 export function WikiWorkspace({ slug, clientName }: Props) {
   const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
-  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPlatformModal, setShowPlatformModal] = useState(false);
   const [pendingPlatforms, setPendingPlatforms] = useState<string[]>([]);
 
@@ -413,6 +415,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
+  const updateStatus = useUpdateEntryStatus(slug);
 
   if (isPending) {
     return (
@@ -436,24 +439,25 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     await upsertPage.mutateAsync({ type, title, content });
   }
 
-  async function handleDeleteEntry(id: string) {
-    setDeletingEntryId(id);
-    try {
-      await deleteEntry.mutateAsync(id);
-    } finally {
-      setDeletingEntryId(null);
-    }
+  /** Delete all entries in a version group (called with all their IDs). */
+  async function handleDeleteVersion(ids: string[]) {
+    await Promise.all(ids.map((id) => deleteEntry.mutateAsync(id)));
   }
 
-  async function handleAddEntry(payload: {
-    platform: string;
-    version: string;
-    title: string;
-    body?: string;
-    releasedAt?: string;
-  }) {
-    await addEntry.mutateAsync(payload);
-    setShowChangelogForm(false);
+  /** Toggle PENDING ↔ APPROVED for all entries in a version group. */
+  async function handleToggleStatus(ids: string[], newStatus: string) {
+    await Promise.all(ids.map((id) => updateStatus.mutateAsync({ id, status: newStatus })));
+  }
+
+  /** Create one entry per filled-in platform in the form. */
+  async function handleAddEntry(entries: ChangelogEntryPayload[]) {
+    setIsSubmitting(true);
+    try {
+      await Promise.all(entries.map((e) => addEntry.mutateAsync(e)));
+      setShowChangelogForm(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function getDefaultContent(section: WikiSection): string {
@@ -517,8 +521,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 entries={wiki!.changelog}
                 platforms={wikiPlatforms}
                 onAdd={() => setShowChangelogForm(true)}
-                onDelete={handleDeleteEntry}
-                deletingId={deletingEntryId}
+                onDelete={handleDeleteVersion}
+                onToggleStatus={handleToggleStatus}
               />
             </div>
           </section>
@@ -659,7 +663,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           platforms={wiki.platforms}
           onSave={handleAddEntry}
           onClose={() => setShowChangelogForm(false)}
-          isSaving={addEntry.isPending}
+          isSaving={isSubmitting}
         />
       )}
 

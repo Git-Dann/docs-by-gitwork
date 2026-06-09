@@ -1021,19 +1021,25 @@ model ClientWikiPage {
 
 /// A single version-release entry in the client's changelog. Linked to a wiki.
 model ClientChangelogEntry {
-  id         String        @id @default(cuid())
+  id         String           @id @default(cuid())
   wikiId     String
-  wiki       ClientWiki    @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  wiki       ClientWiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
   platform   WikiPlatform
   version    String
   title      String
-  body       String?       @db.Text
+  body       String?          @db.Text
   releasedAt DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  status     WikiEntryStatus  @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
   @@index([wikiId])
   @@map("ClientChangelogEntry")
+}
+
+enum WikiEntryStatus {
+  PENDING
+  APPROVED
 }
 
 enum WikiPageType {

@@ -9,7 +9,7 @@
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { WikiPageType, WikiPlatform } from "@prisma/client";
+import type { WikiPageType, WikiPlatform, WikiEntryStatus } from "@prisma/client";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -24,12 +24,14 @@ export interface WikiPageRecord {
 
 export interface ChangelogEntryRecord {
   id: string;
-  platform: WikiPlatform;
+  platform: string; // WikiPlatform
   version: string;
   title: string;
   body: string | null;
   releasedAt: string | null;
   createdAt: string;
+  /** "PENDING" | "APPROVED" */
+  status: string;
 }
 
 export interface WikiDTO {
@@ -74,6 +76,7 @@ function serializeEntry(e: {
   body: string | null;
   releasedAt: Date | null;
   createdAt: Date;
+  status: WikiEntryStatus;
 }): ChangelogEntryRecord {
   return {
     id: e.id,
@@ -83,6 +86,7 @@ function serializeEntry(e: {
     body: e.body,
     releasedAt: e.releasedAt ? e.releasedAt.toISOString() : null,
     createdAt: e.createdAt.toISOString(),
+    status: e.status,
   };
 }
 
@@ -112,6 +116,7 @@ async function buildDTO(wiki: {
     body: string | null;
     releasedAt: Date | null;
     createdAt: Date;
+    status: WikiEntryStatus;
   }>;
 }): Promise<WikiDTO> {
   return {
@@ -215,6 +220,7 @@ export async function addChangelogEntry(
     title: string;
     body?: string;
     releasedAt?: string;
+    status?: WikiEntryStatus;
   },
 ): Promise<ChangelogEntryRecord> {
   const wiki = await prisma.clientWiki.upsert({
@@ -232,9 +238,22 @@ export async function addChangelogEntry(
       title: input.title,
       body: input.body ?? null,
       releasedAt: input.releasedAt ? new Date(input.releasedAt) : null,
+      status: input.status ?? "PENDING",
     },
   });
 
+  return serializeEntry(entry);
+}
+
+/** Update the status of a single changelog entry. */
+export async function updateChangelogEntryStatus(
+  entryId: string,
+  status: WikiEntryStatus,
+): Promise<ChangelogEntryRecord> {
+  const entry = await prisma.clientChangelogEntry.update({
+    where: { id: entryId },
+    data: { status },
+  });
   return serializeEntry(entry);
 }
 
