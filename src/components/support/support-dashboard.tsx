@@ -2,6 +2,7 @@
 
 import {
   ArrowPathIcon,
+  ArrowUpTrayIcon,
   BoltIcon,
   ChartBarIcon,
   ChatBubbleLeftRightIcon,
@@ -24,6 +25,7 @@ import {
   PencilSquareIcon,
   PlusIcon,
   SparklesIcon,
+  StarIcon,
   TrashIcon,
   UsersIcon,
   XMarkIcon,
@@ -142,6 +144,10 @@ function SourceIcon({ source, className }: { source: SupportSource; className?: 
       return <ClipboardDocumentListIcon className={cls} />;
     case "analytics":
       return <ChartBarIcon className={cls} />;
+    case "app_reviews":
+      return <StarIcon className={cls} />;
+    case "webhook":
+      return <ArrowUpTrayIcon className={cls} />;
     default:
       return <BoltIcon className={cls} />;
   }
@@ -156,15 +162,19 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   clickup: "ClickUp",
   stripe: "Stripe",
   analytics: "Analytics API",
+  app_reviews: "App Reviews",
+  webhook: "Webhook",
 };
 
-const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "analytics"];
+const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "analytics", "app_reviews", "webhook"];
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
   discord: "Monitor channels on a client's server",
   reddit: "Watch public subreddits for mentions",
   analytics: "Pull product metrics into monthly reports",
+  app_reviews: "App Store + Play Store reviews, rated & tagged",
+  webhook: "Receive messages from any external system",
   youtube: "Comments from videos — coming soon",
   instagram: "DMs & comments — coming soon",
   clickup: "Sync tasks and comments",
@@ -378,7 +388,7 @@ const AUTH_MODE_LABEL: Record<Connection["authMode"], string> = {
 
 function sourceAuthMode(s: SupportSource): Connection["authMode"] {
   if (s === "discord") return "bot_token";
-  if (s === "reddit" || s === "gmail") return "manual";
+  if (s === "reddit" || s === "gmail" || s === "app_reviews" || s === "webhook") return "manual";
   return "api_key";
 }
 
@@ -527,6 +537,15 @@ function AddConnectorModal({
   // Reddit fields
   const [redditSubreddit, setRedditSubreddit] = useState("");
 
+  // App Reviews fields
+  const [appStore, setAppStore] = useState<"app_store" | "play_store">("app_store");
+  const [appId, setAppId] = useState("");
+  const [appCountry, setAppCountry] = useState("us");
+  const [playServiceAccount, setPlayServiceAccount] = useState("");
+
+  // Webhook fields — token auto-generated, shown after creation
+  const [webhookToken] = useState(() => crypto.randomUUID());
+
   // Analytics API fields
   const [analyticsAdapter, setAnalyticsAdapter] = useState(ANALYTICS_ADAPTERS[0].key);
   const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(ANALYTICS_ADAPTERS[0].defaultBaseUrl);
@@ -617,6 +636,17 @@ function AddConnectorModal({
         apiToken: analyticsToken.trim() || undefined,
       };
     }
+    if (source === "app_reviews") {
+      return {
+        store: appStore,
+        appId: appId.trim(),
+        ...(appStore === "app_store" ? { country: appCountry.trim() || "us" } : {}),
+        ...(appStore === "play_store" && playServiceAccount.trim() ? { serviceAccountJson: playServiceAccount.trim() } : {}),
+      };
+    }
+    if (source === "webhook") {
+      return { webhookToken };
+    }
     return undefined;
   }
 
@@ -632,6 +662,8 @@ function AddConnectorModal({
       const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
       return hasBase && hasToken ? "connected" : "needs_setup";
     }
+    if (source === "app_reviews") return appId.trim() ? "connected" : "needs_setup";
+    if (source === "webhook") return "connected";
     return source === "gmail" || source === "reddit" ? "connected" : "needs_setup";
   }
 
@@ -646,6 +678,7 @@ function AddConnectorModal({
       const hasToken = !selectedAdapter.requiresToken || Boolean(analyticsToken.trim());
       return !hasBase || !hasToken;
     }
+    if (source === "app_reviews") return !appId.trim();
     return false;
   }
 
@@ -968,8 +1001,100 @@ function AddConnectorModal({
               </div>
             )}
 
-            {/* Shared filters — ingestion sources only (analytics has none) */}
-            {LIVE_SOURCES.includes(source) && source !== "analytics" && (
+            {/* App Reviews config */}
+            {source === "app_reviews" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <div className="flex gap-2">
+                  {(["app_store", "play_store"] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setAppStore(s)}
+                      className={cn(
+                        "flex-1 rounded-[8px] border px-3 py-1.5 text-xs font-medium transition",
+                        appStore === s
+                          ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                          : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                      )}
+                    >
+                      {s === "app_store" ? "App Store (iOS)" : "Play Store (Android)"}
+                    </button>
+                  ))}
+                </div>
+                <label className="block space-y-1">
+                  <span className="app-field-label">
+                    {appStore === "app_store" ? "App ID (numeric)" : "Package name"}
+                  </span>
+                  <input
+                    value={appId}
+                    onChange={(e) => setAppId(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder={appStore === "app_store" ? "e.g. 123456789" : "e.g. com.example.app"}
+                  />
+                </label>
+                {appStore === "app_store" && (
+                  <label className="block space-y-1">
+                    <span className="app-field-label">Country code (optional)</span>
+                    <input
+                      value={appCountry}
+                      onChange={(e) => setAppCountry(e.target.value)}
+                      className="app-input w-full"
+                      placeholder="us"
+                      maxLength={2}
+                    />
+                  </label>
+                )}
+                {appStore === "play_store" && (
+                  <label className="block space-y-1">
+                    <span className="app-field-label">Google service account JSON</span>
+                    <textarea
+                      value={playServiceAccount}
+                      onChange={(e) => setPlayServiceAccount(e.target.value)}
+                      className="app-input w-full font-mono text-xs"
+                      rows={4}
+                      placeholder={'{"type":"service_account","project_id":"…"}'}
+                      autoComplete="off"
+                    />
+                    <p className="text-[11px] text-[var(--text-4)]">
+                      Requires the <span className="font-medium text-[var(--text-2)]">Android Publisher API</span> enabled and the <span className="font-mono">androidpublisher</span> scope granted to the service account.
+                    </p>
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Webhook config */}
+            {source === "webhook" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="text-[11px] text-[var(--text-4)]">
+                  A unique URL will be generated. POST a JSON body to it to create conversations.
+                  The token is set once and cannot be changed after saving.
+                </p>
+                <div className="space-y-1">
+                  <span className="app-field-label">Webhook URL (generated)</span>
+                  <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)] break-all">
+                    /api/support/webhook/{webhookToken}
+                  </p>
+                </div>
+                <div className="rounded-[8px] border border-[var(--border-2)] bg-white p-2.5 space-y-1">
+                  <p className="text-[11px] font-medium text-[var(--text-2)]">Expected payload</p>
+                  <pre className="text-[10px] text-[var(--text-3)] leading-relaxed">{`POST /api/support/webhook/<token>
+Content-Type: application/json
+
+{
+  "body": "Message text (required)",
+  "subject": "Optional subject",
+  "customerLabel": "Optional sender name",
+  "externalId": "Optional dedup key",
+  "receivedAt": "Optional ISO 8601 date",
+  "tags": ["optional", "tags"]
+}`}</pre>
+                </div>
+              </div>
+            )}
+
+            {/* Shared filters — ingestion sources only (analytics + webhook have none) */}
+            {LIVE_SOURCES.includes(source) && source !== "analytics" && source !== "webhook" && (
               <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
             )}
 
@@ -3106,6 +3231,14 @@ function EditConnectorModal({
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
 
+  // App Reviews
+  const [editAppStore, setEditAppStore] = useState<"app_store" | "play_store">(
+    (conn.scraperConfig?.store as "app_store" | "play_store") ?? "app_store",
+  );
+  const [editAppId, setEditAppId] = useState(conn.scraperConfig?.appId ?? "");
+  const [editAppCountry, setEditAppCountry] = useState(conn.scraperConfig?.country ?? "us");
+  const [editPlayServiceAccount, setEditPlayServiceAccount] = useState(conn.scraperConfig?.serviceAccountJson ?? "");
+
   // Analytics API
   const [analyticsAdapter, setAnalyticsAdapter] = useState(conn.scraperConfig?.adapter ?? ANALYTICS_ADAPTERS[0].key);
   const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(conn.scraperConfig?.baseUrl ?? "");
@@ -3213,12 +3346,25 @@ function EditConnectorModal({
         apiToken: analyticsToken.trim() || undefined,
       };
     }
+    if (conn.source === "app_reviews") {
+      return {
+        ...conn.scraperConfig,
+        store: editAppStore,
+        appId: editAppId.trim(),
+        ...(editAppStore === "app_store" ? { country: editAppCountry.trim() || "us" } : {}),
+        ...(editAppStore === "play_store" && editPlayServiceAccount.trim()
+          ? { serviceAccountJson: editPlayServiceAccount.trim() }
+          : {}),
+      };
+    }
+    // webhook: token is immutable after creation — return existing config unchanged
     return conn.scraperConfig;
   }
 
   function isSubmitDisabled() {
     if (updateConn.isPending || !label.trim()) return true;
     if (conn.source === "discord") return !discordToken.trim() || !discordGuildId.trim() || selectedChannelIds.size === 0;
+    if (conn.source === "app_reviews") return !editAppId.trim();
     return false;
   }
 
@@ -3498,14 +3644,64 @@ function EditConnectorModal({
             {editSelectedAdapter.hint && <p className="text-[11px] text-[var(--text-4)]">{editSelectedAdapter.hint}</p>}
           </div>
         )}
+
+        {/* App Reviews config */}
+        {conn.source === "app_reviews" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <div className="flex gap-2">
+              {(["app_store", "play_store"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setEditAppStore(s)}
+                  className={cn(
+                    "flex-1 rounded-[8px] border px-3 py-1.5 text-xs font-medium transition",
+                    editAppStore === s
+                      ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                      : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  {s === "app_store" ? "App Store (iOS)" : "Play Store (Android)"}
+                </button>
+              ))}
+            </div>
+            <label className="block space-y-1">
+              <span className="app-field-label">{editAppStore === "app_store" ? "App ID (numeric)" : "Package name"}</span>
+              <input value={editAppId} onChange={(e) => setEditAppId(e.target.value)} className="app-input w-full font-mono text-xs" placeholder={editAppStore === "app_store" ? "e.g. 123456789" : "e.g. com.example.app"} />
+            </label>
+            {editAppStore === "app_store" && (
+              <label className="block space-y-1">
+                <span className="app-field-label">Country code</span>
+                <input value={editAppCountry} onChange={(e) => setEditAppCountry(e.target.value)} className="app-input w-full" placeholder="us" maxLength={2} />
+              </label>
+            )}
+            {editAppStore === "play_store" && (
+              <label className="block space-y-1">
+                <span className="app-field-label">Service account JSON</span>
+                <textarea value={editPlayServiceAccount} onChange={(e) => setEditPlayServiceAccount(e.target.value)} className="app-input w-full font-mono text-xs" rows={3} placeholder={conn.scraperConfig?.serviceAccountJson ? "● ● ● stored — paste to update" : '{"type":"service_account",...}'} autoComplete="off" />
+              </label>
+            )}
+          </div>
+        )}
+
+        {/* Webhook config — token is immutable; display read-only */}
+        {conn.source === "webhook" && (
+          <div className="space-y-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <span className="app-field-label">Webhook URL</span>
+            <p className="select-all rounded-[6px] bg-white px-2.5 py-2 font-mono text-xs text-[var(--text-1)] break-all">
+              /api/support/webhook/{conn.scraperConfig?.webhookToken ?? "—"}
+            </p>
+            <p className="text-[11px] text-[var(--text-4)]">Token is fixed at creation time. To change it, delete and re-create the connector.</p>
+          </div>
+        )}
         </div>{/* ── end left column ── */}
 
         {/* ── Right column: filters + status ───────────────────────── */}
         <div className="space-y-4 border-l border-[var(--border-2)] pl-5">
         <p className="text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]">Filters &amp; status</p>
 
-        {/* Shared filters — ingestion sources only (analytics has none) */}
-        {LIVE_SOURCES.includes(conn.source) && conn.source !== "analytics" && (
+        {/* Shared filters — ingestion sources only (analytics + webhook have none) */}
+        {LIVE_SOURCES.includes(conn.source) && conn.source !== "analytics" && conn.source !== "webhook" && (
           <ConnectorFilterFields source={conn.source} filters={filters} setFilters={setFilters} />
         )}
 

@@ -1747,6 +1747,8 @@ enum SupportSource {
   CLICKUP
   STRIPE
   ANALYTICS
+  APP_REVIEWS
+  WEBHOOK
 }
 
 enum ConnectionHealth {
