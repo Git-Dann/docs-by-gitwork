@@ -18,6 +18,7 @@ import {
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
+  type CodeClearCandidateCurrentClient,
   type CodeClearCandidateListItem,
   type CodeClearTier,
   type IdentityConfidence,
@@ -290,7 +291,7 @@ export function CodeClearCandidatesWorkspace() {
                     {
                       key: "pro-bono",
                       title: "Pro bono",
-                      subtitle: "Free to Gitwork — excluded from costings",
+                      subtitle: "",
                       rows: proBonoRows,
                     },
                   ]}
@@ -555,7 +556,9 @@ function DevsTableSection({
                 <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
                   {section.title}
                 </span>
-                <span className="text-[11px] text-[var(--text-4)]">{section.subtitle}</span>
+                {section.subtitle ? (
+                  <span className="text-[11px] text-[var(--text-4)]">{section.subtitle}</span>
+                ) : null}
               </div>
               <span className="font-mono text-[11px] text-[var(--text-4)]">
                 {section.rows.length} DEV{section.rows.length === 1 ? "" : "S"}
@@ -618,21 +621,10 @@ function DevsTableSection({
                     {candidate.currentClients.length === 0 ? (
                       <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {candidate.currentClients.map((entry) => {
-                          const logoUrl = entry.id
-                            ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
-                            : null;
-                          return (
-                            <ClientAvatar
-                              key={entry.id ?? entry.name}
-                              name={entry.name}
-                              logoUrl={logoUrl}
-                              size="md"
-                            />
-                          );
-                        })}
-                      </div>
+                      <ClientAvatarStack
+                        clients={candidate.currentClients}
+                        clientOptions={clientOptions}
+                      />
                     )}
                   </td>
                   <td className="text-right">
@@ -680,6 +672,50 @@ function DevsTableSection({
               );
             })}
     </>
+  );
+}
+
+/**
+ * Overlapping client logos for the "Current client" column. Shows up to
+ * MAX_VISIBLE avatars with negative-margin overlap, then a "+N" chip when
+ * there are more. Keeps the cell width predictable when a dev is on 5-6
+ * clients — vs. the old wrap-flex layout that pushed rows tall.
+ */
+function ClientAvatarStack({
+  clients,
+  clientOptions,
+}: {
+  clients: CodeClearCandidateCurrentClient[];
+  clientOptions: ClientListItem[];
+}) {
+  const MAX_VISIBLE = 4;
+  const shown = clients.slice(0, MAX_VISIBLE);
+  const extra = clients.length - shown.length;
+  return (
+    <span className="inline-flex items-center">
+      {shown.map((entry, i) => {
+        const logoUrl = entry.id
+          ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
+          : null;
+        return (
+          <span
+            key={entry.id ?? entry.name}
+            // White ring keeps each avatar visually separated from its
+            // neighbour; negative margin produces the overlap (the first
+            // avatar stays flush left). zIndex descends so earlier
+            // avatars sit on top — natural reading order left-to-right.
+            className="rounded-full ring-2 ring-white"
+            style={{ marginLeft: i === 0 ? 0 : -10, zIndex: MAX_VISIBLE - i }}
+            title={entry.name}
+          >
+            <ClientAvatar name={entry.name} logoUrl={logoUrl} size="md" />
+          </span>
+        );
+      })}
+      {extra > 0 ? (
+        <span className="ml-2 font-mono text-[11px] text-[var(--text-4)]">+{extra}</span>
+      ) : null}
+    </span>
   );
 }
 
