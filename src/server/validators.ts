@@ -907,6 +907,24 @@ export const taskBatchDeleteSchema = z.object({
   ids: z.array(z.string().cuid()).min(1).max(1000),
 });
 
+/** CSV import — bulk-create tasks for one client. Names are resolved to ids client-side. */
+export const taskImportSchema = z.object({
+  tasks: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        description: z.string().max(10000).nullable().optional(),
+        status: taskStatusSchema.optional(),
+        priority: taskPrioritySchema.optional(),
+        assigneeIds: z.array(z.string().cuid()).optional(),
+        featureBlockId: z.string().cuid().nullable().optional(),
+        dueDate: isoDateString.nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(1000),
+});
+
 export const dailyUpdatePushSchema = z.object({
   phase: z.enum(["AM", "PM"]),
   weekPlan: z.string().max(5000).optional(),

@@ -10,6 +10,7 @@ import {
   deleteTask,
   batchUpdateTasks,
   batchDeleteTasks,
+  importTasks,
   addTaskComment,
   getClientTaskSummary,
   getTaskAttention,
@@ -138,6 +139,15 @@ export function useBatchDeleteTasks() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => batchDeleteTasks(ids),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useImportTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, tasks }: { slug: string; tasks: Parameters<typeof importTasks>[1] }) =>
+      importTasks(slug, tasks),
     onSuccess: () => invalidateAll(qc),
   });
 }
