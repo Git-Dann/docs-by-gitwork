@@ -90,6 +90,83 @@ export async function listCourseFeedbackCandidates(
   }));
 }
 
+async function alreadyImportedIds(workspaceClientId: string): Promise<Set<string>> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId: workspaceClientId },
+    select: { courseRequests: { select: { sourceConversationId: true } } },
+  });
+  return new Set(
+    (wiki?.courseRequests ?? [])
+      .map((r) => r.sourceConversationId)
+      .filter((id): id is string => !!id),
+  );
+}
+
+async function createFromConversations(
+  workspaceClientId: string,
+  convos: Array<{
+    id: string;
+    customerLabel: string;
+    receivedAt: Date;
+    preview: string | null;
+    messages: Array<{ body: string }>;
+  }>,
+): Promise<CourseRequestRecord[]> {
+  const created: CourseRequestRecord[] = [];
+  for (const c of convos) {
+    const date = c.receivedAt.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const body = (c.messages[0]?.body ?? c.preview ?? "").trim();
+    const notes = `From ${c.customerLabel} (${date}):\n${body}`;
+    created.push(
+      await addCourseRequest(workspaceClientId, {
+        courseName: "",
+        notes,
+        status: "NEW",
+        sourceConversationId: c.id,
+      }),
+    );
+  }
+  return created;
+}
+
+/**
+ * Import all not-yet-imported "New Feedback" conversations whose subject or
+ * full message body mentions any of the given keywords (e.g. "course"). Used to
+ * pull only course-related feedback in one shot.
+ */
+export async function importMatchingCourseFeedback(
+  workspaceClientId: string,
+  keywords: string[],
+): Promise<CourseRequestRecord[]> {
+  const support = await resolveSupportClient(workspaceClientId);
+  if (!support) return [];
+  const already = await alreadyImportedIds(workspaceClientId);
+  const needles = keywords.map((k) => k.toLowerCase()).filter(Boolean);
+  if (needles.length === 0) return [];
+
+  const convos = await prisma.supportConversation.findMany({
+    where: {
+      clientId: support.id,
+      subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
+    },
+    include: { messages: { orderBy: { createdAt: "asc" }, take: 1 } },
+    orderBy: { receivedAt: "desc" },
+    take: 200,
+  });
+
+  const matching = convos.filter((c) => {
+    if (already.has(c.id)) return false;
+    const hay = `${c.subject} ${c.messages[0]?.body ?? c.preview ?? ""}`.toLowerCase();
+    return needles.some((n) => hay.includes(n));
+  });
+
+  return createFromConversations(workspaceClientId, matching);
+}
+
 /**
  * Import selected feedback conversations as draft course requests.
  * Skips conversations already imported. Folds the username + message text into
@@ -105,15 +182,7 @@ export async function importCourseFeedback(
   if (!support) return [];
 
   // Skip ones already imported.
-  const wiki = await prisma.clientWiki.findUnique({
-    where: { clientId: workspaceClientId },
-    select: { courseRequests: { select: { sourceConversationId: true } } },
-  });
-  const already = new Set(
-    (wiki?.courseRequests ?? [])
-      .map((r) => r.sourceConversationId)
-      .filter((id): id is string => !!id),
-  );
+  const already = await alreadyImportedIds(workspaceClientId);
   const todo = conversationIds.filter((id) => !already.has(id));
   if (todo.length === 0) return [];
 
