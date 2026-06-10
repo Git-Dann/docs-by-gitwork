@@ -298,7 +298,7 @@ export function CourseRequestsSection({
 
       {/* ── Batch bar ──────────────────────────────────────────── */}
       {!readOnly && selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center gap-2 rounded-[12px] border border-[rgba(0,0,0,0.1)] bg-white px-3 py-2 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.25)]">
+        <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-[12px] border border-[rgba(0,0,0,0.1)] bg-white px-3 py-2 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.25)]">
           <span className="px-1 text-[13px] font-medium text-[var(--text-2)]">
             {selected.size} selected
           </span>
