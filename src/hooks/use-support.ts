@@ -25,6 +25,7 @@ import {
   listSupportReports,
   listSupportTickets,
   getTicketPerformance,
+  getClientHealthScore,
   listSupportWorkflowRules,
   seedSupportDefaultRules,
   sendSupportMessage,
@@ -142,6 +143,15 @@ export function useSupportTickets(clientId: string | null) {
     queryFn: () => listSupportTickets(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 1000 * 15,
+  });
+}
+
+export function useClientHealth(clientId: string | null) {
+  return useQuery({
+    queryKey: ["support", "client-health", clientId],
+    queryFn: () => getClientHealthScore(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 1000 * 60 * 5, // 5 min — health score doesn't change second-to-second
   });
 }
 
