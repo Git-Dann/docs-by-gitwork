@@ -8,7 +8,9 @@ import {
 } from "@/server/wiki-course-feedback";
 import { z } from "zod";
 
-// Either explicit conversation ids, or keyword-matched (server filters full body).
+export const maxDuration = 30;
+
+// Either explicit conversation ids, or keyword-matched (server filters on subject + preview).
 const bodySchema = z.object({
   conversationIds: z.array(z.string()).optional(),
   keywords: z.array(z.string()).optional(),

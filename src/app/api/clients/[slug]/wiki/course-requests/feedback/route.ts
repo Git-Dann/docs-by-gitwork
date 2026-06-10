@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { listCourseFeedbackCandidates } from "@/server/wiki-course-feedback";
 
+export const maxDuration = 30;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
