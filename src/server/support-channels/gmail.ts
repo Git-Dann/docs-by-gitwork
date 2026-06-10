@@ -182,3 +182,101 @@ export const gmailAdapter: ChannelAdapter = {
   key: "GMAIL",
   run: runGmail,
 };
+
+// Plaintext stub written by the old parser bug — these stored bodies need repairing.
+const STUB_BODY = /please view this email in html/i;
+
+export interface GmailBackfillResult {
+  connectionId: string;
+  impersonateEmail: string;
+  conversations: number;
+  messagesScanned: number;
+  messagesUpdated: number;
+  dryRun: boolean;
+  samples: { conversationId: string; subject: string; after: string }[];
+  errors: string[];
+}
+
+/**
+ * One-off repair: re-fetch GMAIL messages whose stored body is the "view in HTML"
+ * stub (the old extractGmailBodyText bug) and rewrite them with the fixed parser,
+ * which now reads the HTML alternative. Idempotent — only touches stub bodies, so
+ * re-running is a no-op once repaired. dryRun (default) reports without writing.
+ */
+export async function backfillGmailBodies(opts: {
+  connectionId: string;
+  dryRun?: boolean;
+}): Promise<GmailBackfillResult> {
+  const { connectionId, dryRun = true } = opts;
+  const errors: string[] = [];
+  const samples: { conversationId: string; subject: string; after: string }[] = [];
+
+  const connection = await prisma.accountConnection.findUnique({
+    where: { id: connectionId },
+    select: { id: true, source: true, scraperConfig: true, client: { select: { id: true, workspaceId: true } } },
+  });
+  if (!connection) throw new Error("Connection not found");
+  if (connection.source !== "GMAIL") throw new Error(`Connection ${connectionId} is ${connection.source}, not GMAIL`);
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: connection.client.workspaceId },
+    select: { googleServiceAccountJson: true, googleSubjectEmail: true },
+  });
+  if (!workspace?.googleServiceAccountJson) throw new Error("Google service account not configured");
+
+  const config = (connection.scraperConfig ?? {}) as { impersonateEmail?: string };
+  const impersonateEmail = config.impersonateEmail ?? workspace.googleSubjectEmail ?? "";
+  if (!impersonateEmail) throw new Error("No inbox configured on this Gmail connector");
+
+  const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+    clientOptions: { subject: impersonateEmail },
+  });
+  const gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
+  const gmail = google.gmail({ version: "v1", auth: gmailAuth });
+
+  const convos = await prisma.supportConversation.findMany({
+    where: { clientId: connection.client.id, source: "GMAIL" },
+    select: {
+      id: true,
+      subject: true,
+      messages: { select: { id: true, externalId: true, body: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  let messagesScanned = 0;
+  let messagesUpdated = 0;
+
+  for (const c of convos) {
+    for (const m of c.messages) {
+      // Only repair the broken stub bodies — leave correctly-parsed messages alone.
+      if (!m.externalId || !STUB_BODY.test(m.body)) continue;
+      messagesScanned++;
+      try {
+        const res = await gmail.users.messages.get({ userId: "me", id: m.externalId, format: "full" });
+        const fixed = extractGmailBodyText(res.data).slice(0, 4000).trim();
+        if (!fixed || STUB_BODY.test(fixed)) continue;
+        if (!dryRun) {
+          await prisma.supportMessage.update({ where: { id: m.id }, data: { body: fixed } });
+        }
+        messagesUpdated++;
+        if (samples.length < 8) samples.push({ conversationId: c.id, subject: c.subject, after: fixed.slice(0, 200) });
+      } catch (err) {
+        errors.push(`msg ${m.externalId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  return {
+    connectionId,
+    impersonateEmail,
+    conversations: convos.length,
+    messagesScanned,
+    messagesUpdated,
+    dryRun,
+    samples,
+    errors,
+  };
+}
