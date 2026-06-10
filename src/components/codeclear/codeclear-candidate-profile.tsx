@@ -22,6 +22,7 @@ import {
 import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
+import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import { cn, formatDate } from "@/lib/format";
 import { type CandidateAvailability } from "@/types/codeclear";
 import {
@@ -56,6 +57,10 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const clients = clientsQuery.data?.clients ?? [];
 
   const { canViewRates, canManageCode } = usePermissions();
+  // Live USD→GBP rate so the Monthly hero stat can show the GBP
+  // conversion underneath. Only fetched when the viewer can see rates.
+  const fxQuery = useUsdToGbpRate();
+  const fxRate = canViewRates ? fxQuery.data?.rate ?? null : null;
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
@@ -274,11 +279,18 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           <HeroStat label="Tier" value={candidate.effectiveTier.replace("TIER_", "T")} />
           {canViewRates ? (
             <HeroStat
-              label="Hourly rate"
+              label="Monthly"
               value={
-                candidate.hourlyRate != null
-                  ? `${candidate.currency ?? ""} ${candidate.hourlyRate}`.trim()
+                candidate.monthlyRate != null && candidate.monthlyRateCurrency
+                  ? formatMoney(candidate.monthlyRate, candidate.monthlyRateCurrency)
                   : "—"
+              }
+              sub={
+                candidate.monthlyRate != null &&
+                candidate.monthlyRateCurrency?.toUpperCase() === "USD" &&
+                fxRate != null
+                  ? `≈ ${formatMoney(candidate.monthlyRate * fxRate, "GBP")}`
+                  : undefined
               }
             />
           ) : null}

@@ -13,6 +13,7 @@ import type {
 } from "@/types/codeclear";
 import { deriveCandidateAnalysisState } from "@/types/codeclear";
 import { computeOverallCalibre, effectiveTier } from "@/server/codeclear-scoring";
+import { normalizeToMonthly } from "@/server/rate-card";
 
 type SeedCodeClearCandidate = {
   name: string;
@@ -241,6 +242,18 @@ export function normalizeGitHubAnalysisRun(run: {
 export const codeClearListInclude = {
   score: true,
   scoreDraft: true,
+  // Pull the linked rate-card row so the Code → Developers Rate column
+  // can show the dev's monthly rate without a second round-trip. Rate
+  // card is the source of truth — Candidate.hourlyRate is legacy.
+  rateCardPerson: {
+    select: {
+      id: true,
+      sourceRate: true,
+      sourceCurrencyCode: true,
+      billingPeriod: true,
+      archivedAt: true,
+    },
+  },
   githubAnalysisRuns: {
     orderBy: {
       createdAt: "desc",
@@ -286,6 +299,15 @@ export function buildCodeClearListInclude(): typeof codeClearListInclude {
 export const codeClearDetailInclude = {
   score: true,
   scoreDraft: true,
+  rateCardPerson: {
+    select: {
+      id: true,
+      sourceRate: true,
+      sourceCurrencyCode: true,
+      billingPeriod: true,
+      archivedAt: true,
+    },
+  },
   placements: {
     include: {
       client: { select: { id: true, name: true, slug: true } },
@@ -333,6 +355,33 @@ export interface SerializeCandidateOptions {
   /** When false, financial fields (hourlyRate, currency) are blanked — the caller
    *  lacks the `code.viewRates` permission. Defaults to visible. */
   canViewRates?: boolean;
+}
+
+/** Project the linked rate-card row's pricing onto the candidate response.
+ *  Returns `null`s when the link is missing, the row is archived, or the
+ *  viewer can't see rates. Always normalised to monthly via the existing
+ *  rate-card helper so DAY/WEEK seeds (none today) would still surface
+ *  as a comparable monthly figure. */
+function rateCardFields(
+  rateCardPerson:
+    | {
+        sourceRate: Prisma.Decimal;
+        sourceCurrencyCode: string;
+        billingPeriod: "DAY" | "WEEK" | "MONTH";
+        archivedAt: Date | null;
+      }
+    | null
+    | undefined,
+  opts?: SerializeCandidateOptions,
+): { monthlyRate: number | null; monthlyRateCurrency: string | null } {
+  const hideRates = opts?.canViewRates === false;
+  if (hideRates || !rateCardPerson || rateCardPerson.archivedAt) {
+    return { monthlyRate: null, monthlyRateCurrency: null };
+  }
+  return {
+    monthlyRate: normalizeToMonthly(rateCardPerson.sourceRate, rateCardPerson.billingPeriod),
+    monthlyRateCurrency: rateCardPerson.sourceCurrencyCode,
+  };
 }
 
 /** Shape shared by both list and detail serializers. Keeps the new validation
@@ -434,6 +483,7 @@ export function serializeCandidateListItem(
 
   return {
     ...commonCandidateFields(candidate, opts),
+    ...rateCardFields(candidate.rateCardPerson, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -479,6 +529,7 @@ export function serializeCandidateDetails(
 
   return {
     ...commonCandidateFields(candidate, opts),
+    ...rateCardFields(candidate.rateCardPerson, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,

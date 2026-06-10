@@ -93,6 +93,12 @@ export interface CodeClearCandidateRecord {
   yearsExperience: number | null;
   hourlyRate: number | null;
   currency: string | null;
+  /** Monthly rate sourced from the linked rate-card row (Gitwork's
+   * commercial pricing). Null when no rate-card link, the row is
+   * archived, or the viewer lacks `code.viewRates`. Source of truth
+   * lives on `RateCardPerson` — edit there to update everywhere. */
+  monthlyRate: number | null;
+  monthlyRateCurrency: string | null;
   timezone: string | null;
   availability: CandidateAvailability | null;
   recheckDueAt: string | null;

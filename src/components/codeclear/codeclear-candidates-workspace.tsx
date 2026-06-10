@@ -29,6 +29,7 @@ import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
+import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import {
   CodeClearTabs,
   EmptyState,
@@ -477,6 +478,10 @@ function DevsTable({
   const nonEmpty = sections.filter((s) => s.rows.length > 0);
   const colCount = canViewRates ? 8 : 7;
   const showDividers = nonEmpty.length > 1;
+  // Pull the live USD→GBP rate once for the whole table. Cached for 12 h
+  // client-side; serves USD-only when the FX endpoint is unreachable.
+  const fx = useUsdToGbpRate();
+  const usdToGbp = fx.data?.rate ?? null;
 
   return (
     <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
@@ -489,7 +494,7 @@ function DevsTable({
             <th className="text-left">Current client</th>
             <th className="text-right">Calibre</th>
             <th className="text-left">Tier</th>
-            {canViewRates ? <th className="text-right">Rate</th> : null}
+            {canViewRates ? <th className="text-right">Monthly</th> : null}
             <th className="text-right">Updated</th>
           </tr>
         </thead>
@@ -506,6 +511,7 @@ function DevsTable({
               onRowClick={onRowClick}
               clientOptions={clientOptions}
               canViewRates={canViewRates}
+              usdToGbp={usdToGbp}
             />
           ))}
         </tbody>
@@ -524,6 +530,7 @@ function DevsTableSection({
   onRowClick,
   clientOptions,
   canViewRates,
+  usdToGbp,
 }: {
   section: { key: string; title: string; subtitle: string; rows: CodeClearCandidateListItem[] };
   isFirst: boolean;
@@ -534,6 +541,9 @@ function DevsTableSection({
   onRowClick: (id: string) => void;
   clientOptions: ClientListItem[];
   canViewRates: boolean;
+  /** Live USD→GBP rate (null while loading or if FX is unreachable —
+   *  the cell falls back to USD only in that case). */
+  usdToGbp: number | null;
 }) {
   return (
     <>
@@ -654,13 +664,11 @@ function DevsTableSection({
                   </td>
                   {canViewRates ? (
                     <td className="text-right">
-                      {candidate.hourlyRate != null ? (
-                        <span className="font-mono text-[11px] tabular-nums text-[var(--text-2)]">
-                          {candidate.currency ?? ""} {candidate.hourlyRate}
-                        </span>
-                      ) : (
-                        <span className="font-mono text-[11px] text-[var(--text-4)]">—</span>
-                      )}
+                      <MonthlyRateCell
+                        amount={candidate.monthlyRate}
+                        currency={candidate.monthlyRateCurrency}
+                        usdToGbp={usdToGbp}
+                      />
                     </td>
                   ) : null}
                   <td className="text-right">
@@ -714,6 +722,44 @@ function ClientAvatarStack({
       })}
       {extra > 0 ? (
         <span className="ml-2 font-mono text-[11px] text-[var(--text-4)]">+{extra}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Monthly rate cell. Renders the source currency on top (the figure Syed
+ * actually enters in the Rate Card) and the live GBP equivalent below.
+ * When `amount` is null (no rate-card link, archived, or pro bono dev)
+ * we show an em-dash. When `usdToGbp` is null (FX endpoint unreachable
+ * or still loading), we hide the conversion line so the table never
+ * shows a wrong number.
+ */
+function MonthlyRateCell({
+  amount,
+  currency,
+  usdToGbp,
+}: {
+  amount: number | null;
+  currency: string | null;
+  usdToGbp: number | null;
+}) {
+  if (amount == null || !currency) {
+    return <span className="font-mono text-[11px] text-[var(--text-4)]">—</span>;
+  }
+  // Convert to GBP only when the source is USD. For other currencies we
+  // skip the second line (defensive — today all seeded rates are USD).
+  const gbp =
+    usdToGbp != null && currency.toUpperCase() === "USD" ? amount * usdToGbp : null;
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className="font-mono text-[11px] tabular-nums text-[var(--text-1)]">
+        {formatMoney(amount, currency)}
+      </span>
+      {gbp != null ? (
+        <span className="font-mono text-[10px] tabular-nums text-[var(--text-4)]">
+          ≈ {formatMoney(gbp, "GBP")}
+        </span>
       ) : null}
     </span>
   );
