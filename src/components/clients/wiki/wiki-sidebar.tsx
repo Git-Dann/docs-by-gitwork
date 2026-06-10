@@ -32,9 +32,9 @@ export function WikiSidebar({ active, onSelect }: Props) {
         type="button"
         onClick={() => onSelect(section)}
         className={[
-          "flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2 text-left text-sm transition-colors",
+          "flex w-auto shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[6px] px-3 py-2 text-left text-sm transition-colors md:w-full",
           isActive
-            ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] border-l-2 border-[var(--brand-700)] rounded-l-none"
+            ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] md:border-l-2 md:border-[var(--brand-700)] md:rounded-l-none"
             : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
         ].join(" ")}
       >
@@ -55,8 +55,9 @@ export function WikiSidebar({ active, onSelect }: Props) {
   };
 
   return (
-    <div className="flex w-[220px] shrink-0 flex-col gap-1 py-4 pr-2">
-      <div className="space-y-0.5">
+    <div className="flex w-full shrink-0 flex-col gap-1 py-2 md:w-[220px] md:py-4 md:pr-2">
+      {/* Horizontal scroll row on mobile, vertical list from md up */}
+      <div className="flex gap-1 overflow-x-auto md:flex-col md:gap-0 md:space-y-0.5 md:overflow-visible">
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

@@ -349,7 +349,7 @@ export function ChangelogEntryForm({
         >
           <div className="flex-1 overflow-y-auto p-6">
             {/* ── Metadata row ──────────────────────────── */}
-            <div className="mb-5 grid grid-cols-2 gap-x-6 gap-y-4">
+            <div className="mb-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
               {/* Version */}
               <div>
                 <label className={fieldLabel} style={{ fontFamily: MONO }}>
@@ -482,7 +482,7 @@ export function ChangelogEntryForm({
             </div>
 
             {/* ── Structured fields for active platform — 2-column grid ── */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
               {/* Changelog */}
               <div>
                 <label className={fieldLabel} style={{ fontFamily: MONO }}>

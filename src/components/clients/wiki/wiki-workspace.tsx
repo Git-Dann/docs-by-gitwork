@@ -553,7 +553,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // the DS workspace itself adds its own pt-6, keeping its action bar in line.
     if (activeSection === "design-system") {
       return (
-        <div className="-mx-8 -mt-6">
+        <div className="-mx-4 -mt-4 md:-mx-8 md:-mt-6">
           <DesignSystemWorkspace slug={slug} embedded />
         </div>
       );
@@ -565,7 +565,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       return (
         <>
           {/* Page-level action bar */}
-          <div className="mb-5 flex items-center justify-end gap-2">
+          <div className="mb-5 flex flex-wrap items-center justify-end gap-2">
             {/* Platform settings gear */}
             <button
               type="button"
@@ -723,10 +723,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1">
-        {/* Sidebar */}
-        <div className="shrink-0 border-r border-[rgba(0,0,0,0.08)] px-2">
+      {/* Body — stacks on mobile (nav on top), side-by-side from md up */}
+      <div className="flex min-w-0 flex-1 flex-col md:flex-row">
+        {/* Sidebar / mobile top-nav */}
+        <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
           <WikiSidebar
             slug={slug}
             active={activeSection}
@@ -735,7 +735,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
 
         {/* Main content — pt-6 matches DesignSystemWorkspace's own pt-6 so action bars align */}
-        <div className="flex-1 overflow-auto px-8 pt-6 pb-8">{renderContent()}</div>
+        <div className="min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">{renderContent()}</div>
       </div>
 
       {/* Changelog entry form modal */}
