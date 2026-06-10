@@ -58,9 +58,14 @@ async function resolveSupportClient(workspaceClientId: string) {
   });
 }
 
-/** Lightweight scan of "New Feedback" conversations — no message join. */
+/**
+ * Bounded scan of "New Feedback" conversations + their first message body.
+ * The `preview` column here is just the subject, so the request text only lives
+ * in the message body — fetched via the indexed [conversationId, createdAt]
+ * lookup, capped at SCAN_LIMIT rows (cheap for a single call).
+ */
 async function scanFeedback(supportClientId: string) {
-  return prisma.supportConversation.findMany({
+  const convos = await prisma.supportConversation.findMany({
     where: {
       clientId: supportClientId,
       subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
@@ -71,10 +76,19 @@ async function scanFeedback(supportClientId: string) {
       subject: true,
       preview: true,
       receivedAt: true,
+      messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
     },
     orderBy: { receivedAt: "desc" },
     take: SCAN_LIMIT,
   });
+  return convos.map((c) => ({
+    id: c.id,
+    customerLabel: c.customerLabel,
+    subject: c.subject,
+    receivedAt: c.receivedAt,
+    // Real request text is the first message body; subject/preview is just the title.
+    text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
+  }));
 }
 
 async function alreadyImportedIds(workspaceClientId: string): Promise<Set<string>> {
@@ -105,7 +119,7 @@ export async function listCourseFeedbackCandidates(
     conversationId: c.id,
     username: c.customerLabel,
     subject: c.subject,
-    preview: (c.preview ?? "").slice(0, PREVIEW_LEN),
+    preview: c.text.slice(0, PREVIEW_LEN),
     receivedAt: c.receivedAt.toISOString(),
     alreadyImported: imported.has(c.id),
   }));
@@ -171,7 +185,7 @@ export async function importMatchingCourseFeedback(
   const ids = convos
     .filter((c) => {
       if (already.has(c.id)) return false;
-      const hay = `${c.subject} ${c.preview ?? ""}`.toLowerCase();
+      const hay = `${c.subject} ${c.text}`.toLowerCase();
       return needles.some((n) => hay.includes(n));
     })
     .map((c) => c.id);
