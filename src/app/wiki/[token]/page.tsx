@@ -40,7 +40,7 @@ export default async function PublicWikiPage({
   return (
     <div className="min-h-screen bg-[var(--surface-0)]">
       {/* Header */}
-      <div className="border-b border-[rgba(0,0,0,0.08)] bg-white px-8 py-4">
+      <div className="border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
         <div className="flex items-center justify-between">
           <div>
             <p
@@ -57,7 +57,7 @@ export default async function PublicWikiPage({
       <WikiPublicView wiki={wiki} onlySection={onlySection} />
 
       {/* Footer */}
-      <div className="mt-16 border-t border-[rgba(0,0,0,0.08)] bg-white px-8 py-6">
+      <div className="mt-16 border-t border-[rgba(0,0,0,0.08)] bg-white px-4 py-6 md:px-8">
         <div className="flex items-center justify-between text-xs text-[var(--text-4)]">
           <span>
             {wiki.clientName} · Knowledge Wiki

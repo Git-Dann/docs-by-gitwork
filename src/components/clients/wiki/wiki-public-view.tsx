@@ -76,19 +76,19 @@ export function WikiPublicView({
 
   // Per-page share: render just the one section, no sidebar nav.
   if (onlySection) {
-    return <div className="overflow-auto p-8">{renderContent()}</div>;
+    return <div className="overflow-auto p-4 md:p-8">{renderContent()}</div>;
   }
 
   return (
-    <div className="flex">
-      <div className="shrink-0 border-r border-[rgba(0,0,0,0.08)] px-2">
+    <div className="flex flex-col md:flex-row">
+      <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
         <WikiSidebar
           slug={wiki.clientSlug}
           active={activeSection}
           onSelect={setActiveSection}
         />
       </div>
-      <div className="flex-1 overflow-auto p-8">
+      <div className="min-w-0 flex-1 overflow-auto p-4 md:p-8">
         {renderContent()}
       </div>
     </div>
