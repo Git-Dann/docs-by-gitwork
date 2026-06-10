@@ -24,6 +24,7 @@ import {
   listSupportMessages,
   listSupportReports,
   listSupportTickets,
+  getTicketPerformance,
   listSupportWorkflowRules,
   seedSupportDefaultRules,
   sendSupportMessage,
@@ -141,6 +142,19 @@ export function useSupportTickets(clientId: string | null) {
     queryFn: () => listSupportTickets(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 1000 * 15,
+  });
+}
+
+export function useTicketPerformance(
+  clientId: string | null,
+  start: string,
+  end: string,
+) {
+  return useQuery({
+    queryKey: ["support", "ticket-performance", clientId, start, end],
+    queryFn: () => getTicketPerformance(clientId as string, start, end),
+    enabled: Boolean(clientId && start && end),
+    staleTime: 1000 * 60,
   });
 }
 

@@ -219,6 +219,26 @@ export interface SupportReportPayload {
   summaryText: string;
 }
 
+/** Computed support-desk performance metrics for a period (derived from ticket timestamps). */
+export interface SupportPerformanceMetrics {
+  totalTickets: number;
+  respondedCount: number;
+  resolvedCount: number;
+  openCount: number;
+  /** % of tickets resolved (resolved / total). */
+  resolutionRate: number;
+  /** Mean / median time from ticket creation to first outbound reply, in ms (null if no data). */
+  avgFirstResponseMs: number | null;
+  medianFirstResponseMs: number | null;
+  /** Mean / median time from creation to resolution, in ms (null if no data). */
+  avgResolutionMs: number | null;
+  medianResolutionMs: number | null;
+  /** % of responded tickets whose first reply landed within the SLA target. */
+  slaFrtCompliancePct: number | null;
+  /** The first-response SLA target used for the compliance figure, in hours. */
+  slaTargetHours: number;
+}
+
 /** One analytics figure captured on a report (mirrors AnalyticsMetric server-side). */
 export interface AnalyticsReportMetric {
   key: string;

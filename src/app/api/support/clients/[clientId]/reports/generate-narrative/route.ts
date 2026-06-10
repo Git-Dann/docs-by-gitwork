@@ -3,6 +3,15 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
+import { getPerformanceMetricsForPeriod } from "@/server/support";
+
+function fmtDuration(ms: number | null): string {
+  if (ms === null) return "n/a";
+  const h = ms / 3600_000;
+  if (h < 1) return `${Math.round(ms / 60_000)} minutes`;
+  if (h < 24) return `${h.toFixed(1)} hours`;
+  return `${(h / 24).toFixed(1)} days`;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -106,6 +115,24 @@ export async function POST(
     }
     if (sentimentSummary) {
       lines.push(`Conversation sentiment (all channels): ${sentimentSummary}`);
+    }
+
+    // Performance KPIs from ticket timestamps — gives the narrative real, citable figures.
+    try {
+      const perf = await getPerformanceMetricsForPeriod(
+        clientId,
+        periodStart.toISOString().slice(0, 10),
+        periodEnd.toISOString().slice(0, 10),
+      );
+      if (perf.respondedCount > 0 || perf.resolvedCount > 0) {
+        lines.push(
+          `Performance: avg first response ${fmtDuration(perf.avgFirstResponseMs)} (median ${fmtDuration(perf.medianFirstResponseMs)}); ` +
+            `${perf.slaFrtCompliancePct ?? 0}% replied within the ${perf.slaTargetHours}h SLA target; ` +
+            `avg resolution ${fmtDuration(perf.avgResolutionMs)}; resolution rate ${perf.resolutionRate}% (${perf.resolvedCount}/${perf.totalTickets}).`,
+        );
+      }
+    } catch {
+      // Metrics are best-effort enrichment — never block narrative generation.
     }
 
     const config = resolveAiConfig(workspace);

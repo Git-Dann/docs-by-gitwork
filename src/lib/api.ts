@@ -1479,6 +1479,14 @@ export async function getTicketStats(
   return apiFetch(`/api/support/clients/${clientId}/tickets/stats?start=${start}&end=${end}`);
 }
 
+export async function getTicketPerformance(
+  clientId: string,
+  start: string,
+  end: string,
+): Promise<{ metrics: import("@/types/support").SupportPerformanceMetrics }> {
+  return apiFetch(`/api/support/clients/${clientId}/tickets/performance?start=${start}&end=${end}`);
+}
+
 export async function listSupportConnections(
   clientId: string,
 ): Promise<{ connections: Connection[] }> {

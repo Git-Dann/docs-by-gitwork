@@ -77,12 +77,14 @@ import {
   useBatchUpdateTickets,
   useSemanticSearch,
   useGenerateReportNarrative,
+  useTicketPerformance,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import { TicketsKanban } from "./tickets-kanban";
+import { PerformanceStrip } from "./performance-strip";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -2241,6 +2243,15 @@ function TicketsTableView({ clientId }: { clientId: string }) {
   const [batchAssign, setBatchAssign] = useState("");
   const [batchError, setBatchError] = useState<string | null>(null);
 
+  // Rolling 30-day performance window for the KPI strip.
+  const { perfStart, perfEnd } = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    return { perfStart: start.toISOString().slice(0, 10), perfEnd: end.toISOString().slice(0, 10) };
+  }, []);
+  const { data: perfData } = useTicketPerformance(clientId, perfStart, perfEnd);
+
   async function runBatch(data: Partial<{ status: string; priority: string; assignedTo: string }>) {
     setBatchError(null);
     try {
@@ -2398,6 +2409,18 @@ function TicketsTableView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* 30-day performance KPIs */}
+      {perfData?.metrics && (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              PERFORMANCE // LAST 30 DAYS
+            </span>
+          </div>
+          <PerformanceStrip metrics={perfData.metrics} />
+        </div>
+      )}
+
       {/* view toggle */}
       <div className="flex items-center justify-end gap-1">
         <button
@@ -2681,6 +2704,7 @@ function ReportBuilder({
   }
 
   const generateNarrative = useGenerateReportNarrative(clientId);
+  const { data: reportPerf } = useTicketPerformance(clientId, p.periodStart, p.periodEnd);
   const [narrativeMsg, setNarrativeMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   async function handleWriteNarrative() {
@@ -2987,7 +3011,16 @@ function ReportBuilder({
       {/* 04 // SUPPORT PERFORMANCE */}
       <div className="app-card overflow-hidden p-0">
         {widgetHeader("04", "SUPPORT PERFORMANCE")}
-        <div className="p-5">
+        <div className="space-y-4 p-5">
+          {reportPerf?.metrics && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-[var(--text-4)]">
+                Computed live from ticket timestamps for this period — graded against industry benchmarks
+                (first reply &lt;1h best-in-class, resolution rate 80%+ strong).
+              </p>
+              <PerformanceStrip metrics={reportPerf.metrics} />
+            </div>
+          )}
           {textareaInput("Performance notes", p.performanceText, (v) => update("performanceText", v),
             "Comment on resolution rate, backlog, SLA adherence…", 4)}
         </div>
