@@ -14,10 +14,14 @@
 
 import { prisma } from "@/lib/prisma";
 import { addCourseRequest, type CourseRequestRecord } from "@/server/wiki";
+import { resolveAiConfig, completeText, parseJsonObject } from "@/server/ai-provider";
 
 const FEEDBACK_SUBJECT = "New Feedback";
 const PREVIEW_LEN = 240;
-const SCAN_LIMIT = 60;
+const SCAN_LIMIT = 150;
+// AI extraction batching — one completion per chunk, chunks run in parallel.
+const AI_CHUNK = 25;
+const AI_TEXT_CAP = 700;
 
 export interface CourseFeedbackCandidate {
   conversationId: string;
@@ -125,84 +129,224 @@ export async function listCourseFeedbackCandidates(
   }));
 }
 
-/** Create draft course requests from the given conversations (fetches their bodies). */
-async function createFromConversationIds(
-  workspaceClientId: string,
-  supportClientId: string,
-  ids: string[],
-): Promise<CourseRequestRecord[]> {
+interface FeedbackItem {
+  id: string;
+  customerLabel: string;
+  subject: string;
+  receivedAt: Date;
+  text: string;
+}
+
+/** Fetch the bodies for a specific set of conversation ids (for explicit-selection imports). */
+async function fetchConvoBodies(supportClientId: string, ids: string[]): Promise<FeedbackItem[]> {
   if (ids.length === 0) return [];
   const convos = await prisma.supportConversation.findMany({
     where: { id: { in: ids }, clientId: supportClientId },
     select: {
       id: true,
       customerLabel: true,
+      subject: true,
       receivedAt: true,
       preview: true,
       messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
     },
   });
+  return convos.map((c) => ({
+    id: c.id,
+    customerLabel: c.customerLabel,
+    subject: c.subject,
+    receivedAt: c.receivedAt,
+    text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
+  }));
+}
+
+interface AiCourseVerdict {
+  isCourseRequest: boolean;
+  courseName: string;
+  country: string;
+}
+
+/**
+ * Batched AI extraction: classify each feedback as a golf-course request (add or
+ * a correction to a specific named course) vs. an app bug / feature idea / general
+ * feedback, and pull out the course name + country. One completion per AI_CHUNK
+ * items, chunks run in parallel. Returns a map keyed by conversation id.
+ *
+ * Graceful: if no AI key is configured or a chunk fails, those items are simply
+ * absent from the map (the caller imports them unfilled rather than erroring).
+ */
+async function aiExtractCourses(
+  workspaceClientId: string,
+  items: FeedbackItem[],
+): Promise<{ verdicts: Map<string, AiCourseVerdict>; aiUsed: boolean }> {
+  const verdicts = new Map<string, AiCourseVerdict>();
+  if (items.length === 0) return { verdicts, aiUsed: false };
+
+  const wc = await prisma.workspaceClient.findUnique({
+    where: { id: workspaceClientId },
+    select: {
+      workspace: {
+        select: {
+          aiProvider: true,
+          anthropicApiKey: true,
+          anthropicModel: true,
+          openaiApiKey: true,
+          openaiModel: true,
+          geminiApiKey: true,
+          geminiModel: true,
+          localLlmUrl: true,
+          localLlmModel: true,
+        },
+      },
+    },
+  });
+  if (!wc?.workspace) return { verdicts, aiUsed: false };
+  const config = resolveAiConfig(wc.workspace);
+  if (!config.apiKey) return { verdicts, aiUsed: false };
+
+  const system =
+    "You triage user feedback for the Big Wedge Golf scoring app. A feedback item is a " +
+    "COURSE REQUEST only if it asks to add a specific named golf course, or reports that a " +
+    "specific named course's data (holes, tees, pars, yardages, layout) is wrong. App bugs " +
+    "(sign-in/search/sync errors), feature ideas, praise, and general comments are NOT course " +
+    "requests. Extract the golf course's name and the country it is in.";
+
+  const chunks: FeedbackItem[][] = [];
+  for (let i = 0; i < items.length; i += AI_CHUNK) chunks.push(items.slice(i, i + AI_CHUNK));
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const list = chunk
+        .map((c, i) => `[${i}] ${(c.text || c.subject).slice(0, AI_TEXT_CAP).replace(/\s+/g, " ")}`)
+        .join("\n");
+      const user =
+        `Feedback items:\n${list}\n\n` +
+        `Return ONLY JSON: {"results":[{"i":<index>,"isCourseRequest":true|false,` +
+        `"courseName":"<name or empty>","country":"<full country name or empty>"}]}. ` +
+        `One entry per item. If it is not a course request, set isCourseRequest false and leave ` +
+        `courseName/country empty. If a course is named but you cannot tell the country, leave ` +
+        `country empty — do not guess.`;
+      try {
+        const raw = await completeText({ config, system, user, maxTokens: 1500 });
+        const parsed = parseJsonObject<{ results?: Array<{ i: number; isCourseRequest?: boolean; courseName?: string; country?: string }> }>(raw);
+        for (const r of parsed?.results ?? []) {
+          const item = chunk[r.i];
+          if (!item) continue;
+          verdicts.set(item.id, {
+            isCourseRequest: Boolean(r.isCourseRequest),
+            courseName: (r.courseName ?? "").trim(),
+            country: (r.country ?? "").trim(),
+          });
+        }
+      } catch {
+        // chunk failed — leave its items unfilled
+      }
+    }),
+  );
+  void results;
+
+  return { verdicts, aiUsed: verdicts.size > 0 };
+}
+
+export interface CourseImportOptions {
+  /** Explicit conversations to import (manual triage). */
+  conversationIds?: string[];
+  /** Keyword filter when scanning all not-yet-imported feedback. */
+  keywords?: string[];
+  /** Run AI extraction to pre-fill course name + country. Default true. */
+  aiExtract?: boolean;
+  /** Skip items AI judges not to be course requests. Default: true unless conversationIds given. */
+  onlyCourseRequests?: boolean;
+}
+
+export interface CourseImportResult {
+  created: CourseRequestRecord[];
+  skipped: number;
+  scanned: number;
+  aiUsed: boolean;
+}
+
+/**
+ * Unified course-feedback import. Resolves which conversations to process
+ * (explicit ids, keyword-matched, or all not-yet-imported), runs one batched AI
+ * pass to classify + extract course name/country, then creates pre-filled draft
+ * requests — skipping non-course feedback when onlyCourseRequests is on.
+ */
+export async function runCourseFeedbackImport(
+  workspaceClientId: string,
+  opts: CourseImportOptions,
+): Promise<CourseImportResult> {
+  const support = await resolveSupportClient(workspaceClientId);
+  if (!support) return { created: [], skipped: 0, scanned: 0, aiUsed: false };
+
+  const already = await alreadyImportedIds(workspaceClientId);
+
+  let items: FeedbackItem[];
+  if (opts.conversationIds?.length) {
+    const ids = opts.conversationIds.filter((id) => !already.has(id));
+    items = await fetchConvoBodies(support.id, ids);
+  } else {
+    const all = await scanFeedback(support.id);
+    const needles = (opts.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
+    items = all.filter((c) => {
+      if (already.has(c.id)) return false;
+      if (needles.length === 0) return true;
+      const hay = `${c.subject} ${c.text}`.toLowerCase();
+      return needles.some((n) => hay.includes(n));
+    });
+  }
+
+  if (items.length === 0) return { created: [], skipped: 0, scanned: 0, aiUsed: false };
+
+  const aiExtract = opts.aiExtract ?? true;
+  const { verdicts, aiUsed } = aiExtract
+    ? await aiExtractCourses(workspaceClientId, items)
+    : { verdicts: new Map<string, AiCourseVerdict>(), aiUsed: false };
+
+  // Filter to course requests only when asked AND the AI actually ran (so an AI
+  // outage can't silently drop everything — it falls back to importing unfilled).
+  const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
 
   const created: CourseRequestRecord[] = [];
-  for (const c of convos) {
-    const date = c.receivedAt.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-    const body = (c.messages[0]?.body ?? c.preview ?? "").trim();
-    const notes = `From ${c.customerLabel} (${date}):\n${body}`;
+  let skipped = 0;
+  for (const c of items) {
+    const v = verdicts.get(c.id);
+    if (onlyCourse && v && !v.isCourseRequest) {
+      skipped++;
+      continue;
+    }
+    const date = c.receivedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const notes = `From ${c.customerLabel} (${date}):\n${c.text}`;
     created.push(
       await addCourseRequest(workspaceClientId, {
-        courseName: "",
+        courseName: v?.courseName || "",
+        country: v?.country || null,
         notes,
         status: "NEW",
         sourceConversationId: c.id,
       }),
     );
   }
-  return created;
+  return { created, skipped, scanned: items.length, aiUsed };
 }
 
 /**
- * Import all not-yet-imported "New Feedback" conversations whose subject or
- * preview mentions any of the given keywords (e.g. "course"). One-shot pull.
+ * Import all not-yet-imported "New Feedback" conversations whose subject or body
+ * mentions any of the given keywords. Thin wrapper over runCourseFeedbackImport.
  */
 export async function importMatchingCourseFeedback(
   workspaceClientId: string,
   keywords: string[],
 ): Promise<CourseRequestRecord[]> {
-  const support = await resolveSupportClient(workspaceClientId);
-  if (!support) return [];
-  const needles = keywords.map((k) => k.toLowerCase()).filter(Boolean);
-  if (needles.length === 0) return [];
-
-  const [convos, already] = await Promise.all([
-    scanFeedback(support.id),
-    alreadyImportedIds(workspaceClientId),
-  ]);
-
-  const ids = convos
-    .filter((c) => {
-      if (already.has(c.id)) return false;
-      const hay = `${c.subject} ${c.text}`.toLowerCase();
-      return needles.some((n) => hay.includes(n));
-    })
-    .map((c) => c.id);
-
-  return createFromConversationIds(workspaceClientId, support.id, ids);
+  if (keywords.length === 0) return [];
+  return (await runCourseFeedbackImport(workspaceClientId, { keywords })).created;
 }
 
-/** Import explicitly-selected feedback conversations as draft course requests. */
+/** Import explicitly-selected feedback conversations (AI pre-fills, keeps all selected). */
 export async function importCourseFeedback(
   workspaceClientId: string,
   conversationIds: string[],
 ): Promise<CourseRequestRecord[]> {
   if (conversationIds.length === 0) return [];
-  const support = await resolveSupportClient(workspaceClientId);
-  if (!support) return [];
-
-  const already = await alreadyImportedIds(workspaceClientId);
-  const todo = conversationIds.filter((id) => !already.has(id));
-  return createFromConversationIds(workspaceClientId, support.id, todo);
+  return (await runCourseFeedbackImport(workspaceClientId, { conversationIds, onlyCourseRequests: false })).created;
 }

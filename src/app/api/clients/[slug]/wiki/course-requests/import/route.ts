@@ -2,18 +2,19 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import {
-  importCourseFeedback,
-  importMatchingCourseFeedback,
-} from "@/server/wiki-course-feedback";
+import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import { z } from "zod";
 
-export const maxDuration = 30;
+// AI extraction adds a batched completion to the import; give it headroom.
+export const maxDuration = 60;
 
-// Either explicit conversation ids, or keyword-matched (server filters on subject + preview).
+// Explicit ids (manual triage) OR a scan-all/keyword bulk pull. aiExtract pre-fills
+// course name + country; onlyCourseRequests filters out non-course feedback.
 const bodySchema = z.object({
   conversationIds: z.array(z.string()).optional(),
   keywords: z.array(z.string()).optional(),
+  aiExtract: z.boolean().optional(),
+  onlyCourseRequests: z.boolean().optional(),
 });
 
 export async function POST(
@@ -29,11 +30,15 @@ export async function POST(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const { conversationIds, keywords } = bodySchema.parse(await req.json());
-    const created = keywords?.length
-      ? await importMatchingCourseFeedback(client.id, keywords)
-      : await importCourseFeedback(client.id, conversationIds ?? []);
-    return apiOk({ created, count: created.length });
+    const opts = bodySchema.parse(await req.json());
+    const result = await runCourseFeedbackImport(client.id, opts);
+    return apiOk({
+      created: result.created,
+      count: result.created.length,
+      skipped: result.skipped,
+      scanned: result.scanned,
+      aiUsed: result.aiUsed,
+    });
   } catch (err) {
     return fromError(err);
   }
