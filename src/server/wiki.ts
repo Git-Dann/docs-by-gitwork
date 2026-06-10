@@ -361,6 +361,8 @@ export async function addCourseRequest(
     notes?: string | null;
     status?: CourseRequestStatus;
     sourceConversationId?: string | null;
+    source?: string | null;
+    externalRef?: string | null;
   },
 ): Promise<CourseRequestRecord> {
   const wiki = await prisma.clientWiki.upsert({
@@ -378,6 +380,8 @@ export async function addCourseRequest(
       notes: input.notes ?? null,
       status: input.status ?? "NEW",
       sourceConversationId: input.sourceConversationId ?? null,
+      source: input.source ?? null,
+      externalRef: input.externalRef ?? null,
     },
   });
   return serializeCourseRequest(req);
@@ -408,6 +412,128 @@ export async function updateCourseRequest(
 /** Delete a course request (by id). */
 export async function deleteCourseRequest(requestId: string): Promise<void> {
   await prisma.clientCourseRequest.delete({ where: { id: requestId } });
+}
+
+// ── Inbound course-request API (store-and-forward intake) ────────────────────
+
+/** Current ingest-token state for a client's wiki (token shown so it can be copied). */
+export async function getCourseIngest(clientId: string): Promise<{ token: string | null }> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { courseIngestToken: true },
+  });
+  return { token: wiki?.courseIngestToken ?? null };
+}
+
+/**
+ * Enable / disable / rotate the inbound course-request API token.
+ * - enabled=true, no token yet (or rotate) → mint a fresh token
+ * - enabled=true, token exists, no rotate → keep it
+ * - enabled=false → clear it (intake off)
+ */
+export async function setCourseIngest(
+  clientId: string,
+  opts: { enabled: boolean; rotate?: boolean },
+): Promise<{ token: string | null }> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true, courseIngestToken: true },
+  });
+
+  let token: string | null = wiki.courseIngestToken;
+  if (!opts.enabled) token = null;
+  else if (!token || opts.rotate) token = randomBytes(24).toString("base64url");
+
+  await prisma.clientWiki.update({
+    where: { id: wiki.id },
+    data: { courseIngestToken: token },
+  });
+  return { token };
+}
+
+export interface CourseIngestItem {
+  courseName: string;
+  country?: string | null;
+  notes?: string | null;
+  requestedBy?: string | null;
+  externalRef?: string | null;
+}
+
+export interface CourseIngestResult {
+  created: CourseRequestRecord[];
+  skipped: number;
+  count: number;
+}
+
+/**
+ * Token-authenticated intake. Resolves the wiki by its ingest token and creates
+ * a course request per item. Idempotent / de-duped:
+ * - skip if an item's externalRef already exists on this wiki
+ * - else skip if a non-rejected request with the same (case-insensitive) course
+ *   name already exists (avoids the same course piling up)
+ */
+export async function ingestCourseRequestsByToken(
+  token: string,
+  items: CourseIngestItem[],
+): Promise<CourseIngestResult | null> {
+  if (!token) return null;
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: {
+      clientId: true,
+      courseRequests: { select: { courseName: true, externalRef: true, status: true } },
+    },
+  });
+  if (!wiki) return null;
+
+  const seenRefs = new Set(
+    wiki.courseRequests.map((r) => r.externalRef).filter((x): x is string => !!x),
+  );
+  // Existing non-rejected course names, normalized, for name-based dedupe.
+  const seenNames = new Set(
+    wiki.courseRequests
+      .filter((r) => r.status !== "REJECTED")
+      .map((r) => r.courseName.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  const created: CourseRequestRecord[] = [];
+  let skipped = 0;
+  for (const item of items) {
+    const name = (item.courseName ?? "").trim();
+    if (!name) {
+      skipped++;
+      continue;
+    }
+    const ref = item.externalRef?.trim() || null;
+    const nameKey = name.toLowerCase();
+    if ((ref && seenRefs.has(ref)) || seenNames.has(nameKey)) {
+      skipped++;
+      continue;
+    }
+
+    const reqBy = item.requestedBy?.trim();
+    const extra = item.notes?.trim();
+    const notes =
+      `Via API${reqBy ? ` — requested by ${reqBy}` : ""}` + (extra ? `:\n${extra}` : "");
+
+    created.push(
+      await addCourseRequest(wiki.clientId, {
+        courseName: name,
+        country: item.country?.trim() || null,
+        notes,
+        status: "NEW",
+        source: "api",
+        externalRef: ref,
+      }),
+    );
+    if (ref) seenRefs.add(ref);
+    seenNames.add(nameKey);
+  }
+
+  return { created, skipped, count: created.length };
 }
 
 /** Toggle public sharing. Mints a share token on first enable. */
