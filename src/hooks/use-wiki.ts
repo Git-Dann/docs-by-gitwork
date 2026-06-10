@@ -17,6 +17,7 @@ import {
   listWikiCourseFeedback,
   importWikiCourseFeedback,
 } from "@/lib/api";
+import type { CourseImportInput } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
   return useQuery({
@@ -185,7 +186,7 @@ export function useCourseFeedbackCandidates(slug: string, enabled: boolean) {
 export function useImportCourseFeedback(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (conversationIds: string[]) => importWikiCourseFeedback(slug, conversationIds),
+    mutationFn: (input: CourseImportInput) => importWikiCourseFeedback(slug, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
       queryClient.invalidateQueries({ queryKey: ["course-feedback", slug] });

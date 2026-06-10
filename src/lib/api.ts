@@ -2511,16 +2511,25 @@ export async function listWikiCourseFeedback(
   );
 }
 
+export interface CourseImportInput {
+  conversationIds?: string[];
+  keywords?: string[];
+  /** Run AI to pre-fill course name + country. Default true server-side. */
+  aiExtract?: boolean;
+  /** Skip feedback AI judges not to be a course request. */
+  onlyCourseRequests?: boolean;
+}
+
 export async function importWikiCourseFeedback(
   slug: string,
-  conversationIds: string[],
-): Promise<{ created: CourseRequestRecord[]; count: number }> {
-  return apiFetch<{ created: CourseRequestRecord[]; count: number }>(
+  input: CourseImportInput,
+): Promise<{ created: CourseRequestRecord[]; count: number; skipped: number; scanned: number; aiUsed: boolean }> {
+  return apiFetch<{ created: CourseRequestRecord[]; count: number; skipped: number; scanned: number; aiUsed: boolean }>(
     `/api/clients/${slug}/wiki/course-requests/import`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationIds }),
+      body: JSON.stringify(input),
     },
   );
 }
