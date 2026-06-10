@@ -22,6 +22,17 @@ export const defaultRateCardPeople: SeedRateCardPerson[] = [
     sourceCurrencyCode: "USD",
     billingPeriod: "MONTH",
   },
+  // Hassaan — off-bench (free to Gitwork). Placeholder rate; not used
+  // in costings because the candidate is tagged devGroup=PRO_BONO and
+  // the serializer skips the monthly figure for that group.
+  {
+    seedIdentifier: "gitwork.hassaan",
+    name: "Hassaan",
+    area: "Mid Level • Frontend, Backend",
+    sourceRate: 1500,
+    sourceCurrencyCode: "USD",
+    billingPeriod: "MONTH",
+  },
   // Muneeb removed from the roster — see demo-cleanup.ts for one-shot sweep.
   {
     seedIdentifier: "gitwork.waqar",

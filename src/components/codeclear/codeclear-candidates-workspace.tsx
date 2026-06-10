@@ -286,12 +286,12 @@ export function CodeClearCandidatesWorkspace() {
                     {
                       key: "bench",
                       title: "Bench",
-                      subtitle: "Commercial roster — counts in costings",
+                      subtitle: "",
                       rows: benchRows,
                     },
                     {
-                      key: "pro-bono",
-                      title: "Pro bono",
+                      key: "off-bench",
+                      title: "Off Bench",
                       subtitle: "",
                       rows: proBonoRows,
                     },

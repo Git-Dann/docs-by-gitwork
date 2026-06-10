@@ -358,10 +358,14 @@ export interface SerializeCandidateOptions {
 }
 
 /** Project the linked rate-card row's pricing onto the candidate response.
- *  Returns `null`s when the link is missing, the row is archived, or the
- *  viewer can't see rates. Always normalised to monthly via the existing
- *  rate-card helper so DAY/WEEK seeds (none today) would still surface
- *  as a comparable monthly figure. */
+ *  Returns `null`s when:
+ *    - the viewer can't see rates,
+ *    - the link is missing or archived,
+ *    - the dev is off-bench (devGroup PRO_BONO) — these devs don't
+ *      participate in costings even if their rate-card row exists.
+ *  Always normalised to monthly via the existing rate-card helper so
+ *  DAY/WEEK seeds (none today) would still surface as a comparable
+ *  monthly figure. */
 function rateCardFields(
   rateCardPerson:
     | {
@@ -372,10 +376,16 @@ function rateCardFields(
       }
     | null
     | undefined,
+  devGroup: "BENCH" | "PRO_BONO",
   opts?: SerializeCandidateOptions,
 ): { monthlyRate: number | null; monthlyRateCurrency: string | null } {
   const hideRates = opts?.canViewRates === false;
-  if (hideRates || !rateCardPerson || rateCardPerson.archivedAt) {
+  if (
+    hideRates ||
+    devGroup === "PRO_BONO" ||
+    !rateCardPerson ||
+    rateCardPerson.archivedAt
+  ) {
     return { monthlyRate: null, monthlyRateCurrency: null };
   }
   return {
@@ -483,7 +493,7 @@ export function serializeCandidateListItem(
 
   return {
     ...commonCandidateFields(candidate, opts),
-    ...rateCardFields(candidate.rateCardPerson, opts),
+    ...rateCardFields(candidate.rateCardPerson, candidate.devGroup, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -529,7 +539,7 @@ export function serializeCandidateDetails(
 
   return {
     ...commonCandidateFields(candidate, opts),
-    ...rateCardFields(candidate.rateCardPerson, opts),
+    ...rateCardFields(candidate.rateCardPerson, candidate.devGroup, opts),
     score,
     scoreDraft,
     latestGitHubAnalysis,

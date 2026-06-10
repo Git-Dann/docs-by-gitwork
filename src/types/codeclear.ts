@@ -19,7 +19,10 @@ export type CandidateDevGroup = "BENCH" | "PRO_BONO";
 
 export const DEV_GROUP_LABELS: Record<CandidateDevGroup, string> = {
   BENCH: "Bench",
-  PRO_BONO: "Pro bono",
+  // The DB enum keeps PRO_BONO for stability — only the display label
+  // changes. "Off Bench" reads cleaner than "Pro bono" (no legal vibe)
+  // and mirrors the "Bench" group naturally.
+  PRO_BONO: "Off Bench",
 };
 
 export type CandidateAvailability = "AVAILABLE" | "ENGAGED" | "UNAVAILABLE";
