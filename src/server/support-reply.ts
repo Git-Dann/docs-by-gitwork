@@ -18,7 +18,10 @@ export type ReplyResult =
   | { sent: false; manual: true; reason: string };
 
 /** Sources the UI should offer a real Send button for. */
-export const SENDABLE_SOURCES = new Set(["discord", "gmail"]);
+export const SENDABLE_SOURCES = new Set(["discord", "gmail", "app_reviews"]);
+
+/** Google Play caps a developer reply at 350 characters (AndroidPublisher API). */
+export const PLAY_REPLY_MAX_CHARS = 350;
 
 export async function sendReply(
   convId: string,
@@ -34,10 +37,85 @@ export async function sendReply(
   }
 
   switch (conv.source) {
-    case "DISCORD": return discordReply(clientId, conv.externalId, body);
-    case "GMAIL":   return gmailReply(clientId, conv.externalId, conv.subject, conv.customerLabel, body);
+    case "DISCORD":     return discordReply(clientId, conv.externalId, body);
+    case "GMAIL":       return gmailReply(clientId, conv.externalId, conv.subject, conv.customerLabel, body);
+    case "APP_REVIEWS": return appReviewReply(clientId, conv.externalId, body);
     default:
       return { sent: false, manual: true, reason: `${conv.source} requires a manual reply` };
+  }
+}
+
+// ─── App reviews (Google Play reply supported; App Store needs Connect API creds) ─
+
+async function appReviewReply(
+  clientId: string,
+  externalId: string,
+  body: string,
+): Promise<ReplyResult> {
+  // App Store responses require the App Store Connect API (issuer ID + key ID + .p8
+  // private key with JWT auth) — credentials we don't capture on this connector yet.
+  if (externalId.startsWith("appstore:")) {
+    return {
+      sent: false,
+      manual: true,
+      reason: "App Store responses need App Store Connect API credentials (not yet configured) — reply in App Store Connect",
+    };
+  }
+
+  if (!externalId.startsWith("playstore:")) {
+    return { sent: false, manual: true, reason: "Unrecognised app-review id" };
+  }
+
+  // externalId = "playstore:<packageName>:<reviewId>". Package names never contain a
+  // colon, but Play reviewIds do (e.g. "gp:AOqp…"), so split only on the first colon.
+  const rest = externalId.slice("playstore:".length);
+  const firstColon = rest.indexOf(":");
+  if (firstColon === -1) {
+    return { sent: false, manual: true, reason: "Malformed Play review id" };
+  }
+  const packageName = rest.slice(0, firstColon);
+  const reviewId = rest.slice(firstColon + 1);
+
+  const trimmed = body.trim();
+  if (trimmed.length > PLAY_REPLY_MAX_CHARS) {
+    return {
+      sent: false,
+      manual: true,
+      reason: `Google Play replies are limited to ${PLAY_REPLY_MAX_CHARS} characters (yours is ${trimmed.length}).`,
+    };
+  }
+
+  const conn = await prisma.accountConnection.findFirst({
+    where: { clientId, source: "APP_REVIEWS", health: "CONNECTED" },
+    select: { scraperConfig: true },
+  });
+  const cfg = conn?.scraperConfig as { serviceAccountJson?: string } | null;
+  if (!cfg?.serviceAccountJson) {
+    return { sent: false, manual: true, reason: "Play Store service account not configured on the connector" };
+  }
+
+  try {
+    const credentials = JSON.parse(cfg.serviceAccountJson) as Record<string, unknown>;
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+    });
+    const authClient = await auth.getClient();
+    const publisher = google.androidpublisher({
+      version: "v3",
+      auth: authClient as Parameters<typeof google.androidpublisher>[0]["auth"],
+    });
+
+    await publisher.reviews.reply({
+      packageName,
+      reviewId,
+      requestBody: { replyText: trimmed },
+    });
+
+    return { sent: true, manual: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { sent: false, manual: true, reason: `Play reply failed: ${msg}` };
   }
 }
 

@@ -1786,7 +1786,14 @@ function InboxView({ clientId }: { clientId: string }) {
               {/* ── Reply Composer ─────────────────────────────────────── */}
               {(() => {
                 const source = activeConvo.source;
-                const canSend = source === "discord" || source === "gmail";
+                const tags = activeConvo.tags ?? [];
+                const isPlayReview = source === "app_reviews" && tags.includes("store:play_store");
+                const isAppStoreReview = source === "app_reviews" && tags.includes("store:app_store");
+                const canSend = source === "discord" || source === "gmail" || isPlayReview;
+                // Google Play caps developer replies at 350 chars.
+                const replyLimit = isPlayReview ? 350 : null;
+                const overLimit = replyLimit !== null && replyText.length > replyLimit;
+                const manualLabel = isAppStoreReview ? "Reply in App Store Connect" : `Manual — reply on ${source}`;
                 return (
                   <div className="shrink-0 border-t border-[var(--border-2)] bg-[var(--surface-0,#fafafa)] px-4 py-3">
                     <div className="flex items-center justify-between pb-2">
@@ -1796,7 +1803,7 @@ function InboxView({ clientId }: { clientId: string }) {
                       <div className="flex items-center gap-2">
                         {!canSend && (
                           <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            Manual — reply on {source}
+                            {manualLabel}
                           </span>
                         )}
                         <button
@@ -1814,11 +1821,17 @@ function InboxView({ clientId }: { clientId: string }) {
                     <textarea
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleSend(); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !overLimit) void handleSend(); }}
+                      maxLength={replyLimit ?? undefined}
                       placeholder={canSend ? "Write a reply… (⌘↵ to send)" : "Draft your reply, then copy it to send manually…"}
                       rows={3}
                       className="w-full resize-none rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--brand-600)] focus:outline-none"
                     />
+                    {replyLimit !== null && (
+                      <p className={cn("mt-1 text-right text-[11px]", overLimit ? "text-red-600" : "text-[var(--text-4)]")}>
+                        {replyText.length}/{replyLimit}
+                      </p>
+                    )}
                     {replyError && (
                       <p className="mt-1 text-[11px] text-red-600">{replyError}</p>
                     )}
@@ -1836,7 +1849,7 @@ function InboxView({ clientId }: { clientId: string }) {
                       ) : (
                         <button
                           type="button"
-                          disabled={!replyText.trim() || sendMessage.isPending}
+                          disabled={!replyText.trim() || sendMessage.isPending || overLimit}
                           onClick={() => void handleSend()}
                           className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-40"
                         >
