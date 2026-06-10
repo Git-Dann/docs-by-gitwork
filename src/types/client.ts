@@ -39,7 +39,8 @@ export interface ClientListItem extends ClientRecord {
   devCount: number;
   /** Summed monthly dev cost — present (non-null) only when the viewer may see financials. */
   monthlyCost?: ClientMonthlyCost | null;
-  /** Business days elapsed since the project started — present only when the viewer may see financials. */
+  /** Business days since the project's Gantt timeline started (earliest dated feature block).
+   *  Null/absent when there's no timeline yet, or when the viewer may not see financials. */
   workingDays?: number | null;
 }
 

@@ -706,9 +706,10 @@ computed server-side and batched across the whole client set (no N+1) in the new
     `ClientMonthlyCost { amount, currency, pricedDevs, unpricedDevs }` in `src/types/client.ts`.
     **Prereq:** `Candidate.email` must be populated for the dev→rate join — run `POST /api/dev/seed-team`
     if cards read all-unpriced.
-  - **Working days:** inclusive business days (Mon–Fri, UTC; public holidays NOT excluded) from the
-    project's earliest known start — first **dated** `FeatureBlock.startDate`, else first `Task`
-    (`startedAt ?? createdAt`), else the client's `createdAt` — to today (`businessDaysBetween` helper).
+  - **Working days** (label `{{x}} days`): inclusive business days (Mon–Fri, UTC; holidays NOT
+    excluded) from the project's **Gantt start** — the earliest **dated** `FeatureBlock.startDate` —
+    to today (`businessDaysBetween`). **Null → hidden when the client has no dated feature block**
+    (no Gantt timeline yet); no fallback to tasks/`createdAt`.
 
 **Permission gate — `clients.viewFinancials`** (new, **default-OFF**, `category: "field"`) in
 `PERMISSION_CATALOG` (`src/types/auth.ts`), alongside `docs.viewCosts` / `code.viewRates`. Super Admins
@@ -720,4 +721,5 @@ bypass; it is **not** in `DEFAULT_ROLE_PERMISSIONS`, so it stays off for every r
 **Gated server-side, not merely hidden:** `GET /api/clients` (`src/app/api/clients/route.ts`) sets
 `includeFinancials = canViewClientFinancials(user)` and attaches `monthlyCost`/`workingDays` to the
 client DTO **only when true** — an unauthorised viewer never receives the figures in the payload. The
-dev count is always attached. No schema change, no new env.
+dev count is always attached. No schema change, no new env. The card renders the strip as mono-caps
+`widget-data-label`s per DESIGN.md (`{{x}} Devs · cost · {{x}} days` readout — never plain sans).

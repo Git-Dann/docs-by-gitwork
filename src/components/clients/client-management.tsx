@@ -415,15 +415,17 @@ function ClientCard({ client }: { client: ClientListItem }) {
           </p>
         </div>
 
-        {/* Devs (everyone) + monthly cost & working days (gated: Super Admins + clients.viewFinancials) */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-3)]">
-          <span className="font-medium text-[var(--text-2)]">
+        {/* Devs (everyone) + monthly cost & working days (gated: Super Admins + clients.viewFinancials).
+            Mono-caps "data-label" readout per DESIGN.md — counts/units never render as plain sans.
+            Working days are Gantt-sourced; absent (hidden) until the client has a dated timeline. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="widget-data-label text-[var(--text-2)]">
             {devCount} {devCount === 1 ? "Dev" : "Devs"}
           </span>
           {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 && (
             <>
-              <span className="text-[var(--text-4)]">·</span>
-              <span>
+              <span className="widget-data-label">·</span>
+              <span className="widget-data-label text-[var(--text-2)]">
                 {formatMoney(client.monthlyCost.amount, client.monthlyCost.currency)}/mo
                 {client.monthlyCost.unpricedDevs > 0 && (
                   <span className="text-[var(--text-4)]">
@@ -439,17 +441,17 @@ function ClientCard({ client }: { client: ClientListItem }) {
             client.monthlyCost.pricedDevs === 0 &&
             client.monthlyCost.unpricedDevs > 0 && (
               <>
-                <span className="text-[var(--text-4)]">·</span>
-                <span className="text-[var(--text-4)]">rates n/a</span>
+                <span className="widget-data-label">·</span>
+                <span className="widget-data-label">rates n/a</span>
               </>
             )}
           {canViewClientFinancials &&
             typeof client.workingDays === "number" &&
             client.workingDays > 0 && (
               <>
-                <span className="text-[var(--text-4)]">·</span>
-                <span>
-                  {client.workingDays} working {client.workingDays === 1 ? "day" : "days"}
+                <span className="widget-data-label">·</span>
+                <span className="widget-data-label text-[var(--text-2)]">
+                  {client.workingDays} {client.workingDays === 1 ? "day" : "days"}
                 </span>
               </>
             )}

@@ -25,7 +25,9 @@ export async function computeClientDevCounts(
 
 export interface ClientFinancials {
   monthlyCost: ClientMonthlyCost | null;
-  workingDays: number;
+  /** Business days since the Gantt timeline started, or null when the client has no
+   *  dated feature block (no timeline) — the card hides the figure in that case. */
+  workingDays: number | null;
 }
 
 /**
@@ -37,32 +39,29 @@ export interface ClientFinancials {
  * `unpricedDevs` and excluded from the sum, so a missing rate degrades gracefully
  * (visible, never silently understated or thrown).
  *
- * Working days: business days (Mon–Fri) from the project's earliest known start (first
- * dated feature block, else first task) — falling back to the client's createdAt — to
- * today. Public holidays are not excluded.
+ * Working days: business days (Mon–Fri) from the project's Gantt start — the earliest
+ * dated `FeatureBlock.startDate` — to today. Null when the client has no dated feature
+ * block (no Gantt timeline) so the card can hide it. Public holidays are not excluded.
  */
 export async function computeClientFinancials(
   workspaceId: string,
-  clients: Array<{ id: string; createdAt: string }>,
+  clients: Array<{ id: string }>,
 ): Promise<Map<string, ClientFinancials>> {
   const result = new Map<string, ClientFinancials>();
   if (clients.length === 0) return result;
   const clientIds = clients.map((c) => c.id);
 
-  const [assignments, blockStarts, taskStarts] = await Promise.all([
+  const [assignments, blockStarts] = await Promise.all([
     prisma.clientAssignment.findMany({
       where: { workspaceId, clientId: { in: clientIds } },
       select: { clientId: true, user: { select: { email: true } } },
     }),
+    // Gantt timeline start per client — earliest dated feature block. No fallback to
+    // tasks/createdAt: working days only count once a real Gantt timeline exists.
     prisma.featureBlock.groupBy({
       by: ["clientId"],
       where: { workspaceId, clientId: { in: clientIds }, startDate: { not: null } },
       _min: { startDate: true },
-    }),
-    prisma.task.groupBy({
-      by: ["clientId"],
-      where: { workspaceId, clientId: { in: clientIds } },
-      _min: { startedAt: true, createdAt: true },
     }),
   ]);
 
@@ -102,12 +101,6 @@ export async function computeClientFinancials(
   for (const b of blockStarts) {
     if (b._min.startDate) startByClient.set(b.clientId, b._min.startDate);
   }
-  for (const t of taskStarts) {
-    const taskStart = t._min.startedAt ?? t._min.createdAt;
-    if (!taskStart) continue;
-    const existing = startByClient.get(t.clientId);
-    if (!existing || taskStart < existing) startByClient.set(t.clientId, taskStart);
-  }
 
   const today = new Date();
   for (const client of clients) {
@@ -131,8 +124,10 @@ export async function computeClientFinancials(
       monthlyCost = { amount: Math.round(amount), currency, pricedDevs, unpricedDevs };
     }
 
-    const start = startByClient.get(client.id) ?? new Date(client.createdAt);
-    result.set(client.id, { monthlyCost, workingDays: businessDaysBetween(start, today) });
+    // Working days only count once the Gantt has a dated start — else null (hidden on the card).
+    const start = startByClient.get(client.id);
+    const workingDays = start ? businessDaysBetween(start, today) : null;
+    result.set(client.id, { monthlyCost, workingDays });
   }
 
   return result;

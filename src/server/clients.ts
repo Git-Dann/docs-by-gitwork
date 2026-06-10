@@ -489,7 +489,7 @@ export async function listDerivedClients(filters?: {
   const merged = mergeClients(manualClients, proposals, hiddenSlugs);
   const manualClientMeta = merged
     .filter((c) => c.source === "MANUAL")
-    .map((c) => ({ id: c.id, createdAt: c.createdAt }));
+    .map((c) => ({ id: c.id }));
   const manualIds = manualClientMeta.map((c) => c.id);
 
   // Parallel enrichment queries — single round-trip.
