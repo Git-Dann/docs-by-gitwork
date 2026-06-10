@@ -792,6 +792,25 @@ async function ensureSampleCodeClearCandidates({
       data: candidate,
     });
   }
+
+  // Self-heal: any existing candidate row whose seed says PRO_BONO gets
+  // its devGroup updated (idempotent — once set it stays). This catches
+  // legacy rows that were seeded before the field existed. We DON'T flip
+  // back to BENCH for non-pro-bono devs, so admins moving a dev between
+  // groups by hand isn't overwritten.
+  const proBonoHandles = candidates
+    .filter((c) => c.devGroup === "PRO_BONO")
+    .map((c) => c.githubHandle);
+  if (proBonoHandles.length > 0) {
+    await prisma.candidate.updateMany({
+      where: {
+        workspaceId: workspace.id,
+        githubHandle: { in: proBonoHandles },
+        devGroup: { not: "PRO_BONO" },
+      },
+      data: { devGroup: "PRO_BONO" },
+    });
+  }
 }
 
 // Creates (or patches) the admin user from INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD.

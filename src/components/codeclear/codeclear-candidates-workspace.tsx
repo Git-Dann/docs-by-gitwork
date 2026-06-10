@@ -18,10 +18,12 @@ import {
   CODECLEAR_TIERS,
   IDENTITY_CONFIDENCE_LEVELS,
   PIPELINE_STATUSES,
+  type CodeClearCandidateListItem,
   type CodeClearTier,
   type IdentityConfidence,
   type PipelineStatus,
 } from "@/types/codeclear";
+import type { ClientListItem } from "@/types/client";
 import { cn, formatDate } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
 import { useClientList } from "@/hooks/use-proposals";
@@ -41,7 +43,7 @@ import { ClientAvatar } from "@/components/codeclear/client-avatar";
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
-  const { canManageCode } = usePermissions();
+  const { canManageCode, canViewRates } = usePermissions();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
@@ -258,146 +260,66 @@ export function CodeClearCandidatesWorkspace() {
         ) : null}
 
         {candidates.length ? (
-          <div
-            className={cn(
-              "mt-5 overflow-hidden rounded-[10px] border border-[var(--border-2)] transition-opacity",
-              // While a new filter combo is fetching, React Query keeps
-              // the previous rows in `data` (placeholderData: keep). We
-              // dim them lightly so the user sees feedback without the
-              // table unmounting and the page jumping.
-              candidatesQuery.isPlaceholderData ? "opacity-60" : "opacity-100",
-            )}
-          >
-            <table className="app-table">
-              <thead>
-                <tr>
-                  <th className="w-10 text-left" />
-                  <th className="text-left">Dev</th>
-                  <th className="text-left">Stack</th>
-                  <th className="text-left">Current client</th>
-                  <th className="text-right">Calibre</th>
-                  <th className="text-left">Tier</th>
-                  <th className="text-right">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orderedCandidates.map((candidate) => {
-                  const checked = selectedIdSet.has(candidate.id);
-                  const score =
-                    candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
-                  return (
-                    <tr
-                      key={candidate.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/app/codeclear/candidates/${candidate.id}`)}
-                    >
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) =>
-                            setSelectedIds((current) =>
-                              event.target.checked
-                                ? current.includes(candidate.id)
-                                  ? current
-                                  : [...current, candidate.id]
-                                : current.filter((entry) => entry !== candidate.id),
-                            )
-                          }
-                          className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
-                          aria-label={`Select ${candidate.name}`}
-                        />
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-3">
-                          {candidate.avatarUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={candidate.avatarUrl}
-                              alt=""
-                              className="h-8 w-8 shrink-0 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-xs font-semibold text-[var(--brand-700)]">
-                              {candidate.name
-                                .split(" ")
-                                .map((part) => part[0])
-                                .join("")
-                                .slice(0, 2)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-                              {candidate.name}
-                            </p>
-                            <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
-                              @{candidate.githubHandle}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="text-sm text-[var(--text-2)]">
-                          {candidate.primaryStack}
-                        </span>
-                      </td>
-                      <td>
-                        {candidate.currentClients.length === 0 ? (
-                          <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
-                        ) : (
-                          <div className="flex flex-wrap items-center gap-1">
-                            {candidate.currentClients.map((entry) => {
-                              const logoUrl = entry.id
-                                ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
-                                : null;
-                              return (
-                                <ClientAvatar
-                                  key={entry.id ?? entry.name}
-                                  name={entry.name}
-                                  logoUrl={logoUrl}
-                                  size="md"
-                                />
-                              );
-                            })}
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-right">
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
-                            score == null
-                              ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
-                              : score >= 80
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : score >= 65
-                                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                                  : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
-                          )}
-                        >
-                          {score ?? "—"}
-                        </span>
-                      </td>
-                      <td>
-                        <RosterTierBadge
-                          effectiveTier={candidate.effectiveTier}
-                          isOverridden={
-                            candidate.tierManualOverride !== null &&
-                            candidate.tierManualOverride !== candidate.tier
-                          }
-                        />
-                      </td>
-                      <td className="text-right">
-                        <span className="font-mono text-[11px] text-[var(--text-4)]">
-                          {formatDate(candidate.updatedAt)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          (() => {
+            // Group by devGroup. Bench is the commercial roster (default,
+            // always shown). Pro bono goes underneath in its own table —
+            // same columns, separate section header. Falls back to
+            // treating missing devGroup as BENCH (legacy rows that haven't
+            // been migrated yet — bootstrap self-heals these).
+            const benchRows = orderedCandidates.filter(
+              (c) => c.devGroup !== "PRO_BONO",
+            );
+            const proBonoRows = orderedCandidates.filter(
+              (c) => c.devGroup === "PRO_BONO",
+            );
+            return (
+              <div
+                className={cn(
+                  "mt-5 space-y-6 transition-opacity",
+                  candidatesQuery.isPlaceholderData ? "opacity-60" : "opacity-100",
+                )}
+              >
+                <DevsTable
+                  title="Bench"
+                  subtitle="Commercial roster — counts in costings"
+                  candidates={benchRows}
+                  selectedIdSet={selectedIdSet}
+                  onToggleSelect={(id, next) =>
+                    setSelectedIds((current) =>
+                      next
+                        ? current.includes(id)
+                          ? current
+                          : [...current, id]
+                        : current.filter((entry) => entry !== id),
+                    )
+                  }
+                  onRowClick={(id) => router.push(`/app/codeclear/candidates/${id}`)}
+                  clientOptions={clientOptions}
+                  canViewRates={canViewRates}
+                />
+                {proBonoRows.length > 0 ? (
+                  <DevsTable
+                    title="Pro bono"
+                    subtitle="Free to Gitwork — excluded from costings"
+                    candidates={proBonoRows}
+                    selectedIdSet={selectedIdSet}
+                    onToggleSelect={(id, next) =>
+                      setSelectedIds((current) =>
+                        next
+                          ? current.includes(id)
+                            ? current
+                            : [...current, id]
+                          : current.filter((entry) => entry !== id),
+                      )
+                    }
+                    onRowClick={(id) => router.push(`/app/codeclear/candidates/${id}`)}
+                    clientOptions={clientOptions}
+                    canViewRates={canViewRates}
+                  />
+                ) : null}
+              </div>
+            );
+          })()
         ) : candidatesQuery.isLoading ? (
           // Initial load only — once we have *any* result, placeholderData
           // keeps the previous rows on subsequent filter changes so this
@@ -524,6 +446,181 @@ export function CodeClearCandidatesWorkspace() {
         </div>
       ) : null}
 
+    </div>
+  );
+}
+
+/**
+ * Shared table renderer used for both the Bench section and the Pro bono
+ * section. Same columns, same row chrome — only the title/subtitle differ.
+ * Rate column only renders when the viewer has `code.viewRates`; the column
+ * is dropped entirely (not blanked) so the table stays aligned.
+ */
+function DevsTable({
+  title,
+  subtitle,
+  candidates,
+  selectedIdSet,
+  onToggleSelect,
+  onRowClick,
+  clientOptions,
+  canViewRates,
+}: {
+  title: string;
+  subtitle: string;
+  candidates: CodeClearCandidateListItem[];
+  selectedIdSet: Set<string>;
+  onToggleSelect: (id: string, next: boolean) => void;
+  onRowClick: (id: string) => void;
+  clientOptions: ClientListItem[];
+  canViewRates: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
+            {title}
+          </h3>
+          <p className="mt-0.5 text-xs text-[var(--text-4)]">{subtitle}</p>
+        </div>
+        <span className="font-mono text-[11px] text-[var(--text-4)]">
+          {candidates.length} DEV{candidates.length === 1 ? "" : "S"}
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+        <table className="app-table">
+          <thead>
+            <tr>
+              <th className="w-10 text-left" />
+              <th className="text-left">Dev</th>
+              <th className="text-left">Stack</th>
+              <th className="text-left">Current client</th>
+              <th className="text-right">Calibre</th>
+              <th className="text-left">Tier</th>
+              {canViewRates ? <th className="text-right">Rate</th> : null}
+              <th className="text-right">Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.map((candidate) => {
+              const checked = selectedIdSet.has(candidate.id);
+              const score =
+                candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
+              return (
+                <tr
+                  key={candidate.id}
+                  className="cursor-pointer"
+                  onClick={() => onRowClick(candidate.id)}
+                >
+                  <td onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => onToggleSelect(candidate.id, event.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
+                      aria-label={`Select ${candidate.name}`}
+                    />
+                  </td>
+                  <td>
+                    <div className="flex items-center gap-3">
+                      {candidate.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={candidate.avatarUrl}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-xs font-semibold text-[var(--brand-700)]">
+                          {candidate.name
+                            .split(" ")
+                            .map((part) => part[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+                          {candidate.name}
+                        </p>
+                        <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
+                          @{candidate.githubHandle}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="text-sm text-[var(--text-2)]">{candidate.primaryStack}</span>
+                  </td>
+                  <td>
+                    {candidate.currentClients.length === 0 ? (
+                      <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {candidate.currentClients.map((entry) => {
+                          const logoUrl = entry.id
+                            ? clientOptions.find((c) => c.id === entry.id)?.logoUrl ?? null
+                            : null;
+                          return (
+                            <ClientAvatar
+                              key={entry.id ?? entry.name}
+                              name={entry.name}
+                              logoUrl={logoUrl}
+                              size="md"
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-right">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
+                        score == null
+                          ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
+                          : score >= 80
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : score >= 65
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
+                      )}
+                    >
+                      {score ?? "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <RosterTierBadge
+                      effectiveTier={candidate.effectiveTier}
+                      isOverridden={
+                        candidate.tierManualOverride !== null &&
+                        candidate.tierManualOverride !== candidate.tier
+                      }
+                    />
+                  </td>
+                  {canViewRates ? (
+                    <td className="text-right">
+                      {candidate.hourlyRate != null ? (
+                        <span className="font-mono text-[11px] tabular-nums text-[var(--text-2)]">
+                          {candidate.currency ?? ""} {candidate.hourlyRate}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-[11px] text-[var(--text-4)]">—</span>
+                      )}
+                    </td>
+                  ) : null}
+                  <td className="text-right">
+                    <span className="font-mono text-[11px] text-[var(--text-4)]">
+                      {formatDate(candidate.updatedAt)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

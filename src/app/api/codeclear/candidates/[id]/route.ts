@@ -101,6 +101,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? { tierManualOverride: body.tierManualOverride }
           : {}),
         ...(body.origin !== undefined ? { origin: body.origin } : {}),
+        ...(body.devGroup !== undefined ? { devGroup: body.devGroup } : {}),
         ...(body.published !== undefined ? { published: body.published } : {}),
         ...(body.linkedinUrl !== undefined ? { linkedinUrl: body.linkedinUrl } : {}),
         ...(body.cvUrl !== undefined ? { cvUrl: body.cvUrl } : {}),

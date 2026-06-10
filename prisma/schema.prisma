@@ -130,6 +130,16 @@ enum CandidateAvailability {
   UNAVAILABLE
 }
 
+/// Organisational grouping for the developer roster — purely UI/cost filtering.
+/// BENCH is the commercial roster (default — what shows up in costings).
+/// PRO_BONO covers devs who work with Gitwork off-billing (excluded from
+/// cost rollups, shown in a separate section on the Developers list).
+/// Add more values here as new categories arrive (TRAINEE, ALUMNI, etc.).
+enum CandidateDevGroup {
+  BENCH
+  PRO_BONO
+}
+
 /// Mirrors PulseCheckStatus — the validation engine and the project-health engine
 /// share the same PASS/WARN/FAIL/SKIPPED vocabulary.
 enum CodeClearCheckStatus {
@@ -1252,6 +1262,11 @@ model Candidate {
   /// INTERNAL = a Gitwork team member. EXTERNAL = sourced for the marketplace.
   /// Existing rows default to INTERNAL so nothing changes for current devs.
   origin             CandidateOrigin        @default(INTERNAL)
+  /// Organisational grouping — see CandidateDevGroup. Defaults to BENCH so
+  /// every existing dev lands on the commercial roster. PRO_BONO devs are
+  /// shown in a separate section on the Developers list and excluded from
+  /// cost rollups. Additive — nothing breaks if downstream code ignores it.
+  devGroup           CandidateDevGroup      @default(BENCH)
   /// Reserved flag for the future marketplace — flips a dev from "in
   /// validation" to "available to clients". Does nothing yet client-side.
   published          Boolean                @default(false)

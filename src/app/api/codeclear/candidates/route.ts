@@ -269,6 +269,7 @@ export async function POST(request: NextRequest) {
         tier: body.tier,
         tierManualOverride: body.tierManualOverride ?? null,
         origin: body.origin,
+        devGroup: body.devGroup,
         published: body.published ?? false,
         linkedinUrl: body.linkedinUrl ?? null,
         cvUrl: body.cvUrl ?? null,

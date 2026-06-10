@@ -25,6 +25,10 @@ type SeedCodeClearCandidate = {
   bio?: string;
   status: PipelineStatus;
   tier: "TIER_1" | "TIER_2" | "TIER_3";
+  /** Organisational grouping — omitted means BENCH (default). PRO_BONO
+   * for devs working with Gitwork off-billing (excluded from costings,
+   * rendered in a separate section on the Developers list). */
+  devGroup?: "BENCH" | "PRO_BONO";
   avatarUrl?: string;
   recheckDueAtOffsetDays?: number;
   rateCardSeedIdentifier?: string;
@@ -350,6 +354,7 @@ function commonCandidateFields(
   tier: "TIER_1" | "TIER_2" | "TIER_3";
   tierManualOverride: "TIER_1" | "TIER_2" | "TIER_3" | null;
   origin: "INTERNAL" | "EXTERNAL";
+  devGroup: "BENCH" | "PRO_BONO";
   published: boolean;
   avatarUrl: string | null;
   linkedinUrl: string | null;
@@ -386,6 +391,7 @@ function commonCandidateFields(
     tierManualOverride: candidate.tierManualOverride ?? null,
     effectiveTier: effectiveTier(candidate.tier, candidate.tierManualOverride),
     origin: candidate.origin,
+    devGroup: candidate.devGroup,
     published: candidate.published,
     avatarUrl: candidate.avatarUrl ?? null,
     linkedinUrl: candidate.linkedinUrl ?? null,
@@ -589,6 +595,11 @@ function getTierFromLevel(level: string): SeedCodeClearCandidate["tier"] {
   return "TIER_2";
 }
 
+/** Rate-card seedIdentifiers that map to Pro bono devs (free to Gitwork —
+ *  excluded from costings, shown in a separate section on the Developers
+ *  list). Add entries here as new pro-bono devs join. */
+const PRO_BONO_SEED_IDS = new Set(["gitwork.shahab", "gitwork.hassaan"]);
+
 function buildGitworkRosterCandidates(
   rateCardPeople: CodeClearRateCardSeedPerson[],
 ): SeedCodeClearCandidate[] {
@@ -601,6 +612,9 @@ function buildGitworkRosterCandidates(
         ? normalizeGitworkHandle(person.seedIdentifier.replace(/^gitwork\./, ""))
         : normalizeGitworkHandle(person.name);
       const capabilityLabel = stacks.length ? stacks.join(", ") : "full-stack delivery";
+      const isProBono = person.seedIdentifier
+        ? PRO_BONO_SEED_IDS.has(person.seedIdentifier)
+        : false;
 
       return {
         name: person.name,
@@ -612,6 +626,7 @@ function buildGitworkRosterCandidates(
         bio: `${level} Gitwork developer with experience across ${capabilityLabel}.`,
         status: "SOURCED",
         tier: getTierFromLevel(level),
+        devGroup: isProBono ? "PRO_BONO" : "BENCH",
         rateCardSeedIdentifier: person.seedIdentifier ?? undefined,
         activity: [
           {
@@ -683,6 +698,7 @@ export function getDefaultCodeClearCandidatePayloads(
       bio: candidate.bio,
       status: candidate.status,
       tier: candidate.tier,
+      ...(candidate.devGroup ? { devGroup: candidate.devGroup } : {}),
       avatarUrl: candidate.avatarUrl,
       recheckDueAt: candidate.recheckDueAtOffsetDays
         ? shiftDateByDays(candidate.recheckDueAtOffsetDays)

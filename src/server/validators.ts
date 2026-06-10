@@ -288,6 +288,7 @@ const githubHandleSchema = requiredTrimmedString.transform((value) =>
 // original lightweight pipeline. URLs are accepted as plain strings (not
 // strict z.string().url()) so legacy data with bare domains still validates.
 const candidateOriginSchema = z.enum(["INTERNAL", "EXTERNAL"]);
+const candidateDevGroupSchema = z.enum(["BENCH", "PRO_BONO"]);
 const candidateAvailabilitySchema = z.enum(["AVAILABLE", "ENGAGED", "UNAVAILABLE"]);
 
 export const candidateCreateSchema = z.object({
@@ -305,6 +306,7 @@ export const candidateCreateSchema = z.object({
   tierManualOverride: codeClearTierSchema.nullable().optional(),
   rateCardPersonId: z.string().cuid().nullable().optional(),
   origin: candidateOriginSchema.default("INTERNAL"),
+  devGroup: candidateDevGroupSchema.default("BENCH"),
   published: z.boolean().optional(),
   linkedinUrl: optionalTrimmedString,
   cvUrl: optionalTrimmedString,
@@ -338,6 +340,7 @@ export const candidateUpdateSchema = z
     rateCardPersonId: z.string().cuid().nullable().optional(),
     recheckDueAt: z.coerce.date().nullable().optional(),
     origin: candidateOriginSchema.optional(),
+    devGroup: candidateDevGroupSchema.optional(),
     published: z.boolean().optional(),
     linkedinUrl: optionalTrimmedString,
     cvUrl: optionalTrimmedString,

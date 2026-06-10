@@ -10,6 +10,18 @@ export type CodeClearTier = "TIER_1" | "TIER_2" | "TIER_3";
 
 export type CandidateOrigin = "INTERNAL" | "EXTERNAL";
 
+/** Organisational grouping on the Developers list. BENCH is the commercial
+ * roster (default — counts in costings). PRO_BONO is for devs working with
+ * Gitwork off-billing — they're rendered in a separate section and skipped
+ * by cost rollups, but every other connection (placements, validations,
+ * profile) stays the same. Extensible — add new values as needed. */
+export type CandidateDevGroup = "BENCH" | "PRO_BONO";
+
+export const DEV_GROUP_LABELS: Record<CandidateDevGroup, string> = {
+  BENCH: "Bench",
+  PRO_BONO: "Pro bono",
+};
+
 export type CandidateAvailability = "AVAILABLE" | "ENGAGED" | "UNAVAILABLE";
 
 export type CodeClearCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
@@ -70,6 +82,9 @@ export interface CodeClearCandidateRecord {
   /** Tier to show in the UI: override ?? derived. */
   effectiveTier: CodeClearTier;
   origin: CandidateOrigin;
+  /** Organisational grouping — defaults to BENCH. Free to ignore on UI surfaces
+   * that don't care about cost/visibility filtering. */
+  devGroup: CandidateDevGroup;
   published: boolean;
   avatarUrl: string | null;
   linkedinUrl: string | null;
