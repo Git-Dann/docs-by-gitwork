@@ -2340,8 +2340,8 @@ export async function setClientDesignSystemEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord };
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
@@ -2436,5 +2436,65 @@ export async function updateWikiPlatformsApi(slug: string, platforms: string[]):
 
 export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
+}
+
+// ─── Course requests (Wedge wiki) ───────────────────────────────────────────
+
+export interface CourseFeedbackCandidate {
+  conversationId: string;
+  username: string;
+  subject: string;
+  preview: string;
+  receivedAt: string;
+  alreadyImported: boolean;
+}
+
+export async function addWikiCourseRequest(
+  slug: string,
+  payload: { courseName: string; country?: string | null; notes?: string | null; status?: string },
+): Promise<CourseRequestRecord> {
+  return apiFetch<CourseRequestRecord>(`/api/clients/${slug}/wiki/course-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateWikiCourseRequestApi(
+  slug: string,
+  id: string,
+  data: { courseName?: string; country?: string | null; notes?: string | null; status?: string },
+): Promise<CourseRequestRecord> {
+  return apiFetch<CourseRequestRecord>(`/api/clients/${slug}/wiki/course-requests/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWikiCourseRequest(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/course-requests/${id}`, { method: "DELETE" });
+}
+
+export async function listWikiCourseFeedback(
+  slug: string,
+): Promise<{ candidates: CourseFeedbackCandidate[] }> {
+  return apiFetch<{ candidates: CourseFeedbackCandidate[] }>(
+    `/api/clients/${slug}/wiki/course-requests/feedback`,
+  );
+}
+
+export async function importWikiCourseFeedback(
+  slug: string,
+  conversationIds: string[],
+): Promise<{ created: CourseRequestRecord[]; count: number }> {
+  return apiFetch<{ created: CourseRequestRecord[]; count: number }>(
+    `/api/clients/${slug}/wiki/course-requests/import`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationIds }),
+    },
+  );
 }
 

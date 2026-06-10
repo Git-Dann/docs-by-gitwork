@@ -5,6 +5,7 @@ import type { WikiDTO } from "@/lib/api";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
+import { CourseRequestsSection } from "./course-requests-section";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -18,6 +19,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
   changelog: "Changelog",
+  "course-requests": "Course Requests",
 };
 
 export function WikiPublicView({
@@ -54,6 +56,17 @@ export function WikiPublicView({
           onAdd={() => {}}
           onDelete={async () => {}}
           onToggleStatus={async () => {}}
+          readOnly
+        />
+      );
+    }
+
+    if (activeSection === "course-requests") {
+      return (
+        <CourseRequestsSection
+          requests={wiki.courseRequests}
+          onDelete={async () => {}}
+          onSetStatus={async () => {}}
           readOnly
         />
       );

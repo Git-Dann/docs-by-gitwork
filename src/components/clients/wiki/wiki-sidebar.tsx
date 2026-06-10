@@ -5,13 +5,18 @@ import {
   ClockIcon,
   CodeBracketIcon,
   CubeTransparentIcon,
+  FlagIcon,
 } from "@heroicons/react/24/outline";
 
 export type WikiSection =
   | "design-system"
   | "ia"
   | "dev-guide"
-  | "changelog";
+  | "changelog"
+  | "course-requests";
+
+/** Course Requests is currently a Wedge-only section. */
+export const COURSE_REQUESTS_SLUGS = ["wedge"];
 
 interface Props {
   slug: string;
@@ -19,7 +24,7 @@ interface Props {
   onSelect: (section: WikiSection) => void;
 }
 
-export function WikiSidebar({ active, onSelect }: Props) {
+export function WikiSidebar({ slug, active, onSelect }: Props) {
   const navItem = (
     section: WikiSection,
     label: string,
@@ -62,6 +67,8 @@ export function WikiSidebar({ active, onSelect }: Props) {
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}
         {navItem("changelog", "Changelog", <ClockIcon />)}
+        {COURSE_REQUESTS_SLUGS.includes(slug) &&
+          navItem("course-requests", "Course Requests", <FlagIcon />)}
       </div>
     </div>
   );

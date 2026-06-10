@@ -11,6 +11,11 @@ import {
   updateWikiPlatformsApi,
   updateWikiEntryStatusApi,
   updateWikiChangelogEntryApi,
+  addWikiCourseRequest,
+  updateWikiCourseRequestApi,
+  deleteWikiCourseRequest,
+  listWikiCourseFeedback,
+  importWikiCourseFeedback,
 } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
@@ -120,6 +125,70 @@ export function useUpdateWikiPlatforms(slug: string) {
     mutationFn: (platforms: string[]) => updateWikiPlatformsApi(slug, platforms),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+// ─── Course requests (Wedge wiki) ───────────────────────────────────────────
+
+export function useAddCourseRequest(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      courseName: string;
+      country?: string | null;
+      notes?: string | null;
+      status?: string;
+    }) => addWikiCourseRequest(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useUpdateCourseRequest(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { courseName?: string; country?: string | null; notes?: string | null; status?: string };
+    }) => updateWikiCourseRequestApi(slug, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useDeleteCourseRequest(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWikiCourseRequest(slug, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useCourseFeedbackCandidates(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["course-feedback", slug],
+    queryFn: () => listWikiCourseFeedback(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useImportCourseFeedback(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationIds: string[]) => importWikiCourseFeedback(slug, conversationIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+      queryClient.invalidateQueries({ queryKey: ["course-feedback", slug] });
     },
   });
 }

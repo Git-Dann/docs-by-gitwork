@@ -9,7 +9,12 @@
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import type { WikiPageType, WikiPlatform, WikiEntryStatus } from "@prisma/client";
+import type {
+  WikiPageType,
+  WikiPlatform,
+  WikiEntryStatus,
+  CourseRequestStatus,
+} from "@prisma/client";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,18 @@ export interface ChangelogEntryRecord {
   status: string;
 }
 
+export interface CourseRequestRecord {
+  id: string;
+  courseName: string;
+  country: string | null;
+  /** "NEW" | "SENT" | "ADDED" | "REJECTED" */
+  status: string;
+  notes: string | null;
+  sourceConversationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WikiDTO {
   id: string;
   clientId: string;
@@ -43,10 +60,11 @@ export interface WikiDTO {
   shareEnabled: boolean;
   /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
   platforms: string[];
-  /** Per-page public share tokens, keyed by section (ia / dev-guide / changelog). */
+  /** Per-page public share tokens, keyed by section (ia / dev-guide / changelog / course-requests). */
   pageShares: Record<string, string>;
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
+  courseRequests: CourseRequestRecord[];
   updatedAt: string;
 }
 
@@ -92,6 +110,28 @@ function serializeEntry(e: {
   };
 }
 
+function serializeCourseRequest(r: {
+  id: string;
+  courseName: string;
+  country: string | null;
+  status: CourseRequestStatus;
+  notes: string | null;
+  sourceConversationId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): CourseRequestRecord {
+  return {
+    id: r.id,
+    courseName: r.courseName,
+    country: r.country,
+    status: r.status,
+    notes: r.notes,
+    sourceConversationId: r.sourceConversationId,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
 const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
 
 async function buildDTO(wiki: {
@@ -121,6 +161,16 @@ async function buildDTO(wiki: {
     createdAt: Date;
     status: WikiEntryStatus;
   }>;
+  courseRequests?: Array<{
+    id: string;
+    courseName: string;
+    country: string | null;
+    status: CourseRequestStatus;
+    notes: string | null;
+    sourceConversationId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>;
 }): Promise<WikiDTO> {
   return {
     id: wiki.id,
@@ -143,6 +193,10 @@ async function buildDTO(wiki: {
         return tb - ta;
       })
       .map(serializeEntry),
+    courseRequests: (wiki.courseRequests ?? [])
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(serializeCourseRequest),
     updatedAt: wiki.updatedAt.toISOString(),
   };
 }
@@ -151,6 +205,7 @@ const WIKI_INCLUDE = {
   client: { select: { name: true, slug: true } },
   pages: true,
   changelog: true,
+  courseRequests: true,
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
 } as const;
@@ -295,6 +350,66 @@ export async function deleteChangelogEntry(entryId: string): Promise<void> {
   await prisma.clientChangelogEntry.delete({ where: { id: entryId } });
 }
 
+// ─── Course requests (Wedge) ────────────────────────────────────────────────
+
+/** Add a course request. Auto-creates the wiki if absent. */
+export async function addCourseRequest(
+  clientId: string,
+  input: {
+    courseName: string;
+    country?: string | null;
+    notes?: string | null;
+    status?: CourseRequestStatus;
+    sourceConversationId?: string | null;
+  },
+): Promise<CourseRequestRecord> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true },
+  });
+
+  const req = await prisma.clientCourseRequest.create({
+    data: {
+      wikiId: wiki.id,
+      courseName: input.courseName,
+      country: input.country ?? null,
+      notes: input.notes ?? null,
+      status: input.status ?? "NEW",
+      sourceConversationId: input.sourceConversationId ?? null,
+    },
+  });
+  return serializeCourseRequest(req);
+}
+
+/** Update a course request's editable fields (by id). */
+export async function updateCourseRequest(
+  requestId: string,
+  input: {
+    courseName?: string;
+    country?: string | null;
+    notes?: string | null;
+    status?: CourseRequestStatus;
+  },
+): Promise<CourseRequestRecord> {
+  const req = await prisma.clientCourseRequest.update({
+    where: { id: requestId },
+    data: {
+      ...(input.courseName !== undefined ? { courseName: input.courseName } : {}),
+      ...(input.country !== undefined ? { country: input.country } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    },
+  });
+  return serializeCourseRequest(req);
+}
+
+/** Delete a course request (by id). */
+export async function deleteCourseRequest(requestId: string): Promise<void> {
+  await prisma.clientCourseRequest.delete({ where: { id: requestId } });
+}
+
 /** Toggle public sharing. Mints a share token on first enable. */
 export async function setWikiShare(
   clientId: string,
@@ -332,7 +447,7 @@ export async function setWikiShare(
 }
 
 /** Sections that can be individually shared (Design System has its own share). */
-const SHAREABLE_SECTIONS = ["ia", "dev-guide", "changelog"] as const;
+const SHAREABLE_SECTIONS = ["ia", "dev-guide", "changelog", "course-requests"] as const;
 
 /**
  * Toggle a per-page (per-section) public share. Mints a token for the section
