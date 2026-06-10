@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeftIcon,
   PlusIcon,
+  ArrowUpTrayIcon,
   Squares2X2Icon,
   ListBulletIcon,
   CalendarDaysIcon,
@@ -33,6 +34,7 @@ import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
 import { MilestoneFormModal } from "@/components/tasks/milestone-form";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
+import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 
 type View = "board" | "list" | "gantt";
@@ -46,6 +48,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [blockModal, setBlockModal] = useState<{ open: boolean; block: FeatureBlockDTO | null }>({
     open: false,
@@ -175,6 +178,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           ) : null}
           <Button
             type="button"
+            variant="secondary"
+            leadingIcon={<ArrowUpTrayIcon className="h-4 w-4" />}
+            onClick={() => setImporting(true)}
+          >
+            Import
+          </Button>
+          <Button
+            type="button"
             variant="primary"
             leadingIcon={<PlusIcon className="h-4 w-4" />}
             onClick={() => setCreatingTask(true)}
@@ -230,6 +241,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
       {creatingTask ? (
         <TaskFormModal defaultClientId={clientId ?? undefined} lockClient onClose={() => setCreatingTask(false)} />
+      ) : null}
+      {importing && clientId ? (
+        <TaskImportModal
+          slug={slug}
+          blocks={blocks}
+          onClose={() => setImporting(false)}
+          onDone={() => setImporting(false)}
+        />
       ) : null}
       {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={() => setOpenTaskId(null)} /> : null}
       {blockModal.open && clientId ? (

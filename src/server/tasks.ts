@@ -348,6 +348,87 @@ export async function createTask(
   return taskRowToDTO(row);
 }
 
+/**
+ * Bulk-create tasks from a CSV import. The client resolves names → ids (assignees,
+ * category/feature-block) against the loaded lists before sending; here we
+ * re-validate those ids belong to this client/workspace (dropping any that don't),
+ * skip rows without a title, and assign a distinct orderKey per status.
+ */
+export async function importTasks(
+  user: EffectiveUser,
+  clientId: string,
+  rows: Array<{
+    title: string;
+    description?: string | null;
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    assigneeIds?: string[];
+    featureBlockId?: string | null;
+    dueDate?: string | null;
+  }>,
+): Promise<{ created: number; skipped: number }> {
+  await ensureBaseRecords();
+  await assertClientInScope(user, clientId);
+
+  // Validate referenced blocks + assignees once (drop anything out of scope).
+  const blockIds = [...new Set(rows.map((r) => r.featureBlockId).filter((x): x is string => !!x))];
+  const validBlocks = new Set(
+    blockIds.length
+      ? (
+          await prisma.featureBlock.findMany({
+            where: { id: { in: blockIds }, workspaceId: user.workspaceId, clientId },
+            select: { id: true },
+          })
+        ).map((b) => b.id)
+      : [],
+  );
+  const assigneeIds = [...new Set(rows.flatMap((r) => r.assigneeIds ?? []))];
+  const validAssignees = new Set(
+    assigneeIds.length
+      ? (
+          await prisma.workspaceMember.findMany({
+            where: { workspaceId: user.workspaceId, userId: { in: assigneeIds } },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId)
+      : [],
+  );
+
+  // One starting orderKey per status, then increment locally (avoids a query per row).
+  const seq: Partial<Record<TaskStatus, number>> = {};
+  let created = 0;
+  for (const r of rows) {
+    const title = r.title?.trim();
+    if (!title) continue;
+    const status = r.status ?? "BACKLOG";
+    if (seq[status] === undefined) seq[status] = await nextOrderKey(user.workspaceId, clientId, status);
+    const orderKey = seq[status]!;
+    seq[status] = orderKey + 1;
+    const ts = statusTimestamps(null, status, { startedAt: null });
+    const fbId = r.featureBlockId && validBlocks.has(r.featureBlockId) ? r.featureBlockId : null;
+    const aIds = (r.assigneeIds ?? []).filter((id) => validAssignees.has(id));
+    await prisma.task.create({
+      data: {
+        workspaceId: user.workspaceId,
+        clientId,
+        createdById: user.id,
+        featureBlockId: fbId,
+        title: title.slice(0, 200),
+        description: r.description ? r.description.slice(0, 10000) : null,
+        status,
+        priority: r.priority ?? "MEDIUM",
+        orderKey,
+        dueDate: r.dueDate ? new Date(r.dueDate) : null,
+        startedAt: ts.startedAt ?? null,
+        completedAt: ts.completedAt ?? null,
+        ...(aIds.length ? { assignees: { connect: aIds.map((id) => ({ id })) } } : {}),
+      },
+    });
+    created++;
+  }
+  return { created, skipped: rows.length - created };
+}
+
 export async function updateTask(
   user: EffectiveUser,
   id: string,

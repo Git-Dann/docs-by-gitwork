@@ -2135,6 +2135,27 @@ export function batchDeleteTasks(ids: string[]): Promise<{ deleted: number }> {
   });
 }
 
+export type TaskImportRow = {
+  title: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assigneeIds?: string[];
+  featureBlockId?: string | null;
+  dueDate?: string | null;
+};
+
+export function importTasks(
+  slug: string,
+  tasks: TaskImportRow[],
+): Promise<{ created: number; skipped: number }> {
+  return apiFetch(`/api/clients/${slug}/tasks/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tasks }),
+  });
+}
+
 export function listTaskComments(id: string): Promise<TaskCommentDTO[]> {
   return apiFetch(`/api/tasks/${id}/comments`);
 }
