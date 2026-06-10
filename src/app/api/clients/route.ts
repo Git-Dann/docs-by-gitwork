@@ -4,10 +4,10 @@ import { createClientRecord, listDerivedClients } from "@/server/clients";
 import { clientCreateSchema } from "@/server/validators";
 import type { WorkspaceClientStatus } from "@/types/client";
 import {
-  requireAuthedUser,
   canSeeAllClients,
   assertCan,
   canManageClients,
+  canViewClientFinancials,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
@@ -29,19 +29,17 @@ export async function GET(request: NextRequest) {
       statusParam && (VALID_STATUSES as ReadonlyArray<string>).includes(statusParam)
         ? (statusParam as WorkspaceClientStatus | "ALL")
         : undefined;
-    const result = await listDerivedClients({ search, status });
+    // Resolve the viewer once. It gates the sensitive cost/working-days fields and the
+    // restricted-developer client scoping. Null = legacy shared-token / server caller
+    // (no per-user identity) → no financials, full unscoped list (as before).
+    const user = await getEffectiveUserOrNull(request);
+    const includeFinancials = user ? canViewClientFinancials(user) : false;
 
-    // Restricted developers (seeAllClients off) only see clients they're
-    // assigned to. Best-effort: if we can't resolve a per-user identity
-    // (legacy shared-token / server callers), behave as before and return all.
-    try {
-      const user = await requireAuthedUser(request);
-      if (!canSeeAllClients(user)) {
-        const allowed = new Set(await assignedClientIds(user));
-        result.clients = result.clients.filter((c) => allowed.has(c.id));
-      }
-    } catch {
-      // No per-user identity — leave the full list untouched.
+    const result = await listDerivedClients({ search, status, includeFinancials });
+
+    if (user && !canSeeAllClients(user)) {
+      const allowed = new Set(await assignedClientIds(user));
+      result.clients = result.clients.filter((c) => allowed.has(c.id));
     }
 
     return apiOk(result);

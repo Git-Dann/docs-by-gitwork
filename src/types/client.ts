@@ -16,12 +16,31 @@ export interface ClientRecord {
   status: WorkspaceClientStatus;
 }
 
+/** Summed monthly cost of a client's assigned devs. Present only when the viewer
+ *  may see financials (`clients.viewFinancials` / Super Admin). */
+export interface ClientMonthlyCost {
+  /** Summed monthly cost across priced devs, in `currency` (rounded). */
+  amount: number;
+  /** ISO 4217 code of the summed rates (e.g. "USD"). */
+  currency: string;
+  /** Assigned devs that contributed a rate. */
+  pricedDevs: number;
+  /** Assigned devs with no matched rate (excluded from `amount`). */
+  unpricedDevs: number;
+}
+
 export interface ClientListItem extends ClientRecord {
   proposalCount: number;
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   hasCareClient: boolean;
   repoUrls: string[];
+  /** Count of developers assigned to this client (ClientAssignment). Always present. */
+  devCount: number;
+  /** Summed monthly dev cost — present (non-null) only when the viewer may see financials. */
+  monthlyCost?: ClientMonthlyCost | null;
+  /** Business days elapsed since the project started — present only when the viewer may see financials. */
+  workingDays?: number | null;
 }
 
 export interface ClientBankSummary {

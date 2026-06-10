@@ -219,6 +219,13 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description:
           "Off scopes Portal/Pulse/Care/Study and the task board to clients this user is explicitly assigned.",
       },
+      {
+        id: "clients.viewFinancials",
+        category: "field",
+        label: "View client cost & working days",
+        description:
+          "The monthly dev cost and working-days figures on Portal client cards. Sensitive — Super Admins always have it; toggle per person.",
+      },
     ],
   },
   {

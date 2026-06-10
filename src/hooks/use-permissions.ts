@@ -24,6 +24,7 @@ export function usePermissions() {
     canViewRates: can("code.viewRates"),
     canViewCosts: can("docs.viewCosts"),
     canViewRateCard: can("rateCard.view"),
+    canViewClientFinancials: can("clients.viewFinancials"),
     // Action gates (view vs manage + high-risk)
     canRunFixAgent: can("pulse.fixAgent"),
     canManageCode: can("code.manage"),
