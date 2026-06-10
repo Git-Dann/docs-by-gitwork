@@ -763,6 +763,84 @@ export async function getTicketStatsForPeriod(
   return result;
 }
 
+// ─── Performance metrics ──────────────────────────────────────────────────────
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function mean(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/**
+ * Compute support-desk performance for a period from ticket timestamps. Tickets are
+ * scoped by createdAt so the figures describe work that *arrived* in the window. All
+ * times are derived from the firstReplyAt / resolvedAt stamps already maintained by
+ * createMessage() and updateTicket(); nothing new is persisted.
+ *
+ * `slaTargetHours` defaults to 4h — Zendesk's "good" first-response tier (best-in-class
+ * is <1h, acceptable is <12h), a sensible agency benchmark.
+ */
+export async function getPerformanceMetricsForPeriod(
+  clientId: string,
+  periodStart: string,
+  periodEnd: string,
+  slaTargetHours = 4,
+): Promise<import("@/types/support").SupportPerformanceMetrics> {
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd + "T23:59:59.999Z");
+
+  const tickets = await prisma.supportTicket.findMany({
+    where: { clientId, createdAt: { gte: start, lte: end } },
+    select: { createdAt: true, firstReplyAt: true, resolvedAt: true, status: true },
+  });
+
+  const frtMs: number[] = [];
+  const resolutionMs: number[] = [];
+  let respondedCount = 0;
+  let resolvedCount = 0;
+  let withinSla = 0;
+  const slaTargetMs = slaTargetHours * 3600_000;
+
+  for (const t of tickets) {
+    if (t.firstReplyAt) {
+      const ms = t.firstReplyAt.getTime() - t.createdAt.getTime();
+      if (ms >= 0) {
+        frtMs.push(ms);
+        respondedCount++;
+        if (ms <= slaTargetMs) withinSla++;
+      }
+    }
+    if (t.resolvedAt || t.status === "RESOLVED") {
+      resolvedCount++;
+      if (t.resolvedAt) {
+        const ms = t.resolvedAt.getTime() - t.createdAt.getTime();
+        if (ms >= 0) resolutionMs.push(ms);
+      }
+    }
+  }
+
+  const total = tickets.length;
+  return {
+    totalTickets: total,
+    respondedCount,
+    resolvedCount,
+    openCount: total - resolvedCount,
+    resolutionRate: total > 0 ? Math.round((resolvedCount / total) * 100) : 0,
+    avgFirstResponseMs: mean(frtMs),
+    medianFirstResponseMs: median(frtMs),
+    avgResolutionMs: mean(resolutionMs),
+    medianResolutionMs: median(resolutionMs),
+    slaFrtCompliancePct: respondedCount > 0 ? Math.round((withinSla / respondedCount) * 100) : null,
+    slaTargetHours,
+  };
+}
+
 // ─── Batch ticket update ──────────────────────────────────────────────────────
 
 export async function batchUpdateTickets(
