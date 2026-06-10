@@ -217,6 +217,12 @@ export function canViewRateCard(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role) || user.permissions.includes("rateCard.view");
 }
 
+/** Monthly dev cost + working-days figures on Portal client cards. Off for everyone
+ *  except Super Admins (always) and members explicitly granted it (e.g. Syed). */
+export function canViewClientFinancials(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes("clients.viewFinancials");
+}
+
 // ── Action-level (view vs manage + high-risk) ────────────────────────────────
 // Each gates the write surface of a product. Without the `*.manage` permission a
 // member can still open the module (view) but not create/edit/delete. High-risk

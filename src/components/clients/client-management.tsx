@@ -30,6 +30,19 @@ import type { OnboardingLinkRecord } from "@/lib/api";
 
 type Tab = "active" | "pending" | "onboarding";
 
+/** Format a whole-currency amount, e.g. 6200 USD → "$6,200". Falls back to "6200 USD". */
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // DeleteButton — floating popover, matches platform-wide pattern
 // ---------------------------------------------------------------------------
@@ -264,6 +277,8 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
 // ---------------------------------------------------------------------------
 function ClientCard({ client }: { client: ClientListItem }) {
   const router = useRouter();
+  const { canViewClientFinancials } = usePermissions();
+  const devCount = client.devCount ?? 0;
 
   return (
     <article
@@ -398,6 +413,46 @@ function ClientCard({ client }: { client: ClientListItem }) {
           <p className="widget-timestamp text-right">
             {formatDate(client.createdAt)}
           </p>
+        </div>
+
+        {/* Devs (everyone) + monthly cost & working days (gated: Super Admins + clients.viewFinancials) */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-3)]">
+          <span className="font-medium text-[var(--text-2)]">
+            {devCount} {devCount === 1 ? "Dev" : "Devs"}
+          </span>
+          {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 && (
+            <>
+              <span className="text-[var(--text-4)]">·</span>
+              <span>
+                {formatMoney(client.monthlyCost.amount, client.monthlyCost.currency)}/mo
+                {client.monthlyCost.unpricedDevs > 0 && (
+                  <span className="text-[var(--text-4)]">
+                    {" "}
+                    ({client.monthlyCost.unpricedDevs} unpriced)
+                  </span>
+                )}
+              </span>
+            </>
+          )}
+          {canViewClientFinancials &&
+            client.monthlyCost &&
+            client.monthlyCost.pricedDevs === 0 &&
+            client.monthlyCost.unpricedDevs > 0 && (
+              <>
+                <span className="text-[var(--text-4)]">·</span>
+                <span className="text-[var(--text-4)]">rates n/a</span>
+              </>
+            )}
+          {canViewClientFinancials &&
+            typeof client.workingDays === "number" &&
+            client.workingDays > 0 && (
+              <>
+                <span className="text-[var(--text-4)]">·</span>
+                <span>
+                  {client.workingDays} working {client.workingDays === 1 ? "day" : "days"}
+                </span>
+              </>
+            )}
         </div>
       </div>
     </article>

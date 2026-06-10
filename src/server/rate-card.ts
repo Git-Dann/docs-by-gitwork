@@ -1,4 +1,4 @@
-import { Prisma, type RateCardPerson } from "@prisma/client";
+import { Prisma, type RateCardPerson, type RateBillingPeriod } from "@prisma/client";
 import type { RateCardPersonRecord } from "@/types/rate-card";
 
 type SeedRateCardPerson = {
@@ -165,6 +165,29 @@ export const defaultRateCardPeople: SeedRateCardPerson[] = [
 
 function decimalToNumber(value: Prisma.Decimal): number {
   return Number(value.toString());
+}
+
+/** Approximate working days / weeks in a month — used to normalise DAY/WEEK rates to a
+ *  comparable monthly figure (≈260 working days a year ÷ 12). All seeded rates are
+ *  currently MONTH, so this only bites if a DAY/WEEK rate is ever added. */
+export const WORKING_DAYS_PER_MONTH = 21.67;
+export const WEEKS_PER_MONTH = 4.333;
+
+/** Normalise a rate-card rate (DAY | WEEK | MONTH) to a monthly amount. */
+export function normalizeToMonthly(
+  sourceRate: Prisma.Decimal | number,
+  billingPeriod: RateBillingPeriod,
+): number {
+  const rate = typeof sourceRate === "number" ? sourceRate : Number(sourceRate.toString());
+  switch (billingPeriod) {
+    case "DAY":
+      return rate * WORKING_DAYS_PER_MONTH;
+    case "WEEK":
+      return rate * WEEKS_PER_MONTH;
+    case "MONTH":
+    default:
+      return rate;
+  }
 }
 
 export function serializeRateCardPerson(person: RateCardPerson): RateCardPersonRecord {

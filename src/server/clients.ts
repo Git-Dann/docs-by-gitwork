@@ -18,6 +18,7 @@ import type {
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
+import { computeClientDevCounts, computeClientFinancials } from "@/server/client-metrics";
 
 const clientBankAccounts = (prisma as unknown as {
   clientBankAccount: Prisma.ClientBankAccountDelegate;
@@ -336,6 +337,9 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     clickupUrl: client.clickupUrl,
     hasCareClient: false, // overridden by listDerivedClients
     repoUrls: [],        // overridden by listDerivedClients
+    devCount: 0,         // overridden by listDerivedClients
+    monthlyCost: null,   // set by listDerivedClients only for authorized viewers
+    workingDays: null,   // set by listDerivedClients only for authorized viewers
   };
 }
 
@@ -473,16 +477,23 @@ export async function listDerivedClients(filters?: {
   search?: string;
   /** Filter by client status. Default: ACTIVE only. Pass "ALL" to include every status. */
   status?: WorkspaceClientStatus | "ALL";
+  /** Compute + include the sensitive monthlyCost/workingDays fields. The caller MUST have
+   *  verified `clients.viewFinancials` (or Super Admin) first. Default false. */
+  includeFinancials?: boolean;
 }): Promise<{ clients: ClientListItem[] }> {
-  const { manualClients, hiddenSlugs, proposals } = await loadClientCollections();
+  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections();
   const search = filters?.search?.trim().toLowerCase() ?? "";
   const statusFilter = filters?.status ?? "ACTIVE";
+  const includeFinancials = filters?.includeFinancials ?? false;
 
   const merged = mergeClients(manualClients, proposals, hiddenSlugs);
-  const manualIds = merged.filter((c) => c.source === "MANUAL").map((c) => c.id);
+  const manualClientMeta = merged
+    .filter((c) => c.source === "MANUAL")
+    .map((c) => ({ id: c.id, createdAt: c.createdAt }));
+  const manualIds = manualClientMeta.map((c) => c.id);
 
-  // Parallel enrichment queries — single round-trip for both.
-  const [careRecords, platformRepos] = await Promise.all([
+  // Parallel enrichment queries — single round-trip.
+  const [careRecords, platformRepos, devCounts, financials] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
       where: { workspaceClientId: { not: null } },
@@ -493,6 +504,12 @@ export async function listDerivedClients(filters?: {
       where: { clientId: { in: manualIds }, repoUrl: { not: null } },
       select: { clientId: true, repoUrl: true, name: true },
     }),
+    // Assigned-dev count per client (always shown on cards).
+    computeClientDevCounts(workspace.id, manualIds),
+    // Sensitive monthly cost + working days — only for authorized viewers.
+    includeFinancials
+      ? computeClientFinancials(workspace.id, manualClientMeta)
+      : Promise.resolve(null),
   ]);
 
   const careIds = new Set(
@@ -516,11 +533,17 @@ export async function listDerivedClients(filters?: {
       if (!search) return true;
       return client.name.toLowerCase().includes(search);
     })
-    .map((client) => ({
-      ...toClientListItem(client),
-      hasCareClient: careIds.has(client.id),
-      repoUrls: reposByClientId.get(client.id) ?? [],
-    }));
+    .map((client) => {
+      const financial = financials?.get(client.id);
+      return {
+        ...toClientListItem(client),
+        hasCareClient: careIds.has(client.id),
+        repoUrls: reposByClientId.get(client.id) ?? [],
+        devCount: devCounts.get(client.id) ?? 0,
+        monthlyCost: financial ? financial.monthlyCost : null,
+        workingDays: financial ? financial.workingDays : null,
+      };
+    });
 
   return { clients };
 }
