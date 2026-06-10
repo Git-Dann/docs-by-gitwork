@@ -40,7 +40,7 @@ export default async function PublicTimelinePage({
 
   return (
     <main className="min-h-[100dvh] bg-[#FAFAF9] px-4 py-10 sm:px-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[1800px]">
         <header className="mb-6">
           <p
             className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
@@ -59,7 +59,7 @@ export default async function PublicTimelinePage({
           </p>
         </header>
 
-        <GanttChart blocks={blocks} initialScale="quarter" emptyHint="The timeline will appear here once work is scheduled." />
+        <GanttChart blocks={blocks} emptyHint="The timeline will appear here once work is scheduled." />
 
         <footer className="mt-8 flex items-center justify-center gap-1.5 text-xs text-[var(--text-4)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
