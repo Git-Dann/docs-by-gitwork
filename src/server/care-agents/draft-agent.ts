@@ -1,4 +1,5 @@
 import { callAI, type AiContext } from "./ai-client";
+import { findSimilarReplied, type SimilarConversation } from "./embeddings";
 import { prisma } from "@/lib/prisma";
 
 const SYSTEM_PROMPT = `You are a professional support agent at Gitwork, a UK-based digital design-and-build agency.
@@ -14,6 +15,22 @@ Do NOT open with "I hope this email finds you well" or similar stale openers.
 Sign off as: Gitwork Support
 
 Reply ONLY with the message body — no subject line, no metadata, no preamble.`;
+
+function formatSimilarExamples(examples: SimilarConversation[]): string {
+  return examples
+    .map((ex, i) => {
+      const thread = ex.messages
+        .slice(0, 6)
+        .map((m) => {
+          const role = m.direction === "outbound" ? "Support" : "Customer";
+          const body = m.body.length > 400 ? m.body.slice(0, 400) + "…" : m.body;
+          return `[${role}] ${body}`;
+        })
+        .join("\n");
+      return `Example ${i + 1} — "${ex.subject}"\n${thread}`;
+    })
+    .join("\n\n---\n\n");
+}
 
 export async function generateDraftReply(
   ctx: AiContext,
@@ -32,6 +49,19 @@ export async function generateDraftReply(
     .map((m) => `[${m.direction === "outbound" ? "Support" : "Customer"}] ${m.body}`)
     .join("\n\n");
 
+  // Retrieve semantically similar past conversations that already have a reply,
+  // so the model can mirror how analogous issues were previously resolved.
+  const similarExamples = await findSimilarReplied(
+    conversationId,
+    conversation.clientId,
+    ctx.workspace,
+  ).catch(() => [] as SimilarConversation[]);
+
+  const examplesSection =
+    similarExamples.length > 0
+      ? `\n--- Similar past resolutions (for tone and approach reference) ---\n${formatSimilarExamples(similarExamples)}\n---\n`
+      : "";
+
   const userPrompt = `Support conversation — client: ${conversation.client.name}
 Subject: ${conversation.subject}
 Customer: ${conversation.customerLabel}
@@ -39,8 +69,7 @@ Channel: ${conversation.source.toLowerCase()}
 
 --- Thread ---
 ${threadText || "(No messages yet — write an opening reply.)"}
----
-
+---${examplesSection}
 Write a professional reply to the customer's most recent message.`;
 
   const draft = await callAI(ctx, SYSTEM_PROMPT, userPrompt, 1024);
