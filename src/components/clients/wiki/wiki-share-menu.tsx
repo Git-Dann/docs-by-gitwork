@@ -92,7 +92,7 @@ export function WikiShareMenu({
         )}
         <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
       </MenuButton>
-      <MenuItems anchor="bottom end" className={`${menuPanel} w-80`}>
+      <MenuItems anchor="bottom end" className={`${menuPanel} w-[min(20rem,90vw)]`}>
         {/* This page */}
         <div className="flex items-center justify-between gap-3 px-2.5 py-2">
           <div>
