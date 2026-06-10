@@ -457,7 +457,7 @@ export const WikiPageEditor = forwardRef<WikiPageEditorHandle, Props>(
 
         {/* Markdown toolbar — only in edit mode */}
         {mode === "edit" && (
-          <div className="mb-3 flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
+          <div className="mb-3 flex flex-wrap items-center gap-x-0.5 gap-y-1 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5">
             <ToolbarBtn label="B" title="Bold" onClick={() => insert("**", "**", "bold text")} />
             <ToolbarBtn label="I" title="Italic" onClick={() => insert("*", "*", "italic text")} />
             <div className="mx-1 h-4 w-px bg-[rgba(0,0,0,0.1)]" />
