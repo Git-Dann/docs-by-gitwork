@@ -689,3 +689,35 @@ done (risky in a 4000-line file; the 19 extended modules + top-level agents alre
 bulk). The embed page inherits the global `SessionProvider` (harmless; a lighter provider tree would
 drop an unused `/api/auth/session` call from the iframe). Reconciler is daily on Hobby. Optional env
 `GOOGLE_PSI_API_KEY` improves PageSpeed quota (internal scans only; public path skips PSI).
+
+## 19. Recent Changes (June 2026) — Portal: dev count + gated client cost & working days
+
+Portal client cards (`src/components/clients/client-management.tsx`) now surface three figures, all
+computed server-side and batched across the whole client set (no N+1) in the new
+**`src/server/client-metrics.ts`**:
+
+- **`{{x}} Devs`** (everyone) — assigned-developer count per client via `computeClientDevCounts`
+  (a `ClientAssignment.groupBy`).
+- **Monthly cost** + **working days** (sensitive) — `computeClientFinancials` → `{ monthlyCost, workingDays }`:
+  - **Cost path (no schema change):** `ClientAssignment → User.email → Candidate(origin=INTERNAL).email
+    → RateCardPerson` rate, normalised to monthly via `normalizeToMonthly` (`src/server/rate-card.ts`).
+    Devs with no matched rate are counted as `unpricedDevs` and **excluded from the sum** — graceful
+    (surfaced as "(n unpriced)"), never silently understated or thrown. Shape
+    `ClientMonthlyCost { amount, currency, pricedDevs, unpricedDevs }` in `src/types/client.ts`.
+    **Prereq:** `Candidate.email` must be populated for the dev→rate join — run `POST /api/dev/seed-team`
+    if cards read all-unpriced.
+  - **Working days:** inclusive business days (Mon–Fri, UTC; public holidays NOT excluded) from the
+    project's earliest known start — first **dated** `FeatureBlock.startDate`, else first `Task`
+    (`startedAt ?? createdAt`), else the client's `createdAt` — to today (`businessDaysBetween` helper).
+
+**Permission gate — `clients.viewFinancials`** (new, **default-OFF**, `category: "field"`) in
+`PERMISSION_CATALOG` (`src/types/auth.ts`), alongside `docs.viewCosts` / `code.viewRates`. Super Admins
+bypass; it is **not** in `DEFAULT_ROLE_PERMISSIONS`, so it stays off for every role until toggled
+**per person** in **Settings → Team** (e.g. Syed). Helpers: `canViewClientFinancials(user)`
+(`src/server/auth/effective-user.ts`) server-side; `usePermissions().canViewClientFinancials`
+(`src/hooks/use-permissions.ts`) client-side.
+
+**Gated server-side, not merely hidden:** `GET /api/clients` (`src/app/api/clients/route.ts`) sets
+`includeFinancials = canViewClientFinancials(user)` and attaches `monthlyCost`/`workingDays` to the
+client DTO **only when true** — an unauthorised viewer never receives the figures in the payload. The
+dev count is always attached. No schema change, no new env.
