@@ -261,11 +261,11 @@ export function CodeClearCandidatesWorkspace() {
 
         {candidates.length ? (
           (() => {
-            // Group by devGroup. Bench is the commercial roster (default,
-            // always shown). Pro bono goes underneath in its own table —
-            // same columns, separate section header. Falls back to
-            // treating missing devGroup as BENCH (legacy rows that haven't
-            // been migrated yet — bootstrap self-heals these).
+            // Group by devGroup. Bench is the commercial roster (default).
+            // Pro bono is rendered in the SAME table but with an inline
+            // divider row between groups — one set of column headers, no
+            // stacked tables. Falls back to treating missing devGroup as
+            // BENCH for legacy rows (bootstrap self-heals these).
             const benchRows = orderedCandidates.filter(
               (c) => c.devGroup !== "PRO_BONO",
             );
@@ -275,14 +275,25 @@ export function CodeClearCandidatesWorkspace() {
             return (
               <div
                 className={cn(
-                  "mt-5 space-y-6 transition-opacity",
+                  "mt-5 transition-opacity",
                   candidatesQuery.isPlaceholderData ? "opacity-60" : "opacity-100",
                 )}
               >
                 <DevsTable
-                  title="Bench"
-                  subtitle="Commercial roster — counts in costings"
-                  candidates={benchRows}
+                  sections={[
+                    {
+                      key: "bench",
+                      title: "Bench",
+                      subtitle: "Commercial roster — counts in costings",
+                      rows: benchRows,
+                    },
+                    {
+                      key: "pro-bono",
+                      title: "Pro bono",
+                      subtitle: "Free to Gitwork — excluded from costings",
+                      rows: proBonoRows,
+                    },
+                  ]}
                   selectedIdSet={selectedIdSet}
                   onToggleSelect={(id, next) =>
                     setSelectedIds((current) =>
@@ -297,26 +308,6 @@ export function CodeClearCandidatesWorkspace() {
                   clientOptions={clientOptions}
                   canViewRates={canViewRates}
                 />
-                {proBonoRows.length > 0 ? (
-                  <DevsTable
-                    title="Pro bono"
-                    subtitle="Free to Gitwork — excluded from costings"
-                    candidates={proBonoRows}
-                    selectedIdSet={selectedIdSet}
-                    onToggleSelect={(id, next) =>
-                      setSelectedIds((current) =>
-                        next
-                          ? current.includes(id)
-                            ? current
-                            : [...current, id]
-                          : current.filter((entry) => entry !== id),
-                      )
-                    }
-                    onRowClick={(id) => router.push(`/app/codeclear/candidates/${id}`)}
-                    clientOptions={clientOptions}
-                    canViewRates={canViewRates}
-                  />
-                ) : null}
               </div>
             );
           })()
@@ -451,24 +442,92 @@ export function CodeClearCandidatesWorkspace() {
 }
 
 /**
- * Shared table renderer used for both the Bench section and the Pro bono
- * section. Same columns, same row chrome — only the title/subtitle differ.
- * Rate column only renders when the viewer has `code.viewRates`; the column
- * is dropped entirely (not blanked) so the table stays aligned.
+ * Section-grouped table for the Developers list. Renders ONE table with
+ * a single set of column headers; each section gets a labeled divider
+ * row inserted ahead of its rows. Sections with zero rows are skipped
+ * entirely so we never show an empty Pro bono divider.
+ *
+ * Rate column only renders when the viewer has `code.viewRates`; the
+ * column is dropped (not blanked) so the table stays aligned.
  */
 function DevsTable({
-  title,
-  subtitle,
-  candidates,
+  sections,
   selectedIdSet,
   onToggleSelect,
   onRowClick,
   clientOptions,
   canViewRates,
 }: {
-  title: string;
-  subtitle: string;
-  candidates: CodeClearCandidateListItem[];
+  sections: Array<{
+    key: string;
+    title: string;
+    subtitle: string;
+    rows: CodeClearCandidateListItem[];
+  }>;
+  selectedIdSet: Set<string>;
+  onToggleSelect: (id: string, next: boolean) => void;
+  onRowClick: (id: string) => void;
+  clientOptions: ClientListItem[];
+  canViewRates: boolean;
+}) {
+  // Skip empty sections so we don't render a "Pro bono — 0 devs" header
+  // when there's nothing to show. Column count is used for the divider
+  // row's colSpan so the highlight stretches the full table width.
+  const nonEmpty = sections.filter((s) => s.rows.length > 0);
+  const colCount = canViewRates ? 8 : 7;
+  const showDividers = nonEmpty.length > 1;
+
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+      <table className="app-table">
+        <thead>
+          <tr>
+            <th className="w-10 text-left" />
+            <th className="text-left">Dev</th>
+            <th className="text-left">Stack</th>
+            <th className="text-left">Current client</th>
+            <th className="text-right">Calibre</th>
+            <th className="text-left">Tier</th>
+            {canViewRates ? <th className="text-right">Rate</th> : null}
+            <th className="text-right">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {nonEmpty.map((section, sectionIdx) => (
+            <DevsTableSection
+              key={section.key}
+              section={section}
+              isFirst={sectionIdx === 0}
+              showDivider={showDividers}
+              colCount={colCount}
+              selectedIdSet={selectedIdSet}
+              onToggleSelect={onToggleSelect}
+              onRowClick={onRowClick}
+              clientOptions={clientOptions}
+              canViewRates={canViewRates}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DevsTableSection({
+  section,
+  isFirst,
+  showDivider,
+  colCount,
+  selectedIdSet,
+  onToggleSelect,
+  onRowClick,
+  clientOptions,
+  canViewRates,
+}: {
+  section: { key: string; title: string; subtitle: string; rows: CodeClearCandidateListItem[] };
+  isFirst: boolean;
+  showDivider: boolean;
+  colCount: number;
   selectedIdSet: Set<string>;
   onToggleSelect: (id: string, next: boolean) => void;
   onRowClick: (id: string) => void;
@@ -476,34 +535,36 @@ function DevsTable({
   canViewRates: boolean;
 }) {
   return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
-            {title}
-          </h3>
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">{subtitle}</p>
-        </div>
-        <span className="font-mono text-[11px] text-[var(--text-4)]">
-          {candidates.length} DEV{candidates.length === 1 ? "" : "S"}
-        </span>
-      </div>
-      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
-        <table className="app-table">
-          <thead>
-            <tr>
-              <th className="w-10 text-left" />
-              <th className="text-left">Dev</th>
-              <th className="text-left">Stack</th>
-              <th className="text-left">Current client</th>
-              <th className="text-right">Calibre</th>
-              <th className="text-left">Tier</th>
-              {canViewRates ? <th className="text-right">Rate</th> : null}
-              <th className="text-right">Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.map((candidate) => {
+    <>
+      {showDivider ? (
+        // Divider row: title + subtitle + count, full-width inside the
+        // tbody. First section gets a subtle bg, subsequent sections add a
+        // top border so the break between groups reads clearly.
+        <tr
+          className={cn(
+            "bg-[var(--surface-1)]",
+            !isFirst && "border-t-2 border-[var(--border-2)]",
+          )}
+        >
+          <td
+            colSpan={colCount}
+            className="px-4 py-2.5"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="flex items-baseline gap-3">
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
+                  {section.title}
+                </span>
+                <span className="text-[11px] text-[var(--text-4)]">{section.subtitle}</span>
+              </div>
+              <span className="font-mono text-[11px] text-[var(--text-4)]">
+                {section.rows.length} DEV{section.rows.length === 1 ? "" : "S"}
+              </span>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+      {section.rows.map((candidate) => {
               const checked = selectedIdSet.has(candidate.id);
               const score =
                 candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
@@ -618,10 +679,7 @@ function DevsTable({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </>
   );
 }
 
