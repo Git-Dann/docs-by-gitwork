@@ -239,6 +239,20 @@ export interface SupportPerformanceMetrics {
   slaTargetHours: number;
 }
 
+/** Aggregated health score for a client's support account. */
+export interface ClientHealthScore {
+  /** 0–100 composite score. */
+  score: number;
+  tier: "healthy" | "watch" | "at_risk";
+  factors: Array<{
+    label: string;
+    score: number;
+    maxScore: number;
+    note: string;
+  }>;
+  computedAt: string;
+}
+
 /** One analytics figure captured on a report (mirrors AnalyticsMetric server-side). */
 export interface AnalyticsReportMetric {
   key: string;

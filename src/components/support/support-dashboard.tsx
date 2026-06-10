@@ -39,6 +39,7 @@ import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type {
   AuditLog,
+  ClientHealthScore,
   Connection,
   Conversation,
   SupportClient,
@@ -78,6 +79,7 @@ import {
   useSemanticSearch,
   useGenerateReportNarrative,
   useTicketPerformance,
+  useClientHealth,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
@@ -85,6 +87,76 @@ import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import { TicketsKanban } from "./tickets-kanban";
 import { PerformanceStrip } from "./performance-strip";
+
+// ─── health badge ────────────────────────────────────────────────────────────
+
+const HEALTH_TIER_DOT: Record<ClientHealthScore["tier"], string> = {
+  healthy: "bg-emerald-500",
+  watch: "bg-amber-400",
+  at_risk: "bg-red-500",
+};
+const HEALTH_TIER_RING: Record<ClientHealthScore["tier"], string> = {
+  healthy: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  watch: "border-amber-200 bg-amber-50 text-amber-700",
+  at_risk: "border-red-200 bg-red-50 text-red-600",
+};
+const HEALTH_TIER_LABEL: Record<ClientHealthScore["tier"], string> = {
+  healthy: "Healthy",
+  watch: "Watch",
+  at_risk: "At risk",
+};
+
+function HealthBadge({
+  health,
+  size = "sm",
+}: {
+  health: ClientHealthScore;
+  size?: "xs" | "sm";
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium transition hover:opacity-80",
+          size === "xs" ? "text-[10px]" : "text-[11px]",
+          HEALTH_TIER_RING[health.tier],
+        )}
+        title={`Account health: ${health.score}/100`}
+      >
+        <span className={cn("h-1.5 w-1.5 rounded-full", HEALTH_TIER_DOT[health.tier])} />
+        {HEALTH_TIER_LABEL[health.tier]}
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full z-50 mt-1.5 w-56 rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-lg"
+          onMouseLeave={() => setOpen(false)}
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-[var(--text-1)]">Account health</span>
+            <span className={cn(
+              "text-sm font-bold",
+              health.tier === "healthy" ? "text-emerald-600" : health.tier === "watch" ? "text-amber-600" : "text-red-500",
+            )}>{health.score}/100</span>
+          </div>
+          <div className="space-y-2">
+            {health.factors.map((f) => (
+              <div key={f.label}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-[var(--text-3)]">{f.label}</span>
+                  <span className="text-[11px] font-medium text-[var(--text-2)]">{f.score}/{f.maxScore}</span>
+                </div>
+                <p className="text-[10px] text-[var(--text-4)]">{f.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -4912,6 +4984,8 @@ export function SupportDashboard() {
   }, [clients]);
 
   const client = clients.find((c) => c.id === activeClientId);
+  const { data: healthData } = useClientHealth(activeClientId || null);
+  const health = healthData?.health ?? null;
 
   const { data: convoData } = useSupportConversations(activeClientId || null);
   const inboxUnread = (convoData?.conversations ?? []).filter((c) => c.unread).length;
@@ -5025,6 +5099,12 @@ export function SupportDashboard() {
                   {initial}
                 </span>
                 <span className="flex-1 truncate font-medium">{c.name}</span>
+                {isActive && health && (
+                  <span
+                    className={cn("h-1.5 w-1.5 shrink-0 rounded-full", HEALTH_TIER_DOT[health.tier])}
+                    title={`${HEALTH_TIER_LABEL[health.tier]} — ${health.score}/100`}
+                  />
+                )}
                 {(c.unreadCount ?? 0) > 0 && (
                   <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                     {(c.unreadCount ?? 0) > 9 ? "9+" : c.unreadCount}
@@ -5073,6 +5153,7 @@ export function SupportDashboard() {
             <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
               Live
             </span>
+            {health && <HealthBadge health={health} />}
             <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"

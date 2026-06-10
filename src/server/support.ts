@@ -841,6 +841,95 @@ export async function getPerformanceMetricsForPeriod(
   };
 }
 
+// ─── Account health score ─────────────────────────────────────────────────────
+
+export async function getClientHealthScore(
+  clientId: string,
+): Promise<import("@/types/support").ClientHealthScore> {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600_000);
+
+  const [tickets, conversations] = await Promise.all([
+    prisma.supportTicket.findMany({
+      where: { clientId, createdAt: { gte: thirtyDaysAgo } },
+      select: { status: true, priority: true, firstReplyAt: true, createdAt: true },
+    }),
+    prisma.supportConversation.findMany({
+      where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
+      select: { sentiment: true },
+    }),
+  ]);
+
+  // Factor 1: FRT performance (30 pts)
+  const frtMs = tickets
+    .filter((t) => t.firstReplyAt)
+    .map((t) => t.firstReplyAt!.getTime() - t.createdAt.getTime())
+    .filter((ms) => ms >= 0);
+  const avgFrt = frtMs.length > 0 ? frtMs.reduce((a, b) => a + b, 0) / frtMs.length : null;
+  let frtScore = 20; // neutral when no data
+  let frtNote = "No replies yet";
+  if (avgFrt !== null) {
+    const h = avgFrt / 3_600_000;
+    if (h <= 1) { frtScore = 30; frtNote = `Avg ${(h * 60).toFixed(0)}m — excellent`; }
+    else if (h <= 4) { frtScore = 20; frtNote = `Avg ${h.toFixed(1)}h — good`; }
+    else if (h <= 24) { frtScore = 10; frtNote = `Avg ${h.toFixed(1)}h — needs work`; }
+    else { frtScore = 0; frtNote = `Avg ${(h / 24).toFixed(1)}d — very slow`; }
+  }
+
+  // Factor 2: Resolution rate (25 pts)
+  const total = tickets.length;
+  const resolved = tickets.filter((t) => t.status === "RESOLVED").length;
+  const resRate = total > 0 ? (resolved / total) * 100 : null;
+  let resScore = 18; // neutral when no data
+  let resNote = "No tickets yet";
+  if (resRate !== null) {
+    if (resRate >= 80) { resScore = 25; resNote = `${Math.round(resRate)}% resolved`; }
+    else if (resRate >= 70) { resScore = 18; resNote = `${Math.round(resRate)}% resolved`; }
+    else if (resRate >= 50) { resScore = 10; resNote = `${Math.round(resRate)}% resolved`; }
+    else { resScore = 4; resNote = `${Math.round(resRate)}% resolved — low`; }
+  }
+
+  // Factor 3: Sentiment (25 pts)
+  const sentTotal = conversations.length;
+  const negCount = conversations.filter((c) => c.sentiment === "NEGATIVE").length;
+  const negPct = sentTotal > 0 ? (negCount / sentTotal) * 100 : null;
+  let sentScore = 18; // neutral when no data
+  let sentNote = "No conversations yet";
+  if (negPct !== null) {
+    if (negPct <= 10) { sentScore = 25; sentNote = `${Math.round(negPct)}% negative — healthy`; }
+    else if (negPct <= 20) { sentScore = 18; sentNote = `${Math.round(negPct)}% negative`; }
+    else if (negPct <= 35) { sentScore = 10; sentNote = `${Math.round(negPct)}% negative — elevated`; }
+    else { sentScore = 3; sentNote = `${Math.round(negPct)}% negative — critical`; }
+  }
+
+  // Factor 4: Open urgency — count of open urgent/high tickets (20 pts)
+  const urgentOpen = tickets.filter(
+    (t) => t.status !== "RESOLVED" && (t.priority === "URGENT" || t.priority === "HIGH"),
+  ).length;
+  let urgScore: number;
+  let urgNote: string;
+  if (urgentOpen === 0) { urgScore = 20; urgNote = "No urgent/high open tickets"; }
+  else if (urgentOpen === 1) { urgScore = 14; urgNote = `${urgentOpen} urgent/high ticket open`; }
+  else if (urgentOpen <= 3) { urgScore = 7; urgNote = `${urgentOpen} urgent/high tickets open`; }
+  else { urgScore = 0; urgNote = `${urgentOpen} urgent/high tickets open`; }
+
+  const score = frtScore + resScore + sentScore + urgScore;
+  const tier: import("@/types/support").ClientHealthScore["tier"] =
+    score >= 75 ? "healthy" : score >= 50 ? "watch" : "at_risk";
+
+  return {
+    score,
+    tier,
+    factors: [
+      { label: "First response", score: frtScore, maxScore: 30, note: frtNote },
+      { label: "Resolution rate", score: resScore, maxScore: 25, note: resNote },
+      { label: "Sentiment", score: sentScore, maxScore: 25, note: sentNote },
+      { label: "Open urgency", score: urgScore, maxScore: 20, note: urgNote },
+    ],
+    computedAt: now.toISOString(),
+  };
+}
+
 // ─── Batch ticket update ──────────────────────────────────────────────────────
 
 export async function batchUpdateTickets(

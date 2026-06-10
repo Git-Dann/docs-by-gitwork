@@ -1479,6 +1479,12 @@ export async function getTicketStats(
   return apiFetch(`/api/support/clients/${clientId}/tickets/stats?start=${start}&end=${end}`);
 }
 
+export async function getClientHealthScore(
+  clientId: string,
+): Promise<{ health: import("@/types/support").ClientHealthScore }> {
+  return apiFetch(`/api/support/clients/${clientId}/health`);
+}
+
 export async function getTicketPerformance(
   clientId: string,
   start: string,
