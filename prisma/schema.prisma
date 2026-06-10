@@ -995,8 +995,9 @@ model ClientWiki {
   pageShares       Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens  String[] @default([])
-  pages        ClientWikiPage[]
-  changelog    ClientChangelogEntry[]
+  pages          ClientWikiPage[]
+  changelog      ClientChangelogEntry[]
+  courseRequests ClientCourseRequest[]
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
 
@@ -1041,6 +1042,32 @@ model ClientChangelogEntry {
 
   @@index([wikiId])
   @@map("ClientChangelogEntry")
+}
+
+/// A golf-course request/change for a client (Wedge), triaged from support feedback
+/// or added manually, tracked toward the client's course-data API provider.
+model ClientCourseRequest {
+  id                   String              @id @default(cuid())
+  wikiId               String
+  wiki                 ClientWiki          @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  courseName           String
+  country              String?
+  status               CourseRequestStatus @default(NEW)
+  notes                String?             @db.Text
+  /// Internal: the Care conversation this was imported from (dedupe; not surfaced).
+  sourceConversationId String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([wikiId])
+  @@map("ClientCourseRequest")
+}
+
+enum CourseRequestStatus {
+  NEW
+  SENT
+  ADDED
+  REJECTED
 }
 
 enum WikiPageType {

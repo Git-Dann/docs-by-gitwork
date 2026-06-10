@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon, Cog6ToothIcon, PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
+import {
+  ArrowLeftIcon,
+  Cog6ToothIcon,
+  PlusIcon,
+  XMarkIcon,
+  InboxArrowDownIcon,
+} from "@heroicons/react/24/outline";
+import { WikiSidebar, type WikiSection, COURSE_REQUESTS_SLUGS } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
+import { CourseRequestsSection } from "./course-requests-section";
+import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
+import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { WikiShareMenu } from "./wiki-share-menu";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import {
@@ -19,8 +28,12 @@ import {
   useUpdateEntryStatus,
   useUpdateChangelogEntry,
   useSetWikiSectionShare,
+  useAddCourseRequest,
+  useUpdateCourseRequest,
+  useDeleteCourseRequest,
 } from "@/hooks/use-wiki";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
+import type { CourseRequestRecord } from "@/lib/api";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -34,12 +47,14 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
   changelog: "Changelog",
+  "course-requests": "Course Requests",
 };
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   changelog: "CHANGELOG",
+  "course-requests": "COURSE REQUESTS",
 };
 
 const chipBtn =
@@ -402,6 +417,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPlatformModal, setShowPlatformModal] = useState(false);
   const [pendingPlatforms, setPendingPlatforms] = useState<string[]>([]);
+  // Course requests (Wedge)
+  const [showCourseForm, setShowCourseForm] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<CourseRequestRecord | null>(null);
+  const [showCourseImport, setShowCourseImport] = useState(false);
+  const [courseSaving, setCourseSaving] = useState(false);
 
   // Page editor state — controlled by this workspace, not the editor itself
   const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
@@ -423,6 +443,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const updateStatus = useUpdateEntryStatus(slug);
   const updateEntry = useUpdateChangelogEntry(slug);
   const sectionShare = useSetWikiSectionShare(slug);
+  const addCourse = useAddCourseRequest(slug);
+  const updateCourse = useUpdateCourseRequest(slug);
+  const deleteCourse = useDeleteCourseRequest(slug);
 
   if (isPending) {
     return (
@@ -531,8 +554,41 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     return "";
   }
 
+  // ── Course requests ──────────────────────────────────────────
+  function openAddCourse() {
+    setEditingCourse(null);
+    setShowCourseForm(true);
+  }
+  function openEditCourse(req: CourseRequestRecord) {
+    setEditingCourse(req);
+    setShowCourseForm(true);
+  }
+  function closeCourseForm() {
+    setShowCourseForm(false);
+    setEditingCourse(null);
+  }
+  async function handleSaveCourse(payload: CourseRequestPayload) {
+    setCourseSaving(true);
+    try {
+      if (editingCourse) {
+        await updateCourse.mutateAsync({ id: editingCourse.id, data: payload });
+      } else {
+        await addCourse.mutateAsync(payload);
+      }
+      closeCourseForm();
+    } finally {
+      setCourseSaving(false);
+    }
+  }
+  async function handleDeleteCourses(ids: string[]) {
+    await Promise.all(ids.map((id) => deleteCourse.mutateAsync(id)));
+  }
+  async function handleSetCourseStatus(ids: string[], status: string) {
+    await Promise.all(ids.map((id) => updateCourse.mutateAsync({ id, data: { status } })));
+  }
+
   /** Share dropdown for a wiki page — per-page link + whole-wiki link. */
-  function renderShareMenu(section: "ia" | "dev-guide" | "changelog") {
+  function renderShareMenu(section: "ia" | "dev-guide" | "changelog" | "course-requests") {
     return (
       <WikiShareMenu
         pageLabel={SECTION_TITLES[section]}
@@ -615,6 +671,57 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 onDelete={handleDeleteVersion}
                 onToggleStatus={handleToggleStatus}
                 onEdit={openEditForm}
+              />
+            </div>
+          </section>
+        </>
+      );
+    }
+
+    // ── Course Requests (Wedge only)
+    if (activeSection === "course-requests") {
+      if (!COURSE_REQUESTS_SLUGS.includes(slug)) {
+        return (
+          <div className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] py-14 text-center">
+            <p className="text-[13px] text-[var(--text-4)]">
+              Course Requests isn&apos;t enabled for this client.
+            </p>
+          </div>
+        );
+      }
+      return (
+        <>
+          <div className="mb-5 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCourseImport(true)}
+              className={chipBtn}
+              title="Import from support feedback"
+            >
+              <InboxArrowDownIcon className="h-3.5 w-3.5" />
+              Import from feedback
+            </button>
+            <button type="button" onClick={openAddCourse} className={chipBtn}>
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add request
+            </button>
+            {renderShareMenu("course-requests")}
+          </div>
+
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">01</span>
+                {" // COURSE REQUESTS"}
+              </span>
+            </div>
+            <div className="p-6">
+              <CourseRequestsSection
+                requests={wiki!.courseRequests}
+                onAdd={openAddCourse}
+                onEdit={openEditCourse}
+                onDelete={handleDeleteCourses}
+                onSetStatus={handleSetCourseStatus}
               />
             </div>
           </section>
@@ -756,6 +863,19 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           onClose={closeForm}
           isSaving={isSubmitting}
         />
+      )}
+
+      {/* Course request form + import modals */}
+      {showCourseForm && (
+        <CourseRequestForm
+          initial={editingCourse ?? undefined}
+          onSave={handleSaveCourse}
+          onClose={closeCourseForm}
+          isSaving={courseSaving}
+        />
+      )}
+      {showCourseImport && (
+        <CourseFeedbackImportModal slug={slug} onClose={() => setShowCourseImport(false)} />
       )}
 
       {/* Platform management modal */}
