@@ -46,6 +46,30 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * HTML → readable plain text for email bodies. Unlike `stripHtml` (used for Reddit
+ * Atom, which wants everything on one line), this drops <script>/<style>, turns block
+ * tags into line breaks, and decodes the common entities — so a multi-part email's
+ * HTML alternative reads like the original message.
+ */
+function emailHtmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function parseRedditAtom(xml: string): RedditRssPost[] {
   const posts: RedditRssPost[] = [];
   for (const [, entry] of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
@@ -72,6 +96,11 @@ export function parseRedditAtom(xml: string): RedditRssPost[] {
 
 // Gmail API types: `mimeType` is `string | null | undefined`. Widening here so
 // callers can hand us the raw Schema$Message without an intermediate cast.
+// Some senders' plaintext alternative is just a stub pointing at the HTML part
+// (e.g. "Please view this email in HTML format."). When we see that, fall through
+// to the HTML body — that's where the real content lives.
+const PLAINTEXT_STUB = /please view this email in html|view (this|the) email in html|this is an html (email|message)/i;
+
 export function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string | null } | null }): string {
   const payload = msg.payload;
   if (!payload) return "";
@@ -80,26 +109,31 @@ export function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?
     return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
   }
 
-  function extractFromParts(parts: unknown[]): string {
+  // Walk the MIME tree once, capturing the first text/plain and first text/html parts.
+  let plain = "";
+  let html = "";
+  function walk(parts: unknown[]): void {
     const p = parts as Array<{ mimeType?: string; body?: { data?: string | null }; parts?: unknown[] }>;
     for (const part of p) {
-      if (part.mimeType === "text/plain" && part.body?.data) return decodeBase64(part.body.data);
+      if (!plain && part.mimeType === "text/plain" && part.body?.data) plain = decodeBase64(part.body.data);
+      if (!html && part.mimeType === "text/html" && part.body?.data) html = decodeBase64(part.body.data);
+      if (part.parts) walk(part.parts);
     }
-    for (const part of p) {
-      if (part.mimeType === "text/html" && part.body?.data) {
-        return decodeBase64(part.body.data).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-      }
-    }
-    for (const part of p) {
-      if (part.parts) {
-        const found = extractFromParts(part.parts);
-        if (found) return found;
-      }
-    }
-    return "";
   }
 
-  if (payload.parts) return extractFromParts(payload.parts);
-  if (payload.body?.data) return decodeBase64(payload.body.data);
-  return "";
+  if (payload.parts) {
+    walk(payload.parts);
+  } else if (payload.body?.data) {
+    const data = decodeBase64(payload.body.data);
+    if (payload.mimeType === "text/html") html = data;
+    else plain = data;
+  }
+
+  const plainTrim = plain.trim();
+  const htmlText = html ? emailHtmlToText(html) : "";
+
+  // Prefer real plaintext; skip the HTML-only stub and use the HTML body instead.
+  if (plainTrim && !PLAINTEXT_STUB.test(plainTrim)) return plainTrim;
+  if (htmlText) return htmlText;
+  return plainTrim;
 }
