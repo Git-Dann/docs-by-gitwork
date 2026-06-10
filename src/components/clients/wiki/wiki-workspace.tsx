@@ -8,6 +8,7 @@ import {
   PlusIcon,
   XMarkIcon,
   InboxArrowDownIcon,
+  CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 import { WikiSidebar, type WikiSection, COURSE_REQUESTS_SLUGS } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
@@ -16,6 +17,7 @@ import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
+import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiShareMenu } from "./wiki-share-menu";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import {
@@ -421,6 +423,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CourseRequestRecord | null>(null);
   const [showCourseImport, setShowCourseImport] = useState(false);
+  const [showCourseApi, setShowCourseApi] = useState(false);
   const [courseSaving, setCourseSaving] = useState(false);
 
   // Page editor state — controlled by this workspace, not the editor itself
@@ -701,6 +704,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               <InboxArrowDownIcon className="h-3.5 w-3.5" />
               Import from feedback
             </button>
+            <button
+              type="button"
+              onClick={() => setShowCourseApi(true)}
+              className={chipBtn}
+              title="Inbound course-request API"
+            >
+              <CodeBracketIcon className="h-3.5 w-3.5" />
+              API intake
+            </button>
             <button type="button" onClick={openAddCourse} className={chipBtn}>
               <PlusIcon className="h-3.5 w-3.5" />
               Add request
@@ -876,6 +888,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       )}
       {showCourseImport && (
         <CourseFeedbackImportModal slug={slug} onClose={() => setShowCourseImport(false)} />
+      )}
+      {showCourseApi && (
+        <CourseApiIntakeModal slug={slug} onClose={() => setShowCourseApi(false)} />
       )}
 
       {/* Platform management modal */}

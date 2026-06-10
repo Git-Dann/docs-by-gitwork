@@ -16,6 +16,8 @@ import {
   deleteWikiCourseRequest,
   listWikiCourseFeedback,
   importWikiCourseFeedback,
+  getWikiCourseIngest,
+  setWikiCourseIngest,
 } from "@/lib/api";
 import type { CourseImportInput } from "@/lib/api";
 
@@ -190,6 +192,26 @@ export function useImportCourseFeedback(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
       queryClient.invalidateQueries({ queryKey: ["course-feedback", slug] });
+    },
+  });
+}
+
+export function useCourseIngest(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["course-ingest", slug],
+    queryFn: () => getWikiCourseIngest(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useSetCourseIngest(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { enabled: boolean; rotate?: boolean }) => setWikiCourseIngest(slug, input),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["course-ingest", slug], data);
     },
   });
 }

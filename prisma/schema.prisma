@@ -997,6 +997,9 @@ model ClientWiki {
   client       WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   shareToken   String?
   shareEnabled Boolean                @default(false)
+  /// Secret token for the inbound course-request API. When set, external systems
+  /// can POST course requests to /api/public/course-requests/[token]. Null = off.
+  courseIngestToken String?           @unique
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
   platforms    Json?
@@ -1066,10 +1069,15 @@ model ClientCourseRequest {
   notes                String?             @db.Text
   /// Internal: the Care conversation this was imported from (dedupe; not surfaced).
   sourceConversationId String?
+  /// Where this request came from: "feedback" | "api" | "manual".
+  source               String?
+  /// Caller-supplied external id for the inbound API (idempotent dedupe).
+  externalRef          String?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
   @@index([wikiId])
+  @@index([wikiId, externalRef])
   @@map("ClientCourseRequest")
 }
 

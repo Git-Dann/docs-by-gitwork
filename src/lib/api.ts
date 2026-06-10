@@ -2534,3 +2534,23 @@ export async function importWikiCourseFeedback(
   );
 }
 
+export async function getWikiCourseIngest(slug: string): Promise<{ token: string | null }> {
+  return apiFetch<{ token: string | null }>(
+    `/api/clients/${slug}/wiki/course-requests/ingest-token`,
+  );
+}
+
+export async function setWikiCourseIngest(
+  slug: string,
+  input: { enabled: boolean; rotate?: boolean },
+): Promise<{ token: string | null }> {
+  return apiFetch<{ token: string | null }>(
+    `/api/clients/${slug}/wiki/course-requests/ingest-token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
