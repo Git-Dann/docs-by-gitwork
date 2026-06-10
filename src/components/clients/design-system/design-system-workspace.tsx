@@ -21,13 +21,24 @@ const menuPanel =
 const menuItem =
   "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)]";
 
+/** Whole-wiki share controls, passed in when the DS workspace is embedded in the wiki. */
+export interface WikiShareControls {
+  enabled: boolean;
+  token: string | null;
+  busy: boolean;
+  onToggle: (enabled: boolean) => void;
+}
+
 export function DesignSystemWorkspace({
   slug,
   embedded = false,
+  wikiShare,
 }: {
   slug: string;
   /** When true, hides the "← Client" back link (used when embedded in the wiki). */
   embedded?: boolean;
+  /** When provided, the Share menu also offers a whole-wiki share toggle. */
+  wikiShare?: WikiShareControls;
 }) {
   const { data: clientData } = useClientDetail(slug);
   const client = clientData?.client;
@@ -38,6 +49,12 @@ export function DesignSystemWorkspace({
   const [logoOpen, setLogoOpen] = useState(false);
   const [copiedCss, setCopiedCss] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedWiki, setCopiedWiki] = useState(false);
+
+  const wikiUrl =
+    wikiShare?.enabled && wikiShare.token && typeof window !== "undefined"
+      ? `${window.location.origin}/wiki/${wikiShare.token}`
+      : null;
 
   const tokens = ds?.tokens ?? null;
   const shareOn = ds?.share.enabled ?? false;
@@ -57,7 +74,7 @@ export function DesignSystemWorkspace({
   };
 
   return (
-    <div className="px-8 pt-6">
+    <div className="px-4 pt-6 md:px-8">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         {/* Back link — hidden when embedded inside the wiki */}
         {!embedded && (
@@ -83,11 +100,11 @@ export function DesignSystemWorkspace({
                 )}
                 <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
               </MenuButton>
-              <MenuItems anchor="bottom end" className={`${menuPanel} w-72`}>
+              <MenuItems anchor="bottom end" className={`${menuPanel} w-[min(20rem,90vw)]`}>
                 <div className="flex items-center justify-between gap-3 px-2.5 py-2">
                   <div>
-                    <p className="text-[13px] font-medium text-[var(--text-1)]">Public page</p>
-                    <p className="text-[11px] text-[var(--text-4)]">Anyone with the link can view.</p>
+                    <p className="text-[13px] font-medium text-[var(--text-1)]">Share this page</p>
+                    <p className="text-[11px] text-[var(--text-4)]">Public link to the design system only.</p>
                   </div>
                   <button
                     type="button"
@@ -116,6 +133,47 @@ export function DesignSystemWorkspace({
                       Open ↗
                     </a>
                   </div>
+                )}
+
+                {/* Whole-wiki share — only when embedded in the wiki */}
+                {wikiShare && (
+                  <>
+                    <div className="mt-1 flex items-center justify-between gap-3 border-t border-[rgba(0,0,0,0.06)] px-2.5 pb-2 pt-2.5">
+                      <div>
+                        <p className="text-[13px] font-medium text-[var(--text-1)]">Share entire wiki</p>
+                        <p className="text-[11px] text-[var(--text-4)]">
+                          One link to all pages — Design System, IA, Dev Guide &amp; Changelog.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={wikiShare.enabled}
+                        disabled={wikiShare.busy}
+                        onClick={() => wikiShare.onToggle(!wikiShare.enabled)}
+                        className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
+                        style={{ background: wikiShare.enabled ? "var(--brand-600)" : "var(--border-2)" }}
+                      >
+                        <span
+                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+                          style={{ left: wikiShare.enabled ? 18 : 2 }}
+                        />
+                      </button>
+                    </div>
+                    {wikiUrl && (
+                      <div>
+                        <p className="truncate px-2.5 pb-1 text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                          {wikiUrl}
+                        </p>
+                        <button type="button" onClick={() => copy(wikiUrl, setCopiedWiki)} className={menuItem}>
+                          {copiedWiki ? "Copied ✓" : "Copy wiki link"}
+                        </button>
+                        <a href={`/wiki/${wikiShare.token}`} target="_blank" rel="noreferrer" className={menuItem}>
+                          Open ↗
+                        </a>
+                      </div>
+                    )}
+                  </>
                 )}
               </MenuItems>
             </Menu>

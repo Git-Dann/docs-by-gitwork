@@ -554,7 +554,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "design-system") {
       return (
         <div className="-mx-4 -mt-4 md:-mx-8 md:-mt-6">
-          <DesignSystemWorkspace slug={slug} embedded />
+          <DesignSystemWorkspace
+            slug={slug}
+            embedded
+            wikiShare={{
+              enabled: wiki!.shareEnabled,
+              token: wiki!.shareToken,
+              busy: setShare.isPending,
+              onToggle: (enabled) => void setShare.mutateAsync(enabled),
+            }}
+          />
         </div>
       );
     }
