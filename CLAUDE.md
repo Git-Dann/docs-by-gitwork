@@ -58,10 +58,33 @@ Rules of thumb:
   abandoned branches around. Auto-delete handles remote branches post-merge.
 
 **Build safety:** `vercel.json` runs `prisma db push` **without** `--accept-data-loss` on every
-build. Additive schema changes apply automatically; **destructive** changes (dropped
-columns/data) are skipped rather than applied — run those manually against Neon when intended.
-Never re-add `--accept-data-loss`: it let any preview branch silently mutate the shared
-production database.
+build. Never re-add it: it let any preview branch silently mutate the shared production database.
+
+⚠️ **Schema-change footgun (learned the hard way, June 2026 — PR #189).** Prisma's safety check
+is *all-or-nothing per push*. If your schema diff contains anything Prisma deems potentially
+data-losing — even something benign like a removed column on a sibling table — the **whole sync
+is skipped, additive parts included**. So a "purely additive" PR (new table, new column with a
+default) can still fail to apply to prod if the schema also carries an unrelated pending drop
+from an earlier commit. The Prisma client generates fine and TypeScript compiles, but the live
+DB never gets the column → `upsert()` calls fail at runtime with *"the column does not exist
+in the current database."*
+
+When shipping a schema change, **before merging**:
+
+1. Run `git diff origin/main -- prisma/schema.prisma` and look for anything dropped — columns,
+   tables, enum values, indices, FKs. If everything's purely additive *and* main's schema
+   matches prod, the build will apply it cleanly.
+2. If there's ANY drop/rename in the diff (yours or pending from earlier), it won't apply via
+   the build. Two options:
+   - **(a)** Apply manually first: pull the prod `DATABASE_URL`, run
+     `DATABASE_URL=… DIRECT_URL=… npx prisma db push --accept-data-loss` from your machine.
+     Verify before merging.
+   - **(b)** Switch this PR to proper Prisma migrations (`prisma migrate dev` locally to
+     generate the SQL, commit the migration file, the build runs `migrate deploy`). Heavier
+     setup but reproducible. Recommended once schema changes are frequent.
+
+In emergencies (prod broken because a schema-using route is crashing), option (a) is the
+fastest fix — it took ~10 seconds during the PR #189 incident.
 
 ---
 
