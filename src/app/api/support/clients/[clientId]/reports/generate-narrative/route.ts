@@ -155,6 +155,7 @@ Return ONLY a JSON object in this exact format — no preamble, no markdown fenc
 }`,
           user: lines.join("\n"),
           maxTokens: 800,
+          tier: "light",
         });
         let result: GeneratedNarrative = { overviewText: "", performanceText: "", summaryText: "" };
         try {

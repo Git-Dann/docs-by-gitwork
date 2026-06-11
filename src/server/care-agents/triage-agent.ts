@@ -69,7 +69,7 @@ ${threadText || conversation.preview || "(no content)"}`;
   };
 
   try {
-    const response = await callAI(ctx, SYSTEM_PROMPT, userPrompt, 512);
+    const response = await callAI(ctx, SYSTEM_PROMPT, userPrompt, 512, "light");
     decision = extractJson<TriageDecision>(response, decision);
   } catch {
     // Keep defaults on failure

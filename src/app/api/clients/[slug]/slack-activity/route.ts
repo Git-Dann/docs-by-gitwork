@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -257,77 +256,29 @@ function notConfigured(reason: string) {
 async function summarise(
   messages: SlackMessage[],
   channelLabel: string,
-  ws: {
-    aiProvider: string;
-    anthropicApiKey: string | null;
-    anthropicModel: string | null;
-    openaiApiKey: string | null;
-    openaiModel: string | null;
-    geminiApiKey: string | null;
-    geminiModel: string | null;
-    localLlmUrl: string | null;
-    localLlmModel: string | null;
-  },
+  ws: WorkspaceAiFields,
 ): Promise<string | null> {
-  const provider = (ws.aiProvider || "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
-  let apiKey: string | null;
-  let model: string;
-  let baseUrl: string | null = null;
-
-  if (provider === "OPENAI") {
-    apiKey = process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null;
-    model = ws.openaiModel ?? "gpt-4o";
-  } else if (provider === "GEMINI") {
-    apiKey = process.env.GEMINI_API_KEY ?? ws.geminiApiKey ?? null;
-    model = ws.geminiModel ?? "gemini-2.0-flash";
-    baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
-  } else if (provider === "LOCAL") {
-    apiKey = ws.openaiApiKey ?? "local";
-    model = ws.localLlmModel ?? "llama3.1";
-    baseUrl = ws.localLlmUrl ?? "http://localhost:11434/v1";
-  } else {
-    apiKey = process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null;
-    model = ws.anthropicModel ?? "claude-sonnet-4-6";
-  }
-
-  if (!apiKey) return null;
+  const config = resolveAiConfig(ws);
+  if (!config.apiKey) return null;
 
   const transcript = messages
     .slice(-40)
     .map((m) => `${m.author}: ${m.text}`)
     .join("\n");
 
-  const systemPrompt = `You summarise a development team's Slack channel for an agency project lead.
+  const system = `You summarise a development team's Slack channel for an agency project lead.
 Produce a tight digest of what the devs have posted recently — British English, no filler.
 Format as 2–5 short bullet points starting with "•". Lead with progress/shipped, then in-progress, then any blockers or asks for the client. If there's nothing substantive, reply exactly: "No significant updates."`;
 
-  const userPrompt = `Channel: ${channelLabel}\nRecent messages (oldest first):\n${transcript}`;
-
   try {
-    if (provider === "ANTHROPIC") {
-      const client = new Anthropic({ apiKey });
-      const res = await client.messages.create({
-        model,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      });
-      const block = res.content[0];
-      return block.type === "text" ? block.text.trim() : null;
-    } else {
-      const openai = new OpenAI({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
-      const res = await openai.chat.completions.create({
-        model,
-        max_tokens: 400,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      });
-      return res.choices[0]?.message?.content?.trim() ?? null;
-    }
+    return await completeText({
+      config,
+      system,
+      user: `Channel: ${channelLabel}\nRecent messages (oldest first):\n${transcript}`,
+      maxTokens: 400,
+      tier: "light",
+    });
   } catch {
-    // AI failure shouldn't break the activity feed — fall back to no summary.
     return null;
   }
 }

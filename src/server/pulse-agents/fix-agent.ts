@@ -142,11 +142,15 @@ async function runAnthropicLoop(
 ): Promise<void> {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userMessage }];
 
+  const cachedSystem: Anthropic.TextBlockParam[] = [
+    { type: "text", text: FIX_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+  ];
+
   let response = await client.messages.create({
     model,
     max_tokens: 4096,
     tools: ANTHROPIC_TOOLS,
-    system: FIX_SYSTEM_PROMPT,
+    system: cachedSystem,
     messages,
   });
 
@@ -178,7 +182,7 @@ async function runAnthropicLoop(
       model,
       max_tokens: 4096,
       tools: ANTHROPIC_TOOLS,
-      system: FIX_SYSTEM_PROMPT,
+      system: cachedSystem,
       messages,
     });
   }

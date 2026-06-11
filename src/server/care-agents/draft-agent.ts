@@ -40,12 +40,13 @@ export async function generateDraftReply(
   const conversation = await prisma.supportConversation.findUniqueOrThrow({
     where: { id: conversationId },
     include: {
-      messages: { orderBy: { createdAt: "asc" } },
+      messages: { orderBy: { createdAt: "desc" }, take: 20 },
       client: { select: { name: true } },
     },
   });
 
-  const threadText = conversation.messages
+  const threadText = [...conversation.messages]
+    .reverse()
     .map((m) => `[${m.direction === "outbound" ? "Support" : "Customer"}] ${m.body}`)
     .join("\n\n");
 

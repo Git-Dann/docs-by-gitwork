@@ -68,28 +68,52 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   };
 }
 
+/**
+ * Cheaper models used when tier="light". Routes to Haiku/mini for classification,
+ * short summaries, and tagging tasks that don't need full Sonnet quality.
+ * ~3.75× cheaper than Sonnet on both input and output.
+ */
+const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
+  ANTHROPIC: "claude-haiku-4-5-20251001",
+  OPENAI: "gpt-4o-mini",
+  // GEMINI: gemini-2.0-flash is already the cheapest tier — no change needed
+  // LOCAL: no cost either way — keep workspace model
+};
+
 export interface CompleteArgs {
   config: ResolvedAiConfig;
   system: string;
   user: string;
   maxTokens?: number;
+  /**
+   * "light" routes to a cheaper model (Haiku / gpt-4o-mini) for tasks where
+   * classification quality or short-form output doesn't need full Sonnet.
+   * Defaults to "standard" (workspace-configured model).
+   */
+  tier?: "light" | "standard";
 }
 
 /**
  * Run a single completion and return the assistant's text. Throws if no API key is configured
  * so callers can surface a clear "configure AI in Settings" error.
+ *
+ * Anthropic calls always mark the system prompt with cache_control so repeated calls with the
+ * same system (triage bursts, agentic loops, cached-response misses) benefit from prompt caching
+ * at $0.30/MTok reads vs $3.00/MTok regular input.
  */
-export async function completeText({ config, system, user, maxTokens = 1024 }: CompleteArgs): Promise<string> {
+export async function completeText({ config, system, user, maxTokens = 1024, tier = "standard" }: CompleteArgs): Promise<string> {
   if (!config.apiKey) {
     throw new Error("No AI API key configured. Add one in Settings → Integrations.");
   }
 
+  const model = (tier === "light" && LIGHT_MODELS[config.provider]) ? LIGHT_MODELS[config.provider]! : config.model;
+
   if (config.provider === "ANTHROPIC") {
     const client = new Anthropic({ apiKey: config.apiKey });
     const res = await client.messages.create({
-      model: config.model,
+      model,
       max_tokens: maxTokens,
-      system,
+      system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
       messages: [{ role: "user", content: user }],
     });
     const block = res.content[0];
@@ -98,7 +122,7 @@ export async function completeText({ config, system, user, maxTokens = 1024 }: C
 
   const openai = new OpenAI({ apiKey: config.apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) });
   const res = await openai.chat.completions.create({
-    model: config.model,
+    model,
     max_tokens: maxTokens,
     messages: [
       { role: "system", content: system },

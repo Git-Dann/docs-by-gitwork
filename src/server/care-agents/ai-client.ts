@@ -14,9 +14,10 @@ export async function callAI(
   systemPrompt: string,
   userPrompt: string,
   maxTokens = 2048,
+  tier: "light" | "standard" = "standard",
 ): Promise<string> {
   const config = resolveAiConfig(ctx.workspace);
-  return completeText({ config, system: systemPrompt, user: userPrompt, maxTokens });
+  return completeText({ config, system: systemPrompt, user: userPrompt, maxTokens, tier });
 }
 
 export function extractJson<T>(text: string, fallback: T): T {

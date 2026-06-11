@@ -68,6 +68,7 @@ export async function POST(
             "month-over-month changes (e.g. \"Subscribers grew 12% (+142)\"). No preamble, no bullet points, no sign-off.",
           user: userPrompt,
           maxTokens: 400,
+          tier: "light",
         });
         return { response: { narrative: narrative.trim() }, modelUsed: workspace.aiProvider };
       },
