@@ -576,9 +576,14 @@ function DevsCardSection({
         </header>
       ) : null}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {section.rows.map((candidate) => (
+        {section.rows.map((candidate, idx) => (
           <DevCard
             key={candidate.id}
+            // Header counter is 1-indexed within the section so each
+            // group reads "01 // @first-dev" through "NN // @last-dev".
+            // Globally numbering across sections would mean Off Bench
+            // starts at e.g. 19 — less useful at-a-glance.
+            number={String(idx + 1).padStart(2, "0")}
             candidate={candidate}
             checked={selectedIdSet.has(candidate.id)}
             onToggle={(next) => onToggleSelect(candidate.id, next)}
@@ -594,13 +599,14 @@ function DevsCardSection({
 }
 
 /**
- * Single dev card. Header strip carries the bulk-select checkbox (top-
- * right, stops propagation so ticks don't navigate). Body shows the
- * essentials — avatar + identity, stack, calibre + tier, current clients,
- * monthly rate (gated), updated timestamp. Card is the click target for
- * navigating to the profile.
+ * Single dev card — Portal-style. Header carries the position counter +
+ * @handle (replaces the generic "DEV" label) and the bulk-select
+ * checkbox. Body mirrors the Portal client card: avatar + name row,
+ * big calibre stat, three-slot metrics strip (stack / monthly / tier),
+ * current clients block, updated timestamp.
  */
 function DevCard({
+  number,
   candidate,
   checked,
   onToggle,
@@ -609,6 +615,7 @@ function DevCard({
   canViewRates,
   usdToGbp,
 }: {
+  number: string;
   candidate: CodeClearCandidateListItem;
   checked: boolean;
   onToggle: (next: boolean) => void;
@@ -625,10 +632,18 @@ function DevCard({
       className="widget-card group cursor-pointer transition-shadow hover:shadow-[rgba(0,0,0,0.06)_0px_4px_16px]"
       onClick={onClick}
     >
+      {/* Header: NN // @handle (mirrors the Foundry numbered widget
+          style — "01 // ROSTER" etc.). Tag lives here so the body
+          isn't duplicating it. Checkbox top-right; click + change
+          both stopPropagation so toggling doesn't navigate. */}
       <div className="widget-header">
-        <span className="widget-header__label">DEV</span>
-        {/* Checkbox stops propagation both onClick and onChange so the
-            card's onClick doesn't fire alongside the toggle. */}
+        <span className="widget-header__label flex items-center gap-1.5">
+          <span className="text-[var(--text-3)]">{number}</span>
+          <span className="text-[var(--text-4)]">{"//"}</span>
+          <span className="text-[var(--text-2)] normal-case tracking-normal">
+            @{candidate.githubHandle}
+          </span>
+        </span>
         <input
           type="checkbox"
           checked={checked}
@@ -642,8 +657,9 @@ function DevCard({
         />
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
-        {/* Identity row */}
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        {/* Identity row — avatar + name only (no handle, that's in
+            the header). Matches Portal client cards. */}
         <div className="flex items-center gap-3">
           {candidate.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -661,42 +677,65 @@ function DevCard({
                 .slice(0, 2)}
             </div>
           )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-              {candidate.name}
-            </p>
-            <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
-              @{candidate.githubHandle}
-            </p>
-          </div>
+          <p className="flex-1 truncate font-semibold leading-snug text-[var(--text-1)]">
+            {candidate.name}
+          </p>
         </div>
 
-        {/* Stack + tier + calibre — same row, three signals at a glance */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-3)]">
+        {/* Big stat = Calibre. Same display-font, leading-none treatment
+            as Portal's proposal-count stat. Updated timestamp aligns
+            bottom-right. */}
+        <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
+          <div>
+            <p
+              className={cn(
+                "text-3xl leading-none tracking-tight",
+                score == null ? "text-[var(--text-4)]" : "text-[var(--text-1)]",
+              )}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {score ?? "—"}
+            </p>
+            <p
+              className={cn(
+                "widget-data-label mt-1",
+                score == null ? "opacity-50" : "",
+              )}
+            >
+              Calibre / 100
+            </p>
+          </div>
+          <p className="widget-timestamp text-right">
+            {formatDate(candidate.updatedAt)}
+          </p>
+        </div>
+
+        {/* Metrics strip — Stack (left) · Monthly (centre, gated) · Tier (right).
+            Same three-slot grid Portal uses for Devs/cost/days so the
+            two surfaces feel related. Mono-caps per DESIGN.md. */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-2">
+          <span className="widget-data-label justify-self-start whitespace-nowrap text-[var(--text-2)]">
             {candidate.primaryStack}
           </span>
-          <RosterTierBadge
-            effectiveTier={candidate.effectiveTier}
-            isOverridden={
-              candidate.tierManualOverride !== null &&
-              candidate.tierManualOverride !== candidate.tier
-            }
-          />
-          <span
-            className={cn(
-              "ml-auto inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
-              score == null
-                ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
-                : score >= 80
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : score >= 65
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                    : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
-            )}
-            title="Calibre"
-          >
-            {score ?? "—"} / 100
+          <span className="widget-data-label justify-self-center whitespace-nowrap">
+            {canViewRates && candidate.monthlyRate != null && candidate.monthlyRateCurrency ? (
+              <span className="text-[var(--text-2)]">
+                <MonthlyRateCell
+                  amount={candidate.monthlyRate}
+                  currency={candidate.monthlyRateCurrency}
+                  usdToGbp={usdToGbp}
+                />
+              </span>
+            ) : null}
+          </span>
+          <span className="justify-self-end">
+            <RosterTierBadge
+              effectiveTier={candidate.effectiveTier}
+              isOverridden={
+                candidate.tierManualOverride !== null &&
+                candidate.tierManualOverride !== candidate.tier
+              }
+            />
           </span>
         </div>
 
@@ -712,24 +751,6 @@ function DevCard({
             />
           )}
         </div>
-
-        {/* Monthly rate — only when the viewer can see rates */}
-        {canViewRates ? (
-          <div>
-            <p className="widget-data-label mb-1.5">Monthly</p>
-            <div className="text-left">
-              <MonthlyRateCell
-                amount={candidate.monthlyRate}
-                currency={candidate.monthlyRateCurrency}
-                usdToGbp={usdToGbp}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        <p className="widget-timestamp mt-auto pt-1">
-          UPDATED {formatDate(candidate.updatedAt)}
-        </p>
       </div>
     </article>
   );
