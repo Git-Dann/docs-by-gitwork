@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { buildSyncContext, syncConnection } from "@/server/support-sync";
 import { enrichConversations } from "@/server/care-agents/enrich";
+import { evaluateWorkflowRules } from "@/server/support";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +27,14 @@ export async function POST(
 
     // Non-gating enrichment (sentiment/triage/draft) runs after the response so it
     // can't block or fail the sync. Ingestion has already stored everything.
+    // Workflow rules run after enrichment so they can read triage-set sentiment/tags.
     const newIds = result.newConversationIds ?? [];
+    const clientId = ctx.client.id;
     if (newIds.length > 0) {
-      after(() =>
-        enrichConversations({ workspace: ctx.workspace }, newIds).catch(console.error),
-      );
+      after(async () => {
+        await enrichConversations({ workspace: ctx.workspace }, newIds).catch(console.error);
+        await Promise.allSettled(newIds.map((convId) => evaluateWorkflowRules(clientId, convId)));
+      });
     }
 
     return apiOk(result);

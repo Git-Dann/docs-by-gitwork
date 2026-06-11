@@ -1471,18 +1471,36 @@ export async function evaluateWorkflowRules(
     const title = `${rule.name} — ${conv.subject.slice(0, 80)}`;
 
     if (!rule.requiresApproval) {
-      await prisma.supportTicket.create({
-        data: {
-          clientId,
-          conversationId: convId,
-          title,
-          customerLabel: conv.customerLabel,
-          source: conv.source,
-          issueType: rule.name,
-          priority: rule.name.toLowerCase().includes("bug") ? "HIGH" : "NORMAL",
-          status: "OPEN",
-        },
+      // Check if triage already created a ticket for this conversation
+      const existingTicket = await prisma.supportTicket.findFirst({
+        where: { clientId, conversationId: convId },
+        select: { id: true, priority: true },
       });
+
+      if (existingTicket) {
+        // Avoid a duplicate — escalate the existing ticket's priority if this rule implies urgency
+        const rulePriority = deriveTicketPriority(rule.name, conv.sentiment);
+        const ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
+        if ((ORDER[rulePriority] ?? 2) < (ORDER[existingTicket.priority] ?? 2)) {
+          await prisma.supportTicket.update({
+            where: { id: existingTicket.id },
+            data: { priority: rulePriority },
+          });
+        }
+      } else {
+        await prisma.supportTicket.create({
+          data: {
+            clientId,
+            conversationId: convId,
+            title,
+            customerLabel: conv.customerLabel,
+            source: conv.source,
+            issueType: rule.name,
+            priority: deriveTicketPriority(rule.name, conv.sentiment),
+            status: "OPEN",
+          },
+        });
+      }
     } else {
       // Queue as a draft action for human review
       const existingTicket = await prisma.supportTicket.findFirst({
@@ -1507,4 +1525,11 @@ export async function evaluateWorkflowRules(
     // Only fire the first matching rule per sync (avoid cascade of auto-tickets)
     break;
   }
+}
+
+function deriveTicketPriority(ruleName: string, sentiment: string): SupportTicketPriority {
+  const name = ruleName.toLowerCase();
+  if (name.includes("urgent") || name.includes("critical")) return "URGENT";
+  if (name.includes("bug") || name.includes("high") || sentiment === "NEGATIVE") return "HIGH";
+  return "NORMAL";
 }
