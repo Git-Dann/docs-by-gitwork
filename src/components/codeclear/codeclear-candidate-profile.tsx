@@ -82,8 +82,23 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       portfolioUrl: candidate.portfolioUrl ?? "",
       yearsExperience:
         candidate.yearsExperience != null ? String(candidate.yearsExperience) : "",
-      hourlyRate: candidate.hourlyRate != null ? String(candidate.hourlyRate) : "",
-      currency: candidate.currency ?? "",
+      // Pre-fill from the candidate's stored rate first; fall back to the
+      // linked rate-card monthly figure so devs paid on a monthly retainer
+      // (like Jamal) see their actual rate on first open. Period defaults
+      // to MONTH in that fallback so the toggle matches.
+      hourlyRate:
+        candidate.hourlyRate != null
+          ? String(candidate.hourlyRate)
+          : candidate.monthlyRate != null
+            ? String(candidate.monthlyRate)
+            : "",
+      ratePeriod:
+        candidate.ratePeriod ??
+        (candidate.hourlyRate == null && candidate.monthlyRate != null
+          ? "MONTH"
+          : "HOUR"),
+      currency:
+        candidate.currency ?? candidate.monthlyRateCurrency ?? "USD",
       timezone: candidate.timezone ?? "",
       availability: candidate.availability ?? "",
       origin: candidate.origin,
@@ -134,6 +149,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       yearsExperience:
         editForm.yearsExperience !== "" ? Number(editForm.yearsExperience) : null,
       hourlyRate: editForm.hourlyRate !== "" ? Number(editForm.hourlyRate) : null,
+      ratePeriod: editForm.ratePeriod,
       currency: editForm.currency || null,
       timezone: editForm.timezone || null,
       availability: editForm.availability || null,

@@ -110,6 +110,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? { yearsExperience: body.yearsExperience }
           : {}),
         ...(body.hourlyRate !== undefined ? { hourlyRate: body.hourlyRate } : {}),
+        ...(body.ratePeriod !== undefined ? { ratePeriod: body.ratePeriod } : {}),
         ...(body.currency !== undefined ? { currency: body.currency } : {}),
         ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
         ...(body.availability !== undefined ? { availability: body.availability } : {}),

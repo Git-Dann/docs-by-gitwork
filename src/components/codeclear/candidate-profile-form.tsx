@@ -11,6 +11,7 @@ import {
   TECH_STACK_OPTIONS,
   type CandidateAvailability,
   type CandidateOrigin,
+  type CandidateRatePeriod,
 } from "@/types/codeclear";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
@@ -27,6 +28,10 @@ export interface CandidateProfileValue {
   portfolioUrl: string;
   yearsExperience: string;
   hourlyRate: string;
+  /** Period the `hourlyRate` figure represents. Toggle in the form
+   * controls the label ("Hourly rate" vs "Monthly rate") and the value
+   * stored on Candidate.ratePeriod. */
+  ratePeriod: CandidateRatePeriod;
   currency: string;
   timezone: string;
   availability: CandidateAvailability | "";
@@ -48,6 +53,7 @@ export const emptyCandidateProfile: CandidateProfileValue = {
   portfolioUrl: "",
   yearsExperience: "",
   hourlyRate: "",
+  ratePeriod: "HOUR",
   currency: "USD",
   timezone: "",
   availability: "",
@@ -137,8 +143,120 @@ export function CandidateProfileForm({
         </Field>
       </Section>
 
-      {/* Tech */}
-      <Section title="Tech stack" span="half">
+      {/* Row 2 — paired half-width sections so the 2-column rhythm is
+          balanced. Profile links (3 URL fields) + Rate & availability
+          (3-4 fields) have similar field counts. */}
+      <Section title="Profile links" span="half">
+        <Field label="LinkedIn URL" span="full">
+          <input
+            value={value.linkedinUrl}
+            onChange={(event) => patch("linkedinUrl", event.target.value)}
+            placeholder="https://linkedin.com/in/…"
+            className="app-input"
+            autoComplete="off"
+          />
+        </Field>
+        <Field label="CV URL" span="full">
+          <input
+            value={value.cvUrl}
+            onChange={(event) => patch("cvUrl", event.target.value)}
+            placeholder="https://…"
+            className="app-input"
+            autoComplete="off"
+          />
+        </Field>
+        <Field label="Portfolio URL" span="full">
+          <input
+            value={value.portfolioUrl}
+            onChange={(event) => patch("portfolioUrl", event.target.value)}
+            placeholder="https://…"
+            className="app-input"
+            autoComplete="off"
+          />
+        </Field>
+      </Section>
+
+      <Section title="Rate & availability" span="half">
+        <Field label="Years of experience">
+          <input
+            type="number"
+            min={0}
+            max={60}
+            value={value.yearsExperience}
+            onChange={(event) => patch("yearsExperience", event.target.value)}
+            className="app-input"
+          />
+        </Field>
+        <Field label="Timezone">
+          <input
+            value={value.timezone}
+            onChange={(event) => patch("timezone", event.target.value)}
+            placeholder="e.g. Europe/London"
+            className="app-input"
+            autoComplete="off"
+          />
+        </Field>
+        {/* Rate: currency selector (110px) + numeric input. Label adapts
+            to the Hour/Month toggle above so admins can enter either
+            without changing fields. Hidden when the viewer lacks
+            `code.viewRates`. */}
+        {canViewRates ? (
+          <Field
+            label={value.ratePeriod === "MONTH" ? "Monthly rate" : "Hourly rate"}
+            span="full"
+          >
+            <div className="space-y-1.5">
+              <RatePeriodToggle
+                value={value.ratePeriod}
+                onChange={(next) => patch("ratePeriod", next)}
+              />
+              <div className="grid grid-cols-[110px_1fr] gap-1.5">
+                <select
+                  value={value.currency}
+                  onChange={(event) => patch("currency", event.target.value.toUpperCase())}
+                  className="app-select pr-9"
+                  aria-label="Currency"
+                >
+                  {COMMON_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={value.hourlyRate}
+                  onChange={(event) => patch("hourlyRate", event.target.value)}
+                  className="app-input w-full"
+                  placeholder={value.ratePeriod === "MONTH" ? "1500" : "0"}
+                />
+              </div>
+            </div>
+          </Field>
+        ) : null}
+        <Field label="Availability" span="full">
+          <select
+            value={value.availability}
+            onChange={(event) =>
+              patch("availability", event.target.value as CandidateAvailability | "")
+            }
+            className="app-select pr-9"
+          >
+            <option value="">Auto (from placements)</option>
+            {(Object.keys(AVAILABILITY_LABELS) as CandidateAvailability[]).map((entry) => (
+              <option key={entry} value={entry}>
+                {AVAILABILITY_LABELS[entry]}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Section>
+
+      {/* Row 3 — Tech stack spans the full width below the paired row
+          so the chip picker has room to breathe with many stacks. */}
+      <Section title="Tech stack" span="full">
         <Field label="Primary stack" span="full">
           <input
             value={value.primaryStack}
@@ -167,7 +285,7 @@ export function CandidateProfileForm({
           One control to pick all the clients this dev is engaged with
           right now. They land in those clients' columns in the Pipeline. */}
       {showClientsPicker ? (
-        <Section title="Clients" span="half">
+        <Section title="Clients" span="full">
           <Field label="Current clients" span="full">
             <ClientMultiSelect
               selectedIds={value.clientIds}
@@ -179,110 +297,6 @@ export function CandidateProfileForm({
           </Field>
         </Section>
       ) : null}
-
-      {/* Profile links */}
-      <Section title="Profile links" span="half">
-        <Field label="LinkedIn URL">
-          <input
-            value={value.linkedinUrl}
-            onChange={(event) => patch("linkedinUrl", event.target.value)}
-            placeholder="https://linkedin.com/in/…"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="CV URL">
-          <input
-            value={value.cvUrl}
-            onChange={(event) => patch("cvUrl", event.target.value)}
-            placeholder="https://…"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="Portfolio URL" span="full">
-          <input
-            value={value.portfolioUrl}
-            onChange={(event) => patch("portfolioUrl", event.target.value)}
-            placeholder="https://…"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
-      </Section>
-
-      {/* Rate & availability */}
-      <Section title="Rate & availability" span="half">
-        <Field label="Years of experience">
-          <input
-            type="number"
-            min={0}
-            max={60}
-            value={value.yearsExperience}
-            onChange={(event) => patch("yearsExperience", event.target.value)}
-            className="app-input"
-          />
-        </Field>
-        <Field label="Timezone">
-          <input
-            value={value.timezone}
-            onChange={(event) => patch("timezone", event.target.value)}
-            placeholder="e.g. Europe/London"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
-        {/* Hourly rate: explicit grid track for the currency (110px) + 1fr
-            for the number input. Hidden for users without `code.viewRates` — the
-            field simply drops out of the stack, which reflows cleanly. */}
-        {canViewRates ? (
-          <Field label="Hourly rate" span="full">
-            <div className="grid grid-cols-[110px_1fr] gap-1.5">
-              <select
-                value={value.currency}
-                onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-                // `app-select` reserves ~38px on the right for the chevron icon;
-                // explicit `pr-9` keeps the 3-letter ISO code clear of it.
-                className="app-select pr-9"
-                aria-label="Currency"
-              >
-                {COMMON_CURRENCIES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={value.hourlyRate}
-                onChange={(event) => patch("hourlyRate", event.target.value)}
-                className="app-input w-full"
-                placeholder="0"
-              />
-            </div>
-          </Field>
-        ) : null}
-        {/* Full-width so "Auto (from placements)" never truncates behind the
-            chevron — the placeholder was getting clipped to "Auto (from placem…". */}
-        <Field label="Availability" span="full">
-          <select
-            value={value.availability}
-            onChange={(event) =>
-              patch("availability", event.target.value as CandidateAvailability | "")
-            }
-            className="app-select pr-9"
-          >
-            <option value="">Auto (from placements)</option>
-            {(Object.keys(AVAILABILITY_LABELS) as CandidateAvailability[]).map((entry) => (
-              <option key={entry} value={entry}>
-                {AVAILABILITY_LABELS[entry]}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </Section>
 
       {/* Bio */}
       <Section title="About" span="full">
@@ -360,6 +374,52 @@ function Field({
       <span className="text-xs font-medium text-[var(--text-3)]">{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * Two-button segmented control for the rate period (Hour | Month). Drives
+ * the field label and what gets stored on Candidate.ratePeriod — the
+ * numeric figure is the same field either way.
+ */
+function RatePeriodToggle({
+  value,
+  onChange,
+}: {
+  value: CandidateRatePeriod;
+  onChange: (next: CandidateRatePeriod) => void;
+}) {
+  const options: Array<{ id: CandidateRatePeriod; label: string }> = [
+    { id: "HOUR", label: "Hourly" },
+    { id: "MONTH", label: "Monthly" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Rate period"
+      className="inline-flex rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+    >
+      {options.map((option) => {
+        const active = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.id)}
+            className={cn(
+              "rounded-[6px] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition",
+              active
+                ? "bg-white text-[var(--text-1)] shadow-sm"
+                : "text-[var(--text-4)] hover:text-[var(--text-2)]",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

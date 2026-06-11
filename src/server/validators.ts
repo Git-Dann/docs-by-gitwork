@@ -289,6 +289,7 @@ const githubHandleSchema = requiredTrimmedString.transform((value) =>
 // strict z.string().url()) so legacy data with bare domains still validates.
 const candidateOriginSchema = z.enum(["INTERNAL", "EXTERNAL"]);
 const candidateDevGroupSchema = z.enum(["BENCH", "PRO_BONO"]);
+const candidateRatePeriodSchema = z.enum(["HOUR", "MONTH"]);
 const candidateAvailabilitySchema = z.enum(["AVAILABLE", "ENGAGED", "UNAVAILABLE"]);
 
 export const candidateCreateSchema = z.object({
@@ -313,6 +314,7 @@ export const candidateCreateSchema = z.object({
   portfolioUrl: optionalTrimmedString,
   yearsExperience: z.coerce.number().int().min(0).max(60).nullable().optional(),
   hourlyRate: z.coerce.number().min(0).nullable().optional(),
+  ratePeriod: candidateRatePeriodSchema.optional(),
   currency: z
     .string()
     .trim()
@@ -347,6 +349,7 @@ export const candidateUpdateSchema = z
     portfolioUrl: optionalTrimmedString,
     yearsExperience: z.coerce.number().int().min(0).max(60).nullable().optional(),
     hourlyRate: z.coerce.number().min(0).nullable().optional(),
+    ratePeriod: candidateRatePeriodSchema.optional(),
     currency: z
       .string()
       .trim()
