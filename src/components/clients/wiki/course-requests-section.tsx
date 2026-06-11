@@ -170,7 +170,7 @@ export function CourseRequestsSection({
   // Grid template: checkbox | course+notes | country | submitted | sent | status | actions
   // readOnly drops checkbox and actions columns
   const gridCols = readOnly
-    ? "20px 1fr 88px 92px 92px 72px"
+    ? "1fr 88px 92px 92px 72px"
     : "20px 1fr 88px 92px 92px 72px 52px";
 
   return (
