@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
+import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import type { AnalyticsReportMetric } from "@/types/support";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function POST(
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
       select: {
+        id: true,
         aiProvider: true,
         anthropicApiKey: true, anthropicModel: true,
         openaiApiKey: true, openaiModel: true,
@@ -51,17 +53,27 @@ export async function POST(
     });
 
     const config = resolveAiConfig(workspace);
-    const narrative = await completeText({
-      config,
-      system:
-        "You write the analytics summary for a monthly client support report. British English. " +
-        "One short paragraph (2–4 sentences), factual and specific, leading with the most material " +
-        "month-over-month changes (e.g. \"Subscribers grew 12% (+142)\"). No preamble, no bullet points, no sign-off.",
-      user: `Client: ${client?.name ?? "the client"}${body.periodLabel ? ` · Period: ${body.periodLabel}` : ""}\n\nMetrics:\n${lines.join("\n")}`,
-      maxTokens: 400,
+    const userPrompt = `Client: ${client?.name ?? "the client"}${body.periodLabel ? ` · Period: ${body.periodLabel}` : ""}\n\nMetrics:\n${lines.join("\n")}`;
+    const inputsHash = hashInputs({ metrics, periodLabel: body.periodLabel ?? null });
+    const cacheResult = await cachedOrCompute<{ narrative: string }>({
+      workspaceId: workspace.id,
+      cacheKey: `care-analytics-narrative:${clientId}`,
+      inputsHash,
+      compute: async () => {
+        const narrative = await completeText({
+          config,
+          system:
+            "You write the analytics summary for a monthly client support report. British English. " +
+            "One short paragraph (2–4 sentences), factual and specific, leading with the most material " +
+            "month-over-month changes (e.g. \"Subscribers grew 12% (+142)\"). No preamble, no bullet points, no sign-off.",
+          user: userPrompt,
+          maxTokens: 400,
+        });
+        return { response: { narrative: narrative.trim() }, modelUsed: workspace.aiProvider };
+      },
     });
 
-    return apiOk({ narrative: narrative.trim() });
+    return apiOk({ narrative: cacheResult.response.narrative });
   } catch (error) {
     return fromError(error);
   }

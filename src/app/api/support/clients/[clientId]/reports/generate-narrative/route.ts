@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
+import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getPerformanceMetricsForPeriod } from "@/server/support";
 
 function fmtDuration(ms: number | null): string {
@@ -44,6 +45,7 @@ export async function POST(
       prisma.workspace.findFirst({
         where: { slug: DEFAULT_WORKSPACE_SLUG },
         select: {
+          id: true,
           aiProvider: true,
           anthropicApiKey: true, anthropicModel: true,
           openaiApiKey: true, openaiModel: true,
@@ -136,34 +138,41 @@ export async function POST(
     }
 
     const config = resolveAiConfig(workspace);
-    const raw = await completeText({
-      config,
-      system: `You write three narrative sections for a monthly client support report. British English. Factual, concise, professional.
+    const inputsHash = hashInputs(lines);
+    const cacheResult = await cachedOrCompute<GeneratedNarrative>({
+      workspaceId: workspace.id,
+      cacheKey: `care-report-narrative:${clientId}`,
+      inputsHash,
+      compute: async () => {
+        const raw = await completeText({
+          config,
+          system: `You write three narrative sections for a monthly client support report. British English. Factual, concise, professional.
 Return ONLY a JSON object in this exact format — no preamble, no markdown fences:
 {
   "overviewText": "3-4 sentences summarising the month's support activity, volume, and standout themes",
   "performanceText": "2-3 sentences on response quality, resolution rate, any SLA notes, and backlog",
   "summaryText": "2-3 sentences closing summary with a brief outlook or recommendation for next month"
 }`,
-      user: lines.join("\n"),
-      maxTokens: 800,
+          user: lines.join("\n"),
+          maxTokens: 800,
+        });
+        let result: GeneratedNarrative = { overviewText: "", performanceText: "", summaryText: "" };
+        try {
+          const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+          const jsonStr = fence ? fence[1] : raw;
+          const start = jsonStr.indexOf("{");
+          const end = jsonStr.lastIndexOf("}");
+          if (start !== -1 && end !== -1) {
+            result = JSON.parse(jsonStr.slice(start, end + 1)) as GeneratedNarrative;
+          }
+        } catch {
+          result = { overviewText: raw.trim(), performanceText: "", summaryText: "" };
+        }
+        return { response: result, modelUsed: workspace.aiProvider };
+      },
     });
 
-    let result: GeneratedNarrative = { overviewText: "", performanceText: "", summaryText: "" };
-    try {
-      const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-      const jsonStr = fence ? fence[1] : raw;
-      const start = jsonStr.indexOf("{");
-      const end = jsonStr.lastIndexOf("}");
-      if (start !== -1 && end !== -1) {
-        result = JSON.parse(jsonStr.slice(start, end + 1)) as GeneratedNarrative;
-      }
-    } catch {
-      // Return raw as overview if parse fails
-      result = { overviewText: raw.trim(), performanceText: "", summaryText: "" };
-    }
-
-    return apiOk({ ...result, ticketCount: total });
+    return apiOk({ ...cacheResult.response, ticketCount: total });
   } catch (error) {
     return fromError(error);
   }
