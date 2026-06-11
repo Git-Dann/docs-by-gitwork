@@ -1,6 +1,5 @@
-// Generic Foundry-branded link preview for client onboarding. Intentionally
-// carries NO client data — unfurls are public to anyone the tokenised URL
-// reaches.
+// Root OG card — used by the marketing homepage and inherited by any route
+// that doesn't supply its own opengraph-image.tsx. Static, no DB.
 
 import { ImageResponse } from "next/og";
 import { BrandedCard } from "@/lib/og/card";
@@ -9,19 +8,19 @@ import { loadFoundryLogo } from "@/lib/og/logo";
 import { SIZE, CONTENT_TYPE } from "@/lib/og/constants";
 
 export const runtime = "nodejs";
-export const alt = "Foundry — Project onboarding";
+export const alt = "Foundry by Gitwork";
 export const size = SIZE;
 export const contentType = CONTENT_TYPE;
 
-export default async function OnboardingOgImage() {
+export default async function OgImage() {
   const [fonts, logo] = await Promise.all([loadOgFonts(), loadFoundryLogo()]);
   return new ImageResponse(
     (
       <BrandedCard
         module="FOUNDRY"
-        title="Let's get your project set up."
-        subtitle="A quick, secure onboarding — about 3 minutes."
-        bottomRight="Onboarding"
+        title="Foundry by Gitwork"
+        subtitle="Prompt-to-production delivery platform"
+        bottomRight="Home"
         logoDataUri={logo}
       />
     ),
