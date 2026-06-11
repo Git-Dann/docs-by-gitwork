@@ -5,6 +5,7 @@ import { CTAEditor } from "@/components/proposals/cta-editor";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { defineSection } from "@/lib/sections/types";
 import { FormInput, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { safeUrl } from "@/lib/markdown";
 import type { CtaSectionData } from "@/types/proposal";
 
 export const ctaNextStepsSection = defineSection<CtaSectionData>({
@@ -50,12 +51,12 @@ export const ctaNextStepsSection = defineSection<CtaSectionData>({
         <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-2)]">{data.body}</p>
         <div className="mt-5 flex flex-wrap gap-2">
           {primary ? (
-            <a href={primary.destination} className={buttonStyles({ variant: "primary", size: "md" })}>
+            <a href={safeUrl(primary.destination) ?? "#"} rel="noopener noreferrer nofollow" className={buttonStyles({ variant: "primary", size: "md" })}>
               {primary.label}
             </a>
           ) : null}
           {secondary ? (
-            <a href={secondary.destination} className={buttonStyles({ variant: "secondary", size: "md" })}>
+            <a href={safeUrl(secondary.destination) ?? "#"} rel="noopener noreferrer nofollow" className={buttonStyles({ variant: "secondary", size: "md" })}>
               {secondary.label}
             </a>
           ) : null}

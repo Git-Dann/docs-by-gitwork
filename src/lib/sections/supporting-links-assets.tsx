@@ -6,6 +6,7 @@ import { LinkManager } from "@/components/proposals/link-manager";
 import { defineSection } from "@/lib/sections/types";
 import { FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import type { SupportingLinksSectionData } from "@/types/proposal";
+import { safeUrl } from "@/lib/markdown";
 
 function formatLinkTypeLabel(value: string) {
   switch (value) {
@@ -74,7 +75,8 @@ export const supportingLinksAssetsSection = defineSection<SupportingLinksSection
               </span>
             </div>
             <a
-              href={link.url}
+              href={safeUrl(link.url) ?? "#"}
+              rel="noopener noreferrer nofollow"
               className="mt-2 inline-flex text-sm leading-6 text-[var(--brand-700)] underline-offset-2 hover:underline"
             >
               {link.url}

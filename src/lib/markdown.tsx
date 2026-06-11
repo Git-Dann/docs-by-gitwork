@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 const INLINE_RE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
 
 /** Allow only safe URL schemes; bare domains become https; anything odd (javascript:, data:) is dropped. */
-function safeUrl(raw: string): string | null {
+export function safeUrl(raw: string): string | null {
   const url = raw.trim();
   if (/^(https?:|mailto:)/i.test(url)) return url;
   if (/^[/#]/.test(url)) return url; // site-relative or anchor
