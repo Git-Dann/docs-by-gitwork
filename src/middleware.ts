@@ -130,6 +130,28 @@ function configuredApiKey() {
   return process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? null;
 }
 
+// Known link-unfurl crawlers (Slack/Twitter/Facebook/LinkedIn/WhatsApp/Discord/
+// Telegram/Mastodon/Bluesky/Skype). When one of these hits an /app/** URL, the
+// auth redirect would point it at /login and the unfurl would read /login's
+// metadata — generic platform card, never the entity. Letting bots through
+// renders the page server-side just enough that generateMetadata + the
+// colocated opengraph-image.tsx emit the right meta tags; the body is mostly
+// client-component shells which crawlers ignore.
+const UNFURL_BOT_PATTERN =
+  /\b(Slackbot|Slack-ImgProxy|Twitterbot|facebookexternalhit|LinkedInBot|WhatsApp|Discordbot|TelegramBot|SkypeUriPreview|Mastodon|bsky\.app|Embedly)\b/i;
+
+function isUnfurlBot(userAgent: string | null): boolean {
+  return !!userAgent && UNFURL_BOT_PATTERN.test(userAgent);
+}
+
+// Anywhere under /app, allow the colocated opengraph-image (and twitter-image)
+// route through unauthenticated. The image is generated from data already in
+// the URL (entity name / id) so there's no additional disclosure — and direct
+// access from Open Graph debuggers / preview tooling needs it to be reachable.
+function isOgAssetPath(pathname: string): boolean {
+  return /\/(opengraph|twitter)-image(\b|\/|$)/.test(pathname);
+}
+
 function hasModuleAccess(pathname: string, permissions: string[]): boolean {
   for (const { prefix, module } of MODULE_PATHS) {
     if (pathname.startsWith(prefix)) {
@@ -175,8 +197,15 @@ export default auth(async (req) => {
     // else: let them through to sign in again
   }
 
-  // App pages: require NextAuth session
+  // App pages: require NextAuth session — UNLESS the request is a link-unfurl
+  // crawler (Slackbot etc.) reading metadata to render a card, or the path
+  // itself is a public OG image asset. Both bypass the auth redirect so the
+  // unfurl reflects the entity, not the login page.
   if (pathname.startsWith("/app")) {
+    const userAgent = req.headers.get("user-agent");
+    if (isOgAssetPath(pathname) || isUnfurlBot(userAgent)) {
+      return NextResponse.next();
+    }
     if (!req.auth) {
       const loginUrl = new URL("/login", req.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
