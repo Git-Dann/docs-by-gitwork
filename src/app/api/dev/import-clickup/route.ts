@@ -19,7 +19,7 @@
  */
 
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { assertSuperAdmin, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { runClickupImport } from "@/server/clickup-import";
 import { runCsvImport } from "@/server/clickup-csv-import";
 import { isAtLeast } from "@/types/auth";
@@ -30,6 +30,7 @@ export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
+    assertSuperAdmin(await getEffectiveUserOrNull(req));
     const user = await requireAuthedUser(req);
     // Admins AND Super Admins (Dan) — isAtLeast, not a strict equality.
     if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);

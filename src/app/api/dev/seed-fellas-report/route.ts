@@ -1,6 +1,7 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,9 @@ const MAY_2026_PAYLOAD = {
     "May 2026 continued to see cancellations as the primary driver of support activity. Response times were strong throughout and the team handled the volume effectively. The Firestick issue is worth monitoring for potential recurrence as the device base grows. Looking ahead to June, continued focus on subscriber retention — particularly around renewal communications — is recommended to help reduce cancellation volumes.",
 };
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    assertSuperAdmin(await getEffectiveUserOrNull(request));
     const client = await prisma.supportClient.findFirst({
       where: { name: { contains: "Fellas", mode: "insensitive" } },
     });

@@ -1,5 +1,6 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageClients, requireAuthedUser } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getClientDesignSystem, saveClientDesignSystem } from "@/server/design-system";
 import { designSystemSaveSchema } from "@/server/validators";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +19,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   try {
     const user = await requireAuthedUser(req);
     const { slug } = await params;
+    await assertClientAccessBySlug(user, slug);
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await getClientDesignSystem(user, clientId));
@@ -31,6 +33,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ slug: st
     const user = await requireAuthedUser(req);
     assertCan(user, canManageClients, "manage client design systems");
     const { slug } = await params;
+    await assertClientAccessBySlug(user, slug);
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = designSystemSaveSchema.parse(await req.json());

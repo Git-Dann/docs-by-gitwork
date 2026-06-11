@@ -5,6 +5,7 @@ import {
   getOnboardingAdmin,
   revealOnboardingBank,
 } from "@/server/onboarding";
+import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,11 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "manage onboarding links");
     const { id } = await params;
     const ok = await deleteOnboardingLink(id);
     if (!ok) return apiError("Onboarding link not found", 404);

@@ -15,7 +15,7 @@
 import { Prisma } from "@prisma/client";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { assertSuperAdmin, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ function asObject(value: Prisma.JsonValue | null): Record<string, unknown> {
 
 export async function POST(req: Request) {
   try {
+    assertSuperAdmin(await getEffectiveUserOrNull(req));
     const user = await requireAuthedUser(req);
     // Admins AND Super Admins (Dan) — isAtLeast, not strict equality.
     if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);

@@ -5,6 +5,8 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -36,10 +38,11 @@ const SLACK_API = "https://slack.com/api";
  * Response:
  *   { configured, channelName, summary, generatedAt, reason, messages[] }
  */
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { slug } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
 
     const [client, ws] = await Promise.all([
       prisma.workspaceClient.findFirst({

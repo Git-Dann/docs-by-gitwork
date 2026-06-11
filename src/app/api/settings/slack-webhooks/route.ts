@@ -13,6 +13,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 const VALID_EVENTS = [
   "DOC_SHARED",
@@ -58,6 +59,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const body = createSchema.parse(await request.json());
 

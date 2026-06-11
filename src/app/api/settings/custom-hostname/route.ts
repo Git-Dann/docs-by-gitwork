@@ -13,6 +13,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { dnsInstructions, isValidHostname, mintVerificationToken } from "@/server/custom-hostname";
 
 const postSchema = z.object({
@@ -51,6 +52,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const body = postSchema.parse(await request.json());
     const hostname = body.hostname.trim().toLowerCase();
@@ -97,8 +99,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     await prisma.workspace.update({
       where: { id: workspace.id },

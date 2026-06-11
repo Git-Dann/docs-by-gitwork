@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { deleteClientDesign, updateClientDesign } from "@/server/clients";
 import { clientDesignUpdateSchema } from "@/server/validators";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +13,8 @@ interface RouteContext {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const { designId } = await context.params;
+    const { slug, designId } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
     const body = clientDesignUpdateSchema.parse(await request.json());
     const design = await updateClientDesign(designId, body);
 
@@ -25,9 +28,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const { designId } = await context.params;
+    const { slug, designId } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
     await deleteClientDesign(designId);
     return apiOk({ deleted: true });
   } catch (error) {

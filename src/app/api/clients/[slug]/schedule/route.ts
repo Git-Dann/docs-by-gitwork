@@ -3,6 +3,8 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getClientSchedule, parseScheduleRange } from "@/server/schedule";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { slug } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
 
     const client = await prisma.workspaceClient.findFirst({
       where: { slug, workspaceId: workspace.id },

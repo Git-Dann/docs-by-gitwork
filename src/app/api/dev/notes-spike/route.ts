@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { findGeminiNotesForEvent } from "@/server/google-drive-notes";
 
@@ -18,6 +19,7 @@ export const maxDuration = 30;
  */
 export async function GET(req: NextRequest) {
   try {
+    assertSuperAdmin(await getEffectiveUserOrNull(req));
     const title = req.nextUrl.searchParams.get("title");
     const start = req.nextUrl.searchParams.get("start");
     if (!title) return apiError("Pass ?title= the meeting title (and optionally &start=ISO)", 400);
