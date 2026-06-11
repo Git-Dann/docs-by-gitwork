@@ -20,6 +20,7 @@ export async function POST(
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
     if (!scan.llmAnalysis) return apiError("AI synthesis must complete before generating discovery prep.", 400);
+    if (scan.discoveryKit) return apiOk({ kit: scan.discoveryKit });
 
     const { workspace } = await ensureBaseRecords();
     const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
