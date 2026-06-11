@@ -28,6 +28,8 @@ const bodySchema = z.object({
   dryRun: z.boolean().optional(),
   since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   clientSlug: z.string().optional(),
+  /** Optional: override the Care connector lookup — paste the admin JWT directly in the body. */
+  apiToken: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
     const user = await requireAuthedUser(req);
     if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
 
-    const { dryRun = true, since = "2026-06-01", clientSlug = "wedge" } = bodySchema.parse(
+    const { dryRun = true, since = "2026-06-01", clientSlug = "wedge", apiToken } = bodySchema.parse(
       await req.json().catch(() => ({})),
     );
 
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
     });
     if (!client) return apiError("Client not found", 404);
 
-    const result = await importBigWedgeCourseRequests(client.id, { since, dryRun });
+    const result = await importBigWedgeCourseRequests(client.id, { since, dryRun, apiToken });
     if ("error" in result) return apiError(result.error, 400);
     return apiOk(result);
   } catch (err) {
