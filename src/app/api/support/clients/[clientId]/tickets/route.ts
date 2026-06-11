@@ -5,13 +5,18 @@ import { listTickets, createTicket } from "@/server/support";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
     const { clientId } = await params;
-    const tickets = await listTickets(clientId);
-    return apiOk({ tickets });
+    const limit = request.nextUrl.searchParams.get("limit");
+    const cursor = request.nextUrl.searchParams.get("cursor") ?? undefined;
+    const { tickets, nextCursor } = await listTickets(clientId, {
+      limit: limit ? Math.max(1, Number(limit)) : undefined,
+      cursor,
+    });
+    return apiOk({ tickets, nextCursor });
   } catch (error) {
     return fromError(error);
   }

@@ -18,6 +18,7 @@ import type {
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { encrypt, decrypt } from "@/lib/encryption";
 import type {
   SupportClientStatus,
   SupportSource as PrismaSupportSource,
@@ -183,6 +184,50 @@ export function serializeSupportClient(row: {
   };
 }
 
+// ─── Scraper config encryption helpers ───────────────────────────────────────
+
+const SENSITIVE_SCRAPER_KEYS = ["botToken", "serviceAccountJson", "apiToken", "webhookToken"];
+
+/**
+ * Encrypts sensitive values in a scraperConfig object using AES-256-GCM.
+ * No-ops when ENCRYPTION_KEY is not set, so existing deployments are unaffected
+ * until the key is provisioned.
+ */
+export function encryptScraperConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!process.env.ENCRYPTION_KEY) return config;
+  return Object.fromEntries(
+    Object.entries(config).map(([k, v]) =>
+      SENSITIVE_SCRAPER_KEYS.includes(k) && typeof v === "string" && v && !v.startsWith("enc:")
+        ? [k, `enc:${encrypt(v)}`]
+        : [k, v],
+    ),
+  );
+}
+
+/**
+ * Decrypts `enc:…` values in a scraperConfig object. Plain-text values (legacy or
+ * unset ENCRYPTION_KEY) are returned as-is.
+ */
+export function decryptScraperConfig(
+  config: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!config) return null;
+  return Object.fromEntries(
+    Object.entries(config).map(([k, v]) => {
+      if (typeof v === "string" && v.startsWith("enc:")) {
+        try {
+          return [k, decrypt(v.slice(4))];
+        } catch {
+          return [k, ""];  // decryption failure → empty (won't expose ciphertext)
+        }
+      }
+      return [k, v];
+    }),
+  );
+}
+
 export function serializeConnection(row: {
   id: string;
   clientId: string;
@@ -197,11 +242,10 @@ export function serializeConnection(row: {
   lastSyncStats?: unknown;
   channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
+  const decryptedConfig = decryptScraperConfig(row.scraperConfig as Record<string, unknown> | null);
+
   const connectedEmail = (() => {
-    // DWD: impersonateEmail in scraperConfig is the primary source
-    const cfg = row.scraperConfig as Record<string, unknown> | null;
-    if (typeof cfg?.impersonateEmail === "string") return cfg.impersonateEmail;
-    // Legacy: per-connection OAuth token
+    if (typeof decryptedConfig?.impersonateEmail === "string") return decryptedConfig.impersonateEmail;
     const token = row.channelTokens?.[0];
     if (!token) return undefined;
     const td = token.tokenData as Record<string, unknown>;
@@ -218,8 +262,8 @@ export function serializeConnection(row: {
     secretRef: row.secretRef ?? undefined,
     nextStep: row.nextStep ?? undefined,
     connectedEmail,
-    scraperConfig: row.scraperConfig
-      ? (row.scraperConfig as Connection["scraperConfig"])
+    scraperConfig: decryptedConfig
+      ? (decryptedConfig as Connection["scraperConfig"])
       : undefined,
     lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : undefined,
     lastSyncStats: (row.lastSyncStats as Connection["lastSyncStats"]) ?? undefined,
@@ -508,13 +552,24 @@ export async function deleteSupportClient(clientId: string): Promise<void> {
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
-export async function listConversations(clientId: string): Promise<Conversation[]> {
+export async function listConversations(
+  clientId: string,
+  opts: { limit?: number; cursor?: string } = {},
+): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
+  const limit = Math.min(opts.limit ?? 100, 200);
   const rows = await prisma.supportConversation.findMany({
     where: { clientId },
     include: { tickets: { select: { id: true }, take: 1 } },
     orderBy: { receivedAt: "desc" },
+    take: limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
-  return rows.map(serializeConversation);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    conversations: page.map(serializeConversation),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
 }
 
 export async function getConversation(convId: string): Promise<Conversation> {
@@ -629,12 +684,23 @@ export async function createMessage(
 
 // ─── Tickets ─────────────────────────────────────────────────────────────────
 
-export async function listTickets(clientId: string): Promise<Ticket[]> {
+export async function listTickets(
+  clientId: string,
+  opts: { limit?: number; cursor?: string } = {},
+): Promise<{ tickets: Ticket[]; nextCursor: string | null }> {
+  const limit = Math.min(opts.limit ?? 100, 200);
   const rows = await prisma.supportTicket.findMany({
     where: { clientId },
     orderBy: { updatedAt: "desc" },
+    take: limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
-  return rows.map(serializeTicket);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    tickets: page.map(serializeTicket),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
 }
 
 export async function getTicket(ticketId: string): Promise<Ticket> {
@@ -994,7 +1060,9 @@ export async function createConnection(
       health: data.health ? toDbHealth(data.health) : "NEEDS_SETUP",
       secretRef: data.secretRef ?? null,
       nextStep: data.nextStep ?? null,
-      scraperConfig: data.scraperConfig ? (data.scraperConfig as object) : undefined,
+      scraperConfig: data.scraperConfig
+        ? (encryptScraperConfig(data.scraperConfig as Record<string, unknown>) as object)
+        : undefined,
     },
   });
   return serializeConnection(row);
@@ -1020,7 +1088,7 @@ export async function updateConnection(
       ...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
       ...(data.nextStep !== undefined ? { nextStep: data.nextStep } : {}),
       ...(data.scraperConfig !== undefined
-        ? { scraperConfig: data.scraperConfig as object }
+        ? { scraperConfig: encryptScraperConfig(data.scraperConfig as Record<string, unknown>) as object }
         : {}),
     },
   });
