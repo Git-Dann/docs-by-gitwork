@@ -13,6 +13,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getJson } from "@/server/support-analytics/types";
+import { decryptScraperConfig } from "@/server/support";
 
 const DEFAULT_BASE = "https://apiv1.bigwedgegolf.com";
 const PAGE_SIZE = 100;
@@ -65,7 +66,7 @@ async function resolveBigWedgeApi(
     select: { scraperConfig: true },
   });
   if (!conn) return { error: "No Analytics API connector. Add the Big Wedge admin JWT in Care → Connectors." };
-  const cfg = (conn.scraperConfig ?? {}) as { baseUrl?: string; apiToken?: string };
+  const cfg = (decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}) as { baseUrl?: string; apiToken?: string };
   if (!cfg.apiToken) return { error: "The Analytics connector has no API token." };
   return { baseUrl: (cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, ""), apiToken: cfg.apiToken };
 }
