@@ -21,6 +21,7 @@ export async function GET(
     // only — middleware has already authenticated this request.
     const reveal = request.nextUrl.searchParams.get("reveal");
     if (reveal === "bank") {
+      assertCan(await getEffectiveUserOrNull(request), canManageClients, "reveal bank details");
       const bank = await revealOnboardingBank(id);
       return apiOk({ link, bank });
     }

@@ -263,7 +263,9 @@ export function serializeConnection(row: {
     nextStep: row.nextStep ?? undefined,
     connectedEmail,
     scraperConfig: decryptedConfig
-      ? (decryptedConfig as Connection["scraperConfig"])
+      ? (Object.fromEntries(
+          Object.entries(decryptedConfig).filter(([k]) => !SENSITIVE_SCRAPER_KEYS.includes(k)),
+        ) as Connection["scraperConfig"])
       : undefined,
     lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : undefined,
     lastSyncStats: (row.lastSyncStats as Connection["lastSyncStats"]) ?? undefined,
