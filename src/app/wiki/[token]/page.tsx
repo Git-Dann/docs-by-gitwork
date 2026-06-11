@@ -54,7 +54,7 @@ export default async function PublicWikiPage({
         </div>
       </div>
 
-      <WikiPublicView wiki={wiki} onlySection={onlySection} />
+      <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />
 
       {/* Footer */}
       <div className="mt-16 border-t border-[rgba(0,0,0,0.08)] bg-white px-4 py-6 md:px-8">

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
+import { apiFetch } from "@/lib/api";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
 
@@ -22,16 +23,53 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   "course-requests": "Course Requests",
 };
 
+// JetBrains Mono stack — consistent with wiki-workspace.tsx
+const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+
 export function WikiPublicView({
   wiki,
   onlySection,
+  token,
 }: {
   wiki: WikiDTO;
   /** When set, render only this one section (per-page share) — no sidebar nav. */
   onlySection?: string | null;
+  /** The share token from the URL — used to authenticate mutations on the public view. */
+  token: string;
 }) {
   const [activeSection, setActiveSection] = useState<WikiSection>(
     (onlySection as WikiSection) ?? "ia",
+  );
+  const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+
+  const handleSetStatus = useCallback(
+    async (ids: string[], status: string) => {
+      await Promise.all(
+        ids.map((id) =>
+          apiFetch(`/api/wiki/${token}/course-requests/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          }),
+        ),
+      );
+      setCourseRequests((prev) =>
+        prev.map((r) => (ids.includes(r.id) ? { ...r, status } : r)),
+      );
+    },
+    [token],
+  );
+
+  const handleDelete = useCallback(
+    async (ids: string[]) => {
+      await Promise.all(
+        ids.map((id) =>
+          apiFetch(`/api/wiki/${token}/course-requests/${id}`, { method: "DELETE" }),
+        ),
+      );
+      setCourseRequests((prev) => prev.filter((r) => !ids.includes(r.id)));
+    },
+    [token],
   );
 
   function getPage(section: WikiSection) {
@@ -63,12 +101,21 @@ export function WikiPublicView({
 
     if (activeSection === "course-requests") {
       return (
-        <CourseRequestsSection
-          requests={wiki.courseRequests}
-          onDelete={async () => {}}
-          onSetStatus={async () => {}}
-          readOnly
-        />
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label" style={{ fontFamily: MONO }}>
+              <span className="widget-header__label--number">01</span>
+              {" // COURSE REQUESTS"}
+            </span>
+          </div>
+          <div className="p-6">
+            <CourseRequestsSection
+              requests={courseRequests}
+              onDelete={handleDelete}
+              onSetStatus={handleSetStatus}
+            />
+          </div>
+        </section>
       );
     }
 
