@@ -27,10 +27,6 @@ export const DEV_GROUP_LABELS: Record<CandidateDevGroup, string> = {
 
 export type CandidateAvailability = "AVAILABLE" | "ENGAGED" | "UNAVAILABLE";
 
-/** Period for the rate stored on the candidate. Used by the form's
- *  Hour/Month toggle and rendered with the right unit label. */
-export type CandidateRatePeriod = "HOUR" | "MONTH";
-
 export type CodeClearCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
 
 export type IdentityConfidence = "HIGH" | "MEDIUM" | "LOW" | "PENDING";

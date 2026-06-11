@@ -85,18 +85,14 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       // Pre-fill from the candidate's stored hourlyRate first; fall back
       // to the linked rate-card monthly figure so devs paid on a monthly
       // retainer (like Jamal) see their actual rate on first open. The
-      // toggle state is UI-only (not persisted yet) — period defaults to
-      // MONTH when the fallback fires.
+      // form's "Monthly rate" label is fixed — PATCH writes through to
+      // RateCardPerson with billingPeriod=MONTH.
       hourlyRate:
         candidate.hourlyRate != null
           ? String(candidate.hourlyRate)
           : candidate.monthlyRate != null
             ? String(candidate.monthlyRate)
             : "",
-      ratePeriod:
-        candidate.hourlyRate == null && candidate.monthlyRate != null
-          ? "MONTH"
-          : "HOUR",
       currency:
         candidate.currency ?? candidate.monthlyRateCurrency ?? "USD",
       timezone: candidate.timezone ?? "",

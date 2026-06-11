@@ -11,7 +11,6 @@ import {
   TECH_STACK_OPTIONS,
   type CandidateAvailability,
   type CandidateOrigin,
-  type CandidateRatePeriod,
 } from "@/types/codeclear";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
@@ -28,10 +27,6 @@ export interface CandidateProfileValue {
   portfolioUrl: string;
   yearsExperience: string;
   hourlyRate: string;
-  /** Period the `hourlyRate` figure represents. Toggle in the form
-   * controls the label ("Hourly rate" vs "Monthly rate") and the value
-   * stored on Candidate.ratePeriod. */
-  ratePeriod: CandidateRatePeriod;
   currency: string;
   timezone: string;
   availability: CandidateAvailability | "";
@@ -53,7 +48,6 @@ export const emptyCandidateProfile: CandidateProfileValue = {
   portfolioUrl: "",
   yearsExperience: "",
   hourlyRate: "",
-  ratePeriod: "HOUR",
   currency: "USD",
   timezone: "",
   availability: "",
@@ -201,38 +195,35 @@ export function CandidateProfileForm({
             without changing fields. Hidden when the viewer lacks
             `code.viewRates`. */}
         {canViewRates ? (
-          <Field
-            label={value.ratePeriod === "MONTH" ? "Monthly rate" : "Hourly rate"}
-            span="full"
-          >
-            <div className="space-y-1.5">
-              <RatePeriodToggle
-                value={value.ratePeriod}
-                onChange={(next) => patch("ratePeriod", next)}
+          // Monthly only for now. The HOUR/MONTH toggle was UI-only since
+          // the Candidate.ratePeriod schema change got backed out; keeping
+          // it visible would mislead admins into thinking hourly persists.
+          // Drop the toggle, label the field "Monthly rate", and the PATCH
+          // endpoint writes the figure through to RateCardPerson with
+          // billingPeriod=MONTH (see candidates/[id]/route.ts).
+          <Field label="Monthly rate" span="full">
+            <div className="grid grid-cols-[110px_1fr] gap-1.5">
+              <select
+                value={value.currency}
+                onChange={(event) => patch("currency", event.target.value.toUpperCase())}
+                className="app-select pr-9"
+                aria-label="Currency"
+              >
+                {COMMON_CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={value.hourlyRate}
+                onChange={(event) => patch("hourlyRate", event.target.value)}
+                className="app-input w-full"
+                placeholder="1500"
               />
-              <div className="grid grid-cols-[110px_1fr] gap-1.5">
-                <select
-                  value={value.currency}
-                  onChange={(event) => patch("currency", event.target.value.toUpperCase())}
-                  className="app-select pr-9"
-                  aria-label="Currency"
-                >
-                  {COMMON_CURRENCIES.map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={value.hourlyRate}
-                  onChange={(event) => patch("hourlyRate", event.target.value)}
-                  className="app-input w-full"
-                  placeholder={value.ratePeriod === "MONTH" ? "1500" : "0"}
-                />
-              </div>
             </div>
           </Field>
         ) : null}
@@ -374,52 +365,6 @@ function Field({
       <span className="text-xs font-medium text-[var(--text-3)]">{label}</span>
       {children}
     </label>
-  );
-}
-
-/**
- * Two-button segmented control for the rate period (Hour | Month). Drives
- * the field label and what gets stored on Candidate.ratePeriod — the
- * numeric figure is the same field either way.
- */
-function RatePeriodToggle({
-  value,
-  onChange,
-}: {
-  value: CandidateRatePeriod;
-  onChange: (next: CandidateRatePeriod) => void;
-}) {
-  const options: Array<{ id: CandidateRatePeriod; label: string }> = [
-    { id: "HOUR", label: "Hourly" },
-    { id: "MONTH", label: "Monthly" },
-  ];
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Rate period"
-      className="inline-flex rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
-    >
-      {options.map((option) => {
-        const active = value === option.id;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(option.id)}
-            className={cn(
-              "rounded-[6px] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.04em] transition",
-              active
-                ? "bg-white text-[var(--text-1)] shadow-sm"
-                : "text-[var(--text-4)] hover:text-[var(--text-2)]",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

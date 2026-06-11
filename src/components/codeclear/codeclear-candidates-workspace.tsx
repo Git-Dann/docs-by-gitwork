@@ -482,13 +482,15 @@ export function CodeClearCandidatesWorkspace() {
 }
 
 /**
- * Section-grouped table for the Developers list. Renders ONE table with
- * a single set of column headers; each section gets a labeled divider
- * row inserted ahead of its rows. Sections with zero rows are skipped
- * entirely so we never show an empty Pro bono divider.
+ * Section-grouped card grid for the Developers list. Renders one card per
+ * dev, grouped by section (Bench / Off Bench). Cards click through to the
+ * profile; the bulk-select checkbox sits top-right and stops propagation
+ * so ticking it doesn't navigate. Mirrors the Portal client-card look
+ * (widget-card + widget-header) so the two surfaces feel related.
  *
- * Rate column only renders when the viewer has `code.viewRates`; the
- * column is dropped (not blanked) so the table stays aligned.
+ * Rate block only renders when the viewer has `code.viewRates` — same
+ * gate as the previous table column. Section headers are skipped when
+ * only one group has rows.
  */
 function DevsTable({
   sections,
@@ -510,59 +512,36 @@ function DevsTable({
   clientOptions: ClientListItem[];
   canViewRates: boolean;
 }) {
-  // Skip empty sections so we don't render a "Pro bono — 0 devs" header
-  // when there's nothing to show. Column count is used for the divider
-  // row's colSpan so the highlight stretches the full table width.
+  // Skip empty sections so an empty Off Bench doesn't render a header.
   const nonEmpty = sections.filter((s) => s.rows.length > 0);
-  const colCount = canViewRates ? 8 : 7;
-  const showDividers = nonEmpty.length > 1;
-  // Pull the live USD→GBP rate once for the whole table. Cached for 12 h
+  const showSectionHeaders = nonEmpty.length > 1;
+  // Pull the live USD→GBP rate once for the whole list. Cached 12 h
   // client-side; serves USD-only when the FX endpoint is unreachable.
   const fx = useUsdToGbpRate();
   const usdToGbp = fx.data?.rate ?? null;
 
   return (
-    <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
-      <table className="app-table">
-        <thead>
-          <tr>
-            <th className="w-10 text-left" />
-            <th className="text-left">Dev</th>
-            <th className="text-left">Stack</th>
-            <th className="text-left">Current client</th>
-            <th className="text-right">Calibre</th>
-            <th className="text-left">Tier</th>
-            {canViewRates ? <th className="text-right">Monthly</th> : null}
-            <th className="text-right">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {nonEmpty.map((section, sectionIdx) => (
-            <DevsTableSection
-              key={section.key}
-              section={section}
-              isFirst={sectionIdx === 0}
-              showDivider={showDividers}
-              colCount={colCount}
-              selectedIdSet={selectedIdSet}
-              onToggleSelect={onToggleSelect}
-              onRowClick={onRowClick}
-              clientOptions={clientOptions}
-              canViewRates={canViewRates}
-              usdToGbp={usdToGbp}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-6">
+      {nonEmpty.map((section) => (
+        <DevsCardSection
+          key={section.key}
+          section={section}
+          showHeader={showSectionHeaders}
+          selectedIdSet={selectedIdSet}
+          onToggleSelect={onToggleSelect}
+          onRowClick={onRowClick}
+          clientOptions={clientOptions}
+          canViewRates={canViewRates}
+          usdToGbp={usdToGbp}
+        />
+      ))}
     </div>
   );
 }
 
-function DevsTableSection({
+function DevsCardSection({
   section,
-  isFirst,
-  showDivider,
-  colCount,
+  showHeader,
   selectedIdSet,
   onToggleSelect,
   onRowClick,
@@ -571,153 +550,188 @@ function DevsTableSection({
   usdToGbp,
 }: {
   section: { key: string; title: string; subtitle: string; rows: CodeClearCandidateListItem[] };
-  isFirst: boolean;
-  showDivider: boolean;
-  colCount: number;
+  showHeader: boolean;
   selectedIdSet: Set<string>;
   onToggleSelect: (id: string, next: boolean) => void;
   onRowClick: (id: string) => void;
   clientOptions: ClientListItem[];
   canViewRates: boolean;
-  /** Live USD→GBP rate (null while loading or if FX is unreachable —
-   *  the cell falls back to USD only in that case). */
   usdToGbp: number | null;
 }) {
   return (
-    <>
-      {showDivider ? (
-        // Divider row: title + subtitle + count, full-width inside the
-        // tbody. First section gets a subtle bg, subsequent sections add a
-        // top border so the break between groups reads clearly.
-        <tr
-          className={cn(
-            "bg-[var(--surface-1)]",
-            !isFirst && "border-t-2 border-[var(--border-2)]",
-          )}
-        >
-          <td
-            colSpan={colCount}
-            className="px-4 py-2.5"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="flex items-baseline gap-3">
-                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
-                  {section.title}
-                </span>
-                {section.subtitle ? (
-                  <span className="text-[11px] text-[var(--text-4)]">{section.subtitle}</span>
-                ) : null}
-              </div>
-              <span className="font-mono text-[11px] text-[var(--text-4)]">
-                {section.rows.length} DEV{section.rows.length === 1 ? "" : "S"}
-              </span>
-            </div>
-          </td>
-        </tr>
+    <section>
+      {showHeader ? (
+        <header className="mb-3 flex items-baseline justify-between gap-3 px-1">
+          <div className="flex items-baseline gap-3">
+            <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
+              {section.title}
+            </h3>
+            {section.subtitle ? (
+              <p className="text-[11px] text-[var(--text-4)]">{section.subtitle}</p>
+            ) : null}
+          </div>
+          <span className="font-mono text-[11px] text-[var(--text-4)]">
+            {section.rows.length} DEV{section.rows.length === 1 ? "" : "S"}
+          </span>
+        </header>
       ) : null}
-      {section.rows.map((candidate) => {
-              const checked = selectedIdSet.has(candidate.id);
-              const score =
-                candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
-              return (
-                <tr
-                  key={candidate.id}
-                  className="cursor-pointer"
-                  onClick={() => onRowClick(candidate.id)}
-                >
-                  <td onClick={(event) => event.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => onToggleSelect(candidate.id, event.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
-                      aria-label={`Select ${candidate.name}`}
-                    />
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-3">
-                      {candidate.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={candidate.avatarUrl}
-                          alt=""
-                          className="h-8 w-8 shrink-0 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-xs font-semibold text-[var(--brand-700)]">
-                          {candidate.name
-                            .split(" ")
-                            .map((part) => part[0])
-                            .join("")
-                            .slice(0, 2)}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-                          {candidate.name}
-                        </p>
-                        <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
-                          @{candidate.githubHandle}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="text-sm text-[var(--text-2)]">{candidate.primaryStack}</span>
-                  </td>
-                  <td>
-                    {candidate.currentClients.length === 0 ? (
-                      <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
-                    ) : (
-                      <ClientAvatarStack
-                        clients={candidate.currentClients}
-                        clientOptions={clientOptions}
-                      />
-                    )}
-                  </td>
-                  <td className="text-right">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
-                        score == null
-                          ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
-                          : score >= 80
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : score >= 65
-                              ? "border-amber-200 bg-amber-50 text-amber-700"
-                              : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
-                      )}
-                    >
-                      {score ?? "—"}
-                    </span>
-                  </td>
-                  <td>
-                    <RosterTierBadge
-                      effectiveTier={candidate.effectiveTier}
-                      isOverridden={
-                        candidate.tierManualOverride !== null &&
-                        candidate.tierManualOverride !== candidate.tier
-                      }
-                    />
-                  </td>
-                  {canViewRates ? (
-                    <td className="text-right">
-                      <MonthlyRateCell
-                        amount={candidate.monthlyRate}
-                        currency={candidate.monthlyRateCurrency}
-                        usdToGbp={usdToGbp}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="text-right">
-                    <span className="font-mono text-[11px] text-[var(--text-4)]">
-                      {formatDate(candidate.updatedAt)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-    </>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {section.rows.map((candidate) => (
+          <DevCard
+            key={candidate.id}
+            candidate={candidate}
+            checked={selectedIdSet.has(candidate.id)}
+            onToggle={(next) => onToggleSelect(candidate.id, next)}
+            onClick={() => onRowClick(candidate.id)}
+            clientOptions={clientOptions}
+            canViewRates={canViewRates}
+            usdToGbp={usdToGbp}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Single dev card. Header strip carries the bulk-select checkbox (top-
+ * right, stops propagation so ticks don't navigate). Body shows the
+ * essentials — avatar + identity, stack, calibre + tier, current clients,
+ * monthly rate (gated), updated timestamp. Card is the click target for
+ * navigating to the profile.
+ */
+function DevCard({
+  candidate,
+  checked,
+  onToggle,
+  onClick,
+  clientOptions,
+  canViewRates,
+  usdToGbp,
+}: {
+  candidate: CodeClearCandidateListItem;
+  checked: boolean;
+  onToggle: (next: boolean) => void;
+  onClick: () => void;
+  clientOptions: ClientListItem[];
+  canViewRates: boolean;
+  usdToGbp: number | null;
+}) {
+  const score =
+    candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
+
+  return (
+    <article
+      className="widget-card group cursor-pointer transition-shadow hover:shadow-[rgba(0,0,0,0.06)_0px_4px_16px]"
+      onClick={onClick}
+    >
+      <div className="widget-header">
+        <span className="widget-header__label">DEV</span>
+        {/* Checkbox stops propagation both onClick and onChange so the
+            card's onClick doesn't fire alongside the toggle. */}
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => {
+            event.stopPropagation();
+            onToggle(event.target.checked);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
+          aria-label={`Select ${candidate.name}`}
+        />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        {/* Identity row */}
+        <div className="flex items-center gap-3">
+          {candidate.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={candidate.avatarUrl}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
+              {candidate.name
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
+              {candidate.name}
+            </p>
+            <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--text-4)]">
+              @{candidate.githubHandle}
+            </p>
+          </div>
+        </div>
+
+        {/* Stack + tier + calibre — same row, three signals at a glance */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-3)]">
+            {candidate.primaryStack}
+          </span>
+          <RosterTierBadge
+            effectiveTier={candidate.effectiveTier}
+            isOverridden={
+              candidate.tierManualOverride !== null &&
+              candidate.tierManualOverride !== candidate.tier
+            }
+          />
+          <span
+            className={cn(
+              "ml-auto inline-flex items-center rounded-[6px] border px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
+              score == null
+                ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]"
+                : score >= 80
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : score >= 65
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
+            )}
+            title="Calibre"
+          >
+            {score ?? "—"} / 100
+          </span>
+        </div>
+
+        {/* Current clients */}
+        <div>
+          <p className="widget-data-label mb-1.5">Current clients</p>
+          {candidate.currentClients.length === 0 ? (
+            <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
+          ) : (
+            <ClientAvatarStack
+              clients={candidate.currentClients}
+              clientOptions={clientOptions}
+            />
+          )}
+        </div>
+
+        {/* Monthly rate — only when the viewer can see rates */}
+        {canViewRates ? (
+          <div>
+            <p className="widget-data-label mb-1.5">Monthly</p>
+            <div className="text-left">
+              <MonthlyRateCell
+                amount={candidate.monthlyRate}
+                currency={candidate.monthlyRateCurrency}
+                usdToGbp={usdToGbp}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        <p className="widget-timestamp mt-auto pt-1">
+          UPDATED {formatDate(candidate.updatedAt)}
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -790,7 +804,7 @@ function MonthlyRateCell({
   const gbp =
     usdToGbp != null && currency.toUpperCase() === "USD" ? amount * usdToGbp : null;
   return (
-    <span className="inline-flex flex-col items-end leading-tight">
+    <span className="inline-flex flex-col items-start leading-tight">
       <span className="font-mono text-[11px] tabular-nums text-[var(--text-1)]">
         {formatMoney(amount, currency)}
       </span>

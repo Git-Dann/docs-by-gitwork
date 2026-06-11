@@ -650,7 +650,6 @@ export async function updateCodeClearCandidate(
     portfolioUrl: string | null;
     yearsExperience: number | null;
     hourlyRate: number | null;
-    ratePeriod: "HOUR" | "MONTH";
     currency: string | null;
     timezone: string | null;
     availability: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
