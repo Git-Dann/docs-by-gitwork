@@ -32,10 +32,19 @@ const bodySchema = z.object({
   apiToken: z.string().optional(),
 });
 
+function isWorkspaceApiKeyCall(req: Request): boolean {
+  const apiKey = process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? null;
+  if (!apiKey) return false;
+  const bearer = req.headers.get("Authorization")?.replace(/^Bearer\s+/, "").trim() ?? null;
+  return bearer === apiKey;
+}
+
 export async function POST(req: Request) {
   try {
-    const user = await requireAuthedUser(req);
-    if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
+    if (!isWorkspaceApiKeyCall(req)) {
+      const user = await requireAuthedUser(req);
+      if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
+    }
 
     const { dryRun = true, since = "2026-06-01", clientSlug = "wedge", apiToken } = bodySchema.parse(
       await req.json().catch(() => ({})),
