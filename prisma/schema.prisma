@@ -140,14 +140,6 @@ enum CandidateDevGroup {
   PRO_BONO
 }
 
-/// Period for the rate stored on Candidate.hourlyRate. Two values: a dev's
-/// rate is either an hourly figure or a monthly retainer. Separate from
-/// RateBillingPeriod (DAY/WEEK/MONTH) which is used on the workspace
-/// rate-card and doesn't include HOUR.
-enum CandidateRatePeriod {
-  HOUR
-  MONTH
-}
 
 /// Mirrors PulseCheckStatus — the validation engine and the project-health engine
 /// share the same PASS/WARN/FAIL/SKIPPED vocabulary.
@@ -1296,11 +1288,6 @@ model Candidate {
   portfolioUrl       String?
   yearsExperience    Int?
   hourlyRate         Decimal?               @db.Decimal(10, 2)
-  /// Period the figure stored in `hourlyRate` represents. HOUR by default
-  /// for backwards compatibility (the field name implies hourly); admins
-  /// can toggle to MONTH on the candidate edit form for devs paid on a
-  /// monthly retainer. The label in the UI follows this value.
-  ratePeriod         CandidateRatePeriod    @default(HOUR)
   currency           String?                @db.VarChar(3)
   timezone           String?
   /// User-overridable availability. When null, derive from open Placement

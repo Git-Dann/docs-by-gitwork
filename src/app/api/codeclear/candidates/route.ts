@@ -276,7 +276,6 @@ export async function POST(request: NextRequest) {
         portfolioUrl: body.portfolioUrl ?? null,
         yearsExperience: body.yearsExperience ?? null,
         hourlyRate: body.hourlyRate ?? null,
-        ...(body.ratePeriod !== undefined ? { ratePeriod: body.ratePeriod } : {}),
         currency: body.currency ?? null,
         timezone: body.timezone ?? null,
         availability: body.availability ?? null,

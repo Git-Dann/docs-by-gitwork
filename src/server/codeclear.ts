@@ -421,7 +421,6 @@ function commonCandidateFields(
   portfolioUrl: string | null;
   yearsExperience: number | null;
   hourlyRate: Prisma.Decimal | null;
-  ratePeriod: "HOUR" | "MONTH";
   currency: string | null;
   timezone: string | null;
   availability: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
@@ -459,7 +458,6 @@ function commonCandidateFields(
     portfolioUrl: candidate.portfolioUrl ?? null,
     yearsExperience: candidate.yearsExperience ?? null,
     hourlyRate: hideRates ? null : candidate.hourlyRate ? Number(candidate.hourlyRate.toString()) : null,
-    ratePeriod: candidate.ratePeriod,
     currency: hideRates ? null : candidate.currency ?? null,
     timezone: candidate.timezone ?? null,
     availability: candidate.availability ?? null,

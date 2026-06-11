@@ -99,10 +99,6 @@ export interface CodeClearCandidateRecord {
   portfolioUrl: string | null;
   yearsExperience: number | null;
   hourlyRate: number | null;
-  /** Period the `hourlyRate` figure represents — HOUR (default) or
-   * MONTH for devs paid on a monthly retainer. Drives the label that
-   * renders alongside the figure. */
-  ratePeriod: CandidateRatePeriod;
   currency: string | null;
   /** Monthly rate sourced from the linked rate-card row (Gitwork's
    * commercial pricing). Null when no rate-card link, the row is

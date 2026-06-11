@@ -586,7 +586,6 @@ export async function createCodeClearCandidate(input: {
   portfolioUrl?: string | null;
   yearsExperience?: number | null;
   hourlyRate?: number | null;
-  ratePeriod?: "HOUR" | "MONTH";
   currency?: string | null;
   timezone?: string | null;
   availability?: "AVAILABLE" | "ENGAGED" | "UNAVAILABLE" | null;
@@ -946,7 +945,6 @@ export interface BulkImportCandidateRow {
   portfolioUrl?: string;
   yearsExperience?: number;
   hourlyRate?: number;
-  ratePeriod?: "HOUR" | "MONTH";
   currency?: string;
   timezone?: string;
   location?: string;

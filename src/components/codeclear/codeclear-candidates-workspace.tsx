@@ -393,7 +393,6 @@ export function CodeClearCandidatesWorkspace() {
                           : null,
                       hourlyRate:
                         createForm.hourlyRate !== "" ? Number(createForm.hourlyRate) : null,
-                      ratePeriod: createForm.ratePeriod,
                       currency: createForm.currency || null,
                       timezone: createForm.timezone || null,
                       availability: createForm.availability || null,
