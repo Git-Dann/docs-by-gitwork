@@ -60,11 +60,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return apiError("Candidate not found.", 404);
     }
 
-    const candidate = await prisma.candidate.update({
-      where: {
-        id: existing.id,
-      },
-      data: {
+    // Atomic: candidate update + (optional) rate-card write-through both
+    // succeed or both roll back. Prevents the half-saved state where
+    // Candidate.hourlyRate changes but RateCardPerson.sourceRate doesn't
+    // (which is exactly what the table reads). Re-fetch happens outside
+    // the transaction so the include shape isn't affected.
+    const ratePropagated =
+      body.hourlyRate !== undefined &&
+      existing.rateCardPersonId &&
+      body.hourlyRate != null;
+
+    const [candidate] = await prisma.$transaction([
+      prisma.candidate.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
         ...(body.name !== undefined ? { name: body.name ?? existing.name } : {}),
         ...(body.githubHandle !== undefined ? { githubHandle: body.githubHandle } : {}),
         ...(body.email !== undefined ? { email: body.email } : {}),
@@ -163,33 +174,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           : {}),
       },
       include: codeClearDetailInclude,
-    });
-
-    // Propagate the rate edit to the linked rate-card row. The Code →
-    // Developers Monthly column reads from the rate-card join (single
-    // source of truth), so without this write-through Syed's edits were
-    // saving to Candidate.hourlyRate but invisible in the table. We
-    // treat the form's figure as MONTH because that's how the form
-    // pre-fills (from rate-card.sourceRate → Candidate.hourlyRate) and
-    // what the table renders. If the dev later flips to hourly via a
-    // proper toggle (TODO when ratePeriod schema lands), we'd skip this
-    // write-through.
-    const ratePropagated =
-      body.hourlyRate !== undefined &&
-      existing.rateCardPersonId &&
-      body.hourlyRate != null;
-    if (ratePropagated) {
-      await prisma.rateCardPerson.update({
-        where: { id: existing.rateCardPersonId as string },
-        data: {
-          sourceRate: new Prisma.Decimal(body.hourlyRate as number),
-          billingPeriod: "MONTH",
-          ...(body.currency
-            ? { sourceCurrencyCode: body.currency.toUpperCase() }
-            : {}),
-        },
-      });
-    }
+    }),
+      // Propagate the rate edit to the linked rate-card row. The Code →
+      // Developers Monthly column reads from the rate-card join (single
+      // source of truth), so without this write-through Syed's edits
+      // were saving to Candidate.hourlyRate but invisible in the table.
+      // We treat the form's figure as MONTH because that's how the
+      // form pre-fills (from rate-card.sourceRate → Candidate.hourlyRate)
+      // and what the table renders.
+      ...(ratePropagated
+        ? [
+            prisma.rateCardPerson.update({
+              where: { id: existing.rateCardPersonId as string },
+              data: {
+                sourceRate: new Prisma.Decimal(body.hourlyRate as number),
+                billingPeriod: "MONTH" as const,
+                ...(body.currency ? { sourceCurrencyCode: body.currency } : {}),
+              },
+            }),
+          ]
+        : []),
+    ]);
 
     // Re-fetch when we updated the rate-card row so the response carries
     // the fresh monthly figure (the prior `update` returned the stale

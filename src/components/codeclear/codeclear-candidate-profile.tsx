@@ -2,10 +2,9 @@
 
 import {
   ArrowLeftIcon,
-  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
+  EnvelopeIcon,
   PencilIcon,
-  SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
@@ -14,9 +13,9 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   useAddCodeClearCandidateNote,
+  useBulkUpdateCodeClearCandidates,
   useCodeClearCandidate,
   useDeleteCodeClearCandidate,
-  useRunCodeClearGitHubAnalysis,
   useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
@@ -30,10 +29,6 @@ import {
   emptyCandidateProfile,
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
-import {
-  CalibreBreakdown,
-  ValidationCheckList,
-} from "@/components/codeclear/calibre-breakdown";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 
 /**
@@ -51,12 +46,12 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const updateCandidate = useUpdateCodeClearCandidate(candidateId);
   const deleteCandidate = useDeleteCodeClearCandidate();
   const addNote = useAddCodeClearCandidateNote(candidateId);
-  const runAnalysis = useRunCodeClearGitHubAnalysis(candidateId);
+  const bulkUpdate = useBulkUpdateCodeClearCandidates();
 
   const candidate = candidateQuery.data?.candidate ?? null;
   const clients = clientsQuery.data?.clients ?? [];
 
-  const { canViewRates, canManageCode } = usePermissions();
+  const { canViewRates, canManageCode, isAdminOrAbove } = usePermissions();
   // Live USD→GBP rate so the Monthly hero stat can show the GBP
   // conversion underneath. Only fetched when the viewer can see rates.
   const fxQuery = useUsdToGbpRate();
@@ -125,10 +120,6 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       </div>
     );
   }
-
-  const redFlagsCount = Array.isArray(candidate.latestGitHubAnalysis?.redFlags)
-    ? (candidate.latestGitHubAnalysis!.redFlags as string[]).length
-    : 0;
 
   async function handleSaveEdit() {
     await updateCandidate.mutateAsync({
@@ -225,27 +216,31 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                leadingIcon={
-                  runAnalysis.isPending ? (
-                    <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <SparklesIcon className="h-3.5 w-3.5" />
-                  )
-                }
-                onClick={() => runAnalysis.mutate()}
-                disabled={runAnalysis.isPending}
-              >
-                {candidate.analysisState === "NEVER_RUN" ? "Run validation" : "Re-run validation"}
-              </Button>
+              {/* Admin-only: move this dev between Bench and Off Bench
+                  in one click. Same SET_DEV_GROUP server action the
+                  list-page bulk bar uses. */}
+              {isAdminOrAbove ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    bulkUpdate.mutate({
+                      action: "SET_DEV_GROUP",
+                      ids: [candidate.id],
+                      devGroup: candidate.devGroup === "PRO_BONO" ? "BENCH" : "PRO_BONO",
+                    })
+                  }
+                  loading={bulkUpdate.isPending}
+                >
+                  Move to {candidate.devGroup === "PRO_BONO" ? "Bench" : "Off Bench"}
+                </Button>
+              ) : null}
               {canManageCode ? (
                 <>
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     leadingIcon={<PencilIcon className="h-3.5 w-3.5" />}
                     onClick={() => setShowEdit(true)}
@@ -273,21 +268,19 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         <div
           className={cn(
             "grid gap-0",
-            canViewRates ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3",
+            canViewRates ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2",
           )}
         >
-          <HeroStat
-            label="Calibre"
-            value={
-              candidate.score?.overallScore != null
-                ? String(candidate.score.overallScore)
-                : candidate.scoreDraft?.overallScore != null
-                  ? `${candidate.scoreDraft.overallScore} draft`
-                  : "—"
-            }
-            sub="/ 100"
-          />
+          {/* Hero stats focused on team-management signals — calibre +
+              experience are dropped because CodeClear scoring isn't
+              running. Group (Bench/Off Bench) is more useful than a
+              missing calibre number. */}
           <HeroStat label="Tier" value={candidate.effectiveTier.replace("TIER_", "T")} />
+          <HeroStat
+            label="Group"
+            value={candidate.devGroup === "PRO_BONO" ? "Off Bench" : "Bench"}
+            sub={candidate.devGroup === "PRO_BONO" ? "Free to Gitwork" : undefined}
+          />
           {canViewRates ? (
             <HeroStat
               label="Monthly"
@@ -305,14 +298,6 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
               }
             />
           ) : null}
-          <HeroStat
-            label="Experience"
-            value={
-              candidate.yearsExperience != null
-                ? `${candidate.yearsExperience} yr${candidate.yearsExperience === 1 ? "" : "s"}`
-                : "—"
-            }
-          />
         </div>
 
         {/* Current clients (multi-select) */}
@@ -330,31 +315,18 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         </div>
       </section>
 
-      {/* Calibre + checks (two-col on wide screens) */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <CalibreBreakdown
-          score={candidate.score}
-          scoreDraft={candidate.scoreDraft}
-          effectiveTier={candidate.effectiveTier}
-          redFlagsCount={redFlagsCount}
-        />
+      {/* CALIBRE BREAKDOWN + VALIDATION CHECKS sections removed in
+          June 2026 — CodeClear scoring isn't running, so the sub-score
+          breakdown and the "No data" checks block were dead weight.
+          Profile now flows hero → engagements → notes. */}
 
-        <WidgetCard
-          number="02"
-          name="VALIDATION CHECKS"
-          status={
-            candidate.checks.length > 0 ? `${candidate.checks.length} CHECKS` : "NO DATA"
-          }
-          statusTone={candidate.checks.length > 0 ? "info" : "muted"}
-        >
-          <ValidationCheckList checks={candidate.checks} />
-        </WidgetCard>
-      </div>
-
-      {/* Engagement history */}
+      {/* Engagement history — placements past, present, and future.
+          Active engagements get an emerald dot; upcoming amber;
+          past grey. Allocation % is shown when set so admins can see
+          if a dev is split across multiple clients. */}
       <WidgetCard
-        number="03"
-        name="ENGAGEMENT HISTORY"
+        number="02"
+        name="ENGAGEMENTS"
         status={
           candidate.placements.length > 0
             ? `${candidate.placements.length} ${
@@ -366,30 +338,65 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       >
         {candidate.placements.length ? (
           <ol className="space-y-2">
-            {candidate.placements.map((placement) => (
-              <li
-                key={placement.id}
-                className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
-              >
-                <span
-                  className={cn(
-                    "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                    placement.endDate ? "bg-[var(--text-4)]" : "bg-emerald-500",
-                  )}
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-[var(--text-1)]">
-                    {placement.clientName}
-                  </p>
-                  <p className="mt-0.5 text-xs text-[var(--text-4)]">{placement.projectName}</p>
-                  <p className="mt-1 font-mono text-[11px] text-[var(--text-4)]">
-                    {formatDate(placement.startDate)}
-                    {placement.endDate ? ` → ${formatDate(placement.endDate)}` : " → present"}
-                  </p>
-                </div>
-              </li>
-            ))}
+            {candidate.placements.map((placement) => {
+              const nowMs = Date.now();
+              const startMs = new Date(placement.startDate).getTime();
+              const endMs = placement.endDate
+                ? new Date(placement.endDate).getTime()
+                : null;
+              const isPast = endMs !== null && endMs < nowMs;
+              const isUpcoming = !isPast && startMs > nowMs;
+              const isActive = !isPast && !isUpcoming;
+              return (
+                <li
+                  key={placement.id}
+                  className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
+                >
+                  <span
+                    className={cn(
+                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                      isPast
+                        ? "bg-[var(--text-4)]"
+                        : isUpcoming
+                          ? "bg-amber-500"
+                          : "bg-emerald-500",
+                    )}
+                    aria-hidden
+                    title={isPast ? "Past" : isUpcoming ? "Upcoming" : "Active"}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <p className="text-sm font-semibold text-[var(--text-1)]">
+                        {placement.clientName}
+                      </p>
+                      <span className="text-xs text-[var(--text-4)]">·</span>
+                      <p className="truncate text-xs text-[var(--text-3)]">
+                        {placement.projectName}
+                      </p>
+                      <span className="ml-auto inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]">
+                        {placement.allocationPercent}%
+                      </span>
+                    </div>
+                    <p className="mt-1 font-mono text-[11px] text-[var(--text-4)]">
+                      {formatDate(placement.startDate)}
+                      {placement.endDate
+                        ? ` → ${formatDate(placement.endDate)}`
+                        : " → present"}
+                      {isActive ? (
+                        <span className="ml-2 text-emerald-700">Active</span>
+                      ) : isUpcoming ? (
+                        <span className="ml-2 text-amber-700">Upcoming</span>
+                      ) : null}
+                    </p>
+                    {placement.notes ? (
+                      <p className="mt-1 text-xs italic text-[var(--text-4)]">
+                        {placement.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         ) : (
           <p className="py-4 text-center text-sm text-[var(--text-4)]">
@@ -398,9 +405,24 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         )}
       </WidgetCard>
 
+      {/* Contact — email (mailto) link. Surfaces the dev's @gitwork.co.uk
+          (or external) email front-and-centre so admins can reach them
+          without digging through Slack. */}
+      {candidate.email ? (
+        <WidgetCard number="03" name="CONTACT" status="" statusTone="muted">
+          <a
+            href={`mailto:${candidate.email}`}
+            className="inline-flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-2)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+          >
+            <EnvelopeIcon className="h-4 w-4" />
+            {candidate.email}
+          </a>
+        </WidgetCard>
+      ) : null}
+
       {/* Notes */}
       <WidgetCard
-        number="04"
+        number={candidate.email ? "04" : "03"}
         name="NOTES"
         status={candidate.notes.length > 0 ? `${candidate.notes.length}` : "EMPTY"}
         statusTone="muted"
