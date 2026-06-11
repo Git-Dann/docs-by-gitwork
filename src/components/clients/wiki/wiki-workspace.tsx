@@ -769,25 +769,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                   <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--color-text-secondary)] mb-1">
                     Sync preview
                   </p>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--color-text-secondary)] mb-2">
-                    {syncResult.totalCourses.toLocaleString()} courses checked · {syncResult.totalRequestsFetched.toLocaleString()} requests scanned
-                  </p>
                   {syncResult.toMarkCount === 0 ? (
                     <p className="text-sm text-[var(--color-text-secondary)]">
-                      No matches found — none of the tracked requests appear in the Big Wedge courses database yet.
+                      No new requests to mark as Added — {syncResult.actionTakenCount} actioned on Big Wedge, none matched unresolved records here.
                     </p>
                   ) : (
                     <>
                       <p className="text-sm text-[var(--color-text-primary)] mb-2">
                         <span className="font-semibold">{syncResult.toMarkCount}</span>{" "}
-                        {syncResult.toMarkCount === 1 ? "request" : "requests"} found in the Big Wedge courses database
-                        {" "}and would be marked <span className="font-semibold text-emerald-600">ADDED</span>
-                        {syncResult.nameMatchCount > 0 && syncResult.actionTakenCount > 0 && (
-                          <span className="text-[var(--color-text-secondary)]">
-                            {" "}({syncResult.nameMatchCount} by name match, {syncResult.actionTakenCount} by action_taken)
-                          </span>
-                        )}
-                        .
+                        {syncResult.toMarkCount === 1 ? "request" : "requests"} would be marked{" "}
+                        <span className="font-semibold text-emerald-600">ADDED</span>.
                       </p>
                       {syncResult.sample.length > 0 && (
                         <ul className="mb-2 space-y-0.5">

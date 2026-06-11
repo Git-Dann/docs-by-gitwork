@@ -1,13 +1,9 @@
 /**
- * wiki-bigwedge-sync.ts — cross-reference course requests against the Big Wedge
- * courses database and mark any that already exist there as ADDED.
+ * wiki-bigwedge-sync.ts — re-fetch course requests from the Big Wedge API and
+ * mark any with action_taken=true as ADDED in the Foundry tracker.
  *
- * Two matching signals are combined:
- *   1. Course-name match — fetch all 18k+ courses, normalise names, check our
- *      tracked requests against the set. Handles the common case where Big Wedge
- *      added the course without ever setting action_taken.
- *   2. action_taken flag — re-fetch course requests; any with action_taken=true
- *      are also marked ADDED (belt-and-braces).
+ * The one-time full course-name cross-reference has been run (136 matched, June 2026).
+ * Going forward this is a fast check: only scans the course-requests endpoint.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -16,48 +12,20 @@ import { decryptScraperConfig } from "@/server/support";
 
 const DEFAULT_BASE = "https://apiv1.bigwedgegolf.com";
 const PAGE_SIZE = 100;
-const MAX_COURSE_PAGES = 200; // 20,000 courses max
-const MAX_REQUEST_PAGES = 100; // 10,000 requests max
-
-// ── Normalise a course/club name for fuzzy matching ──────────────────────────
-function norm(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[''`]/g, "")
-    .replace(/[-–—]/g, " ")
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(
-      /\b(golf club|golf course|golf resort|golf links|country club|golf & country club|golf and country club|golf)\b/g,
-      "",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// ── Big Wedge API types ───────────────────────────────────────────────────────
-interface BwCourse {
-  name?: string;
-  club?: { name?: string; country?: string };
-}
-interface BwCoursePage {
-  count?: number;
-  next?: string | null;
-  results?: BwCourse[];
-}
+const MAX_PAGES = 100;
 
 interface BwRequest {
   id?: string | number;
   action_taken?: boolean;
   [k: string]: unknown;
 }
-interface BwRequestPage {
+interface BwPage {
   data?: BwRequest[];
   meta?: { pagination?: { next?: string | null } };
   results?: BwRequest[];
   next?: string | null;
 }
 
-// ── Resolve API credentials from the Care Analytics connector ────────────────
 async function resolveBigWedgeApi(
   workspaceClientId: string,
 ): Promise<{ baseUrl: string; apiToken: string } | { error: string }> {
@@ -93,9 +61,7 @@ async function resolveBigWedgeApi(
     select: { scraperConfig: true },
   });
   if (!conn)
-    return {
-      error: "No Analytics API connector. Add the Big Wedge admin JWT in Care → Connectors.",
-    };
+    return { error: "No Analytics API connector. Add the Big Wedge admin JWT in Care → Connectors." };
   const cfg = (
     decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}
   ) as { baseUrl?: string; apiToken?: string };
@@ -103,66 +69,13 @@ async function resolveBigWedgeApi(
   return { baseUrl: (cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, ""), apiToken: cfg.apiToken };
 }
 
-// ── Fetch all course names from the Big Wedge courses endpoint (parallel) ────
-async function fetchCourseNameSet(
-  api: { baseUrl: string; apiToken: string },
-  errors: string[],
-): Promise<{ nameSet: Set<string>; totalCourses: number }> {
-  const nameSet = new Set<string>();
-  const base = `${api.baseUrl}/api/v1/courses/?page_size=${PAGE_SIZE}`;
-
-  // Page 1 — learn the total count
-  let first: BwCoursePage;
-  try {
-    first = await getJson<BwCoursePage>(`${base}&page=1`, api.apiToken);
-  } catch (err) {
-    errors.push(`Courses fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-    return { nameSet, totalCourses: 0 };
-  }
-
-  const totalCourses = first.count ?? 0;
-  const totalPages = Math.min(Math.ceil(totalCourses / PAGE_SIZE), MAX_COURSE_PAGES);
-
-  function addPage(data: BwCoursePage) {
-    for (const c of data.results ?? []) {
-      if (c.name) {
-        nameSet.add(norm(c.name));
-        if (c.club?.name) nameSet.add(norm(c.club.name));
-      }
-    }
-  }
-  addPage(first);
-
-  // Remaining pages — fetch in parallel batches of 20
-  const BATCH = 20;
-  for (let start = 2; start <= totalPages; start += BATCH) {
-    const end = Math.min(start + BATCH - 1, totalPages);
-    const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
-    const results = await Promise.allSettled(
-      pages.map((p) => getJson<BwCoursePage>(`${base}&page=${p}`, api.apiToken)),
-    );
-    for (const r of results) {
-      if (r.status === "fulfilled") addPage(r.value);
-      else errors.push(`Courses page failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
-    }
-  }
-
-  return { nameSet, totalCourses };
-}
-
 export interface BigWedgeSyncResult {
   baseUrl: string;
-  totalCourses: number;
-  totalRequestsFetched: number;
-  /** Matched by course-name lookup against the courses database. */
-  nameMatchCount: number;
-  /** Matched by action_taken=true on the course-requests endpoint. */
+  totalFetched: number;
   actionTakenCount: number;
-  /** Combined unique records to mark ADDED. */
   toMarkCount: number;
   markedCount: number;
-  /** Up to 20 records that were/would be marked ADDED. */
-  sample: Array<{ courseName: string; country: string | null; matchedBy: "name" | "action_taken" }>;
+  sample: Array<{ courseName: string; country: string | null }>;
   dryRun: boolean;
   errors: string[];
 }
@@ -183,111 +96,55 @@ export async function syncBigWedgeStatus(
   const dryRun = opts.dryRun ?? true;
   const errors: string[] = [];
 
-  // ── 1. Fetch all courses → normalised name set ───────────────────────────
-  const { nameSet, totalCourses } = await fetchCourseNameSet(api, errors);
-
-  // ── 2. Fetch course-requests → action_taken lookup ───────────────────────
+  // Fetch course requests, collect action_taken IDs
   const actionTakenIds = new Set<string>();
-  let reqUrl: string | null =
+  let url: string | null =
     `${api.baseUrl}/api/v1/course-requests/?ordering=-created_at&page_size=${PAGE_SIZE}&page=1`;
-  let totalRequestsFetched = 0;
+  let totalFetched = 0;
 
-  for (let page = 0; page < MAX_REQUEST_PAGES && reqUrl; page++) {
-    let data: BwRequestPage;
+  for (let page = 0; page < MAX_PAGES && url; page++) {
+    let data: BwPage;
     try {
-      data = await getJson<BwRequestPage>(reqUrl, api.apiToken);
+      data = await getJson<BwPage>(url, api.apiToken);
     } catch (err) {
-      errors.push(
-        `Requests fetch failed (page ${page + 1}): ${err instanceof Error ? err.message : String(err)}`,
-      );
+      errors.push(`Fetch failed (page ${page + 1}): ${err instanceof Error ? err.message : String(err)}`);
       break;
     }
     const results =
-      data.data ??
-      data.results ??
-      (Array.isArray(data) ? (data as unknown as BwRequest[]) : []);
-    totalRequestsFetched += results.length;
+      data.data ?? data.results ?? (Array.isArray(data) ? (data as unknown as BwRequest[]) : []);
+    totalFetched += results.length;
     for (const r of results) {
       if (r.action_taken && r.id != null) actionTakenIds.add(String(r.id));
     }
-    reqUrl = data.meta?.pagination?.next ?? data.next ?? null;
+    url = data.meta?.pagination?.next ?? data.next ?? null;
   }
 
-  // ── 3. Load our tracked NEW/SENT records ─────────────────────────────────
+  // Find our NEW/SENT records that match an action_taken request
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId: workspaceClientId },
     select: {
       courseRequests: {
-        where: { status: { in: ["NEW", "SENT"] } },
+        where: { status: { in: ["NEW", "SENT"] }, externalRef: { startsWith: "bigwedge:" } },
         select: { id: true, courseName: true, country: true, externalRef: true },
       },
     },
   });
-  const candidates = wiki?.courseRequests ?? [];
 
-  // ── 4. Match ─────────────────────────────────────────────────────────────
-  const toMarkMap = new Map<string, { courseName: string; country: string | null; matchedBy: "name" | "action_taken" }>();
+  const toMark = (wiki?.courseRequests ?? []).filter((r) => {
+    const requestId = r.externalRef?.split(":")[1];
+    return requestId && actionTakenIds.has(requestId);
+  });
 
-  for (const r of candidates) {
-    const normalised = norm(r.courseName);
-    if (normalised && nameSet.has(normalised)) {
-      toMarkMap.set(r.id, { courseName: r.courseName, country: r.country, matchedBy: "name" });
-    }
-  }
-
-  // action_taken signal — only applies to records imported via the API (have externalRef)
-  for (const r of candidates) {
-    if (!r.externalRef) continue;
-    const requestId = r.externalRef.split(":")[1];
-    if (requestId && actionTakenIds.has(requestId) && !toMarkMap.has(r.id)) {
-      toMarkMap.set(r.id, { courseName: r.courseName, country: r.country, matchedBy: "action_taken" });
-    }
-  }
-
-  const toMark = [...toMarkMap.entries()].map(([id, meta]) => ({ id, ...meta }));
-  const nameMatchCount = toMark.filter((r) => r.matchedBy === "name").length;
-  const actionTakenMatchCount = toMark.filter((r) => r.matchedBy === "action_taken").length;
-
-  const sample = toMark.slice(0, 20).map((r) => ({
-    courseName: r.courseName,
-    country: r.country,
-    matchedBy: r.matchedBy,
-  }));
+  const sample = toMark.slice(0, 20).map((r) => ({ courseName: r.courseName, country: r.country }));
 
   if (dryRun) {
-    return {
-      baseUrl: api.baseUrl,
-      totalCourses,
-      totalRequestsFetched,
-      nameMatchCount,
-      actionTakenCount: actionTakenMatchCount,
-      toMarkCount: toMark.length,
-      markedCount: 0,
-      sample,
-      dryRun: true,
-      errors,
-    };
+    return { baseUrl: api.baseUrl, totalFetched, actionTakenCount: actionTakenIds.size, toMarkCount: toMark.length, markedCount: 0, sample, dryRun: true, errors };
   }
 
-  // ── 5. Write ─────────────────────────────────────────────────────────────
   const ids = toMark.map((r) => r.id);
   if (ids.length > 0) {
-    await prisma.clientCourseRequest.updateMany({
-      where: { id: { in: ids } },
-      data: { status: "ADDED" },
-    });
+    await prisma.clientCourseRequest.updateMany({ where: { id: { in: ids } }, data: { status: "ADDED" } });
   }
 
-  return {
-    baseUrl: api.baseUrl,
-    totalCourses,
-    totalRequestsFetched,
-    nameMatchCount,
-    actionTakenCount: actionTakenMatchCount,
-    toMarkCount: toMark.length,
-    markedCount: ids.length,
-    sample,
-    dryRun: false,
-    errors,
-  };
+  return { baseUrl: api.baseUrl, totalFetched, actionTakenCount: actionTakenIds.size, toMarkCount: toMark.length, markedCount: ids.length, sample, dryRun: false, errors };
 }
