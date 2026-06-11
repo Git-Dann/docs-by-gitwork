@@ -14,10 +14,12 @@
 // Claude reads natively.
 
 import { z, ZodError } from "zod";
+import { DocumentType, type Prisma as PrismaTypes } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import {
   assertCan,
   canManageClients,
+  canManageDocs,
   canSeeAllClients,
   ForbiddenError,
   UnauthorizedError,
@@ -25,6 +27,21 @@ import {
 import { listDerivedClients, createClientRecord } from "@/server/clients";
 import { assignedClientIds, listTasks, createTask, updateTask } from "@/server/tasks";
 import { listMembers } from "@/server/team";
+import { listClientMeetings } from "@/server/meetings";
+import { allocateDocumentNumber } from "@/server/documents";
+import { prisma } from "@/lib/prisma";
+import { ensureBaseRecords } from "@/server/bootstrap";
+import { applyClientNameToSections } from "@/lib/apply-client-name";
+import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
+import {
+  getDefaultAssetPayload,
+  getDefaultCostsPayload,
+  getDefaultCtaPayload,
+  getDefaultLinkPayload,
+  getDefaultSectionPayload,
+  getDefaultTimelinePayload,
+} from "@/server/proposals";
 
 // ── JSON-RPC envelope ──────────────────────────────────────────────────────
 
@@ -172,6 +189,21 @@ const updateTaskSchema = z.object({
   assigneeIds: z.array(z.string()).optional(),
   featureBlockId: z.string().optional(),
   dueDate: z.string().optional(),
+});
+
+const findMeetingsSchema = z.object({
+  client: z.string(),
+  q: z.string().optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+});
+
+const DOCUMENT_TYPE = z.enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"]);
+
+const createDocumentSchema = z.object({
+  title: z.string().min(1).max(200),
+  client: z.string().optional(),
+  documentType: DOCUMENT_TYPE.optional(),
+  productName: z.string().optional(),
 });
 
 const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"];
@@ -375,6 +407,189 @@ const TOOLS: ToolDef[] = [
         role: m.role,
       }));
       return textResult(projected, `${projected.length} workspace member${projected.length === 1 ? "" : "s"}.`);
+    },
+  },
+  {
+    name: "find_meetings",
+    description:
+      "Search Scribe meeting notes for a client. Returns meeting title, date, " +
+      "AI summary, decisions, and action items. Use to answer 'what did we agree " +
+      "with X last week?' or 'show me the kickoff call decisions for Y'. " +
+      "Honors your client scoping.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid — required." },
+        q: { type: "string", description: "Optional case-insensitive substring of meeting title / summary / transcript." },
+        limit: { type: "integer", description: "Max meetings to return (default 20, max 50)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = findMeetingsSchema.parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const rows = await listClientMeetings(user.workspaceId, c.id, parsed.q);
+      const cap = parsed.limit ?? 20;
+      const trimmed = rows.slice(0, cap);
+      const projected = trimmed.map((m) => ({
+        id: m.id,
+        title: m.title,
+        startedAt: m.startedAt ? m.startedAt.toISOString() : null,
+        endedAt: m.endedAt ? m.endedAt.toISOString() : null,
+        status: m.status,
+        summary: m.summary,
+        decisions: m.decisions,
+        actionItems: m.actionItems.map((a) => ({
+          id: a.id,
+          text: a.text,
+          owner: a.owner,
+          done: a.done,
+        })),
+      }));
+      return textResult(
+        projected,
+        `${projected.length} meeting${projected.length === 1 ? "" : "s"} on ${c.name}${
+          parsed.q ? ` matching "${parsed.q}"` : ""
+        }${rows.length > cap ? ` (of ${rows.length} total — pass a larger limit to see more)` : ""}.`,
+      );
+    },
+  },
+  {
+    name: "create_document",
+    description:
+      "Create a new document (proposal / SOW / SLA / NDA / MSA / CO / DSA / OTHER). " +
+      "Defaults to PROPOSAL — that's what you want unless asked otherwise. The doc " +
+      "is created as DRAFT with default sections, ready to edit in Foundry. Requires " +
+      "the 'Manage documents' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Document title (1–200 chars)." },
+        client: { type: "string", description: "Optional client slug, name, or cuid to attach the doc to." },
+        documentType: {
+          type: "string",
+          enum: ["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"],
+          description: "Document type. Defaults to PROPOSAL.",
+        },
+        productName: {
+          type: "string",
+          description: "Optional product / project name shown on the proposal cover.",
+        },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageDocs, "create documents");
+      const parsed = createDocumentSchema.parse(args);
+      const documentType: DocumentType = (parsed.documentType as DocumentType) ?? "PROPOSAL";
+
+      // Resolve client (if given) so we capture both id and name correctly.
+      let clientId: string | null = null;
+      let clientName: string | undefined;
+      if (parsed.client) {
+        const resolved = await resolveClient(user, parsed.client);
+        clientId = resolved.id;
+        clientName = resolved.name;
+      }
+
+      // Mirror the route handler logic — pick template, pick sections,
+      // allocate doc number, create. Kept inline rather than extracted because
+      // the route is the only other caller and we want low coupling between
+      // the MCP path and the web path until both demonstrably need the same
+      // helper. If a third caller shows up, extract into src/server/documents.ts.
+      const { workspace, user: defaultUser, template } = await ensureBaseRecords();
+      const selectedTemplate =
+        (await prisma.documentTemplate.findFirst({
+          where: { slug: TEMPLATE_SLUG_BY_TYPE[documentType] },
+        })) ?? template;
+
+      const templateSections =
+        selectedTemplate?.sections && Array.isArray(selectedTemplate.sections)
+          ? (selectedTemplate.sections as Array<{
+              key: string;
+              title: string;
+              description?: string | null;
+              sortOrder?: number;
+              isVisible?: boolean;
+              data: unknown;
+            }>)
+          : null;
+
+      let sectionsCreate: PrismaTypes.DocumentSectionCreateWithoutDocumentInput[];
+      if (templateSections && templateSections.length > 0) {
+        sectionsCreate = templateSections.map((section, index) => ({
+          key: section.key,
+          title: section.title,
+          description: section.description ?? null,
+          sortOrder: section.sortOrder ?? index,
+          isVisible: section.isVisible ?? true,
+          data: (section.data ?? {}) as PrismaTypes.InputJsonValue,
+        }));
+      } else if (documentType === "PROPOSAL") {
+        sectionsCreate = getDefaultSectionPayload();
+      } else {
+        const blueprints = getTemplateBlueprintsForType(documentType);
+        sectionsCreate = blueprints.map((blueprint, index) => ({
+          key: blueprint.key,
+          title: blueprint.title,
+          description: blueprint.description,
+          sortOrder: index,
+          isVisible: blueprint.visible ?? true,
+          data: blueprint.data as unknown as PrismaTypes.InputJsonValue,
+        }));
+      }
+      sectionsCreate = applyClientNameToSections(sectionsCreate, clientName) as typeof sectionsCreate;
+
+      const isProposal = documentType === "PROPOSAL";
+      const documentNumber = await allocateDocumentNumber(workspace.id, documentType);
+
+      const document = await prisma.document.create({
+        data: {
+          workspaceId: workspace.id,
+          // Ownership traces to the MCP user — not the default bootstrap user —
+          // so audit trails attribute correctly. Falls back to default only if
+          // the user row vanished mid-flight (defensive; shouldn't happen).
+          ownerId: user.id ?? defaultUser.id,
+          templateId: selectedTemplate?.id,
+          documentType,
+          documentNumber,
+          status: "DRAFT",
+          title: parsed.title,
+          productName: parsed.productName,
+          clientName,
+          clientId,
+          summary: "",
+          version: "v1.0",
+          metadata: {
+            ...DEFAULT_PROPOSAL_METADATA,
+            client: clientName ?? DEFAULT_PROPOSAL_METADATA.client,
+            owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+          },
+          sections: { create: sectionsCreate },
+          costLineItems: isProposal ? { create: getDefaultCostsPayload() } : undefined,
+          timelinePhases: isProposal ? { create: getDefaultTimelinePayload() } : undefined,
+          links: isProposal ? { create: getDefaultLinkPayload() } : undefined,
+          ctas: isProposal ? { create: getDefaultCtaPayload() } : undefined,
+          assets: isProposal ? { create: getDefaultAssetPayload() } : undefined,
+        },
+        select: { id: true, title: true, documentNumber: true, documentType: true, status: true },
+      });
+
+      return textResult(
+        {
+          id: document.id,
+          title: document.title,
+          documentNumber: document.documentNumber,
+          documentType: document.documentType,
+          status: document.status,
+          editUrl: `/app/docs/${document.id}`,
+        },
+        `Created ${document.documentType} ${document.documentNumber}: "${document.title}"${
+          clientName ? ` for ${clientName}` : ""
+        }. Open it in Foundry to edit.`,
+      );
     },
   },
 ];

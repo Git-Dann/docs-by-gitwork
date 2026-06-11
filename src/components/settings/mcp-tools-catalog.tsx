@@ -57,6 +57,25 @@ const TOOLS: Tool[] = [
       "List Gitwork workspace members. Useful for finding the user id Claude needs when assigning tasks.",
     examples: ["Who's in the workspace?", "Find Harry's user id."],
   },
+  {
+    name: "find_meetings",
+    blurb:
+      "Search Scribe meeting notes for a client. Returns titles, dates, AI summary, decisions, and action items.",
+    examples: [
+      "What did we agree with Speakify last week?",
+      "Show me decisions from the Big Wedge kickoff call.",
+      "Search After Desk meetings for 'onboarding'.",
+    ],
+  },
+  {
+    name: "create_document",
+    blurb:
+      "Create a new document (proposal, SOW, SLA, NDA, etc.) as DRAFT with default sections. Requires the 'Manage documents' permission.",
+    examples: [
+      "Create a new proposal called 'Speakify Phase 2' for Speakify.",
+      "Start an SOW titled 'Big Wedge analytics revamp' for Big Wedge.",
+    ],
+  },
 ];
 
 export function McpToolsCatalog({ variant }: { variant: "admin" | "user" }) {
