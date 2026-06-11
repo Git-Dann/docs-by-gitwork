@@ -60,18 +60,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return apiError("Candidate not found.", 404);
     }
 
-    // Atomic: candidate update + (optional) rate-card write-through both
-    // succeed or both roll back. Prevents the half-saved state where
-    // Candidate.hourlyRate changes but RateCardPerson.sourceRate doesn't
-    // (which is exactly what the table reads). Re-fetch happens outside
-    // the transaction so the include shape isn't affected.
-    const ratePropagated =
-      body.hourlyRate !== undefined &&
-      existing.rateCardPersonId &&
-      body.hourlyRate != null;
+    // Atomic: candidate update + (optional) rate-card sync both succeed
+    // or both roll back. Rate-card sync has two branches:
+    //   1. Candidate already has a linked rate-card row → update it.
+    //   2. Candidate has no link AND a rate is being saved → CREATE a
+    //      rate-card row + link the candidate to it. Handles the
+    //      "manually-added dev with no seed entry" case (e.g. Sibghat).
+    // Either way the next read returns the fresh rate via the join, so
+    // the display works without falling back to Candidate.hourlyRate.
+    // Switched to an interactive transaction because the create+link
+    // path needs the new row's id to wire onto the candidate row.
+    const rateBeingSet = body.hourlyRate !== undefined && body.hourlyRate != null;
 
-    const [candidate] = await prisma.$transaction([
-      prisma.candidate.update({
+    const candidate = await prisma.$transaction(async (tx) => {
+      const updated = await tx.candidate.update({
         where: {
           id: existing.id,
         },
@@ -174,32 +176,53 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           : {}),
       },
       include: codeClearDetailInclude,
-    }),
-      // Propagate the rate edit to the linked rate-card row. The Code →
-      // Developers Monthly column reads from the rate-card join (single
-      // source of truth), so without this write-through Syed's edits
-      // were saving to Candidate.hourlyRate but invisible in the table.
-      // We treat the form's figure as MONTH because that's how the
-      // form pre-fills (from rate-card.sourceRate → Candidate.hourlyRate)
-      // and what the table renders.
-      ...(ratePropagated
-        ? [
-            prisma.rateCardPerson.update({
-              where: { id: existing.rateCardPersonId as string },
-              data: {
-                sourceRate: new Prisma.Decimal(body.hourlyRate as number),
-                billingPeriod: "MONTH" as const,
-                ...(body.currency ? { sourceCurrencyCode: body.currency } : {}),
-              },
-            }),
-          ]
-        : []),
-    ]);
+    });
 
-    // Re-fetch when we updated the rate-card row so the response carries
-    // the fresh monthly figure (the prior `update` returned the stale
-    // join). Cheap — one extra read against the same indexed PK.
-    const fresh = ratePropagated
+      if (rateBeingSet) {
+        const rate = new Prisma.Decimal(body.hourlyRate as number);
+        const currency = body.currency || "USD";
+
+        if (existing.rateCardPersonId) {
+          // Branch 1 — candidate already has a rate-card link. Update
+          // the linked row in place; the next read pulls the fresh
+          // monthly figure through the join.
+          await tx.rateCardPerson.update({
+            where: { id: existing.rateCardPersonId },
+            data: {
+              sourceRate: rate,
+              billingPeriod: "MONTH",
+              sourceCurrencyCode: currency,
+            },
+          });
+        } else {
+          // Branch 2 — no link. Create a rate-card row from the
+          // candidate's identity and wire it onto the candidate so
+          // future reads + saves go through the join cleanly. Area
+          // defaults to the primary stack since we don't carry a
+          // separate role string on Candidate.
+          const newRateCard = await tx.rateCardPerson.create({
+            data: {
+              workspaceId: existing.workspaceId,
+              name: updated.name,
+              area: updated.primaryStack || "Developer",
+              sourceRate: rate,
+              sourceCurrencyCode: currency,
+              billingPeriod: "MONTH",
+            },
+          });
+          await tx.candidate.update({
+            where: { id: updated.id },
+            data: { rateCardPersonId: newRateCard.id },
+          });
+        }
+      }
+
+      return updated;
+    });
+
+    // Re-fetch when the rate path ran so the response carries the
+    // freshly-linked + freshly-priced rate-card row through the join.
+    const fresh = rateBeingSet
       ? await prisma.candidate.findFirstOrThrow({
           where: { id: candidate.id },
           include: codeClearDetailInclude,

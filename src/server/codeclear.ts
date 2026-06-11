@@ -357,15 +357,23 @@ export interface SerializeCandidateOptions {
   canViewRates?: boolean;
 }
 
-/** Project the linked rate-card row's pricing onto the candidate response.
+/** Project a monthly rate onto the candidate response. Prefers the
+ *  linked rate-card row (the canonical commercial pricing); falls back
+ *  to the candidate's own `hourlyRate` + `currency` when there's no
+ *  rate-card link (handles manually-added devs without seed entries,
+ *  e.g. Sibghat). The "Monthly rate" field on the edit form always
+ *  writes both Candidate.hourlyRate AND, when possible, the linked
+ *  rate-card row — so this fallback only kicks in when the link is
+ *  genuinely missing.
+ *
  *  Returns `null`s when:
  *    - the viewer can't see rates,
- *    - the link is missing or archived,
  *    - the dev is off-bench (devGroup PRO_BONO) — these devs don't
- *      participate in costings even if their rate-card row exists.
- *  Always normalised to monthly via the existing rate-card helper so
- *  DAY/WEEK seeds (none today) would still surface as a comparable
- *  monthly figure. */
+ *      participate in costings even if a rate exists,
+ *    - both the rate-card row AND the candidate's own rate are
+ *      missing/zero,
+ *    - the rate-card row exists but is archived (and no candidate
+ *      fallback). */
 function rateCardFields(
   rateCardPerson:
     | {
@@ -376,22 +384,34 @@ function rateCardFields(
       }
     | null
     | undefined,
+  candidateRate: { hourlyRate: Prisma.Decimal | null; currency: string | null },
   devGroup: "BENCH" | "PRO_BONO",
   opts?: SerializeCandidateOptions,
 ): { monthlyRate: number | null; monthlyRateCurrency: string | null } {
   const hideRates = opts?.canViewRates === false;
-  if (
-    hideRates ||
-    devGroup === "PRO_BONO" ||
-    !rateCardPerson ||
-    rateCardPerson.archivedAt
-  ) {
+  if (hideRates || devGroup === "PRO_BONO") {
     return { monthlyRate: null, monthlyRateCurrency: null };
   }
-  return {
-    monthlyRate: normalizeToMonthly(rateCardPerson.sourceRate, rateCardPerson.billingPeriod),
-    monthlyRateCurrency: rateCardPerson.sourceCurrencyCode,
-  };
+
+  // Prefer the linked rate-card row when it exists and isn't archived.
+  if (rateCardPerson && !rateCardPerson.archivedAt) {
+    return {
+      monthlyRate: normalizeToMonthly(rateCardPerson.sourceRate, rateCardPerson.billingPeriod),
+      monthlyRateCurrency: rateCardPerson.sourceCurrencyCode,
+    };
+  }
+
+  // Fallback — the candidate's own hourlyRate field. The edit form's
+  // "Monthly rate" input always writes here, so a manually-added dev
+  // with no rate-card link still surfaces their figure in the list.
+  if (candidateRate.hourlyRate != null) {
+    return {
+      monthlyRate: Number(candidateRate.hourlyRate.toString()),
+      monthlyRateCurrency: candidateRate.currency ?? "USD",
+    };
+  }
+
+  return { monthlyRate: null, monthlyRateCurrency: null };
 }
 
 /** Shape shared by both list and detail serializers. Keeps the new validation
@@ -493,7 +513,12 @@ export function serializeCandidateListItem(
 
   return {
     ...commonCandidateFields(candidate, opts),
-    ...rateCardFields(candidate.rateCardPerson, candidate.devGroup, opts),
+    ...rateCardFields(
+      candidate.rateCardPerson,
+      { hourlyRate: candidate.hourlyRate, currency: candidate.currency },
+      candidate.devGroup,
+      opts,
+    ),
     score,
     scoreDraft,
     latestGitHubAnalysis,
@@ -539,7 +564,12 @@ export function serializeCandidateDetails(
 
   return {
     ...commonCandidateFields(candidate, opts),
-    ...rateCardFields(candidate.rateCardPerson, candidate.devGroup, opts),
+    ...rateCardFields(
+      candidate.rateCardPerson,
+      { hourlyRate: candidate.hourlyRate, currency: candidate.currency },
+      candidate.devGroup,
+      opts,
+    ),
     score,
     scoreDraft,
     latestGitHubAnalysis,
