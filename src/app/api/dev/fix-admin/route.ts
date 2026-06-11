@@ -2,11 +2,14 @@
 import { prisma } from "@/lib/prisma";
 import { ensureInitialAdmin } from "@/server/bootstrap";
 import { apiOk, apiError } from "@/lib/api-response";
+import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 // One-time admin repair: deletes any malformed user records (where the password
 // was accidentally stored as the email) and recreates the admin from env vars.
 // Gated by API_KEY via middleware — safe to leave deployed.
-export async function POST() {
+export async function POST(request: Request) {
+  assertSuperAdmin(await getEffectiveUserOrNull(request));
+
   const email = process.env.INITIAL_ADMIN_EMAIL;
   const password = process.env.INITIAL_ADMIN_PASSWORD;
 

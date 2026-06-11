@@ -1,5 +1,6 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageClients, requireAuthedUser } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { setDesignSystemShare } from "@/server/design-system";
 import { designSystemShareSchema } from "@/server/validators";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +21,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ slug: st
     // High-risk: publishes a public, no-login brand page. Gate on clients.manage.
     assertCan(user, canManageClients, "share client design systems");
     const { slug } = await params;
+    await assertClientAccessBySlug(user, slug);
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = designSystemShareSchema.parse(await req.json());

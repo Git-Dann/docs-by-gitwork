@@ -3,16 +3,19 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getMeeting, setActionItemDone, reassignMeetingClient } from "@/server/meetings";
 import { meetingUpdateSchema } from "@/server/validators";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ slug: string; id: string }> };
 
 /** GET /api/clients/{slug}/meetings/{id} — full meeting incl. transcript + notes. */
-export async function GET(_req: NextRequest, context: RouteContext) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
-    const { id } = await context.params;
+    const { slug, id } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const meeting = await getMeeting(workspace.id, id);
     if (!meeting) return apiError("Meeting not found", 404);
     return apiOk({ meeting });
@@ -29,7 +32,8 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
-    const { id } = await context.params;
+    const { slug, id } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const body = meetingUpdateSchema.parse(await req.json());
 
     if (body.actionItemId !== undefined && body.done !== undefined) {

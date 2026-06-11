@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiOk, fromError, apiError } from "@/lib/api-response";
 import { listCheckConfigs, saveCheckConfig } from "@/server/check-config";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ const saveSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(req));
     const body = saveSchema.parse(await req.json());
     await saveCheckConfig(body);
     return apiOk({ ok: true });

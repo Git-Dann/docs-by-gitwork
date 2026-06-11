@@ -6,6 +6,8 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { ingestMeeting } from "@/server/meetings";
 import { meetingIngestSchema } from "@/server/validators";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 // Synchronous: fetch the Meet transcript + one Claude summarise call. Comfortably under 60s
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { slug } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const body = meetingIngestSchema.parse(await req.json());
 
     const client = await prisma.workspaceClient.findFirst({

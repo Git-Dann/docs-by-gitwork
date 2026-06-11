@@ -4,6 +4,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getRequestUser } from "@/server/auth/request-user";
 import {
+  isAtLeast,
   isSuperAdmin,
   normalizeMatrix,
   normalizeOverrides,
@@ -274,5 +275,22 @@ export function canManageStudy(user: EffectiveUser): boolean {
 export function assertCan(user: EffectiveUser | null, check: (u: EffectiveUser) => boolean, label: string): void {
   if (user && !check(user)) {
     throw new ForbiddenError(`You don't have permission to ${label}.`);
+  }
+}
+
+/**
+ * Role-tier gates for workspace-config + dev/maintenance routes. Same convention as
+ * assertCan: a signed-in user below the bar is rejected; a trusted API_KEY-only caller
+ * (no per-user identity → null) passes, so external/server integrations keep working.
+ */
+export function assertAtLeastAdmin(user: EffectiveUser | null): void {
+  if (user && !isAtLeast(user.role, "ADMIN")) {
+    throw new ForbiddenError("Admin access required.");
+  }
+}
+
+export function assertSuperAdmin(user: EffectiveUser | null): void {
+  if (user && !isSuperAdmin(user.role)) {
+    throw new ForbiddenError("Super Admin access required.");
   }
 }

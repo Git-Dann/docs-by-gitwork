@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { listClientMeetings, findPastClientCalls, deriveClientDomains } from "@/server/meetings";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { slug } = await context.params;
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const q = req.nextUrl.searchParams.get("q")?.trim() || undefined;
 
     const client = await prisma.workspaceClient.findFirst({

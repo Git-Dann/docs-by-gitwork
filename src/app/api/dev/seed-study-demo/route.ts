@@ -2,6 +2,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -810,8 +811,9 @@ const REPORT = {
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    assertSuperAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
 
     // Delete existing demo study if present
