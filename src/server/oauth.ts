@@ -18,6 +18,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { OAuthClient, User } from "@prisma/client";
+import { recordAuditEntry } from "@/server/audit-log";
 
 // ── constants ──────────────────────────────────────────────────────────────
 
@@ -254,6 +255,15 @@ export async function issueTokens(input: {
       },
     });
   });
+
+  // Audit the connection (fire-and-forget — never block issuance).
+  recordAuditEntry({
+    workspaceId: input.workspaceId,
+    actorId: input.userId,
+    action: "integration.mcp.connected",
+    target: `oauthClient:${input.clientId}`,
+    metadata: { scope: input.scope },
+  }).catch(() => undefined);
 
   return {
     accessToken,

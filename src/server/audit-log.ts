@@ -30,6 +30,10 @@ export type AuditAction =
   | "integration.slack.connected"
   | "integration.slack.disconnected"
   | "integration.email.configured"
+  | "integration.mcp.enabled"
+  | "integration.mcp.disabled"
+  | "integration.mcp.connected"
+  | "integration.mcp.revoked"
   // Templates
   | "template.set_default"
   | "template.duplicated"

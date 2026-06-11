@@ -30,10 +30,17 @@ const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
 const OnboardingFormsTab = dynamic(() =>
   import("@/components/settings/onboarding/forms-tab").then((m) => ({ default: m.OnboardingFormsTab })),
 );
+const McpAdminPanel = dynamic(() =>
+  import("@/components/settings/mcp-admin-panel").then((m) => ({ default: m.McpAdminPanel })),
+);
+const ConnectedAppsPanel = dynamic(() =>
+  import("@/components/settings/connected-apps-panel").then((m) => ({ default: m.ConnectedAppsPanel })),
+);
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
   "notifications",
+  "connected-apps",
   "general",
   "branding",
   "templates",
@@ -46,6 +53,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "integrations",
   "agents",
   "checks",
+  "mcp",
   "agents-checks", // legacy — redirects to "agents"
   "audit",
   "developer",
@@ -53,8 +61,8 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "workspace", // legacy
 ];
 
-// Sections only Super Admins may open (the role matrix editor).
-const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
+// Sections only Super Admins may open (the role matrix editor + MCP master toggle).
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "mcp"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
@@ -79,6 +87,7 @@ const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = 
   general: "settings.general",
   branding: "settings.branding",
   content: "settings.content",
+  "connected-apps": "mcp.connect",
   templates: "settings.templates",
   integrations: "settings.integrations",
   agents: "settings.agents",
@@ -96,6 +105,14 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   notifications: {
     title: "Notifications",
     subtitle: "Where and when Foundry pings you.",
+  },
+  "connected-apps": {
+    title: "Connected apps",
+    subtitle: "Authorize Claude and other MCP clients to act on your behalf.",
+  },
+  mcp: {
+    title: "MCP",
+    subtitle: "Workspace-wide Claude / MCP integration — toggle and connections.",
   },
   general: {
     title: "Document defaults",
@@ -266,6 +283,8 @@ export default async function SettingsSectionPage({
       <SettingsShell activeSection={sectionId}>
         {sectionId === "account" ? <AccountSettingsPanel /> : null}
         {sectionId === "notifications" ? <NotificationsSection /> : null}
+        {sectionId === "connected-apps" ? <ConnectedAppsPanel /> : null}
+        {sectionId === "mcp" ? <McpAdminPanel /> : null}
         {sectionId === "general" ? <GeneralTab /> : null}
         {sectionId === "branding" ? <BrandingTab /> : null}
         {sectionId === "content" ? <ContentTab /> : null}

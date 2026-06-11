@@ -88,31 +88,56 @@ export default async function ConsentPage({
 
   return (
     <div className="mx-auto my-16 max-w-xl px-6">
-      <div className="rounded-lg border border-neutral-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold tracking-tight">Connect {client.clientName} to Foundry</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          {client.clientName} is asking for permission to act in Foundry on your behalf,
-          as <strong>{session.user.email ?? session.user.name ?? "this account"}</strong>.
-        </p>
+      <div className="app-card p-8">
+        <div className="flex items-start gap-4">
+          {client.logoUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={client.logoUri}
+              alt=""
+              className="h-10 w-10 rounded"
+              width={40}
+              height={40}
+            />
+          ) : (
+            <div className="h-10 w-10 rounded bg-[var(--surface-2)]" />
+          )}
+          <div className="flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-3)]">
+              Authorize connection
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--text-1)]">
+              Connect {client.clientName} to Foundry
+            </h1>
+            <p className="mt-2 text-sm text-[var(--text-2)]">
+              {client.clientName} is asking to act in Foundry on your behalf as{" "}
+              <strong>{session.user.email ?? session.user.name ?? "this account"}</strong>.
+            </p>
+          </div>
+        </div>
 
-        <div className="mt-6 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Permissions requested
+        <div className="mt-6 rounded-md border border-[var(--border-1)] bg-[var(--surface-2)] p-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-3)]">
+            What this connection can do
           </p>
-          <ul className="mt-2 space-y-1.5 text-sm text-neutral-800">
+          <ul className="mt-2 space-y-1.5 text-sm text-[var(--text-1)]">
             {scopes.includes("mcp") && (
               <li>
-                <strong>Use Foundry MCP tools.</strong> Read and modify clients, tasks,
-                and other workspace data — subject to your own Foundry permissions.
-                Nothing this connection does will exceed what you can do signed in.
+                <strong>Use Foundry MCP tools</strong> — list and create clients, tasks, and
+                related records, subject to your own Foundry permissions. Nothing this
+                connection does will exceed what you can do signed in.
               </li>
             )}
           </ul>
+          <p className="mt-3 text-xs text-[var(--text-3)]">
+            You can revoke this connection at any time from{" "}
+            <strong>Settings → Connected apps</strong>.
+          </p>
         </div>
 
         {client.clientUri && (
-          <p className="mt-4 text-xs text-neutral-500">
-            Learn more about this client:{" "}
+          <p className="mt-4 text-xs text-[var(--text-3)]">
+            Client homepage:{" "}
             <a
               href={client.clientUri}
               target="_blank"
@@ -141,7 +166,7 @@ export default async function ConsentPage({
             type="submit"
             name="decision"
             value="deny"
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            className="rounded-md border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)]"
           >
             Cancel
           </button>
@@ -149,7 +174,7 @@ export default async function ConsentPage({
             type="submit"
             name="decision"
             value="approve"
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="rounded-md bg-[var(--text-1)] px-4 py-2 text-sm font-medium text-[var(--surface-1)] hover:opacity-90"
           >
             Allow {client.clientName}
           </button>
@@ -162,9 +187,12 @@ export default async function ConsentPage({
 function ErrorScreen({ title, body }: { title: string; body: string }) {
   return (
     <div className="mx-auto my-16 max-w-xl px-6">
-      <div className="rounded-lg border border-red-200 bg-red-50 p-8">
-        <h1 className="text-xl font-semibold text-red-900">{title}</h1>
-        <p className="mt-2 text-sm text-red-800">{body}</p>
+      <div className="app-card border-[var(--accent-danger)] p-8">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--accent-danger)]">
+          Authorization failed
+        </p>
+        <h1 className="mt-1 text-xl font-semibold text-[var(--text-1)]">{title}</h1>
+        <p className="mt-2 text-sm text-[var(--text-2)]">{body}</p>
       </div>
     </div>
   );
