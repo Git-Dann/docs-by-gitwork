@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   AdjustmentsHorizontalIcon,
   BellAlertIcon,
   BuildingOffice2Icon,
+  ChevronDownIcon,
   ClipboardDocumentCheckIcon,
   ClipboardDocumentListIcon,
   Cog6ToothIcon,
@@ -198,6 +200,7 @@ export function SettingsShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Read role + permissions DB-fresh (via /api/account) so the rail reflects matrix
   // edits to a Settings section without waiting for the member to re-log in.
   const { data: account } = useAccount();
@@ -206,9 +209,83 @@ export function SettingsShell({
   const isAdmin = isAtLeast(role, "ADMIN");
   const isSuper = isSuperAdmin(role);
 
+  const currentSection = GROUPS.flatMap((g) => g.sections).find((s) => s.id === activeSection);
+  const CurrentIcon = currentSection?.icon;
+
+  const navGroups = GROUPS.map((group) => ({
+    ...group,
+    visible: group.sections.filter((section) => {
+      if (section.superAdminOnly) return isSuper;
+      if (section.permission) return isSuper || permissions.includes(section.permission);
+      if (section.adminOnly) return isAdmin;
+      return true;
+    }),
+  })).filter((g) => g.visible.length > 0);
+
   return (
     <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="space-y-4">
+      {/* Mobile: collapsible settings nav (hidden on xl+) */}
+      <div className="xl:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm font-medium text-[var(--text-1)] shadow-[var(--shadow-xs)]"
+        >
+          <span className="flex items-center gap-2.5">
+            {CurrentIcon && (
+              <CurrentIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+            )}
+            <span>{currentSection?.label ?? "Settings"}</span>
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              "h-4 w-4 shrink-0 text-[var(--text-3)] transition-transform duration-200",
+              mobileNavOpen && "rotate-180",
+            )}
+          />
+        </button>
+        {mobileNavOpen && (
+          <div className="mt-2 space-y-3 rounded-[10px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-sm)]">
+            {navGroups.map((group) => (
+              <div key={group.id}>
+                <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  {group.label}
+                </p>
+                <nav className="space-y-0.5">
+                  {group.visible.map((section) => {
+                    const href = `/app/settings/${section.id}`;
+                    const active = activeSection === section.id || pathname === href;
+                    const Icon = section.icon;
+                    return (
+                      <Link
+                        key={section.id}
+                        href={href}
+                        onClick={() => setMobileNavOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2.5 rounded-[6px] px-2 py-2 text-sm transition",
+                          active
+                            ? "bg-[var(--surface-brand)] font-medium text-[var(--brand-700)]"
+                            : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+                          )}
+                        />
+                        <span>{section.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <aside className="hidden space-y-4 xl:block">
         {GROUPS.map((group) => {
           const visible = group.sections.filter((section) => {
             if (section.superAdminOnly) return isSuper;
