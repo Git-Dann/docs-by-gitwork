@@ -18,8 +18,9 @@ import {
   importWikiCourseFeedback,
   getWikiCourseIngest,
   setWikiCourseIngest,
+  syncBigWedgeStatusApi,
 } from "@/lib/api";
-import type { CourseImportInput } from "@/lib/api";
+import type { CourseImportInput, BigWedgeSyncResult } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
   return useQuery({
@@ -192,6 +193,18 @@ export function useImportCourseFeedback(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
       queryClient.invalidateQueries({ queryKey: ["course-feedback", slug] });
+    },
+  });
+}
+
+export function useSyncBigWedgeStatus(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation<BigWedgeSyncResult, Error, { dryRun: boolean }>({
+    mutationFn: ({ dryRun }) => syncBigWedgeStatusApi(dryRun),
+    onSuccess: (data) => {
+      if (!data.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+      }
     },
   });
 }

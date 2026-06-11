@@ -9,6 +9,8 @@ import {
   XMarkIcon,
   InboxArrowDownIcon,
   CodeBracketIcon,
+  ArrowPathIcon,
+  CheckCircleIcon,
 } from "@heroicons/react/24/outline";
 import { WikiSidebar, type WikiSection, COURSE_REQUESTS_SLUGS } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
@@ -33,7 +35,9 @@ import {
   useAddCourseRequest,
   useUpdateCourseRequest,
   useDeleteCourseRequest,
+  useSyncBigWedgeStatus,
 } from "@/hooks/use-wiki";
+import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 import type { CourseRequestRecord } from "@/lib/api";
 
@@ -425,6 +429,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [showCourseImport, setShowCourseImport] = useState(false);
   const [showCourseApi, setShowCourseApi] = useState(false);
   const [courseSaving, setCourseSaving] = useState(false);
+  const [syncResult, setSyncResult] = useState<BigWedgeSyncResult | null>(null);
+  const syncMutation = useSyncBigWedgeStatus(slug);
 
   // Page editor state — controlled by this workspace, not the editor itself
   const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
@@ -717,8 +723,98 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               <PlusIcon className="h-3.5 w-3.5" />
               Add request
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSyncResult(null);
+                syncMutation.mutate(
+                  { dryRun: true },
+                  { onSuccess: (data) => setSyncResult(data) },
+                );
+              }}
+              disabled={syncMutation.isPending}
+              className={chipBtn}
+              title="Sync action_taken status from Big Wedge API"
+            >
+              <ArrowPathIcon
+                className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`}
+              />
+              {syncMutation.isPending ? "Syncing…" : "Sync status"}
+            </button>
             {renderShareMenu("course-requests")}
           </div>
+
+          {/* Sync result panel */}
+          {syncResult && (
+            <div className="mb-5 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--color-text-secondary)] mb-1">
+                    Sync preview
+                  </p>
+                  {syncResult.toMarkCount === 0 ? (
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      No new requests to mark as Added — {syncResult.actionTakenCount} actioned on Big Wedge,
+                      none matched unresolved records here.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-sm text-[var(--color-text-primary)] mb-2">
+                        <span className="font-semibold">{syncResult.toMarkCount}</span>{" "}
+                        {syncResult.toMarkCount === 1 ? "request" : "requests"} would be marked{" "}
+                        <span className="font-semibold text-emerald-600">ADDED</span>
+                        {" "}({syncResult.actionTakenCount} total actioned on Big Wedge side, {syncResult.totalFetched} fetched).
+                      </p>
+                      {syncResult.sample.length > 0 && (
+                        <ul className="mb-2 space-y-0.5">
+                          {syncResult.sample.map((s, i) => (
+                            <li key={i} className="font-mono text-xs text-[var(--color-text-secondary)] truncate">
+                              {s.courseName}{s.country ? ` · ${s.country}` : ""}
+                            </li>
+                          ))}
+                          {syncResult.toMarkCount > syncResult.sample.length && (
+                            <li className="font-mono text-xs text-[var(--color-text-tertiary)]">
+                              +{syncResult.toMarkCount - syncResult.sample.length} more
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                  {syncResult.errors.length > 0 && (
+                    <p className="mt-1 text-xs text-red-500">{syncResult.errors[0]}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {syncResult.toMarkCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        syncMutation.mutate(
+                          { dryRun: false },
+                          {
+                            onSuccess: () => setSyncResult(null),
+                          },
+                        );
+                      }}
+                      disabled={syncMutation.isPending}
+                      className="inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      <CheckCircleIcon className="h-3.5 w-3.5" />
+                      Mark {syncResult.toMarkCount} as Added
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSyncResult(null)}
+                    className="rounded-[6px] p-1 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <section className="widget-card">
             <div className="widget-header">

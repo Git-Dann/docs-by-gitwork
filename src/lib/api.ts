@@ -2543,6 +2543,27 @@ export async function getWikiCourseIngest(slug: string): Promise<{ token: string
   );
 }
 
+export interface BigWedgeSyncResult {
+  baseUrl: string;
+  totalFetched: number;
+  actionTakenCount: number;
+  toMarkCount: number;
+  markedCount: number;
+  sample: Array<{ courseName: string; country: string | null; externalRef: string }>;
+  dryRun: boolean;
+  errors: string[];
+}
+
+export async function syncBigWedgeStatusApi(
+  dryRun: boolean,
+): Promise<BigWedgeSyncResult> {
+  return apiFetch<BigWedgeSyncResult>("/api/dev/sync-bigwedge-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dryRun, clientSlug: "wedge" }),
+  });
+}
+
 export async function setWikiCourseIngest(
   slug: string,
   input: { enabled: boolean; rotate?: boolean },
