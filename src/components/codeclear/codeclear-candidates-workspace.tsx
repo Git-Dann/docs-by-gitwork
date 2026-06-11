@@ -25,7 +25,7 @@ import {
   type PipelineStatus,
 } from "@/types/codeclear";
 import type { ClientListItem } from "@/types/client";
-import { cn, formatDate } from "@/lib/format";
+import { cn } from "@/lib/format";
 import { rosterIndexFor } from "@/lib/gitwork-roster";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -33,7 +33,6 @@ import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import {
   CodeClearTabs,
   EmptyState,
-  RosterTierBadge,
 } from "@/components/codeclear/codeclear-shared";
 import {
   CandidateProfileForm,
@@ -651,9 +650,6 @@ function DevCard({
   canViewRates: boolean;
   usdToGbp: number | null;
 }) {
-  const score =
-    candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
-
   return (
     <article
       className="widget-card group cursor-pointer transition-shadow hover:shadow-[rgba(0,0,0,0.06)_0px_4px_16px]"
@@ -685,18 +681,19 @@ function DevCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4">
-        {/* Identity row — avatar + name only (no handle, that's in
-            the header). Matches Portal client cards. */}
+        {/* Identity row — avatar + name + stack badge. Stack sits under
+            the name as a small label rather than in a separate strip so
+            the card stays compact now that calibre/tier are gone. */}
         <div className="flex items-center gap-3">
           {candidate.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={candidate.avatarUrl}
               alt=""
-              className="h-10 w-10 shrink-0 rounded-full object-cover"
+              className="h-12 w-12 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
               {candidate.name
                 .split(" ")
                 .map((part) => part[0])
@@ -704,70 +701,31 @@ function DevCard({
                 .slice(0, 2)}
             </div>
           )}
-          <p className="flex-1 truncate font-semibold leading-snug text-[var(--text-1)]">
-            {candidate.name}
-          </p>
-        </div>
-
-        {/* Big stat = Calibre. Same display-font, leading-none treatment
-            as Portal's proposal-count stat. Updated timestamp aligns
-            bottom-right. */}
-        <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
-          <div>
-            <p
-              className={cn(
-                "text-3xl leading-none tracking-tight",
-                score == null ? "text-[var(--text-4)]" : "text-[var(--text-1)]",
-              )}
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {score ?? "—"}
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold leading-snug text-[var(--text-1)]">
+              {candidate.name}
             </p>
-            <p
-              className={cn(
-                "widget-data-label mt-1",
-                score == null ? "opacity-50" : "",
-              )}
-            >
-              Calibre / 100
-            </p>
+            <p className="mt-0.5 widget-data-label">{candidate.primaryStack}</p>
           </div>
-          <p className="widget-timestamp text-right">
-            {formatDate(candidate.updatedAt)}
-          </p>
         </div>
 
-        {/* Metrics strip — Stack (left) · Monthly (centre, gated) · Tier (right).
-            Same three-slot grid Portal uses for Devs/cost/days so the
-            two surfaces feel related. Mono-caps per DESIGN.md. */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-2">
-          <span className="widget-data-label justify-self-start whitespace-nowrap text-[var(--text-2)]">
-            {candidate.primaryStack}
-          </span>
-          <span className="widget-data-label justify-self-center whitespace-nowrap">
-            {canViewRates && candidate.monthlyRate != null && candidate.monthlyRateCurrency ? (
-              <span className="text-[var(--text-2)]">
-                <MonthlyRateCell
-                  amount={candidate.monthlyRate}
-                  currency={candidate.monthlyRateCurrency}
-                  usdToGbp={usdToGbp}
-                />
-              </span>
-            ) : null}
-          </span>
-          <span className="justify-self-end">
-            <RosterTierBadge
-              effectiveTier={candidate.effectiveTier}
-              isOverridden={
-                candidate.tierManualOverride !== null &&
-                candidate.tierManualOverride !== candidate.tier
-              }
-            />
-          </span>
-        </div>
+        {/* Monthly rate — the only stat we actually track. Sits big
+            and bottom-left so it's the dominant signal. */}
+        {canViewRates && candidate.monthlyRate != null && candidate.monthlyRateCurrency ? (
+          <div className="border-t border-[rgba(0,0,0,0.06)] pt-3">
+            <p className="widget-data-label">Monthly</p>
+            <div className="mt-1">
+              <MonthlyRateCell
+                amount={candidate.monthlyRate}
+                currency={candidate.monthlyRateCurrency}
+                usdToGbp={usdToGbp}
+              />
+            </div>
+          </div>
+        ) : null}
 
         {/* Current clients */}
-        <div>
+        <div className={canViewRates ? "" : "border-t border-[rgba(0,0,0,0.06)] pt-3"}>
           <p className="widget-data-label mb-1.5">Current clients</p>
           {candidate.currentClients.length === 0 ? (
             <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>

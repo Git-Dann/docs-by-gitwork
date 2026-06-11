@@ -268,14 +268,12 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         <div
           className={cn(
             "grid gap-0",
-            canViewRates ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2",
+            canViewRates ? "sm:grid-cols-2" : "sm:grid-cols-1",
           )}
         >
-          {/* Hero stats focused on team-management signals — calibre +
-              experience are dropped because CodeClear scoring isn't
-              running. Group (Bench/Off Bench) is more useful than a
-              missing calibre number. */}
-          <HeroStat label="Tier" value={candidate.effectiveTier.replace("TIER_", "T")} />
+          {/* Hero stats — Tier dropped (CodeClear concept, not used).
+              Group + Monthly are the two signals that actually matter
+              for team mgmt today. */}
           <HeroStat
             label="Group"
             value={candidate.devGroup === "PRO_BONO" ? "Off Bench" : "Bench"}
