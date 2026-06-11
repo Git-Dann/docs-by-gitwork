@@ -712,9 +712,9 @@ function DevCard({
         {/* Monthly rate — the only stat we actually track. Sits big
             and bottom-left so it's the dominant signal. */}
         {canViewRates && candidate.monthlyRate != null && candidate.monthlyRateCurrency ? (
-          <div className="border-t border-[rgba(0,0,0,0.06)] pt-3">
+          <div className="flex items-start justify-between gap-3 border-t border-[rgba(0,0,0,0.06)] pt-3">
             <p className="widget-data-label">Monthly</p>
-            <div className="mt-1">
+            <div className="text-right">
               <MonthlyRateCell
                 amount={candidate.monthlyRate}
                 currency={candidate.monthlyRateCurrency}
