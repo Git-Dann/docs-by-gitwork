@@ -264,9 +264,9 @@ export function CourseRequestsSection({
             const status = (STATUSES.includes(r.status as Status) ? r.status : "NEW") as Status;
             const isSelected = !readOnly && selected.has(r.id);
             const country = safeCountry(r.country);
-            // Strip the "Via Big Wedge API (submitted …):" prefix from notes for display
+            // Strip the "Via Big Wedge API …" source line — only show actual extra detail
             const notesPreview = r.notes
-              ? r.notes.replace(/^Via Big Wedge API[^:]*:\s*/i, "").split("\n")[0]
+              ? r.notes.replace(/^Via Big Wedge API[^\n]*\n?/i, "").trim().split("\n")[0] || null
               : null;
 
             return (
