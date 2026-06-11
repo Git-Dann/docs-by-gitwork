@@ -88,6 +88,10 @@ const PUBLIC_API_PATHS = [
   "/api/support/webhook",
   // Inbound GitHub webhook for Pulse monitors — per-monitor HMAC signature is the auth.
   "/api/webhooks/github",
+  // OAuth 2.1 endpoints for the in-app MCP route. authorize requires a NextAuth
+  // user session (not API_KEY); token/revoke/register are bearer-/PKCE-gated by
+  // the OAuth spec itself. See src/server/oauth.ts.
+  "/api/oauth",
 ];
 
 const API_AUTH_COOKIE = "gitwork_api_session";

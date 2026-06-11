@@ -140,7 +140,6 @@ enum CandidateDevGroup {
   PRO_BONO
 }
 
-
 /// Mirrors PulseCheckStatus — the validation engine and the project-health engine
 /// share the same PASS/WARN/FAIL/SKIPPED vocabulary.
 enum CodeClearCheckStatus {
@@ -201,6 +200,10 @@ model User {
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   dailyUpdates              DailyUpdate[]
+  // MCP / OAuth (Phase 3) — Foundry as an OAuth 2.1 authorization server.
+  oauthAuthCodes            OAuthAuthCode[]
+  oauthTokens               OAuthToken[]
+  mcpConnections            McpConnection[]
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -290,6 +293,12 @@ model Workspace {
   /// Edited only by Super Admins via /app/settings/roles. A member's resolved
   /// `WorkspaceMember.permissions` is recomputed from this matrix + their overrides.
   rolePermissions          Json?
+  // ── MCP / Claude integration (Phase 3) ──────────────────────────────
+  /// Workspace-level master switch for the in-app MCP route at /api/mcp.
+  /// Off by default — a Super Admin flips this on in Settings → MCP before
+  /// any user can connect Claude (or any other MCP client). When off, the
+  /// authorize/token endpoints return 503 and no new tokens issue.
+  mcpEnabled               Boolean                    @default(false)
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
   members                  WorkspaceMember[]
@@ -323,6 +332,7 @@ model Workspace {
   featureBlocks            FeatureBlock[]
   milestones               Milestone[]
   contentSnippets          ContentSnippet[]
+  mcpConnections           McpConnection[]
 }
 
 /**
@@ -345,26 +355,26 @@ model ContentSnippet {
 }
 
 model WorkspaceMember {
-  id              String    @id @default(cuid())
-  workspaceId     String
-  userId          String
-  role            String    @default("STAFF")
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  userId              String
+  role                String    @default("STAFF")
   /// Resolved effective permission ids (a cache). Recomputed from the workspace
   /// role matrix (Workspace.rolePermissions) + this member's permissionOverrides
   /// whenever the matrix, their role, or their overrides change. Every existing
   /// consumer (middleware JWT, requireAuthedUser, hasFeature, canSeeAllClients)
   /// reads this list, so it must always hold the fully-resolved set.
-  permissions     Json      @default("[]")
+  permissions         Json      @default("[]")
   /// Per-person delta on top of the role matrix. Shape: { grant: string[], revoke: string[] }.
   /// Lets a Super Admin make exceptions (e.g. give one developer code.viewRates)
   /// without changing the whole role. Empty object → pure role inheritance.
-  permissionOverrides Json  @default("{}")
+  permissionOverrides Json      @default("{}")
   // ── Backstage (internal ops) ───────────────────────────────────────
-  countryCode     String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
-  annualLeaveDays Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
-  createdAt       DateTime  @default(now())
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  countryCode         String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
+  annualLeaveDays     Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
+  createdAt           DateTime  @default(now())
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
 }
@@ -576,16 +586,16 @@ model DocumentAiSession {
  * originated from /sign/[token]; null otherwise (visits to /docs/[token]).
  */
 model DocumentView {
-  id         String           @id @default(cuid())
+  id         String  @id @default(cuid())
   documentId String
   signerId   String?
   ip         String?
-  userAgent  String?          @db.Text
+  userAgent  String? @db.Text
   referer    String?
   /**
    * Origin of the view — DOCS for /docs/[token], SIGN for /sign/[token].
    */
-  origin     String           @default("DOCS")
+  origin     String  @default("DOCS")
   // ── Engagement enrichment (Phase 1) ─────────────────────────────────
   // visitorId: first-party cookie, stable across visits → unique-visitor + return-visit counts.
   // sessionId: per page-load UUID → groups this visit's section-dwell events (the beacon can't
@@ -602,10 +612,10 @@ model DocumentView {
   os         String? // iOS | Android | macOS | Windows | …
   durationMs Int? // Total visible time for this visit, flushed on pagehide
 
-  createdAt  DateTime         @default(now())
-  document   Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  signer     SignatureSigner? @relation(fields: [signerId], references: [id], onDelete: SetNull)
-  events     DocumentViewEvent[]
+  createdAt DateTime            @default(now())
+  document  Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signer    SignatureSigner?    @relation(fields: [signerId], references: [id], onDelete: SetNull)
+  events    DocumentViewEvent[]
 
   @@index([documentId, createdAt])
   @@index([documentId, visitorId])
@@ -996,27 +1006,27 @@ model ClientDesignSystem {
 /// sidebar. `shareToken` follows the same pattern as ClientDesignSystem.timelineShareToken —
 /// NOT @unique to avoid the Prisma db push data-loss guard; lookups use findFirst.
 model ClientWiki {
-  id           String                 @id @default(cuid())
-  clientId     String                 @unique
-  client       WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  shareToken   String?
-  shareEnabled Boolean                @default(false)
+  id                String                 @id @default(cuid())
+  clientId          String                 @unique
+  client            WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  shareToken        String?
+  shareEnabled      Boolean                @default(false)
   /// Secret token for the inbound course-request API. When set, external systems
   /// can POST course requests to /api/public/course-requests/[token]. Null = off.
-  courseIngestToken String?           @unique
+  courseIngestToken String?                @unique
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
-  platforms    Json?
+  platforms         Json?
   /// Per-page public share tokens: { "<section>": "<token>" } for individually
   /// shared sections (ia / dev-guide / changelog). shareToken above is whole-wiki.
-  pageShares       Json?
+  pageShares        Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
-  pageShareTokens  String[] @default([])
-  pages          ClientWikiPage[]
-  changelog      ClientChangelogEntry[]
-  courseRequests ClientCourseRequest[]
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+  pageShareTokens   String[]               @default([])
+  pages             ClientWikiPage[]
+  changelog         ClientChangelogEntry[]
+  courseRequests    ClientCourseRequest[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
@@ -1044,9 +1054,9 @@ model ClientWikiPage {
 
 /// A single version-release entry in the client's changelog. Linked to a wiki.
 model ClientChangelogEntry {
-  id         String        @id @default(cuid())
+  id         String          @id @default(cuid())
   wikiId     String
-  wiki       ClientWiki    @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  wiki       ClientWiki      @relation(fields: [wikiId], references: [id], onDelete: Cascade)
   platform   WikiPlatform
   version    String
   title      String
@@ -1881,20 +1891,20 @@ enum SupportUserRole {
 }
 
 model SupportClient {
-  id                  String                    @id @default(cuid())
+  id                  String                     @id @default(cuid())
   workspaceId         String
-  workspace           Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace           Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name                String
   slug                String
-  status              SupportClientStatus       @default(ACTIVE)
+  status              SupportClientStatus        @default(ACTIVE)
   supportDaysPerMonth Int?
-  supportDaysUsed     Int?                      @default(0)
+  supportDaysUsed     Int?                       @default(0)
   reportingRecipient  String?
   reportDueDay        Int?
   workspaceClientId   String?
-  workspaceClient     WorkspaceClient?          @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
+  workspaceClient     WorkspaceClient?           @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
   connections         AccountConnection[]
   conversations       SupportConversation[]
   tickets             SupportTicket[]
@@ -2343,12 +2353,12 @@ enum MeetingNoteStatus {
 }
 
 model Meeting {
-  id                   String            @id @default(cuid())
+  id                   String              @id @default(cuid())
   workspaceId          String
-  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace            Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   // Attributed client. Scribe is client-scoped; unattributed meetings are not shown in Portal.
   clientId             String?
-  client               WorkspaceClient?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client               WorkspaceClient?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
   // Google Calendar event id + Meet meeting code (from hangoutLink, e.g. "abc-defg-hij").
   calendarEventId      String?
   meetingCode          String?
@@ -2357,19 +2367,19 @@ model Meeting {
   title                String
   startedAt            DateTime?
   endedAt              DateTime?
-  attendees            String[]          @default([]) // attendee emails
-  status               MeetingNoteStatus @default(AWAITING_TRANSCRIPT)
-  transcriptText       String?           @db.Text // flattened "Speaker: text" transcript
+  attendees            String[]            @default([]) // attendee emails
+  status               MeetingNoteStatus   @default(AWAITING_TRANSCRIPT)
+  transcriptText       String?             @db.Text // flattened "Speaker: text" transcript
   transcriptData       Json? // structured entries [{ speaker, text, startTime }]
-  summary              String?           @db.Text
+  summary              String?             @db.Text
   decisions            Json? // string[]
   modelUsed            String?
   // Whose Google account surfaced the transcript (per-user OAuth).
   ownerUserId          String?
-  owner                User?             @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  owner                User?               @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   actionItems          MeetingActionItem[]
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   // Idempotency: manual + cron ingest upsert by calendar event; conference record is the
   // secondary natural key once a session is matched. Both columns are nullable (Postgres
@@ -2492,49 +2502,49 @@ model ClientAssignment {
 }
 
 model Task {
-  id          String       @id @default(cuid())
-  workspaceId    String
-  clientId       String
-  assigneeId     String?
-  createdById    String?
+  id                 String       @id @default(cuid())
+  workspaceId        String
+  clientId           String
+  assigneeId         String?
+  createdById        String?
   /// Optional "list" / feature block this task belongs to. Loose tasks (null)
   /// show on the board but not the Gantt.
-  featureBlockId String?
+  featureBlockId     String?
   /// Parent task for subtasks (one level deep). Null = top-level task.
-  parentId       String?
-  title       String
-  description String?      @db.Text
+  parentId           String?
+  title              String
+  description        String?      @db.Text
   /// Optional acceptance criteria (freeform / markdown).
-  acceptanceCriteria String? @db.Text
-  status      TaskStatus   @default(BACKLOG)
-  priority    TaskPriority @default(MEDIUM)
+  acceptanceCriteria String?      @db.Text
+  status             TaskStatus   @default(BACKLOG)
+  priority           TaskPriority @default(MEDIUM)
   /// Fractional sort key for drag-ordering within a status column. New cards
   /// get (max+1); a card dropped between two others gets the midpoint.
-  orderKey    Float        @default(0)
-  dueDate     DateTime?
+  orderKey           Float        @default(0)
+  dueDate            DateTime?
   /// Stamped the first time the task enters DOING; drives "started" displays.
-  startedAt   DateTime?
+  startedAt          DateTime?
   /// Stamped when the task enters DONE (cleared if moved back out). Drives the
   /// standup "Done today" section — a task counts as done-today when
   /// completedAt falls on the dev's workDate.
-  completedAt DateTime?
+  completedAt        DateTime?
   /// Imported ClickUp custom fields (Dept, Build Number, QA, Category…). Display-only.
-  metadata    Json?
+  metadata           Json?
   /// Source ClickUp task id (one-time migration). Indexed, NOT unique.
-  clickupId   String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  clickupId          String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client    WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client       WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Legacy single assignee — kept (not dropped) so prisma db push stays additive;
   // the app reads `assignees`, falling back to this when the join is empty.
-  assignee  User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  assignees    User[]         @relation("TaskAssignees")
-  createdBy    User?          @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  featureBlock FeatureBlock?  @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
-  parent       Task?          @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks     Task[]         @relation("Subtasks")
+  assignee     User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignees    User[]          @relation("TaskAssignees")
+  createdBy    User?           @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  featureBlock FeatureBlock?   @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
+  parent       Task?           @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks     Task[]          @relation("Subtasks")
   comments     TaskComment[]
 
   @@index([workspaceId, clientId, status])
@@ -2633,4 +2643,115 @@ model Milestone {
 
   @@index([clientId, date])
   @@index([clickupId])
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MCP / OAuth 2.1 (Phase 3)
+//
+// Foundry is the authorization server for the in-app MCP route at /api/mcp.
+// Claude (or any OAuth-compatible MCP client) goes through an authorization-
+// code-with-PKCE flow against /api/oauth/{authorize,token,revoke}. Tokens are
+// opaque (foundry_at_<base64url> / foundry_rt_<base64url>) and stored as
+// SHA-256 hashes — same revocation model as a personal access token.
+//
+// Scopes are coarse-by-design: a single `mcp` scope grants the MCP route,
+// then the MCP route applies the user's normal FEATURE_PERMISSIONS / can*()
+// checks. We can split granular scopes later without a schema change.
+// ════════════════════════════════════════════════════════════════════════════
+
+enum OAuthTokenType {
+  ACCESS
+  REFRESH
+}
+
+/// An OAuth client app that's allowed to authorize Foundry users. Claude
+/// self-registers via /api/oauth/register (Dynamic Client Registration,
+/// RFC 7591); admins can also pre-register clients from Settings.
+/// We only support PUBLIC clients (PKCE, no client secret) — sufficient for
+/// any modern OAuth 2.1 client.
+model OAuthClient {
+  /// Doubles as the public OAuth client_id. cuid() is unguessable enough.
+  id           String   @id @default(cuid())
+  clientName   String
+  redirectUris String[]
+  /// Optional logo URL the client supplied at registration (consent screen).
+  logoUri      String?
+  /// Optional homepage / docs URL.
+  clientUri    String?
+  createdAt    DateTime @default(now())
+
+  authCodes      OAuthAuthCode[]
+  tokens         OAuthToken[]
+  mcpConnections McpConnection[]
+}
+
+/// Short-lived authorization code issued at the end of /api/oauth/authorize
+/// and exchanged once at /api/oauth/token. PKCE verifier (RFC 7636) is
+/// captured here and checked at exchange. Single-use: `usedAt` is set on
+/// successful exchange and a second attempt is rejected.
+model OAuthAuthCode {
+  id                  String      @id @default(cuid())
+  /// SHA-256 hash of the opaque code returned in the redirect.
+  codeHash            String      @unique
+  oauthClientId       String
+  client              OAuthClient @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri         String
+  scope               String
+  /// PKCE challenge — verifier must hash to this at exchange.
+  codeChallenge       String
+  /// "S256" only. Plain is rejected.
+  codeChallengeMethod String
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime    @default(now())
+
+  @@index([oauthClientId, userId])
+}
+
+/// Access or refresh token. Opaque value (sent to the client once at
+/// issuance) is never stored — only its SHA-256 hash. `revokedAt` is the
+/// kill switch for individual tokens or whole-connection revoke.
+model OAuthToken {
+  id            String         @id @default(cuid())
+  tokenHash     String         @unique
+  type          OAuthTokenType
+  oauthClientId String
+  client        OAuthClient    @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope         String
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  lastUsedAt    DateTime?
+  /// For a refresh token: the access token issued alongside (so rotation can
+  /// revoke both atomically). For an access token: null.
+  parentTokenId String?
+  createdAt     DateTime       @default(now())
+
+  @@index([oauthClientId, userId])
+  @@index([userId, type, revokedAt])
+}
+
+/// User-facing record of an active MCP connection. One per (user, client)
+/// pair. Surfaced in Settings → Integrations as "Claude is connected" with
+/// a last-used timestamp and a Revoke button (which cascades to all tokens).
+/// A re-authorization updates the existing row rather than creating a duplicate.
+model McpConnection {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthClientId String
+  client        OAuthClient @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  workspaceId   String
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Friendly label shown in the UI. Defaults to OAuthClient.clientName.
+  label         String
+  connectedAt   DateTime    @default(now())
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+
+  @@unique([userId, oauthClientId])
+  @@index([workspaceId])
 }
