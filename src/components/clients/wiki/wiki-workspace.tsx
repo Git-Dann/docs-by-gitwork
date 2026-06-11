@@ -744,6 +744,23 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             {renderShareMenu("course-requests")}
           </div>
 
+          {/* Sync error panel */}
+          {syncMutation.isError && !syncResult && (
+            <div className="mb-5 rounded-[8px] border border-red-200 bg-red-50 px-4 py-3 flex items-start justify-between gap-3">
+              <p className="text-sm text-red-700">
+                <span className="font-semibold">Sync failed: </span>
+                {syncMutation.error?.message ?? "Unknown error"}
+              </p>
+              <button
+                type="button"
+                onClick={() => syncMutation.reset()}
+                className="shrink-0 rounded-[6px] p-1 text-red-400 hover:text-red-600"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* Sync result panel */}
           {syncResult && (
             <div className="mb-5 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3">

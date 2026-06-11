@@ -14,7 +14,7 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { requireAuthedUserOrDefault } from "@/server/auth/effective-user";
 import { syncBigWedgeStatus } from "@/server/wiki-bigwedge-sync";
 import { isAtLeast } from "@/types/auth";
 import { z } from "zod";
@@ -38,7 +38,7 @@ function isWorkspaceApiKeyCall(req: Request): boolean {
 export async function POST(req: Request) {
   try {
     if (!isWorkspaceApiKeyCall(req)) {
-      const user = await requireAuthedUser(req);
+      const user = await requireAuthedUserOrDefault(req);
       if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
     }
 

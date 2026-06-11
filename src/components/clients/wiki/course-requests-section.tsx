@@ -9,6 +9,7 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 
@@ -17,6 +18,8 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 
 const STATUSES = ["NEW", "SENT", "ADDED", "REJECTED"] as const;
 type Status = (typeof STATUSES)[number];
+const ACTIVE_STATUSES = ["NEW", "SENT", "REJECTED"] as const;
+type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
 
 // Semantic badge colors per DESIGN.md — no pill shapes, rounded-[4px] only
 const STATUS_STYLE: Record<Status, string> = {
@@ -78,14 +81,22 @@ export function CourseRequestsSection({
   onSetStatus,
   readOnly = false,
 }: Props) {
-  const [filter, setFilter] = useState<"ALL" | Status>("ALL");
+  const [filter, setFilter] = useState<"ALL" | ActiveStatus>("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showAdded, setShowAdded] = useState(false);
 
-  const filtered = filter === "ALL" ? requests : requests.filter((r) => r.status === filter);
+  const activeRequests = requests.filter((r) => r.status !== "ADDED");
+  const addedRequests = requests.filter((r) => r.status === "ADDED");
+
+  const filtered =
+    filter === "ALL"
+      ? activeRequests
+      : activeRequests.filter((r) => r.status === filter);
+
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
-  const selectedRows = requests.filter((r) => selected.has(r.id));
+  const selectedRows = activeRequests.filter((r) => selected.has(r.id));
 
   const counts = STATUSES.reduce<Record<Status, number>>(
     (acc, s) => ({ ...acc, [s]: requests.filter((r) => r.status === s).length }),
@@ -171,9 +182,9 @@ export function CourseRequestsSection({
           style={{ fontFamily: MONO }}
         >
           <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">
-            {requests.length} total
+            {activeRequests.length} active
           </span>
-          {STATUSES.filter((s) => counts[s] > 0).map((s) => (
+          {ACTIVE_STATUSES.filter((s) => counts[s] > 0).map((s) => (
             <span
               key={s}
               className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
@@ -181,12 +192,17 @@ export function CourseRequestsSection({
               · {counts[s]} {STATUS_LABEL[s]}
             </span>
           ))}
+          {addedRequests.length > 0 && (
+            <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
+              · {addedRequests.length} Added
+            </span>
+          )}
         </div>
       )}
 
       {/* ── Filter tabs — rounded-[6px] per DESIGN.md (no pills) ─────── */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        {(["ALL", ...STATUSES] as Array<"ALL" | Status>).map((s) => (
+        {(["ALL", ...ACTIVE_STATUSES] as Array<"ALL" | ActiveStatus>).map((s) => (
           <button
             key={s}
             type="button"
@@ -199,7 +215,7 @@ export function CourseRequestsSection({
             ].join(" ")}
           >
             {s === "ALL"
-              ? `All (${requests.length})`
+              ? `All active (${activeRequests.length})`
               : `${STATUS_LABEL[s]} (${counts[s]})`}
           </button>
         ))}
@@ -396,6 +412,97 @@ export function CourseRequestsSection({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── 02 // ADDED COURSES — collapsed reference table ─────────── */}
+      {addedRequests.length > 0 && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => setShowAdded((v) => !v)}
+            className="flex w-full items-center gap-2 py-1 text-left"
+          >
+            <ChevronRightIcon
+              className={`h-3.5 w-3.5 shrink-0 text-[var(--text-4)] transition-transform ${showAdded ? "rotate-90" : ""}`}
+            />
+            <span
+              className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]"
+              style={{ fontFamily: MONO }}
+            >
+              <span className="text-[var(--text-4)]">02 // </span>ADDED COURSES
+            </span>
+            <span
+              className="ml-1 text-[11px] text-[var(--text-4)]"
+              style={{ fontFamily: MONO }}
+            >
+              ({addedRequests.length})
+            </span>
+          </button>
+
+          {showAdded && (
+            <div className="mt-2 divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-0,#fafaf9)]">
+              {addedRequests.map((r) => {
+                const country = safeCountry(r.country);
+                return (
+                  <div
+                    key={r.id}
+                    className="grid items-center gap-x-3 px-3 py-2 hover:bg-white/70 transition"
+                    style={{
+                      gridTemplateColumns: readOnly
+                        ? "1fr 88px 92px 92px"
+                        : "1fr 88px 92px 92px 52px",
+                    }}
+                  >
+                    <span className="truncate text-[13px] text-[var(--text-2)]">
+                      {r.courseName}
+                    </span>
+                    <div style={{ fontFamily: MONO }}>
+                      {country ? (
+                        <span className="inline-block max-w-full truncate rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">
+                          {country}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">—</span>
+                      )}
+                    </div>
+                    <span
+                      className="text-[12px] text-[var(--text-4)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {fmtDate(r.createdAt)}
+                    </span>
+                    <span
+                      className="text-[12px] text-[var(--text-4)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {fmtDate(r.sentAt)}
+                    </span>
+                    {!readOnly && (
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => void onSetStatus([r.id], "NEW")}
+                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                          title="Move back to active"
+                        >
+                          <PencilSquareIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void onDelete([r.id])}
+                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
