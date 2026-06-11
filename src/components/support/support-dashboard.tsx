@@ -2482,6 +2482,33 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                         <p className="mt-0.5 text-[var(--text-2)]">{ticket.assignedTo}</p>
                       </div>
                     )}
+                    <div>
+                      <p className="font-semibold text-[var(--text-3)]">Quality (CSAT)</p>
+                      <div className="mt-1 flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            title={`Rate ${star}/5`}
+                            onClick={() => updateTicket.mutate({
+                              ticketId: ticket.id,
+                              data: { csatScore: ticket.csatScore === star ? null : star },
+                            })}
+                            className={cn(
+                              "transition",
+                              (ticket.csatScore ?? 0) >= star
+                                ? "text-amber-400"
+                                : "text-[var(--border-2)] hover:text-amber-300",
+                            )}
+                          >
+                            <StarIcon className="h-4 w-4 fill-current" />
+                          </button>
+                        ))}
+                        {ticket.csatScore && (
+                          <span className="ml-1.5 text-[10px] text-[var(--text-4)]">{ticket.csatScore}/5</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

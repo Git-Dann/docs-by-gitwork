@@ -20,15 +20,28 @@ export async function POST(
 ) {
   const { token } = await params;
 
-  // Find the connection whose webhookToken matches.
-  const connections = await prisma.accountConnection.findMany({
-    where: { source: "WEBHOOK" },
+  // O(1) lookup by webhookToken stored inside scraperConfig JSON.
+  // Handles both plaintext and enc:-prefixed tokens (enc: prefix is tried second).
+  const plainConn = await prisma.accountConnection.findFirst({
+    where: {
+      source: "WEBHOOK",
+      scraperConfig: { path: ["webhookToken"], equals: token },
+    },
     include: { client: { select: { id: true } } },
   });
 
-  const conn = connections.find(
-    (c) => (c.scraperConfig as Record<string, unknown> | null)?.webhookToken === token,
-  );
+  // If no plaintext match, check encrypted tokens (enc: prefix).
+  const { decryptScraperConfig } = await import("@/server/support");
+  const conn = plainConn ?? await (async () => {
+    const candidates = await prisma.accountConnection.findMany({
+      where: { source: "WEBHOOK", scraperConfig: { path: ["webhookToken"], string_starts_with: "enc:" } },
+      include: { client: { select: { id: true } } },
+    });
+    return candidates.find((c) => {
+      const cfg = decryptScraperConfig(c.scraperConfig as Record<string, unknown> | null);
+      return cfg?.webhookToken === token;
+    }) ?? null;
+  })();
 
   if (!conn) {
     return apiError("Invalid webhook token", 404);

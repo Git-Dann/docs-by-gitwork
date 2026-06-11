@@ -1368,7 +1368,7 @@ export async function getSupportReport(reportId: string): Promise<{ report: Supp
 
 export async function listSupportConversations(
   clientId: string,
-): Promise<{ conversations: Conversation[] }> {
+): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
   return apiFetch(`/api/support/clients/${clientId}/conversations`);
 }
 
@@ -1426,7 +1426,7 @@ export async function sendSupportMessage(
   });
 }
 
-export async function listSupportTickets(clientId: string): Promise<{ tickets: Ticket[] }> {
+export async function listSupportTickets(clientId: string): Promise<{ tickets: Ticket[]; nextCursor: string | null }> {
   return apiFetch(`/api/support/clients/${clientId}/tickets`);
 }
 

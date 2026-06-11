@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import { sendDiscordMessage } from "./discord-sync";
+import { decryptScraperConfig } from "./support";
 
 export type ReplyResult =
   | { sent: true; manual: false }
@@ -89,7 +90,7 @@ async function appReviewReply(
     where: { clientId, source: "APP_REVIEWS", health: "CONNECTED" },
     select: { scraperConfig: true },
   });
-  const cfg = conn?.scraperConfig as { serviceAccountJson?: string } | null;
+  const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { serviceAccountJson?: string } | null;
   if (!cfg?.serviceAccountJson) {
     return { sent: false, manual: true, reason: "Play Store service account not configured on the connector" };
   }
@@ -130,7 +131,7 @@ async function discordReply(
     where: { clientId, source: "DISCORD", health: "CONNECTED" },
     select: { scraperConfig: true },
   });
-  const cfg = conn?.scraperConfig as { botToken?: string } | null;
+  const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { botToken?: string } | null;
   if (!cfg?.botToken) {
     return { sent: false, manual: true, reason: "Discord bot token not configured" };
   }
@@ -166,7 +167,7 @@ async function gmailReply(
     where: { clientId, source: "GMAIL", health: "CONNECTED" },
     select: { scraperConfig: true },
   });
-  const connCfg = conn?.scraperConfig as { impersonateEmail?: string; intakeAddress?: string } | null;
+  const connCfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { impersonateEmail?: string; intakeAddress?: string } | null;
   const fromEmail =
     connCfg?.impersonateEmail ??
     connCfg?.intakeAddress ??

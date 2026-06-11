@@ -55,6 +55,13 @@ function slaHealth(pct: number | null): Health {
   return "bad";
 }
 
+function csatHealth(score: number | null): Health {
+  if (score === null) return "neutral";
+  if (score >= 4.5) return "good";
+  if (score >= 3.5) return "ok";
+  return "bad";
+}
+
 function resolutionTimeHealth(ms: number | null): Health {
   if (ms === null) return "neutral";
   const h = ms / 3600_000;
@@ -101,7 +108,7 @@ export function PerformanceStrip({
 }) {
   const m = metrics;
   return (
-    <div className={cn("grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6", className)}>
+    <div className={cn("grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7", className)}>
       <StatCard
         label="Tickets"
         value={m.totalTickets.toLocaleString()}
@@ -137,6 +144,12 @@ export function PerformanceStrip({
         value={m.totalTickets > 0 ? `${Math.round((m.respondedCount / m.totalTickets) * 100)}%` : "—"}
         sub={`${m.respondedCount}/${m.totalTickets}`}
         health="neutral"
+      />
+      <StatCard
+        label="CSAT"
+        value={m.avgCsatScore !== null ? `${m.avgCsatScore}/5` : "—"}
+        sub={m.avgCsatScore !== null ? "avg quality score" : "no ratings yet"}
+        health={csatHealth(m.avgCsatScore)}
       />
     </div>
   );

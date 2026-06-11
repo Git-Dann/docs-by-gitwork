@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
+import { decryptScraperConfig } from "@/server/support";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
 
 // Re-exported for the API routes / agents that import these from here.
@@ -37,7 +38,14 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
     },
   });
 
-  return { connection: conn, client: conn.client, workspace };
+  return {
+    connection: {
+      ...conn,
+      scraperConfig: decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null),
+    },
+    client: conn.client,
+    workspace,
+  };
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────

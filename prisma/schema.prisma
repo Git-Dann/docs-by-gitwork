@@ -2025,6 +2025,7 @@ model SupportTicket {
   assignedTo     String?
   resolvedAt     DateTime?
   firstReplyAt   DateTime?
+  csatScore      Int?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   draftActions   DraftSupportAction[]
