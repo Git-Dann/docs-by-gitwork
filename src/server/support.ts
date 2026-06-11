@@ -286,6 +286,7 @@ export function serializeTicket(row: {
   assignedTo: string | null;
   resolvedAt?: Date | null;
   firstReplyAt?: Date | null;
+  csatScore?: number | null;
 }): Ticket {
   return {
     id: row.id,
@@ -301,6 +302,7 @@ export function serializeTicket(row: {
     assignedTo: row.assignedTo ?? "",
     resolvedAt: row.resolvedAt?.toISOString(),
     firstReplyAt: row.firstReplyAt?.toISOString(),
+    csatScore: row.csatScore ?? null,
   };
 }
 
@@ -682,6 +684,7 @@ export async function updateTicket(
     nextAction: string;
     issueType: string;
     assignedTo: string;
+    csatScore: number | null;
   }>,
 ): Promise<Ticket> {
   const row = await prisma.supportTicket.update({
@@ -696,6 +699,7 @@ export async function updateTicket(
       ...(data.nextAction !== undefined ? { nextAction: data.nextAction } : {}),
       ...(data.issueType !== undefined ? { issueType: data.issueType } : {}),
       ...(data.assignedTo !== undefined ? { assignedTo: data.assignedTo } : {}),
+      ...(data.csatScore !== undefined ? { csatScore: data.csatScore } : {}),
     },
   });
   return serializeTicket(row);
@@ -797,11 +801,12 @@ export async function getPerformanceMetricsForPeriod(
 
   const tickets = await prisma.supportTicket.findMany({
     where: { clientId, createdAt: { gte: start, lte: end } },
-    select: { createdAt: true, firstReplyAt: true, resolvedAt: true, status: true },
+    select: { createdAt: true, firstReplyAt: true, resolvedAt: true, status: true, csatScore: true },
   });
 
   const frtMs: number[] = [];
   const resolutionMs: number[] = [];
+  const csatScores: number[] = [];
   let respondedCount = 0;
   let resolvedCount = 0;
   let withinSla = 0;
@@ -823,7 +828,15 @@ export async function getPerformanceMetricsForPeriod(
         if (ms >= 0) resolutionMs.push(ms);
       }
     }
+    if (t.csatScore != null && t.csatScore >= 1 && t.csatScore <= 5) {
+      csatScores.push(t.csatScore);
+    }
   }
+
+  const avgCsat =
+    csatScores.length > 0
+      ? Math.round((csatScores.reduce((a, b) => a + b, 0) / csatScores.length) * 10) / 10
+      : null;
 
   const total = tickets.length;
   return {
@@ -838,6 +851,7 @@ export async function getPerformanceMetricsForPeriod(
     medianResolutionMs: median(resolutionMs),
     slaFrtCompliancePct: respondedCount > 0 ? Math.round((withinSla / respondedCount) * 100) : null,
     slaTargetHours,
+    avgCsatScore: avgCsat,
   };
 }
 

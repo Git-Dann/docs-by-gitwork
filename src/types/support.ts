@@ -153,6 +153,8 @@ export interface Ticket {
   assignedTo: string;
   resolvedAt?: string;
   firstReplyAt?: string;
+  /** 1–5 internal quality rating set by the support agent when resolving. */
+  csatScore?: number | null;
 }
 
 export interface DraftAction {
@@ -233,6 +235,8 @@ export interface SupportPerformanceMetrics {
   /** Mean / median time from creation to resolution, in ms (null if no data). */
   avgResolutionMs: number | null;
   medianResolutionMs: number | null;
+  /** Average internal CSAT rating (1–5) across resolved tickets in the period (null if none rated). */
+  avgCsatScore: number | null;
   /** % of responded tickets whose first reply landed within the SLA target. */
   slaFrtCompliancePct: number | null;
   /** The first-response SLA target used for the compliance figure, in hours. */
