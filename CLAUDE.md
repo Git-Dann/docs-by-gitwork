@@ -696,16 +696,18 @@ Portal client cards (`src/components/clients/client-management.tsx`) now surface
 computed server-side and batched across the whole client set (no N+1) in the new
 **`src/server/client-metrics.ts`**:
 
-- **`{{x}} Devs`** (everyone) — assigned-developer count per client via `computeClientDevCounts`
-  (a `ClientAssignment.groupBy`).
+- **`{{x}} Devs`** (everyone) — count of the client's **active devs** = distinct candidates with an
+  open `Placement` (endDate null) via `computeClientDevCounts`. Matches the client detail's "DEVS"
+  tile and Code's "current clients" (was a `ClientAssignment.groupBy`, which undercounted vs the detail).
 - **Monthly cost** + **working days** (sensitive) — `computeClientFinancials` → `{ monthlyCost, workingDays }`:
-  - **Cost path (no schema change):** `ClientAssignment → User.email → Candidate(origin=INTERNAL).email
-    → RateCardPerson` rate, normalised to monthly via `normalizeToMonthly` (`src/server/rate-card.ts`).
-    Devs with no matched rate are counted as `unpricedDevs` and **excluded from the sum** — graceful
-    (surfaced as "(n unpriced)"), never silently understated or thrown. Shape
+  - **Cost path (no schema change):** active `Placement → Candidate → RateCardPerson` rate, normalised
+    to monthly via `normalizeToMonthly` (`src/server/rate-card.ts`) — the **same rate Code shows**
+    (mirrors `rateCardFields`: pro-bono / archived rate-card / unlinked → no rate; pro-bono devs are free
+    and excluded entirely). Distinct candidate per client. Billable devs with no resolvable rate are
+    `unpricedDevs` — **excluded from the sum**, surfaced as "(n unpriced)". Shape
     `ClientMonthlyCost { amount, currency, pricedDevs, unpricedDevs }` in `src/types/client.ts`.
-    **Prereq:** `Candidate.email` must be populated for the dev→rate join — run `POST /api/dev/seed-team`
-    if cards read all-unpriced.
+    Sourcing from placements (not `ClientAssignment → User.email`) removed the fragile email join that
+    left cards reading "rates n/a"; link a dev's rate in Code (Rate Card) and it flows straight through.
   - **Working days** (label `{{x}} days`): inclusive business days (Mon–Fri, UTC; holidays NOT
     excluded) from the project's **Gantt start** — the earliest **dated** `FeatureBlock.startDate` —
     to today (`businessDaysBetween`). **Null → hidden when the client has no dated feature block**

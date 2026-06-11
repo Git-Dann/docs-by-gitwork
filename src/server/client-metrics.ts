@@ -1,6 +1,11 @@
-// Per-client aggregate metrics for the Portal client cards: assigned-dev count
+// Per-client aggregate metrics for the Portal client cards: active-dev count
 // (always shown) plus the sensitive monthly dev cost + working-days-elapsed
 // (shown only to viewers holding `clients.viewFinancials` / Super Admins).
+//
+// Devs + cost come from each client's ACTIVE placements (Candidate → Placement,
+// endDate null) — the same source as the client detail's "DEVS" tile and Code's
+// "current clients", so the card matches the detail and rates resolve straight off
+// the candidate's rate-card link (no fragile User.email → Candidate join).
 //
 // All queries are batched across the whole client set (no N+1) and key results by
 // clientId, mirroring how listDerivedClients already builds its care/repo maps.
@@ -9,18 +14,25 @@ import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/server/rate-card";
 import type { ClientMonthlyCost } from "@/types/client";
 
-/** Count of developers assigned to each client (ClientAssignment). Always shown on cards. */
+/** Count of active devs on each client — distinct candidates with an open placement
+ *  (endDate null), matching the client detail's "DEVS" tile. Always shown on cards. */
 export async function computeClientDevCounts(
   workspaceId: string,
   clientIds: string[],
 ): Promise<Map<string, number>> {
   if (clientIds.length === 0) return new Map();
-  const rows = await prisma.clientAssignment.groupBy({
-    by: ["clientId"],
-    where: { workspaceId, clientId: { in: clientIds } },
-    _count: { userId: true },
+  const placements = await prisma.placement.findMany({
+    where: { clientId: { in: clientIds }, endDate: null, candidate: { workspaceId } },
+    select: { clientId: true, candidateId: true },
   });
-  return new Map(rows.map((r) => [r.clientId, r._count.userId]));
+  const byClient = new Map<string, Set<string>>();
+  for (const p of placements) {
+    if (!p.clientId) continue;
+    const set = byClient.get(p.clientId) ?? new Set<string>();
+    set.add(p.candidateId);
+    byClient.set(p.clientId, set);
+  }
+  return new Map([...byClient].map(([id, set]) => [id, set.size]));
 }
 
 export interface ClientFinancials {
@@ -34,10 +46,11 @@ export interface ClientFinancials {
  * Monthly dev cost + working-days-elapsed per client. SENSITIVE — only call when the
  * viewer holds `clients.viewFinancials` (or is a Super Admin); the route gates it.
  *
- * Cost path: ClientAssignment → User.email → Candidate(origin=INTERNAL).email →
- * rateCardPerson rate, normalised to monthly. Devs with no matched rate are counted as
- * `unpricedDevs` and excluded from the sum, so a missing rate degrades gracefully
- * (visible, never silently understated or thrown).
+ * Cost path: active Placement → Candidate → rateCardPerson rate, normalised to monthly —
+ * the SAME rate Code shows (rateCardFields rules: pro-bono, archived rate-card, or
+ * unlinked devs contribute no rate). Distinct candidate per client (multiple placements
+ * count once). Billable devs with no resolvable rate are `unpricedDevs` (excluded from the
+ * sum, surfaced on the card); pro-bono devs are simply free and excluded entirely.
  *
  * Working days: business days (Mon–Fri) from the project's Gantt start — the earliest
  * dated `FeatureBlock.startDate` — to today. Null when the client has no dated feature
@@ -51,10 +64,28 @@ export async function computeClientFinancials(
   if (clients.length === 0) return result;
   const clientIds = clients.map((c) => c.id);
 
-  const [assignments, blockStarts] = await Promise.all([
-    prisma.clientAssignment.findMany({
-      where: { workspaceId, clientId: { in: clientIds } },
-      select: { clientId: true, user: { select: { email: true } } },
+  const [placements, blockStarts] = await Promise.all([
+    // Active devs on each client — open placements (endDate null), with the candidate's
+    // rate-card link so cost resolves exactly as Code does. Scoped via the candidate.
+    prisma.placement.findMany({
+      where: { clientId: { in: clientIds }, endDate: null, candidate: { workspaceId } },
+      select: {
+        clientId: true,
+        candidateId: true,
+        candidate: {
+          select: {
+            devGroup: true,
+            rateCardPerson: {
+              select: {
+                sourceRate: true,
+                billingPeriod: true,
+                sourceCurrencyCode: true,
+                archivedAt: true,
+              },
+            },
+          },
+        },
+      },
     }),
     // Gantt timeline start per client — earliest dated feature block. No fallback to
     // tasks/createdAt: working days only count once a real Gantt timeline exists.
@@ -65,36 +96,29 @@ export async function computeClientFinancials(
     }),
   ]);
 
-  // Rate lookup by dev email — one batched Candidate query for the assigned devs.
-  const emails = Array.from(
-    new Set(assignments.map((a) => a.user.email).filter((e): e is string => Boolean(e))),
-  );
-  const candidates = emails.length
-    ? await prisma.candidate.findMany({
-        where: { workspaceId, origin: "INTERNAL", email: { in: emails } },
-        select: {
-          email: true,
-          rateCardPerson: {
-            select: { sourceRate: true, billingPeriod: true, sourceCurrencyCode: true },
-          },
-        },
-      })
-    : [];
-  const rateByEmail = new Map<string, { monthly: number; currency: string }>();
-  for (const c of candidates) {
-    if (!c.email || !c.rateCardPerson) continue;
-    rateByEmail.set(c.email.toLowerCase(), {
-      monthly: normalizeToMonthly(c.rateCardPerson.sourceRate, c.rateCardPerson.billingPeriod),
-      currency: c.rateCardPerson.sourceCurrencyCode,
-    });
-  }
+  // Resolve each distinct active dev's monthly rate (mirrors Code's rateCardFields:
+  // pro-bono / archived / unlinked → no rate). Dedupe candidates per client.
+  type DevRate = { monthly: number | null; currency: string; proBono: boolean };
+  const devsByClient = new Map<string, DevRate[]>();
+  const seenByClient = new Map<string, Set<string>>();
+  for (const p of placements) {
+    if (!p.clientId) continue;
+    const seen = seenByClient.get(p.clientId) ?? new Set<string>();
+    if (seen.has(p.candidateId)) continue; // a dev with multiple placements counts once
+    seen.add(p.candidateId);
+    seenByClient.set(p.clientId, seen);
 
-  // Group assignments + earliest-start per client.
-  const devsByClient = new Map<string, Array<string | null>>();
-  for (const a of assignments) {
-    const list = devsByClient.get(a.clientId) ?? [];
-    list.push(a.user.email);
-    devsByClient.set(a.clientId, list);
+    const rc = p.candidate.rateCardPerson;
+    const proBono = p.candidate.devGroup === "PRO_BONO";
+    let monthly: number | null = null;
+    let currency = "USD";
+    if (!proBono && rc && !rc.archivedAt) {
+      monthly = normalizeToMonthly(rc.sourceRate, rc.billingPeriod);
+      currency = rc.sourceCurrencyCode;
+    }
+    const list = devsByClient.get(p.clientId) ?? [];
+    list.push({ monthly, currency, proBono });
+    devsByClient.set(p.clientId, list);
   }
 
   const startByClient = new Map<string, Date>();
@@ -111,17 +135,21 @@ export async function computeClientFinancials(
       let pricedDevs = 0;
       let unpricedDevs = 0;
       let currency = "USD";
-      for (const email of devs) {
-        const rate = email ? rateByEmail.get(email.toLowerCase()) : undefined;
-        if (rate) {
-          amount += rate.monthly;
+      for (const d of devs) {
+        if (d.proBono) continue; // free — not billed, not counted as "unpriced"
+        if (d.monthly != null) {
+          amount += d.monthly;
           pricedDevs += 1;
-          currency = rate.currency;
+          currency = d.currency;
         } else {
           unpricedDevs += 1;
         }
       }
-      monthlyCost = { amount: Math.round(amount), currency, pricedDevs, unpricedDevs };
+      // Only surface a cost block when there's a billable dev (priced or unpriced) — an
+      // all-pro-bono client shows no cost rather than a misleading "rates n/a".
+      if (pricedDevs > 0 || unpricedDevs > 0) {
+        monthlyCost = { amount: Math.round(amount), currency, pricedDevs, unpricedDevs };
+      }
     }
 
     // Working days only count once the Gantt has a dated start — else null (hidden on the card).
