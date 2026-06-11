@@ -61,6 +61,7 @@ async function resolveBigWedgeApi(
 
   const conn = await prisma.accountConnection.findFirst({
     where: { clientId: support.id, source: "ANALYTICS" },
+    orderBy: { createdAt: "desc" },
     select: { scraperConfig: true },
   });
   if (!conn) return { error: "No Analytics API connector. Add the Big Wedge admin JWT in Care → Connectors." };
