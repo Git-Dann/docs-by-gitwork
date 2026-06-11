@@ -66,7 +66,16 @@ const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "mcp"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
-const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>(["people", "team", "rate-card", "workspace", "onboarding"]);
+// "connected-apps" is the per-user MCP panel — Admin+ for now (structurally), can later be
+// permission-driven via mcp.connect if STAFF/DEVELOPER should self-connect.
+const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>([
+  "people",
+  "team",
+  "rate-card",
+  "workspace",
+  "onboarding",
+  "connected-apps",
+]);
 
 // Old standalone routes now live in different sections — redirect for back-compat.
 const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
@@ -87,7 +96,6 @@ const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = 
   general: "settings.general",
   branding: "settings.branding",
   content: "settings.content",
-  "connected-apps": "mcp.connect",
   templates: "settings.templates",
   integrations: "settings.integrations",
   agents: "settings.agents",

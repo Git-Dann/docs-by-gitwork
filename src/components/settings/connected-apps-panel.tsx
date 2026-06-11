@@ -19,6 +19,7 @@ import {
   useRevokeOwnConnection,
   type McpConnection,
 } from "@/hooks/use-mcp";
+import { McpToolsCatalog } from "@/components/settings/mcp-tools-catalog";
 
 export function ConnectedAppsPanel() {
   const { data, isLoading, error } = useMyMcp();
@@ -49,8 +50,12 @@ export function ConnectedAppsPanel() {
         )}
       </SettingsCard>
 
+      <SettingsCard number="02" title="What you can ask Claude">
+        <McpToolsCatalog variant="user" />
+      </SettingsCard>
+
       <SettingsCard
-        number="02"
+        number="03"
         title="Your connections"
         right={
           <span className="text-[11px] uppercase tracking-wide text-[var(--text-3)]">
@@ -68,7 +73,7 @@ export function ConnectedAppsPanel() {
         )}
       </SettingsCard>
 
-      <SettingsCard number="03" title="About">
+      <SettingsCard number="04" title="About">
         <div className="space-y-2 text-sm text-[var(--text-2)]">
           <p>
             <strong>What this is:</strong> connecting Claude lets it use Foundry tools (list

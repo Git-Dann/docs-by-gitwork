@@ -305,7 +305,8 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description:
           "Authorize Claude (or any MCP-compatible client) to act on your behalf in Foundry. " +
           "Each connection is per-user and bound by your existing permissions — Claude can't do " +
-          "more than you can.",
+          "more than you can. Restricted to Admin and Super Admin for now (additionally gated " +
+          "structurally) — flip via the matrix once you want to open it to Staff or Developers.",
       },
     ],
   },
@@ -398,8 +399,8 @@ export type ModuleId = string;
 
 // Default-on feature ids — granted automatically to fresh roles + new auto-provisioned
 // members so the capability ships usable. Opt-in features (Backstage approve, task roll-up
-// publish) stay off by default and require an explicit Super Admin grant per role.
-const DEFAULT_ON_FEATURE_IDS = new Set<string>(["seeAllClients", "mcp.connect"]);
+// publish, MCP connect) stay off by default and require an explicit Super Admin grant per role.
+const DEFAULT_ON_FEATURE_IDS = new Set<string>(["seeAllClients"]);
 
 export const FEATURE_PERMISSIONS = ALL_PERMISSIONS.filter((p) => p.category === "feature").map(
   ({ id, label, description }) => ({
