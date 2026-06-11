@@ -75,6 +75,8 @@ type EditFormState = {
   googleDriveFolderUrl: string;
   clickupUrl: string;
   slackChannelId: string;
+  retainerDays: string;
+  retainerDaysUsed: string;
   designSystemEnabled: boolean;
 };
 
@@ -149,6 +151,8 @@ export function ClientDetail({ slug }: { slug: string }) {
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
       clickupUrl: client.clickupUrl ?? "",
       slackChannelId: client.slackChannelId ?? "",
+      retainerDays: client.retainerDays != null ? String(client.retainerDays) : "",
+      retainerDaysUsed: client.retainerDaysUsed != null ? String(client.retainerDaysUsed) : "",
       designSystemEnabled: designSystem?.enabled ?? false,
     });
     setEditing(true);
@@ -174,6 +178,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         googleDriveFolderUrl: editForm.googleDriveFolderUrl || undefined,
         clickupUrl: editForm.clickupUrl || undefined,
         slackChannelId: editForm.slackChannelId || undefined,
+        retainerDays: editForm.retainerDays.trim() === "" ? null : Number(editForm.retainerDays),
+        retainerDaysUsed: editForm.retainerDaysUsed.trim() === "" ? null : Number(editForm.retainerDaysUsed),
       });
       if (editForm.designSystemEnabled !== (designSystem?.enabled ?? false)) {
         await setDesignSystemEnabled.mutateAsync(editForm.designSystemEnabled);
@@ -2177,6 +2183,34 @@ function ClientEditModal({
                         />
                       </span>
                     </button>
+                  </div>
+
+                  {/* Retainer — monthly allowance + days used (commercial; shown gated on cards) */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="app-field-label">Retainer (days/mo)</span>
+                      <input
+                        value={form.retainerDays}
+                        onChange={(e) => set("retainerDays", e.target.value)}
+                        className="app-input"
+                        type="number"
+                        min={0}
+                        max={31}
+                        placeholder="e.g. 28"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="app-field-label">Used this month</span>
+                      <input
+                        value={form.retainerDaysUsed}
+                        onChange={(e) => set("retainerDaysUsed", e.target.value)}
+                        className="app-input"
+                        type="number"
+                        min={0}
+                        max={31}
+                        placeholder="e.g. 12"
+                      />
+                    </label>
                   </div>
                 </div>
 

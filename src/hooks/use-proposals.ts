@@ -189,6 +189,8 @@ type ClientUpdatePayload = {
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
   slackChannelId?: string;
+  retainerDays?: number | null;
+  retainerDaysUsed?: number | null;
 };
 
 export function useUpdateClient(slug: string) {

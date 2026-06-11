@@ -445,6 +445,8 @@ export async function updateClient(
     primaryContactPhone?: string;
     googleDriveFolderUrl?: string;
     clickupUrl?: string;
+    retainerDays?: number | null;
+    retainerDaysUsed?: number | null;
   },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {

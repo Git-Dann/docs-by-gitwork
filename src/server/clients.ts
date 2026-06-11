@@ -96,6 +96,8 @@ type ManualClientRecord = {
   billingCounty: string | null;
   billingPostcode: string | null;
   billingCountry: string | null;
+  retainerDays: number | null;
+  retainerDaysUsed: number | null;
   status: WorkspaceClientStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -126,6 +128,8 @@ type ClientContactInput = {
   billingCounty?: string;
   billingPostcode?: string;
   billingCountry?: string;
+  retainerDays?: number | null;
+  retainerDaysUsed?: number | null;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -154,6 +158,8 @@ function emptyContactFields(): ClientDetailFields {
     billingCounty: null,
     billingPostcode: null,
     billingCountry: null,
+    retainerDays: null,
+    retainerDaysUsed: null,
     bank: null,
     onboardingId: null,
   };
@@ -188,6 +194,8 @@ function contactFieldsFromRecord(
     billingCounty: record.billingCounty,
     billingPostcode: record.billingPostcode,
     billingCountry: record.billingCountry,
+    retainerDays: record.retainerDays,
+    retainerDaysUsed: record.retainerDaysUsed,
     bank: extras.bank,
     onboardingId: extras.onboardingId,
   };
@@ -196,7 +204,12 @@ function contactFieldsFromRecord(
 function buildContactData(input: ClientContactInput) {
   // Only include fields that were explicitly provided — omitting a field must
   // not overwrite an existing DB value with null on a partial PATCH.
-  const data: Partial<Record<keyof ClientContactInput, string | null>> = {};
+  // Retainer keys are numeric (Int? columns); every other contact field is a string column.
+  const data: Partial<{
+    [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed"
+      ? number | null
+      : string | null;
+  }> = {};
   const trim = (v: string) => v.trim() || null;
   if (input.website !== undefined)             data.website             = trim(input.website);
   if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
@@ -222,6 +235,9 @@ function buildContactData(input: ClientContactInput) {
   if (input.billingCounty !== undefined)       data.billingCounty       = trim(input.billingCounty);
   if (input.billingPostcode !== undefined)     data.billingPostcode     = trim(input.billingPostcode);
   if (input.billingCountry !== undefined)      data.billingCountry      = trim(input.billingCountry);
+  // Numeric retainer fields — pass through (0 is valid; null clears). No trim.
+  if (input.retainerDays !== undefined)        data.retainerDays        = input.retainerDays;
+  if (input.retainerDaysUsed !== undefined)    data.retainerDaysUsed    = input.retainerDaysUsed;
   return data;
 }
 
@@ -340,6 +356,8 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     devCount: 0,         // overridden by listDerivedClients
     monthlyCost: null,   // set by listDerivedClients only for authorized viewers
     workingDays: null,   // set by listDerivedClients only for authorized viewers
+    retainerDays: null,  // set by listDerivedClients only for authorized viewers
+    retainerDaysUsed: null,
   };
 }
 
@@ -525,6 +543,14 @@ export async function listDerivedClients(filters?: {
     reposByClientId.set(p.clientId, list);
   }
 
+  // Retainer (allowance + used this month) by client id — manual fields, surfaced
+  // only to authorised viewers (gated below alongside cost/working days).
+  const retainerByClient = new Map(
+    manualClients.map(
+      (c) => [c.id, { retainerDays: c.retainerDays, retainerDaysUsed: c.retainerDaysUsed }] as const,
+    ),
+  );
+
   const clients = merged
     .filter((client) => {
       if (statusFilter !== "ALL" && client.status !== statusFilter) {
@@ -542,6 +568,8 @@ export async function listDerivedClients(filters?: {
         devCount: devCounts.get(client.id) ?? 0,
         monthlyCost: financial ? financial.monthlyCost : null,
         workingDays: financial ? financial.workingDays : null,
+        retainerDays: includeFinancials ? (retainerByClient.get(client.id)?.retainerDays ?? null) : null,
+        retainerDaysUsed: includeFinancials ? (retainerByClient.get(client.id)?.retainerDaysUsed ?? null) : null,
       };
     });
 
@@ -683,6 +711,8 @@ export async function updateClientRecord(
             billingCounty: null,
             billingPostcode: null,
             billingCountry: null,
+            retainerDays: null,
+            retainerDaysUsed: null,
             status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,

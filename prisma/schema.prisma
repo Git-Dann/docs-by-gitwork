@@ -918,6 +918,9 @@ model WorkspaceClient {
   milestones           Milestone[]
   /// Monthly retainer-day allocation. Optional — surfaced in the UI only when set.
   retainerDays         Int?
+  /// Retainer days used in the current month (manually maintained). Paired with
+  /// retainerDays as a "used / allowance" readout. No auto monthly reset yet.
+  retainerDaysUsed     Int?
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
