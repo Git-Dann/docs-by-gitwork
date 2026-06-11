@@ -2550,11 +2550,13 @@ export async function getWikiCourseIngest(slug: string): Promise<{ token: string
 
 export interface BigWedgeSyncResult {
   baseUrl: string;
-  totalFetched: number;
+  totalCourses: number;
+  totalRequestsFetched: number;
+  nameMatchCount: number;
   actionTakenCount: number;
   toMarkCount: number;
   markedCount: number;
-  sample: Array<{ courseName: string; country: string | null; externalRef: string }>;
+  sample: Array<{ courseName: string; country: string | null; matchedBy: "name" | "action_taken" }>;
   dryRun: boolean;
   errors: string[];
 }
