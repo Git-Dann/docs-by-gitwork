@@ -445,16 +445,23 @@ function ClientCard({ client }: { client: ClientListItem }) {
                 <span className="widget-data-label">rates n/a</span>
               </>
             )}
-          {canViewClientFinancials &&
-            typeof client.workingDays === "number" &&
-            client.workingDays > 0 && (
-              <>
-                <span className="widget-data-label">·</span>
-                <span className="widget-data-label text-[var(--text-2)]">
-                  {client.workingDays} {client.workingDays === 1 ? "day" : "days"}
-                </span>
-              </>
-            )}
+          {/* Days readout: retainer "used / allowance" when a retainer is set, else plain
+              business-days-since-Gantt-start. Both gated + mono-caps. */}
+          {canViewClientFinancials && typeof client.retainerDays === "number" && client.retainerDays > 0 ? (
+            <>
+              <span className="widget-data-label">·</span>
+              <span className="widget-data-label text-[var(--text-2)]">
+                {client.retainerDaysUsed ?? 0} / {client.retainerDays} days
+              </span>
+            </>
+          ) : canViewClientFinancials && typeof client.workingDays === "number" && client.workingDays > 0 ? (
+            <>
+              <span className="widget-data-label">·</span>
+              <span className="widget-data-label text-[var(--text-2)]">
+                {client.workingDays} {client.workingDays === 1 ? "day" : "days"}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
     </article>

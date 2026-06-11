@@ -185,6 +185,7 @@ const clientContactFields = {
   companyNumber: z.string().trim().optional(),
   vatNumber: z.string().trim().optional(),
   retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
 };
 
 export const clientCreateSchema = z.object({

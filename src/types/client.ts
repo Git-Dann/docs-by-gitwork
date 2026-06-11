@@ -42,6 +42,10 @@ export interface ClientListItem extends ClientRecord {
   /** Business days since the project's Gantt timeline started (earliest dated feature block).
    *  Null/absent when there's no timeline yet, or when the viewer may not see financials. */
   workingDays?: number | null;
+  /** Monthly retainer-day allowance (manual). Present only when the viewer may see financials. */
+  retainerDays?: number | null;
+  /** Retainer days used this month (manual). Present only when the viewer may see financials. */
+  retainerDaysUsed?: number | null;
 }
 
 export interface ClientBankSummary {
@@ -93,6 +97,9 @@ export interface ClientDetailFields {
   bank: ClientBankSummary | null;
   /** Original onboarding session id when this client was created via onboarding. */
   onboardingId: string | null;
+  /** Monthly retainer-day allowance + days used this month (manual). */
+  retainerDays: number | null;
+  retainerDaysUsed: number | null;
 }
 
 export interface ClientPlatformRecord {

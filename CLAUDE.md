@@ -454,7 +454,7 @@ In the last session, the following was completed:
    - **Acceptance criteria** — `Task.acceptanceCriteria` (optional) in the form + drawer.
    - **Milestones** — new `Milestone` model (single date) + `src/server/milestones.ts`, `/api/milestones(/[id])`, hooks, `milestone-form.tsx`. Render as diamond markers on the Gantt (internal + public) via `GanttChart`'s `milestones` prop.
    - **Optional block dates** — `FeatureBlock.startDate/endDate` now nullable; a block is a Gantt bar only when both are set, else board-only. `Task.metadata` (Json) + `clickupId` (indexed, not unique) on Task/FeatureBlock/Milestone for the importer.
-   - **Deferred**: `WorkspaceClient.retainerDays` exists (schema + validator) but its display/persistence through the verbose clients aggregate module isn't wired yet — small follow-up.
+   - **Retainer** (now wired — see §20): `WorkspaceClient.retainerDays` (monthly allowance) persists + renders on the card; additive `retainerDaysUsed` (days used this month, manual) added alongside.
 
 8. **Tasks v3 — Phase 2: the ClickUp importer** (`src/server/clickup-import.ts` + `POST /api/dev/import-clickup`):
    - **Token-based, server-side, idempotent.** Self-discovers the ClickUp tree from just `CLICKUP_TOKEN` (env): team → "Clients" space → folders → lists → tasks. Subtasks, custom fields and markdown descriptions arrive **inline** on the Get-Tasks endpoint, so there are **no per-task fetches** (stays inside the rate limit; one pass, paginated, with 429/5xx backoff).
@@ -723,3 +723,24 @@ bypass; it is **not** in `DEFAULT_ROLE_PERMISSIONS`, so it stays off for every r
 client DTO **only when true** — an unauthorised viewer never receives the figures in the payload. The
 dev count is always attached. No schema change, no new env. The card renders the strip as mono-caps
 `widget-data-label`s per DESIGN.md (`{{x}} Devs · cost · {{x}} days` readout — never plain sans).
+
+## 20. Recent Changes (June 2026) — Portal: per-client retainer (used / allowance)
+
+Wires the **retainer** onto the Portal client cards (closes the §13.7 "deferred" item). Two manual,
+gated figures per client:
+
+- **Schema:** `retainerDays` (monthly allowance, pre-existing `Int?`) + new additive **`retainerDaysUsed`**
+  (`Int?`, days used this month — manually maintained, **no auto monthly reset yet**). Both validated
+  `0–31` in `clientContactFields` (`src/server/validators.ts`). Additive → applies via the build's
+  `prisma db push`.
+- **Card readout** (`src/components/clients/client-management.tsx`): when a retainer is set, the days
+  slot shows **`{used ?? 0} / {allowance} days`** (mono-caps `widget-data-label`), **replacing** the
+  plain working-days figure; clients without a retainer keep showing working-days. Gated behind
+  `clients.viewFinancials` (Super Admins + toggle) and attached server-side only for authorised viewers
+  in `listDerivedClients` — same pattern as cost/working-days.
+- **Editable** on the Edit-client modal (`client-detail.tsx`): "Retainer (days/mo)" + "Used this month"
+  number inputs. Persistence flows the existing path — `ClientContactInput` → `buildContactData`
+  (numeric keys passed through untrimmed; `data` is a mapped type so retainer keys are `number|null`,
+  string fields stay `string|null`) → `updateClientRecord`. Surfaced on the detail via
+  `contactFieldsFromRecord` (so `ClientDetailFields` carries both).
+- **Deferred:** auto monthly reset / per-month history, and a real "days used" source (manual for now).
