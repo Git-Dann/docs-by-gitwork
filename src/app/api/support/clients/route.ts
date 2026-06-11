@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listSupportClients, createSupportClient, seedDefaultWorkflowRules } from "@/server/support";
 import { supportClientCreateSchema } from "@/server/validators";
 
@@ -16,6 +17,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care clients");
     const body = supportClientCreateSchema.parse(await request.json());
     const client = await createSupportClient(body);
     await seedDefaultWorkflowRules(client.id);

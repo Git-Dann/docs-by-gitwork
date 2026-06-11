@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listConversations, createConversation } from "@/server/support";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care conversations");
     const { clientId } = await params;
     const body = await request.json();
     const conversation = await createConversation(clientId, body);

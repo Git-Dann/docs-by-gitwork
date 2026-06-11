@@ -234,6 +234,10 @@ function can(user: EffectiveUser, id: string): boolean {
   return isSuperAdmin(user.role) || user.permissions.includes(id);
 }
 
+/** Create and delete Pulse scans. */
+export function canManagePulse(user: EffectiveUser): boolean {
+  return can(user, "pulse.manage");
+}
 /** Run the Pulse fix-agent (opens GitHub PRs on the client repo). High-risk. */
 export function canRunFixAgent(user: EffectiveUser): boolean {
   return can(user, "pulse.fixAgent");

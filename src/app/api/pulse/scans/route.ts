@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
 import { getRequestUser } from "@/server/auth/request-user";
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "create Pulse scans");
     const body = pulseScanCreateSchema.parse(await request.json());
 
     // For URL/GITHUB_REPO scans, projectDescription supplements the main input as inputDescription.
