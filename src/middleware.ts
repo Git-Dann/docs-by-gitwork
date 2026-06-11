@@ -86,6 +86,8 @@ const PUBLIC_API_PATHS = [
   "/api/public/course-requests",
   // Public webhook ingest — per-connection token in the URL path is the auth.
   "/api/support/webhook",
+  // Inbound GitHub webhook for Pulse monitors — per-monitor HMAC signature is the auth.
+  "/api/webhooks/github",
 ];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
@@ -236,7 +238,9 @@ export default auth(async (req) => {
       forwardHeaders.delete(name);
     }
 
-    const isPublic = PUBLIC_API_PATHS.some((p) => pathname.startsWith(p));
+    // Anchor on a path-segment boundary so an entry like "/api/onboarding" can't make a
+    // sibling such as "/api/onboarding-forms" public. Exact match, or the entry followed by "/".
+    const isPublic = PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
     let mobileClaims: MobileTokenClaims | null = null;
 
     if (!isPublic) {

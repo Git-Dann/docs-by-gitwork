@@ -10,6 +10,7 @@ import { PlusIcon, TrashIcon, ChartBarIcon, CheckIcon, StarIcon } from "@heroico
 import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import type { PricingTierItem, PricingTiersSectionData } from "@/types/proposal";
+import { safeUrl } from "@/lib/markdown";
 
 function newTier(name: string): PricingTierItem {
   return { name, price: "", cadence: "/ month", tagline: "", features: [] };
@@ -220,7 +221,8 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
               </ul>
               {tier.ctaLabel ? (
                 <a
-                  href={tier.ctaUrl || "#"}
+                  href={safeUrl(tier.ctaUrl ?? "") ?? "#"}
+                  rel="noopener noreferrer nofollow"
                   className={
                     tier.highlighted
                       ? "mt-5 inline-flex w-full items-center justify-center rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-800)]"
