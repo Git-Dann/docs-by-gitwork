@@ -214,40 +214,55 @@ export function CodeClearCandidatesWorkspace() {
         </div>
 
         {selectedIds.length ? (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-            <p className="text-sm font-medium text-[var(--text-2)]">
-              {selectedIds.length} selected
+          // Compact bulk-action bar: everything on a single row, with a
+          // divider before the admin-only actions so the destructive
+          // group reads visually distinct. The stage select sits inline
+          // with the Move stage button (auto-width so it sizes to its
+          // current value), and a clear-selection × on the right.
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[10px] border border-[var(--brand-300)] bg-[var(--surface-brand-soft)] px-3 py-2">
+            <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-2)]">
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--brand-600)] px-1.5 text-[11px] font-bold text-white">
+                {selectedIds.length}
+              </span>
+              selected
             </p>
-            <select
-              value={moveToStatus}
-              onChange={(event) => setMoveToStatus(event.target.value as PipelineStatus)}
-              className="app-input h-10 min-w-[160px]"
-            >
-              {PIPELINE_STATUSES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+
+            {/* Move stage — inline select + button so the dropdown is
+                only as wide as its label, not a fixed 160px chunk. */}
+            <div className="flex items-center gap-1.5">
+              <select
+                value={moveToStatus}
+                onChange={(event) => setMoveToStatus(event.target.value as PipelineStatus)}
+                className="app-select h-8 w-auto pr-9 text-xs"
+                aria-label="Move to stage"
+              >
+                {PIPELINE_STATUSES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                onClick={() =>
+                  bulkUpdate.mutate({
+                    action: "MOVE_STAGE",
+                    ids: selectedIds,
+                    status: moveToStatus,
+                  })
+                }
+                loading={bulkUpdate.isPending}
+              >
+                Move stage
+              </Button>
+            </div>
+
             <Button
               type="button"
               variant="secondary"
-              size="sm"
-              onClick={() =>
-                bulkUpdate.mutate({
-                  action: "MOVE_STAGE",
-                  ids: selectedIds,
-                  status: moveToStatus,
-                })
-              }
-              loading={bulkUpdate.isPending}
-            >
-              Move stage
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
+              size="xs"
               onClick={() =>
                 bulkUpdate.mutate({
                   action: "FLAG_RECHECK",
@@ -258,16 +273,18 @@ export function CodeClearCandidatesWorkspace() {
             >
               Flag re-check
             </Button>
+
             {/* Admin+ only — moving devs between Bench / Off Bench
-                reshapes the bench definition itself, so it's a stricter
-                gate than the other bulk actions. Server enforces the
-                same in /api/codeclear/candidates PATCH. */}
+                reshapes the bench definition itself, so it's stricter
+                than the other bulk actions (server enforces the same
+                in /api/codeclear/candidates PATCH). Divider sets the
+                group apart visually. */}
             {isAdminOrAbove ? (
-              <>
+              <div className="flex items-center gap-1.5 border-l border-[var(--brand-300)] pl-3">
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
+                  size="xs"
                   onClick={() =>
                     bulkUpdate.mutate({
                       action: "SET_DEV_GROUP",
@@ -282,7 +299,7 @@ export function CodeClearCandidatesWorkspace() {
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
+                  size="xs"
                   onClick={() =>
                     bulkUpdate.mutate({
                       action: "SET_DEV_GROUP",
@@ -294,8 +311,18 @@ export function CodeClearCandidatesWorkspace() {
                 >
                   Move to Bench
                 </Button>
-              </>
+              </div>
             ) : null}
+
+            {/* Clear selection — text button on the far right so the
+                action group ends with a visible exit. */}
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="ml-auto text-[11px] font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+            >
+              Clear selection
+            </button>
           </div>
         ) : null}
 
