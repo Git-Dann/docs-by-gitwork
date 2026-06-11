@@ -137,6 +137,12 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     permissions: [
       { id: "pulse", category: "module", label: "Pulse", description: "Health and delivery tracking." },
       {
+        id: "pulse.manage",
+        category: "action",
+        label: "Manage scans",
+        description: "Create and delete Pulse scans. Without it, Pulse is view-only.",
+      },
+      {
         id: "pulse.fixAgent",
         category: "action",
         label: "Run fix-agent",
@@ -406,6 +412,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
     "rateCard.view",
     // Staff can manage (create/edit/delete) within their products by default — but NOT
     // the high-risk actions (fix-agent PRs, public sharing), which stay Admin-only.
+    "pulse.manage",
     "code.manage",
     "docs.manage",
     "clients.manage",

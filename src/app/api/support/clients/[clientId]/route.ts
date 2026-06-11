@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getSupportClient, updateSupportClient, deleteSupportClient } from "@/server/support";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function PATCH(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care clients");
     const { clientId } = await params;
     const body = await request.json();
     const client = await updateSupportClient(clientId, body);
@@ -32,10 +34,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care clients");
     const { clientId } = await params;
     await deleteSupportClient(clientId);
     return apiOk({ ok: true });

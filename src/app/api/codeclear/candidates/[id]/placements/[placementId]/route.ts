@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { placementUpdateSchema } from "@/server/validators";
@@ -20,6 +21,7 @@ type RouteContext = {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage placements");
     const { workspace } = await ensureBaseRecords();
     const { id: candidateId, placementId } = await context.params;
 
@@ -94,8 +96,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
  * Removes a placement entirely (erroneous block, cancelled engagement).
  * Workspace-scoped.
  */
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage placements");
     const { workspace } = await ensureBaseRecords();
     const { id: candidateId, placementId } = await context.params;
 
