@@ -19,6 +19,7 @@ import {
   useRevokeAdminConnection,
   type McpConnection,
 } from "@/hooks/use-mcp";
+import { McpToolsCatalog } from "@/components/settings/mcp-tools-catalog";
 
 export function McpAdminPanel() {
   const { data, isLoading, error } = useMcpAdmin();
@@ -73,8 +74,12 @@ export function McpAdminPanel() {
         </div>
       </SettingsCard>
 
+      <SettingsCard number="02" title="What Claude can do">
+        <McpToolsCatalog variant="admin" />
+      </SettingsCard>
+
       <SettingsCard
-        number="02"
+        number="03"
         title="Connections"
         right={
           <span className="text-[11px] uppercase tracking-wide text-[var(--text-3)]">
