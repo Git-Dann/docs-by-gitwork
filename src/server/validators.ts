@@ -415,6 +415,13 @@ export const candidateBulkUpdateSchema = z.discriminatedUnion("action", [
     ids: z.array(z.string().cuid()).min(1),
     recheckDueAt: z.coerce.date().optional(),
   }),
+  z.object({
+    // Bulk move between Bench / Off Bench. Gated to ADMIN+ in the
+    // route handler — not exposed to staff/dev roles.
+    action: z.literal("SET_DEV_GROUP"),
+    ids: z.array(z.string().cuid()).min(1),
+    devGroup: z.enum(["BENCH", "PRO_BONO"]),
+  }),
 ]);
 
 export const candidateNoteSchema = z.object({

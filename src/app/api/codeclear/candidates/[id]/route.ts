@@ -165,7 +165,43 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       include: codeClearDetailInclude,
     });
 
-    return apiOk({ candidate: serializeCandidateDetails(candidate) });
+    // Propagate the rate edit to the linked rate-card row. The Code →
+    // Developers Monthly column reads from the rate-card join (single
+    // source of truth), so without this write-through Syed's edits were
+    // saving to Candidate.hourlyRate but invisible in the table. We
+    // treat the form's figure as MONTH because that's how the form
+    // pre-fills (from rate-card.sourceRate → Candidate.hourlyRate) and
+    // what the table renders. If the dev later flips to hourly via a
+    // proper toggle (TODO when ratePeriod schema lands), we'd skip this
+    // write-through.
+    const ratePropagated =
+      body.hourlyRate !== undefined &&
+      existing.rateCardPersonId &&
+      body.hourlyRate != null;
+    if (ratePropagated) {
+      await prisma.rateCardPerson.update({
+        where: { id: existing.rateCardPersonId as string },
+        data: {
+          sourceRate: new Prisma.Decimal(body.hourlyRate as number),
+          billingPeriod: "MONTH",
+          ...(body.currency
+            ? { sourceCurrencyCode: body.currency.toUpperCase() }
+            : {}),
+        },
+      });
+    }
+
+    // Re-fetch when we updated the rate-card row so the response carries
+    // the fresh monthly figure (the prior `update` returned the stale
+    // join). Cheap — one extra read against the same indexed PK.
+    const fresh = ratePropagated
+      ? await prisma.candidate.findFirstOrThrow({
+          where: { id: candidate.id },
+          include: codeClearDetailInclude,
+        })
+      : candidate;
+
+    return apiOk({ candidate: serializeCandidateDetails(fresh) });
   } catch (error) {
     return fromError(error);
   }

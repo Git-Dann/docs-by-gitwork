@@ -610,6 +610,11 @@ export async function bulkUpdateCodeClearCandidates(input:
       action: "FLAG_RECHECK";
       ids: string[];
       recheckDueAt?: string | Date;
+    }
+  | {
+      action: "SET_DEV_GROUP";
+      ids: string[];
+      devGroup: "BENCH" | "PRO_BONO";
     }): Promise<{ candidates: CodeClearCandidateListItem[] }> {
   return apiFetch<{ candidates: CodeClearCandidateListItem[] }>("/api/codeclear/candidates", {
     method: "PATCH",

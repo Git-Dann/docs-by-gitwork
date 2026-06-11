@@ -108,6 +108,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           dbUser.memberships[0].role = "SUPER_ADMIN";
         }
 
+        // Port the Google profile avatar across to the matching Candidate
+        // row (Code → Developers list) if one exists and hasn't already
+        // been set. Idempotent — never overwrites a manually-set avatar,
+        // so admins can pin a custom image without it being clobbered on
+        // each sign-in.
+        if (user.image && user.email) {
+          try {
+            await prisma.candidate.updateMany({
+              where: {
+                workspaceId: dbUser.memberships[0]?.workspaceId,
+                email: user.email,
+                avatarUrl: null,
+              },
+              data: { avatarUrl: user.image },
+            });
+          } catch {
+            // Non-fatal — sign-in proceeds even if the avatar copy fails.
+          }
+        }
+
         const membership = dbUser.memberships[0];
         token.id = dbUser.id;
         token.role = membership?.role ?? "STAFF";

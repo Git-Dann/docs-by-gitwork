@@ -19,6 +19,7 @@ import {
   candidateBulkUpdateSchema,
   candidateCreateSchema,
 } from "@/server/validators";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -302,8 +303,19 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const effectiveUser = await getEffectiveUserOrNull(request);
+    assertCan(effectiveUser, canManageCode, "manage candidates");
     const { workspace, user } = await ensureBaseRecords();
     const body = candidateBulkUpdateSchema.parse(await request.json());
+
+    // Moving devs between Bench / Off Bench is stricter — admin+ only.
+    // Staff with `code.manage` can move stages and flag re-checks but
+    // can't reshape the bench/off-bench split.
+    if (body.action === "SET_DEV_GROUP") {
+      if (!effectiveUser || !isAtLeast(effectiveUser.role, "ADMIN")) {
+        return apiError("Admins only.", 403);
+      }
+    }
     const candidates = await prisma.candidate.findMany({
       where: {
         workspaceId: workspace.id,
@@ -342,6 +354,13 @@ export async function PATCH(request: NextRequest) {
                   }
                 : undefined,
             },
+          });
+        }
+
+        if (body.action === "SET_DEV_GROUP") {
+          return prisma.candidate.update({
+            where: { id: candidate.id },
+            data: { devGroup: body.devGroup },
           });
         }
 

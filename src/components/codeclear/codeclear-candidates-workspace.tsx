@@ -45,7 +45,7 @@ import { ClientAvatar } from "@/components/codeclear/client-avatar";
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
-  const { canManageCode, canViewRates } = usePermissions();
+  const { canManageCode, canViewRates, isAdminOrAbove } = usePermissions();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const deferredSearch = useDeferredValue(search);
@@ -258,6 +258,44 @@ export function CodeClearCandidatesWorkspace() {
             >
               Flag re-check
             </Button>
+            {/* Admin+ only — moving devs between Bench / Off Bench
+                reshapes the bench definition itself, so it's a stricter
+                gate than the other bulk actions. Server enforces the
+                same in /api/codeclear/candidates PATCH. */}
+            {isAdminOrAbove ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    bulkUpdate.mutate({
+                      action: "SET_DEV_GROUP",
+                      ids: selectedIds,
+                      devGroup: "PRO_BONO",
+                    })
+                  }
+                  loading={bulkUpdate.isPending}
+                >
+                  Move to Off Bench
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    bulkUpdate.mutate({
+                      action: "SET_DEV_GROUP",
+                      ids: selectedIds,
+                      devGroup: "BENCH",
+                    })
+                  }
+                  loading={bulkUpdate.isPending}
+                >
+                  Move to Bench
+                </Button>
+              </>
+            ) : null}
           </div>
         ) : null}
 

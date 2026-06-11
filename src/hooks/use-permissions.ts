@@ -8,7 +8,7 @@
 // blanked in the API response regardless of what the client renders.
 
 import { useAccount } from "@/hooks/use-account";
-import { isSuperAdmin } from "@/types/auth";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
 export function usePermissions() {
   const { data, isPending } = useAccount();
@@ -20,6 +20,9 @@ export function usePermissions() {
     role,
     isPending,
     can,
+    // Role tier checks — used by gates that don't fit a single permission
+    // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
+    isAdminOrAbove: isAtLeast(role, "ADMIN"),
     // Field gates
     canViewRates: can("code.viewRates"),
     canViewCosts: can("docs.viewCosts"),
