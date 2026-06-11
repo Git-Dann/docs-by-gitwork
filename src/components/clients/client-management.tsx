@@ -430,9 +430,6 @@ function ClientCard({ client }: { client: ClientListItem }) {
             {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 ? (
               <span className="text-[var(--text-2)]">
                 {formatMoney(client.monthlyCost.amount, client.monthlyCost.currency)}/mo
-                {client.monthlyCost.unpricedDevs > 0 && (
-                  <span className="text-[var(--text-4)]"> ({client.monthlyCost.unpricedDevs} unpriced)</span>
-                )}
               </span>
             ) : canViewClientFinancials &&
               client.monthlyCost &&
