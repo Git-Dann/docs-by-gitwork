@@ -47,6 +47,8 @@ export interface CourseRequestRecord {
   status: string;
   notes: string | null;
   sourceConversationId: string | null;
+  /** ISO timestamp when status was last set to SENT; null for pre-existing rows. */
+  sentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -117,6 +119,7 @@ function serializeCourseRequest(r: {
   status: CourseRequestStatus;
   notes: string | null;
   sourceConversationId: string | null;
+  sentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): CourseRequestRecord {
@@ -127,6 +130,7 @@ function serializeCourseRequest(r: {
     status: r.status,
     notes: r.notes,
     sourceConversationId: r.sourceConversationId,
+    sentAt: r.sentAt ? r.sentAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
@@ -168,6 +172,7 @@ async function buildDTO(wiki: {
     status: CourseRequestStatus;
     notes: string | null;
     sourceConversationId: string | null;
+    sentAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
   }>;
@@ -404,6 +409,8 @@ export async function updateCourseRequest(
       ...(input.country !== undefined ? { country: input.country } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
+      // Record when a request is first marked as sent to the course provider.
+      ...(input.status === "SENT" ? { sentAt: new Date() } : {}),
     },
   });
   return serializeCourseRequest(req);

@@ -1077,6 +1077,8 @@ model ClientCourseRequest {
   source               String?
   /// Caller-supplied external id for the inbound API (idempotent dedupe).
   externalRef          String?
+  /// Timestamp when status was last set to SENT (auto-set by updateCourseRequest).
+  sentAt               DateTime?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
