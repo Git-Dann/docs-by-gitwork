@@ -25,6 +25,7 @@ export type SettingsSectionId =
   // My account
   | "account"
   | "notifications"
+  | "connected-apps"
   // Workspace
   | "general"
   | "branding"
@@ -38,6 +39,7 @@ export type SettingsSectionId =
   | "integrations"
   | "agents"
   | "checks"
+  | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
   | "audit"
@@ -80,6 +82,13 @@ const GROUPS: SectionGroup[] = [
         label: "Notifications",
         description: "Channels, digests, quiet hours.",
         icon: BellAlertIcon,
+      },
+      {
+        id: "connected-apps",
+        label: "Connected apps",
+        description: "Claude and other MCP clients.",
+        icon: CommandLineIcon,
+        permission: "mcp.connect",
       },
     ],
   },
@@ -142,6 +151,13 @@ const GROUPS: SectionGroup[] = [
         description: "Enable, downgrade, or add custom checks.",
         icon: CpuChipIcon,
         permission: "settings.agents",
+      },
+      {
+        id: "mcp",
+        label: "MCP",
+        description: "Workspace-wide Claude / MCP toggle and connections.",
+        icon: CommandLineIcon,
+        superAdminOnly: true,
       },
     ],
   },
