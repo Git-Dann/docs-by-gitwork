@@ -415,53 +415,42 @@ function ClientCard({ client }: { client: ClientListItem }) {
           </p>
         </div>
 
-        {/* Devs (everyone) + monthly cost & working days (gated: Super Admins + clients.viewFinancials).
-            Mono-caps "data-label" readout per DESIGN.md — counts/units never render as plain sans.
-            Working days are Gantt-sourced; absent (hidden) until the client has a dated timeline. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="widget-data-label text-[var(--text-2)]">
+        {/* Metrics strip — fixed slots so each metric keeps its place: Devs (left) ·
+            cost/rates (centre) · days (right). The centre auto-sizes between two equal
+            flex columns; a missing metric leaves its slot empty rather than shifting the
+            others. Mono-caps per DESIGN.md — counts/units never render as plain sans. */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-2">
+          {/* Left — dev count (always shown) */}
+          <span className="widget-data-label justify-self-start whitespace-nowrap text-[var(--text-2)]">
             {devCount} {devCount === 1 ? "Dev" : "Devs"}
           </span>
-          {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 && (
-            <>
-              <span className="widget-data-label">·</span>
-              <span className="widget-data-label text-[var(--text-2)]">
+
+          {/* Centre — monthly cost, else "rates n/a" (gated). Empty span still holds the column. */}
+          <span className="widget-data-label justify-self-center whitespace-nowrap">
+            {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 ? (
+              <span className="text-[var(--text-2)]">
                 {formatMoney(client.monthlyCost.amount, client.monthlyCost.currency)}/mo
                 {client.monthlyCost.unpricedDevs > 0 && (
-                  <span className="text-[var(--text-4)]">
-                    {" "}
-                    ({client.monthlyCost.unpricedDevs} unpriced)
-                  </span>
+                  <span className="text-[var(--text-4)]"> ({client.monthlyCost.unpricedDevs} unpriced)</span>
                 )}
               </span>
-            </>
-          )}
-          {canViewClientFinancials &&
-            client.monthlyCost &&
-            client.monthlyCost.pricedDevs === 0 &&
-            client.monthlyCost.unpricedDevs > 0 && (
-              <>
-                <span className="widget-data-label">·</span>
-                <span className="widget-data-label">rates n/a</span>
-              </>
-            )}
-          {/* Days readout: retainer "used / allowance" when a retainer is set, else plain
-              business-days-since-Gantt-start. Both gated + mono-caps. */}
-          {canViewClientFinancials && typeof client.retainerDays === "number" && client.retainerDays > 0 ? (
-            <>
-              <span className="widget-data-label">·</span>
-              <span className="widget-data-label text-[var(--text-2)]">
-                {client.retainerDaysUsed ?? 0} / {client.retainerDays} days
-              </span>
-            </>
-          ) : canViewClientFinancials && typeof client.workingDays === "number" && client.workingDays > 0 ? (
-            <>
-              <span className="widget-data-label">·</span>
-              <span className="widget-data-label text-[var(--text-2)]">
-                {client.workingDays} {client.workingDays === 1 ? "day" : "days"}
-              </span>
-            </>
-          ) : null}
+            ) : canViewClientFinancials &&
+              client.monthlyCost &&
+              client.monthlyCost.unpricedDevs > 0 ? (
+              "rates n/a"
+            ) : null}
+          </span>
+
+          {/* Right — retainer "used / allowance", else Gantt working days (gated). */}
+          <span className="widget-data-label justify-self-end whitespace-nowrap text-[var(--text-2)]">
+            {canViewClientFinancials && typeof client.retainerDays === "number" && client.retainerDays > 0
+              ? `${client.retainerDaysUsed ?? 0} / ${client.retainerDays} days`
+              : canViewClientFinancials &&
+                  typeof client.workingDays === "number" &&
+                  client.workingDays > 0
+                ? `${client.workingDays} ${client.workingDays === 1 ? "day" : "days"}`
+                : null}
+          </span>
         </div>
       </div>
     </article>
