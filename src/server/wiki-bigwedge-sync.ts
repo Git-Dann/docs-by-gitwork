@@ -103,37 +103,48 @@ async function resolveBigWedgeApi(
   return { baseUrl: (cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, ""), apiToken: cfg.apiToken };
 }
 
-// ── Fetch all course names from the Big Wedge courses endpoint ───────────────
+// ── Fetch all course names from the Big Wedge courses endpoint (parallel) ────
 async function fetchCourseNameSet(
   api: { baseUrl: string; apiToken: string },
   errors: string[],
 ): Promise<{ nameSet: Set<string>; totalCourses: number }> {
   const nameSet = new Set<string>();
-  let url: string | null = `${api.baseUrl}/api/v1/courses/?page_size=${PAGE_SIZE}`;
-  let totalCourses = 0;
+  const base = `${api.baseUrl}/api/v1/courses/?page_size=${PAGE_SIZE}`;
 
-  for (let page = 0; page < MAX_COURSE_PAGES && url; page++) {
-    let data: BwCoursePage;
-    try {
-      data = await getJson<BwCoursePage>(url, api.apiToken);
-    } catch (err) {
-      errors.push(
-        `Courses fetch failed (page ${page + 1}): ${err instanceof Error ? err.message : String(err)}`,
-      );
-      break;
-    }
+  // Page 1 — learn the total count
+  let first: BwCoursePage;
+  try {
+    first = await getJson<BwCoursePage>(`${base}&page=1`, api.apiToken);
+  } catch (err) {
+    errors.push(`Courses fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    return { nameSet, totalCourses: 0 };
+  }
 
-    if (page === 0) totalCourses = data.count ?? 0;
+  const totalCourses = first.count ?? 0;
+  const totalPages = Math.min(Math.ceil(totalCourses / PAGE_SIZE), MAX_COURSE_PAGES);
 
+  function addPage(data: BwCoursePage) {
     for (const c of data.results ?? []) {
       if (c.name) {
         nameSet.add(norm(c.name));
-        // Also index the club name — our requests often use the club name
         if (c.club?.name) nameSet.add(norm(c.club.name));
       }
     }
+  }
+  addPage(first);
 
-    url = data.next ?? null;
+  // Remaining pages — fetch in parallel batches of 20
+  const BATCH = 20;
+  for (let start = 2; start <= totalPages; start += BATCH) {
+    const end = Math.min(start + BATCH - 1, totalPages);
+    const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    const results = await Promise.allSettled(
+      pages.map((p) => getJson<BwCoursePage>(`${base}&page=${p}`, api.apiToken)),
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled") addPage(r.value);
+      else errors.push(`Courses page failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+    }
   }
 
   return { nameSet, totalCourses };
