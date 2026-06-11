@@ -33,11 +33,18 @@ interface BwRequest {
   action_taken?: boolean;
   created_at?: string;
   updated_at?: string;
+  /** Actual field name in the Big Wedge API. */
+  course_items?: BwCourse[];
+  /** Tolerate alternative shape. */
   courses?: BwCourse[];
-  // tolerate alternative shapes
   [k: string]: unknown;
 }
+/** Big Wedge API wraps paginated responses in { data, meta.pagination } */
 interface BwPage {
+  // Big Wedge envelope shape
+  data?: BwRequest[];
+  meta?: { pagination?: { count?: number; next?: string | null } };
+  // Standard DRF shape (fallback)
   count?: number;
   next?: string | null;
   results?: BwRequest[];
@@ -114,10 +121,16 @@ function courseName(c: BwCourse): string {
  */
 export async function importBigWedgeCourseRequests(
   workspaceClientId: string,
-  opts: { since: string; dryRun?: boolean },
+  opts: { since: string; dryRun?: boolean; apiToken?: string },
 ): Promise<BigWedgeImportResult | { error: string }> {
-  const api = await resolveBigWedgeApi(workspaceClientId);
-  if ("error" in api) return api;
+  let api: { baseUrl: string; apiToken: string };
+  if (opts.apiToken) {
+    api = { baseUrl: DEFAULT_BASE, apiToken: opts.apiToken };
+  } else {
+    const resolved = await resolveBigWedgeApi(workspaceClientId);
+    if ("error" in resolved) return resolved;
+    api = resolved;
+  }
 
   const dryRun = opts.dryRun ?? true;
   const sinceMs = new Date(`${opts.since}T00:00:00Z`).getTime();
@@ -137,14 +150,16 @@ export async function importBigWedgeCourseRequests(
       errors.push(`Fetch failed (page ${page + 1}): ${err instanceof Error ? err.message : String(err)}`);
       break;
     }
-    const results = data.results ?? (Array.isArray(data) ? (data as unknown as BwRequest[]) : []);
+    // Handle both Big Wedge envelope shape (data/meta.pagination) and plain DRF (results/next)
+    const results =
+      data.data ?? data.results ?? (Array.isArray(data) ? (data as unknown as BwRequest[]) : []);
     totalFetched += results.length;
     fetched.push(...results);
 
     // Stop early once the oldest row on this page predates the window.
     const oldest = results[results.length - 1]?.created_at;
     if (oldest && new Date(oldest).getTime() < sinceMs) break;
-    url = data.next ?? null;
+    url = data.meta?.pagination?.next ?? data.next ?? null;
   }
 
   // Filter to the window (tolerate missing created_at by keeping it).
@@ -164,7 +179,11 @@ export async function importBigWedgeCourseRequests(
   const rows: Row[] = [];
   for (const r of inWindowReqs) {
     const reqId = r.id ?? "?";
-    const courses = Array.isArray(r.courses) && r.courses.length ? r.courses : [{ course_name: "" }];
+    // course_items is the actual API field; fall back to courses for forward compat
+    const courses =
+      (Array.isArray(r.course_items) && r.course_items.length ? r.course_items : null) ??
+      (Array.isArray(r.courses) && r.courses.length ? r.courses : null) ??
+      [{ course_name: "" }];
     courses.forEach((c, i) => {
       const name = courseName(c);
       if (!name) return;
