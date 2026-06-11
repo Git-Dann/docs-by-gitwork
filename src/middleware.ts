@@ -92,6 +92,8 @@ const PUBLIC_API_PATHS = [
   // user session (not API_KEY); token/revoke/register are bearer-/PKCE-gated by
   // the OAuth spec itself. See src/server/oauth.ts.
   "/api/oauth",
+  // MCP transport — its own bearer auth, never API_KEY. See src/server/mcp/auth.ts.
+  "/api/mcp",
 ];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
