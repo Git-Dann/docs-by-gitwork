@@ -251,10 +251,6 @@ const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   analytics: "Pull product metrics into monthly reports",
   app_reviews: "App Store + Play Store reviews, rated & tagged",
   webhook: "Receive messages from any external system",
-  youtube: "Comments from videos — coming soon",
-  instagram: "DMs & comments — coming soon",
-  clickup: "Sync tasks and comments",
-  stripe: "Disputes & payment events via webhook",
 };
 
 // Mirrors the server-side registry in src/server/support-analytics/index.ts
@@ -4060,15 +4056,26 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
 
   if (isLoading) {
     return (
-      <div className="app-card overflow-hidden p-0">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[...Array(3)].map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-20 animate-pulse bg-[var(--surface-1)]",
-              i > 0 && "border-t border-[var(--border-2)]",
-            )}
-          />
+          <div key={i} className="app-card overflow-hidden p-0 flex flex-col">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-2)]">
+              <div className="h-8 w-8 shrink-0 rounded-[6px] animate-pulse bg-[var(--surface-1)]" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 w-28 animate-pulse rounded bg-[var(--surface-1)]" />
+                <div className="h-2.5 w-16 animate-pulse rounded bg-[var(--surface-1)]" />
+              </div>
+              <div className="h-5 w-16 shrink-0 animate-pulse rounded-md bg-[var(--surface-1)]" />
+            </div>
+            <div className="flex-1 space-y-2 px-4 py-3">
+              <div className="h-2.5 w-3/4 animate-pulse rounded bg-[var(--surface-1)]" />
+              <div className="h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-1)]" />
+            </div>
+            <div className="flex items-center gap-2 border-t border-[var(--border-2)] px-4 py-2.5">
+              <div className="h-6 w-20 animate-pulse rounded-[6px] bg-[var(--surface-1)]" />
+              <div className="ml-auto h-7 w-7 animate-pulse rounded-[6px] bg-[var(--surface-1)]" />
+            </div>
+          </div>
         ))}
       </div>
     );
@@ -4225,7 +4232,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
               <div
                 key={conn.id}
                 className={cn(
-                  "app-card overflow-visible p-0 flex flex-col",
+                  "app-card min-w-0 overflow-visible p-0 flex flex-col",
                   conn.health === "error" && "ring-1 ring-red-200",
                 )}
               >
