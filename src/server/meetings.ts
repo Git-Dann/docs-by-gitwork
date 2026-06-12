@@ -381,7 +381,7 @@ export async function listRecentMeetCalls(client: OAuth2Client, days = 30): Prom
 export async function findPastClientCalls(
   client: OAuth2Client,
   match: { domains: string[]; name?: string | null },
-  days = 30,
+  days = 90, // per-client manual "Recent calls" looks back a full quarter so older calls/notes still surface (cron uses its own shorter window)
 ): Promise<CalendarCandidate[]> {
   const domainSet = new Set(match.domains);
   // Normalise both sides for the name match: lowercase + drop non-alphanumerics, so a

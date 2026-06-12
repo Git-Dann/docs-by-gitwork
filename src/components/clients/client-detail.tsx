@@ -1360,6 +1360,7 @@ function MeetingNotesModal({
   isAddingAll?: boolean;
 }) {
   const decisions = Array.isArray(meeting.decisions) ? meeting.decisions : [];
+  const hasActionItems = meeting.actionItems.length > 0;
   const pendingCount = meeting.actionItems.filter((a) => !addedTaskIds[a.id]).length;
   const when = [formatDate(meeting.startedAt ?? meeting.createdAt), formatTimeRange(meeting.startedAt, meeting.endedAt)]
     .filter(Boolean)
@@ -1371,7 +1372,10 @@ function MeetingNotesModal({
       onClick={onClose}
     >
       <div
-        className="app-dialog-panel flex max-h-[85vh] w-full max-w-[720px] flex-col overflow-hidden"
+        className={cn(
+          "app-dialog-panel flex max-h-[85vh] w-full flex-col overflow-hidden",
+          hasActionItems ? "max-w-[940px]" : "max-w-[680px]",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — Scribe eyebrow (mono), editorial serif title, mono time, attendee chips */}
@@ -1428,43 +1432,57 @@ function MeetingNotesModal({
           </div>
         </div>
 
-        {/* Body — one scroll: brief summary, then ACTION ITEMS (the task workspace, so
-            they're never buried under a long decisions list), then decisions as reference. */}
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-          {/* Summary */}
-          <section>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>Notes</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
-              {meeting.summary || "No summary captured."}
-            </p>
-          </section>
-
-          {/* Action items — prominent, with one-click add + bulk "Add all" */}
-          {meeting.actionItems.length > 0 && (
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                  Action items · {meeting.actionItems.length}
+        {/* Body — 2-col: notes + decisions (left), action items → tasks (right, only if any) */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className={cn("grid gap-x-8 gap-y-6", hasActionItems && "md:grid-cols-[1fr_320px]")}>
+            {/* LEFT — notes + decisions */}
+            <div className="min-w-0 space-y-6">
+              <section>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
+                  {meeting.summary || "No summary captured."}
                 </p>
-                {meeting.clientId && onAddAll && pendingCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={onAddAll}
-                    disabled={isAddingAll}
-                    className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    <PlusIcon className="h-3 w-3" />
-                    {isAddingAll ? "Adding…" : `Add all ${pendingCount} to board`}
-                  </button>
-                )}
-              </div>
-              <ul className="mt-3 divide-y divide-[var(--border-1)] overflow-hidden rounded-[8px] border border-[var(--border-1)]">
-                {meeting.actionItems.map((a) => {
-                  const added = Boolean(addedTaskIds[a.id]);
-                  const adding = addingTaskId === a.id;
-                  return (
-                    <li key={a.id} className="flex items-start gap-3 px-3 py-2.5">
-                      <div className="min-w-0 flex-1">
+              </section>
+
+              {decisions.length > 0 && (
+                <section>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Decisions · {decisions.length}
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
+                    {decisions.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+
+            {/* RIGHT — action items → client task board (only rendered when there are any) */}
+            {hasActionItems && (
+              <aside className="min-w-0 md:border-l md:border-[var(--border-1)] md:pl-8">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Action items · {meeting.actionItems.length}
+                  </p>
+                  {meeting.clientId && onAddAll && pendingCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={onAddAll}
+                      disabled={isAddingAll}
+                      className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      <PlusIcon className="h-3 w-3" />
+                      {isAddingAll ? "Adding…" : `Add all ${pendingCount}`}
+                    </button>
+                  )}
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {meeting.actionItems.map((a) => {
+                    const added = Boolean(addedTaskIds[a.id]);
+                    const adding = addingTaskId === a.id;
+                    return (
+                      <li key={a.id} className="rounded-[8px] border border-[var(--border-1)] px-3 py-2.5">
                         <p className="text-sm leading-snug text-[var(--text-1)]">{a.text}</p>
                         {a.owner && (
                           <span
@@ -1474,43 +1492,29 @@ function MeetingNotesModal({
                             {a.owner}
                           </span>
                         )}
-                      </div>
-                      {meeting.clientId && (
-                        <button
-                          type="button"
-                          disabled={adding || added}
-                          onClick={() => onAddTask(meeting.clientId!, a.id, a.text)}
-                          className={cn(
-                            "inline-flex shrink-0 items-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default",
-                            added
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60",
-                          )}
-                          title="Add to this client's task board"
-                        >
-                          {added ? (<><CheckCircleIcon className="h-3.5 w-3.5" />Added</>) : adding ? "Adding…" : (<><PlusIcon className="h-3 w-3" />Add task</>)}
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-
-          {/* Decisions — reference */}
-          {decisions.length > 0 && (
-            <section>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                Decisions · {decisions.length}
-              </p>
-              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
-                {decisions.map((d, i) => (
-                  <li key={i}>{d}</li>
-                ))}
-              </ul>
-            </section>
-          )}
+                        {meeting.clientId && (
+                          <button
+                            type="button"
+                            disabled={adding || added}
+                            onClick={() => onAddTask(meeting.clientId!, a.id, a.text)}
+                            className={cn(
+                              "mt-2 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default",
+                              added
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60",
+                            )}
+                            title="Add to this client's task board"
+                          >
+                            {added ? (<><CheckCircleIcon className="h-3.5 w-3.5" />Added</>) : adding ? "Adding…" : (<><PlusIcon className="h-3 w-3" />Add task</>)}
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </aside>
+            )}
+          </div>
         </div>
       </div>
     </div>
