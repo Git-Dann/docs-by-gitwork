@@ -1219,7 +1219,14 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const meetings = data?.meetings ?? [];
   const candidates = data?.candidates ?? [];
   type Row = | { kind: "candidate"; c: (typeof candidates)[0] } | { kind: "meeting"; m: ScribeMeeting };
-  const rows: Row[] = [...candidates.map((c) => ({ kind: "candidate" as const, c })), ...meetings.map((m) => ({ kind: "meeting" as const, m }))];
+  // One list sorted by the call's start date (newest first), NOT a candidates block then a
+  // meetings block. A candidate and the meeting it becomes share the same date slot, so hitting
+  // "Fetch notes" just swaps the button in place — the row never jumps position.
+  const rowDate = (r: Row) => (r.kind === "candidate" ? r.c.start : r.m.startedAt ?? r.m.createdAt) ?? "";
+  const rows: Row[] = [
+    ...candidates.map((c) => ({ kind: "candidate" as const, c })),
+    ...meetings.map((m) => ({ kind: "meeting" as const, m })),
+  ].sort((a, b) => rowDate(b).localeCompare(rowDate(a)));
   const totalPages = Math.ceil(rows.length / PAGE_SIZE);
   const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -1288,7 +1295,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
               const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
               const busy = busyId === m.calendarEventId;
               return (
-                <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
+                <div key={m.calendarEventId ?? m.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.title}</p>
                     <p className="widget-timestamp mt-0.5">{formatDate(m.startedAt ?? m.createdAt)}</p>
