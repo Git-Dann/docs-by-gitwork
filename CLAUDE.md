@@ -57,6 +57,29 @@ Rules of thumb:
 - **Stay tidy** → prune stale worktrees (`git worktree prune`) and don't leave dozens of
   abandoned branches around. Auto-delete handles remote branches post-merge.
 
+### Git hygiene — prevent object store corruption
+
+Claude Code creates a worktree per session. Without maintenance, accumulated worktrees and stale
+local `claude/` branches cause pack-file corruption (missing delta bases, orphaned commit objects)
+that breaks `git gc`, `git prune`, and `git fsck`. This happened in June 2026 and required a full
+mirror clone to repair.
+
+**Run periodically** (every few sessions, or when > ~5 active worktrees):
+
+```bash
+# From the MAIN repo directory (not a worktree):
+git worktree prune
+git branch | grep claude/ | xargs git branch -D 2>/dev/null || true
+git gc --prune=now
+```
+
+**If `git gc` fails** with "bad tree object" or "unable to read [sha]":
+1. **Do NOT use `--depth=20`** for repair — shallow clone packs have their own missing bases.
+2. Do a full mirror clone: `git clone --mirror https://github.com/Git-Dann/docs-by-gitwork.git /tmp/repair`
+3. Copy ALL pack files: `cp /tmp/repair/objects/pack/*.{pack,idx} .git/objects/pack/`
+4. Remove temp: `rm -rf /tmp/repair`
+5. Retry `git gc --prune=now`
+
 **Build safety:** `vercel.json` runs `prisma db push` **without** `--accept-data-loss` on every
 build. Never re-add it: it let any preview branch silently mutate the shared production database.
 
