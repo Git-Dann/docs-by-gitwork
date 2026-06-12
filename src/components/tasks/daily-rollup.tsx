@@ -13,7 +13,16 @@ import { TaskAvatar } from "@/components/tasks/task-avatar";
 
 const PAGE_SIZE = 5;
 
-export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
+export function DailyRollup({
+  enabled = true,
+  canPublish = true,
+}: {
+  enabled?: boolean;
+  /** When false the card renders as monitor-only (no Publish / Publish-anyway
+   *  buttons). Super admins watching the roster shouldn't see the publishing
+   *  CTAs — that's the DevOps lead's surface (`tasks.publish` permission). */
+  canPublish?: boolean;
+}) {
   const { data, isPending } = useRollupRoster(enabled);
   const publish = usePublishRollup();
   const [result, setResult] = useState<string | null>(null);
@@ -114,7 +123,9 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
               </div>
             ) : null}
 
-            {/* Publish — primary CTA left, override secondary right. */}
+            {/* Publish — primary CTA left, override secondary right. Skipped
+                when the viewer is here purely to monitor (super admin). */}
+            {canPublish ? (
             <div className="border-t border-[var(--border-2)] pt-3">
               <div className="flex items-center justify-between gap-2">
                 <Button
@@ -145,6 +156,7 @@ export function DailyRollup({ enabled = true }: { enabled?: boolean }) {
                 </span>
               ) : null}
             </div>
+            ) : null}
           </>
         )}
       </div>

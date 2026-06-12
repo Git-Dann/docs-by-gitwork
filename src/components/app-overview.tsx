@@ -84,7 +84,12 @@ export function AppOverview() {
   const canApprove = showAll || can(acct, "backstage.approve") || can(acct, "backstage.expenses");
   const canSeeTasks = showAll || can(acct, "clients");
   const canSeeSignoff = showAll || can(acct, "proposals");
+  // Visibility of the roll-up CARD (admins/super admins can monitor).
   const canPublishRollup = showAll || can(acct, "tasks.publish");
+  // Visibility of the Publish / Publish-anyway BUTTONS (strict — only the
+  // explicit `tasks.publish` holder, e.g. Shahab). Admins watching the roster
+  // shouldn't see the CTAs even though they could technically publish via API.
+  const canActuallyPublish = resolvedPermissions.includes("tasks.publish");
   const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
@@ -110,7 +115,7 @@ export function AppOverview() {
           canSeeTasks={canSeeTasks}
           canSeeSignoff={canSeeSignoff}
         />
-        {canPublishRollup ? <DailyRollup /> : null}
+        {canPublishRollup ? <DailyRollup canPublish={canActuallyPublish} /> : null}
       </div>
 
       {/* 03+ // Module bento — filtered to the user's access. */}
