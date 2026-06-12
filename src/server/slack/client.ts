@@ -104,6 +104,11 @@ export interface PostMessageInput {
   thread_ts?: string;
   unfurl_links?: boolean;
   unfurl_media?: boolean;
+  /** Override the bot avatar per message — works without re-uploading the
+   *  app icon at api.slack.com/apps. Lets every Foundry post show the brand
+   *  even before the workspace admin updates the app's display image. */
+  icon_url?: string;
+  username?: string;
 }
 
 export interface PostMessageResponse {
@@ -112,10 +117,17 @@ export interface PostMessageResponse {
   message?: Record<string, unknown>;
 }
 
+/** Foundry logo served from the public marketing site — Slack fetches it
+ *  per-message when icon_url is set on chat.postMessage. Falls back to the
+ *  app's configured display image if unreachable. */
+const DEFAULT_ICON_URL = "https://foundry.gitwork.co.uk/foundry-logo.png";
+
 export function postMessage(token: string, input: PostMessageInput): Promise<SlackResponse<PostMessageResponse>> {
   return call<PostMessageResponse>(token, "chat.postMessage", {
     unfurl_links: false,
     unfurl_media: false,
+    icon_url: DEFAULT_ICON_URL,
+    username: "Foundry",
     ...input,
   });
 }

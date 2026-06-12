@@ -61,129 +61,147 @@ function taskDeepLink(t: Pick<StandupTaskCardInput, "clientSlug" | "taskId">): s
  * Returns `{ text, blocks }` ready for chat.postMessage.
  */
 export function buildStandupCard(input: BuildStandupCardInput): { text: string; blocks: SlackBlock[] } {
-  const emoji = input.phase === "AM" ? ":large_yellow_circle:" : ":white_check_mark:";
-  const sectionLabel = input.phase === "AM" ? "Doing" : "Done";
+  const phaseEmoji = input.phase === "AM" ? ":large_yellow_circle:" : ":white_check_mark:";
+  const phaseLabel = input.phase === "AM" ? "In Progress" : "Done today";
   const visible = input.tasks.slice(0, MAX_TASKS_PER_CARD);
   const overflowCount = Math.max(0, input.tasks.length - MAX_TASKS_PER_CARD);
-
-  const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${input.workdayLabel})`;
-
-  const blocks: SlackBlock[] = [
-    {
-      type: "header",
-      text: { type: "plain_text", text: `${emoji} ${input.who} — ${input.workdayLabel}`.slice(0, 150) },
-    },
-  ];
-
-  // Summary line under the header — "3 in progress · 1 overdue · +N more".
   const today = input.workdayLabel.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
   const overdueCount = visible.filter(
     (t) => t.dueDate && today && t.dueDate < today && t.status !== "DONE",
   ).length;
-  const summaryParts: string[] = [];
-  summaryParts.push(`${visible.length} ${sectionLabel.toLowerCase()}`);
-  if (overdueCount > 0) summaryParts.push(`*${overdueCount} overdue*`);
-  if (overflowCount > 0) summaryParts.push(`+${overflowCount} more in Foundry`);
-  blocks.push({
-    type: "context",
-    elements: [{ type: "mrkdwn", text: summaryParts.join(" · ") }],
-  });
 
-  // Optional "This week" plan — Monday standups only, callers gate this upstream.
+  const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${input.workdayLabel})`;
+
+  // ─── Owner + date header — narrative style, mirrors how the team writes
+  //     standups in chat ("Owner: @Dan / Date: Friday 12 June / In Progress").
+  const blocks: SlackBlock[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `*Owner:* ${escapeMrkdwn(input.who)}\n` +
+          `*Date:* ${escapeMrkdwn(input.workdayLabel)}\n` +
+          `${phaseEmoji} *${phaseLabel}*`,
+      },
+    },
+  ];
+
+  // Optional "This week" plan — Monday-only Weekly section.
   if (input.weekPlan?.trim()) {
-    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:calendar: *This week*\n${escapeMrkdwn(input.weekPlan.trim())}`,
+        text: `*This week*\n${escapeMrkdwn(input.weekPlan.trim())}`,
       },
     });
   }
 
-  // One "mini card" per task: divider → section (title + meta + Open button) →
-  // actions row (Notes · Comment · Done). Each task gets explicit primary
-  // actions instead of hiding them inside an overflow.
-  for (const t of visible) {
-    const status = t.status ?? "DOING";
-    const statusE = STATUS_EMOJI[status];
-    const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
-    const metaParts: string[] = [];
-    if (t.clientName) metaParts.push(escapeMrkdwn(t.clientName));
-    if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
-    if (t.dueDate) {
-      metaParts.push(isOverdue ? `:warning: due ${t.dueDate}` : `due ${t.dueDate}`);
-    }
-    const meta = metaParts.length ? `\n_${metaParts.join(" · ")}_` : "";
-    const value = encodeActionValue(t.messageRefId, t.taskId);
-
-    blocks.push({ type: "divider" });
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `${statusE} *${escapeMrkdwn(t.title)}*${meta}`,
-      },
-      accessory: {
-        type: "button",
-        text: { type: "plain_text", text: "Open ↗" },
-        url: taskDeepLink(t),
-        action_id: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}.${t.taskId}`,
-      },
-    });
-    blocks.push({
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", emoji: true, text: ":eyes: Notes" },
-          value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
-          action_id: `${SLACK_ACTIONS.TASK_VIEW_NOTES}.${t.taskId}`,
-        },
-        {
-          type: "button",
-          text: { type: "plain_text", emoji: true, text: ":speech_balloon: Comment" },
-          value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
-          action_id: `${SLACK_ACTIONS.TASK_ADD_COMMENT}.${t.taskId}`,
-        },
-        {
-          type: "button",
-          text: { type: "plain_text", emoji: true, text: ":mag: In review" },
-          value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
-          action_id: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}.${t.taskId}`,
-        },
-        {
-          type: "button",
-          style: "primary",
-          text: { type: "plain_text", emoji: true, text: ":white_check_mark: Done" },
-          value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
-          action_id: `${SLACK_ACTIONS.TASK_MARK_DONE}.${t.taskId}`,
-        },
-      ],
-    });
-  }
-
-  if (overflowCount > 0 && visible.length > 0) {
-    blocks.push({ type: "divider" });
+  // ─── Tasks — single section block per task with a markdown-link title and
+  //     a discreet overflow accessory carrying the actions. This keeps the
+  //     row scannable (no per-task action toolbar) while still being
+  //     fully actionable from Slack.
+  if (visible.length > 0) {
     blocks.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: `:arrow_upper_right: ${overflowCount} more — <${APP_BASE_URL}/app/portal|open my board>`,
+          text: `*Tasks* — ${visible.length}${overdueCount > 0 ? ` · *${overdueCount} overdue*` : ""}${overflowCount > 0 ? ` · +${overflowCount} in Foundry` : ""}`,
+        },
+      ],
+    });
+    for (const t of visible) {
+      const status = t.status ?? "DOING";
+      const statusE = STATUS_EMOJI[status];
+      const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
+      const metaParts: string[] = [];
+      if (t.clientName) metaParts.push(escapeMrkdwn(t.clientName));
+      if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
+      if (t.dueDate) {
+        metaParts.push(isOverdue ? `:warning: due ${t.dueDate}` : `due ${t.dueDate}`);
+      }
+      const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
+      const value = encodeActionValue(t.messageRefId, t.taskId);
+
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          // Title is a markdown link so the user can jump to the task with
+          // a single click — no separate button needed.
+          text: `${statusE}  <${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}`,
+        },
+        accessory: {
+          type: "overflow",
+          action_id: `task.menu.${t.taskId}`,
+          options: [
+            {
+              text: { type: "plain_text", emoji: true, text: ":white_check_mark: Mark done" },
+              value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
+            },
+            {
+              text: { type: "plain_text", emoji: true, text: ":mag: Mark in review" },
+              value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
+            },
+            {
+              text: { type: "plain_text", emoji: true, text: ":speech_balloon: Add comment" },
+              value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
+            },
+            {
+              text: { type: "plain_text", emoji: true, text: ":memo: Show details" },
+              value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
+            },
+            {
+              text: { type: "plain_text", emoji: true, text: ":arrow_upper_right: Open in Foundry" },
+              url: taskDeepLink(t),
+              value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}`,
+            },
+          ],
+        },
+      });
+    }
+  }
+
+  if (overflowCount > 0 && visible.length > 0) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `<${APP_BASE_URL}/app/portal|+${overflowCount} more in Foundry ↗>`,
         },
       ],
     });
   }
 
+  // ─── Blockers / asks — Dan's example called this "One thing we need".
+  //     Only render when the dev provided a note on push.
   if (input.note?.trim()) {
     blocks.push({ type: "divider" });
     blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: `:memo: ${escapeMrkdwn(input.note.trim())}` }],
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*One thing I need*\n${escapeMrkdwn(input.note.trim())}`,
+      },
     });
   }
 
+  // ─── Footer: single bulk action + a quiet "posted from" timestamp line.
+  blocks.push({ type: "divider" });
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", emoji: true, text: ":clipboard: View my board" },
+        url: `${APP_BASE_URL}/app/portal`,
+        action_id: "standup.viewBoard",
+      },
+    ],
+  });
   blocks.push({
     type: "context",
     elements: [{ type: "mrkdwn", text: `Posted from Foundry` }],
@@ -297,8 +315,8 @@ export function buildNotesModal(input: {
   });
   return {
     type: "modal",
-    callback_id: "task.notes",
-    title: { type: "plain_text", text: "Task notes" },
+    callback_id: "task.details",
+    title: { type: "plain_text", text: "Task details" },
     close: { type: "plain_text", text: "Close" },
     blocks,
   };
