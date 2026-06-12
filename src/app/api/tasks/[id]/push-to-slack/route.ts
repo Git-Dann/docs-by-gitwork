@@ -44,6 +44,8 @@ export async function POST(
         },
         featureBlock: { select: { name: true } },
       },
+      // Need `status` for the card's leading emoji; Prisma returns scalar fields
+      // by default but listing it here is harmless and self-documenting.
     });
     if (!task) return apiError("Task not found.", 404);
 
@@ -83,9 +85,11 @@ export async function POST(
       taskId: task.id,
       messageRefId: placeholder.id,
       title: task.title,
+      clientName: task.client.name,
+      clientSlug: task.client.slug,
       blockName: task.featureBlock?.name ?? null,
       dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null,
-      clientSlug: task.client.slug,
+      status: task.status,
     };
 
     const card = buildStandupCard({

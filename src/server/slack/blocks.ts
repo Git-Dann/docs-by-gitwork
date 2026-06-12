@@ -21,9 +21,22 @@ export interface StandupTaskCardInput {
   messageRefId: string;
   title: string;
   blockName?: string | null;
+  /** YYYY-MM-DD; overdue formatting is computed against the workdayLabel. */
   dueDate?: string | null;
   clientSlug: string;
+  /** Surfaced explicitly in the card subtitle (was previously implicit in the link). */
+  clientName?: string | null;
+  /** Drives the leading status emoji. Defaults to DOING when omitted. */
+  status?: "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "DONE";
 }
+
+const STATUS_EMOJI: Record<NonNullable<StandupTaskCardInput["status"]>, string> = {
+  BACKLOG: ":white_circle:",
+  TODO: ":large_blue_circle:",
+  DOING: ":large_yellow_circle:",
+  IN_REVIEW: ":eyes:",
+  DONE: ":white_check_mark:",
+};
 
 export interface BuildStandupCardInput {
   phase: "AM" | "PM";
@@ -62,66 +75,109 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     },
   ];
 
-  if (visible.length > 0) {
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: `*${sectionLabel}*` }],
-    });
-    for (const t of visible) {
-      const subtitleParts: string[] = [];
-      if (t.blockName) subtitleParts.push(t.blockName);
-      if (t.dueDate) subtitleParts.push(`due ${t.dueDate}`);
-      const subtitle = subtitleParts.length ? `\n_${subtitleParts.join(" · ")}_` : "";
-      const value = encodeActionValue(t.messageRefId, t.taskId);
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: `*${escapeMrkdwn(t.title)}*${subtitle}` },
-        accessory: {
-          type: "overflow",
-          action_id: "task.menu",
-          options: [
-            {
-              text: { type: "plain_text", text: ":eyes: Show notes" },
-              value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: ":speech_balloon: Add comment" },
-              value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: ":eyes: Mark in review" },
-              value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: ":white_check_mark: Mark done" },
-              value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: ":arrow_upper_right: Open in Foundry" },
-              url: taskDeepLink(t),
-              value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}`,
-            },
-          ],
-        },
-      });
-    }
-    if (overflowCount > 0) {
-      blocks.push({
-        type: "context",
-        elements: [{ type: "mrkdwn", text: `+${overflowCount} more — view in Foundry` }],
-      });
-    }
-  }
+  // Summary line under the header — "3 in progress · 1 overdue · +N more".
+  const today = input.workdayLabel.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  const overdueCount = visible.filter(
+    (t) => t.dueDate && today && t.dueDate < today && t.status !== "DONE",
+  ).length;
+  const summaryParts: string[] = [];
+  summaryParts.push(`${visible.length} ${sectionLabel.toLowerCase()}`);
+  if (overdueCount > 0) summaryParts.push(`*${overdueCount} overdue*`);
+  if (overflowCount > 0) summaryParts.push(`+${overflowCount} more in Foundry`);
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: summaryParts.join(" · ") }],
+  });
 
+  // Optional "This week" plan — Monday standups only, callers gate this upstream.
   if (input.weekPlan?.trim()) {
     blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: `*This week*\n${escapeMrkdwn(input.weekPlan.trim())}` },
+      text: {
+        type: "mrkdwn",
+        text: `:calendar: *This week*\n${escapeMrkdwn(input.weekPlan.trim())}`,
+      },
+    });
+  }
+
+  // One "mini card" per task: divider → section (title + meta + Open button) →
+  // actions row (Notes · Comment · Done). Each task gets explicit primary
+  // actions instead of hiding them inside an overflow.
+  for (const t of visible) {
+    const status = t.status ?? "DOING";
+    const statusE = STATUS_EMOJI[status];
+    const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
+    const metaParts: string[] = [];
+    if (t.clientName) metaParts.push(escapeMrkdwn(t.clientName));
+    if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
+    if (t.dueDate) {
+      metaParts.push(isOverdue ? `:warning: due ${t.dueDate}` : `due ${t.dueDate}`);
+    }
+    const meta = metaParts.length ? `\n_${metaParts.join(" · ")}_` : "";
+    const value = encodeActionValue(t.messageRefId, t.taskId);
+
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${statusE} *${escapeMrkdwn(t.title)}*${meta}`,
+      },
+      accessory: {
+        type: "button",
+        text: { type: "plain_text", text: "Open ↗" },
+        url: taskDeepLink(t),
+        action_id: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}.${t.taskId}`,
+      },
+    });
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", emoji: true, text: ":eyes: Notes" },
+          value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
+          action_id: `${SLACK_ACTIONS.TASK_VIEW_NOTES}.${t.taskId}`,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", emoji: true, text: ":speech_balloon: Comment" },
+          value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
+          action_id: `${SLACK_ACTIONS.TASK_ADD_COMMENT}.${t.taskId}`,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", emoji: true, text: ":mag: In review" },
+          value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
+          action_id: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}.${t.taskId}`,
+        },
+        {
+          type: "button",
+          style: "primary",
+          text: { type: "plain_text", emoji: true, text: ":white_check_mark: Done" },
+          value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
+          action_id: `${SLACK_ACTIONS.TASK_MARK_DONE}.${t.taskId}`,
+        },
+      ],
+    });
+  }
+
+  if (overflowCount > 0 && visible.length > 0) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `:arrow_upper_right: ${overflowCount} more — <${APP_BASE_URL}/app/portal|open my board>`,
+        },
+      ],
     });
   }
 
   if (input.note?.trim()) {
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "context",
       elements: [{ type: "mrkdwn", text: `:memo: ${escapeMrkdwn(input.note.trim())}` }],

@@ -125,7 +125,7 @@ async function refreshStandupCard(opts: {
           status: true,
           dueDate: true,
           featureBlock: { select: { name: true } },
-          client: { select: { slug: true } },
+          client: { select: { slug: true, name: true } },
         },
       },
     },
@@ -133,18 +133,19 @@ async function refreshStandupCard(opts: {
   if (refs.length === 0) return;
   const tasks: StandupTaskCardInput[] = refs.flatMap((r) => {
     if (!r.task) return [];
-    // Annotate done/in-review tasks in the title so the card visibly reflects state.
-    let title = r.task.title;
-    if (r.task.status === "DONE") title = `~${title}~ ✓`;
-    else if (r.task.status === "IN_REVIEW") title = `${title} (in review)`;
+    // Title gets a light strikethrough when DONE so the visual change shows
+    // even before Slack re-fetches; the status emoji also flips via `status`.
+    const title = r.task.status === "DONE" ? `~${r.task.title}~` : r.task.title;
     return [
       {
         taskId: r.task.id,
         messageRefId: r.id,
         title,
+        clientName: r.task.client.name,
+        clientSlug: r.task.client.slug,
         blockName: r.task.featureBlock?.name ?? null,
         dueDate: r.task.dueDate ? r.task.dueDate.toISOString().slice(0, 10) : null,
-        clientSlug: r.task.client.slug,
+        status: r.task.status,
       },
     ];
   });

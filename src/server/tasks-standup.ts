@@ -271,9 +271,11 @@ async function postStandupToSlack(
       taskId: t.id,
       messageRefId: placeholders[idx].id,
       title: t.title,
+      clientName: t.client.name,
+      clientSlug: t.client.slug,
       blockName: t.featureBlock?.name ?? null,
       dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
-      clientSlug: t.client.slug,
+      status: t.status,
     }));
 
     const card = buildStandupCard({
