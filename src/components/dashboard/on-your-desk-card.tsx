@@ -25,7 +25,10 @@ import {
 } from "@/hooks/use-backstage";
 import { useTaskAttention, usePushDailyUpdate, useMyDay } from "@/hooks/use-tasks";
 import { useProposalList } from "@/hooks/use-proposals";
-import type { LeaveType } from "@/types/backstage";
+import { useStaffingAlerts } from "@/hooks/use-backstage";
+import type { LeaveType, StaffingAlert } from "@/types/backstage";
+import { formatDateRange, formatDay } from "@/components/backstage/format";
+import { CalendarDaysIcon, GlobeAltIcon } from "@heroicons/react/24/solid";
 import { useState } from "react";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
@@ -58,9 +61,20 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
   // (that's a Portal-level concern); they want what THEY own.
   const taskAttention = useTaskAttention({ mine: true });
   const overdueTasks = canSeeTasks ? taskAttention.data?.overdue ?? [] : [];
+  const doingTasks = canSeeTasks ? taskAttention.data?.doing ?? [] : [];
   const doingCount = canSeeTasks ? taskAttention.data?.doingCount ?? 0 : 0;
   const dueSoonCount = canSeeTasks ? taskAttention.data?.dueSoonCount ?? 0 : 0;
   const overdueTotal = canSeeTasks ? taskAttention.data?.overdueCount ?? overdueTasks.length : 0;
+
+  // Upcoming team availability — pulled from BackstageWidget's data source so
+  // the operator sees this team-level signal without a dedicated bento tile.
+  const staffingAlerts = useStaffingAlerts();
+  // Filter to genuinely upcoming events (the WhoIsOffToday strip handles today
+  // already; this card shows what's coming).
+  const upcomingAlerts = (staffingAlerts.data?.alerts ?? []).filter((a) => {
+    const startISO = a.kind === "conflict" ? a.date : a.kind === "holiday" ? a.date : a.startDate;
+    return startISO.slice(0, 10) >= new Date().toISOString().slice(0, 10);
+  });
 
   // Standup push to Slack — same `pushDailyUpdate` API the devs use, but
   // surfaced here so admins (Dan) can post their own tasks for testing/dogfood.
@@ -99,10 +113,11 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
     ? (proposalQuery.data?.proposals ?? []).filter((p) => SIGN_OFF.includes(p.status))
     : [];
 
-  const hasTasks = overdueTasks.length > 0 || doingCount > 0 || dueSoonCount > 0;
+  const hasTasks = overdueTasks.length > 0 || doingTasks.length > 0 || dueSoonCount > 0;
   const hasApprovals = leave.length + expenses.length > 0;
   const hasSignoff = awaitingSignoff.length > 0;
-  const hasAnything = hasTasks || hasApprovals || hasSignoff;
+  const hasUpcoming = upcomingAlerts.length > 0;
+  const hasAnything = hasTasks || hasApprovals || hasSignoff || hasUpcoming;
 
   if (!hasAnything) return null;
 
@@ -122,6 +137,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
             hasTasks && overdueTotal > 0 ? `${overdueTotal} overdue` : null,
             hasApprovals ? `${leave.length + expenses.length} to approve` : null,
             hasSignoff ? `${awaitingSignoff.length} sign-off` : null,
+            hasUpcoming ? `${upcomingAlerts.length} upcoming` : null,
           ]
             .filter(Boolean)
             .join(" · ")}
@@ -195,6 +211,49 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
             {overdueTotal > TASKS_CAP ? (
               <p className="text-center text-[11px] text-[var(--text-4)]">
                 +{overdueTotal - TASKS_CAP} more overdue
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {doingTasks.length > 0 ? (
+          <div className="space-y-1.5">
+            <p
+              className="text-[10px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Doing ({doingCount})
+            </p>
+            {doingTasks.slice(0, TASKS_CAP).map((t) => (
+              <Link
+                key={t.id}
+                href={`/app/portal/${t.client.slug}/tasks?task=${encodeURIComponent(t.id)}`}
+                className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="shrink-0 text-[10px] text-[var(--text-4)]"
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    {taskRef(t.id)}
+                  </span>
+                  <span className="truncate text-sm font-medium text-[var(--text-1)]">
+                    {t.title}
+                  </span>
+                  <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">
+                    · {t.client.name}
+                  </span>
+                </div>
+                {t.dueDate ? (
+                  <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-4)]">
+                    {formatDate(t.dueDate)}
+                  </span>
+                ) : null}
+              </Link>
+            ))}
+            {doingCount > TASKS_CAP ? (
+              <p className="text-center text-[11px] text-[var(--text-4)]">
+                +{doingCount - TASKS_CAP} more in progress
               </p>
             ) : null}
           </div>
@@ -296,8 +355,73 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
             ) : null}
           </div>
         ) : null}
+
+        {/* ─── Upcoming (team availability — folded in from the old Backstage tile) ── */}
+        {hasUpcoming ? (
+          <SectionHeader title="Upcoming" href="/app/backstage" hrefLabel="Backstage" />
+        ) : null}
+        {hasUpcoming ? (
+          <ul className="space-y-1.5">
+            {upcomingAlerts.slice(0, 6).map((a, i) => (
+              <li key={i}>
+                <UpcomingRow alert={a} />
+              </li>
+            ))}
+            {upcomingAlerts.length > 6 ? (
+              <li className="text-center text-[11px] text-[var(--text-4)]">
+                +{upcomingAlerts.length - 6} more →
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
       </div>
     </section>
+  );
+}
+
+/** Compact row for a single staffing alert — leave / holiday / conflict. */
+function UpcomingRow({ alert }: { alert: StaffingAlert }) {
+  if (alert.kind === "leave") {
+    return (
+      <div className="flex items-start gap-2 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5">
+        <CalendarDaysIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <p className="text-xs text-[var(--text-1)]">
+          <span className="font-medium">{alert.user.name}</span>{" "}
+          <span className="text-[var(--text-4)]">
+            on leave · {formatDateRange(alert.startDate, alert.endDate)}
+          </span>
+        </p>
+      </div>
+    );
+  }
+  if (alert.kind === "holiday") {
+    return (
+      <div className="flex items-start gap-2 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5">
+        <GlobeAltIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-[var(--text-1)]">
+            <span className="font-medium">{alert.country} holiday</span>{" "}
+            <span className="text-[var(--text-4)]">· {alert.name} · {formatDay(alert.date)}</span>
+          </p>
+          {alert.affectedMembers.length > 0 ? (
+            <p className="truncate text-[10px] text-[var(--text-4)]">
+              Affects: {alert.affectedMembers.map((m) => m.name).join(", ")}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2 rounded-[6px] border border-red-200 bg-red-50 px-2.5 py-1.5">
+      <CalendarDaysIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+      <p className="text-xs text-[var(--text-1)]">
+        <span className="font-medium">Conflict</span>{" "}
+        <span className="text-[var(--text-4)]">
+          · {alert.users.map((u) => u.name).join(" + ")} off on {formatDay(alert.date)}
+        </span>
+      </p>
+    </div>
   );
 }
 

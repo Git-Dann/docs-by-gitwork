@@ -129,6 +129,8 @@ export type TaskAttentionDTO = {
   /** Overdue, soonest-first, capped (full count in overdueCount). */
   overdue: TaskDTO[];
   overdueCount: number;
+  /** Currently in progress (DOING / IN_REVIEW), soonest-due-first, capped. */
+  doing: TaskDTO[];
   dueSoonCount: number;
   doingCount: number;
 };

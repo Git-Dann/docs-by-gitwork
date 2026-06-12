@@ -257,7 +257,13 @@ export async function getTaskAttention(
     status: { not: "DONE" },
     ...(mineFilter ?? {}),
   };
-  const [overdueRows, overdueCount, dueSoonCount, doingCount] = await Promise.all([
+  const doingWhere: Prisma.TaskWhereInput = {
+    ...scope,
+    parentId: null,
+    status: { in: ["DOING", "IN_REVIEW"] },
+    ...(mineFilter ?? {}),
+  };
+  const [overdueRows, overdueCount, dueSoonCount, doingRows, doingCount] = await Promise.all([
     prisma.task.findMany({
       where: { ...open, dueDate: { lt: startToday } },
       orderBy: { dueDate: "asc" },
@@ -266,19 +272,20 @@ export async function getTaskAttention(
     }),
     prisma.task.count({ where: { ...open, dueDate: { lt: startToday } } }),
     prisma.task.count({ where: { ...open, dueDate: { gte: startToday, lt: in7 } } }),
-    prisma.task.count({
-      where: {
-        ...scope,
-        parentId: null,
-        status: { in: ["DOING", "IN_REVIEW"] },
-        ...(mineFilter ?? {}),
-      },
+    prisma.task.findMany({
+      where: doingWhere,
+      // Soonest-due first; tasks without a due date sink to the bottom.
+      orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { updatedAt: "desc" }],
+      take: 8,
+      include: taskInclude,
     }),
+    prisma.task.count({ where: doingWhere }),
   ]);
 
   return {
     overdue: overdueRows.map(taskRowToDTO),
     overdueCount,
+    doing: doingRows.map(taskRowToDTO),
     dueSoonCount,
     doingCount,
   };
