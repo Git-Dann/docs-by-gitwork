@@ -86,28 +86,31 @@ export function McpToolsCatalog({ variant }: { variant: "admin" | "user" }) {
           ? "When enabled, every connected user can use these tools — each call is bound by that user's existing Foundry permissions, so Claude can't exceed what the user can do signed in."
           : "Once Claude is connected, try asking it to do any of these. Every call runs as you and respects your existing permissions."}
       </p>
-      <ul className="divide-y divide-[var(--border-1)] rounded-md border border-[var(--border-1)]">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {TOOLS.map((tool) => (
-          <li key={tool.name} className="px-4 py-3">
-            <div className="flex items-baseline gap-2">
-              <code className="font-mono text-xs text-[var(--text-1)]">{tool.name}</code>
-            </div>
-            <p className="mt-1 text-sm text-[var(--text-2)]">{tool.blurb}</p>
+          <div
+            key={tool.name}
+            className="rounded-md border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3"
+          >
+            <code className="font-mono text-[11px] uppercase tracking-wide text-[var(--text-1)]">
+              {tool.name}
+            </code>
+            <p className="mt-1.5 text-sm leading-snug text-[var(--text-2)]">{tool.blurb}</p>
             {variant === "user" && tool.examples.length > 0 ? (
-              <ul className="mt-2 space-y-1">
+              <ul className="mt-2 space-y-0.5 border-t border-[var(--border-1)] pt-2">
                 {tool.examples.map((ex) => (
                   <li
                     key={ex}
-                    className="text-[12px] italic text-[var(--text-3)] before:mr-1 before:content-['›']"
+                    className="text-[12px] italic leading-snug text-[var(--text-3)] before:mr-1 before:content-['›']"
                   >
                     “{ex}”
                   </li>
                 ))}
               </ul>
             ) : null}
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
