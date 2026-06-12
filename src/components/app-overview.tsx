@@ -33,12 +33,12 @@ const ROW_HEIGHT = 220;
 // inbox, upcoming meetings) is actually readable instead of summarised-to-
 // uselessness. Total cells = 3 + 6 = 9 = 3 rows × 3 cols.
 const GRID: GridEntry[] = [
-  { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },
-  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
-  { component: ProposalsWidget, cols: 1, rows: 1, size: "sm", module: "proposals" },
   { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },
   { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
   { component: CalendarWidget,  cols: 1, rows: 2, size: "md" },
+  { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },
+  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
+  { component: ProposalsWidget, cols: 1, rows: 1, size: "sm", module: "proposals" },
 ];
 
 function greetingPart(): string {

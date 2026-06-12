@@ -7,7 +7,7 @@ import type { WidgetSize } from "@/components/app-overview";
 import type { ClientListItem } from "@/types/client";
 
 /**
- * 06 // CLIENTS — summarised active-client cards. Built per Dan's HQ-pass-2 ask:
+ * 03 // CLIENTS — summarised active-client cards. Built per Dan's HQ-pass-2 ask:
  *  - per-client card with logo (or initials fallback) + name + small mono
  *    stat line that matches the Portal cards' aesthetic, but compact
  *  - PENDING_REVIEW status pill (ACTIVE is the default, no pill needed)
@@ -35,7 +35,7 @@ export default function ClientsWidget(_: { size: WidgetSize }) {
           className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          06 // CLIENTS
+          03 // CLIENTS
         </span>
         <Link
           href="/app/portal"

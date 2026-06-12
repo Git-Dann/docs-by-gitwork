@@ -130,7 +130,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            08 // CALENDAR
+            05 // CALENDAR
           </span>
         </div>
         {/* Body */}
@@ -154,7 +154,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            08 // CALENDAR
+            05 // CALENDAR
           </span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
@@ -188,7 +188,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-          08 // CALENDAR
+          05 // CALENDAR
         </span>
         <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
       </div>
