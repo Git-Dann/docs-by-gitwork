@@ -384,8 +384,12 @@ export async function findPastClientCalls(
   days = 30,
 ): Promise<CalendarCandidate[]> {
   const domainSet = new Set(match.domains);
-  const name = match.name?.trim().toLowerCase();
-  const nameUsable = !!name && name.length >= 3; // avoid noisy matches on 1–2 char names
+  // Normalise both sides for the name match: lowercase + drop non-alphanumerics, so a
+  // client like "After Desk" still matches a call titled "AfterDesk Catch up" — spacing
+  // and punctuation differences shouldn't break the substring check.
+  const condense = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const nameKey = match.name ? condense(match.name) : "";
+  const nameUsable = nameKey.length >= 3; // avoid noisy matches on 1–2 char names
   if (domainSet.size === 0 && !nameUsable) return [];
 
   const calls = await listRecentMeetCalls(client, days);
@@ -394,7 +398,7 @@ export async function findPastClientCalls(
       const at = e.lastIndexOf("@");
       return at !== -1 && domainSet.has(e.slice(at + 1).toLowerCase());
     });
-    const byName = nameUsable && c.title.toLowerCase().includes(name!);
+    const byName = nameUsable && condense(c.title).includes(nameKey);
     return byDomain || byName;
   });
 }
