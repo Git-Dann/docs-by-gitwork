@@ -87,6 +87,11 @@ type ManualClientRecord = {
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   slackChannelId: string | null;
+  slackInternalChannelId: string | null;
+  slackInternalChannelName: string | null;
+  slackExternalChannelId: string | null;
+  slackExternalChannelName: string | null;
+  slackProvisionError: string | null;
   legalCompanyName: string | null;
   companyNumber: string | null;
   vatNumber: string | null;
@@ -119,6 +124,10 @@ type ClientContactInput = {
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
   slackChannelId?: string;
+  slackInternalChannelId?: string;
+  slackInternalChannelName?: string;
+  slackExternalChannelId?: string;
+  slackExternalChannelName?: string;
   legalCompanyName?: string;
   companyNumber?: string;
   vatNumber?: string;
@@ -149,6 +158,11 @@ function emptyContactFields(): ClientDetailFields {
     googleDriveFolderUrl: null,
     clickupUrl: null,
     slackChannelId: null,
+    slackInternalChannelId: null,
+    slackInternalChannelName: null,
+    slackExternalChannelId: null,
+    slackExternalChannelName: null,
+    slackProvisionError: null,
     legalCompanyName: null,
     companyNumber: null,
     vatNumber: null,
@@ -185,6 +199,11 @@ function contactFieldsFromRecord(
     googleDriveFolderUrl: record.googleDriveFolderUrl,
     clickupUrl: record.clickupUrl,
     slackChannelId: record.slackChannelId,
+    slackInternalChannelId: record.slackInternalChannelId,
+    slackInternalChannelName: record.slackInternalChannelName,
+    slackExternalChannelId: record.slackExternalChannelId,
+    slackExternalChannelName: record.slackExternalChannelName,
+    slackProvisionError: record.slackProvisionError,
     legalCompanyName: record.legalCompanyName,
     companyNumber: record.companyNumber,
     vatNumber: record.vatNumber,
@@ -226,6 +245,14 @@ function buildContactData(input: ClientContactInput) {
   if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
   if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
   if (input.slackChannelId !== undefined)      data.slackChannelId      = trim(input.slackChannelId);
+  if (input.slackInternalChannelId !== undefined)
+    data.slackInternalChannelId = trim(input.slackInternalChannelId);
+  if (input.slackInternalChannelName !== undefined)
+    data.slackInternalChannelName = trim(input.slackInternalChannelName);
+  if (input.slackExternalChannelId !== undefined)
+    data.slackExternalChannelId = trim(input.slackExternalChannelId);
+  if (input.slackExternalChannelName !== undefined)
+    data.slackExternalChannelName = trim(input.slackExternalChannelName);
   if (input.legalCompanyName !== undefined)    data.legalCompanyName    = trim(input.legalCompanyName);
   if (input.companyNumber !== undefined)       data.companyNumber       = trim(input.companyNumber);
   if (input.vatNumber !== undefined)           data.vatNumber           = trim(input.vatNumber);
@@ -579,6 +606,13 @@ export async function listDerivedClients(filters?: {
 export async function createClientRecord(input: {
   name: string;
   logoUrl?: string;
+  /** Phase 3: optional Slack channel provisioning. Failures are non-blocking — the
+   *  client is created even if Slack fails; the error lands on `slackProvisionError`. */
+  createInternalChannel?: boolean;
+  createExternalChannel?: boolean;
+  externalInviteeEmail?: string;
+  customInternalName?: string;
+  customExternalName?: string;
 } & ClientContactInput): Promise<ClientListItem> {
   const { workspace, proposals } = await loadClientCollections();
   const name = normalizeClientName(input.name);
@@ -596,6 +630,23 @@ export async function createClientRecord(input: {
       ...buildContactData(input),
     },
   });
+
+  // Best-effort Slack channel provisioning. Dispatched via after() so the API
+  // response returns immediately — failures stamp slackProvisionError but never
+  // block client creation. (provisionClientChannels lives in src/server/slack/.)
+  if (input.createInternalChannel || input.createExternalChannel) {
+    const { provisionClientChannels } = await import("@/server/slack/provisioning");
+    const { after } = await import("next/server");
+    after(() =>
+      provisionClientChannels(client.id, {
+        createInternal: input.createInternalChannel,
+        createExternal: input.createExternalChannel,
+        externalInviteeEmail: input.externalInviteeEmail,
+        customInternalName: input.customInternalName,
+        customExternalName: input.customExternalName,
+      }).catch((err) => console.warn("[slack] provisioning failed", err)),
+    );
+  }
 
   const proposalCount = proposals.filter(
     (proposal) => getClientLookupKey(proposal.clientName) === clientKey,
@@ -702,6 +753,11 @@ export async function updateClientRecord(
             googleDriveFolderUrl: persisted.googleDriveFolderUrl,
             clickupUrl: persisted.clickupUrl,
             slackChannelId: persisted.slackChannelId,
+            slackInternalChannelId: (persisted as typeof persisted & { slackInternalChannelId: string | null }).slackInternalChannelId ?? null,
+            slackInternalChannelName: (persisted as typeof persisted & { slackInternalChannelName: string | null }).slackInternalChannelName ?? null,
+            slackExternalChannelId: (persisted as typeof persisted & { slackExternalChannelId: string | null }).slackExternalChannelId ?? null,
+            slackExternalChannelName: (persisted as typeof persisted & { slackExternalChannelName: string | null }).slackExternalChannelName ?? null,
+            slackProvisionError: (persisted as typeof persisted & { slackProvisionError: string | null }).slackProvisionError ?? null,
             legalCompanyName: (persisted as typeof persisted & { legalCompanyName: string | null }).legalCompanyName ?? null,
             companyNumber: (persisted as typeof persisted & { companyNumber: string | null }).companyNumber ?? null,
             vatNumber: (persisted as typeof persisted & { vatNumber: string | null }).vatNumber ?? null,

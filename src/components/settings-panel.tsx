@@ -69,6 +69,51 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
 ];
 
 const COMMON_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "CAD", "AUD"] as const;
+
+/**
+ * Copy-pasteable Slack app manifest. Kept in source so scope changes are PR-reviewable
+ * (the canonical file lives at docs/slack-app-manifest.json — keep both in sync).
+ * The `_comment` field is dropped because Slack rejects unknown top-level keys.
+ */
+const SLACK_APP_MANIFEST_JSON = JSON.stringify(
+  {
+    display_information: {
+      name: "Foundry by Gitwork",
+      description: "Foundry's standup, roll-up and client-channel automation for the Gitwork team.",
+      background_color: "#1A1A1A",
+    },
+    features: { bot_user: { display_name: "Foundry", always_online: false } },
+    oauth_config: {
+      scopes: {
+        bot: [
+          "chat:write",
+          "chat:write.public",
+          "channels:read",
+          "channels:manage",
+          "groups:read",
+          "groups:write",
+          "users:read",
+          "users:read.email",
+          "team:read",
+          "conversations.connect:write",
+          "conversations.connect:manage",
+          "commands",
+        ],
+      },
+    },
+    settings: {
+      interactivity: {
+        is_enabled: true,
+        request_url: "https://foundry.gitwork.co.uk/api/webhooks/slack/interactions",
+      },
+      org_deploy_enabled: false,
+      socket_mode_enabled: false,
+      token_rotation_enabled: false,
+    },
+  },
+  null,
+  2,
+);
 const RATE_BILLING_PERIOD_OPTIONS: RateBillingPeriod[] = ["DAY", "WEEK", "MONTH"];
 
 export function SettingsPanel({
@@ -2104,6 +2149,9 @@ function SlackSection({
   onSaved: (updated: IntegrationsResponse) => void;
 }) {
   const [tokenInput, setTokenInput] = useState("");
+  const [signingSecretInput, setSigningSecretInput] = useState("");
+  const [appIdInput, setAppIdInput] = useState("");
+  const [showManifest, setShowManifest] = useState(false);
   const [selectedChannelIds, setSelectedChannelIds] = useState<Set<string>>(new Set());
   const [routes, setRoutes] = useState<Record<string, string>>({});
   const [available, setAvailable] = useState<SlackAvailableChannelRow[] | null>(null);
@@ -2111,8 +2159,14 @@ function SlackSection({
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const isConnected = Boolean(config?.slackBotTokenMasked);
+  const isFullyConfigured = isConnected && Boolean(config?.slackSigningSecretSet);
+  const verified = Boolean(config?.slackTeamId);
 
   useEffect(() => {
     if (!config) return;
@@ -2178,6 +2232,8 @@ function SlackSection({
 
       const payload: Parameters<typeof saveIntegrations>[0] = {};
       if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
+      if (signingSecretInput.trim()) payload.slackSigningSecret = signingSecretInput.trim();
+      if (appIdInput.trim()) payload.slackAppId = appIdInput.trim();
       payload.slackChannels = finalChannels;
       payload.channelRoutes = routes;
 
@@ -2185,6 +2241,8 @@ function SlackSection({
       const updated = await getIntegrations();
       onSaved(updated);
       setTokenInput("");
+      setSigningSecretInput("");
+      setAppIdInput("");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       // If they pasted a new token, refresh the channel list so it reflects the new auth.
@@ -2196,45 +2254,245 @@ function SlackSection({
     }
   }
 
+  /**
+   * Save what's pasted AND run auth.test against the resulting token. On success the server
+   * persists the returned team / bot user / team id so the diagnostics card lights up.
+   */
+  async function handleSaveAndVerify() {
+    setVerifying(true);
+    setSaveError(null);
+    try {
+      const payload: Parameters<typeof saveIntegrations>[0] = { slackVerify: true };
+      if (tokenInput.trim()) payload.slackBotToken = tokenInput.trim();
+      if (signingSecretInput.trim()) payload.slackSigningSecret = signingSecretInput.trim();
+      if (appIdInput.trim()) payload.slackAppId = appIdInput.trim();
+      await saveIntegrations(payload);
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setTokenInput("");
+      setSigningSecretInput("");
+      setAppIdInput("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      void loadChannels();
+    } catch (err) {
+      // The server returns Slack's verbatim `error` (e.g. `invalid_auth`, `missing_scope`).
+      setSaveError(err instanceof Error ? err.message : "Verify failed — check the credentials.");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm("Disconnect Slack? This clears the bot token, signing secret, and cached channel list.")) {
+      return;
+    }
+    setDisconnecting(true);
+    setSaveError(null);
+    try {
+      await saveIntegrations({ slackDisconnect: true });
+      const updated = await getIntegrations();
+      onSaved(updated);
+      setAvailable(null);
+      setSelectedChannelIds(new Set());
+      setRoutes({});
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Disconnect failed — please try again.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  // Build the dropdown options once — used by the event-routing block below.
+  const nameFor = new Map<string, string>();
+  for (const c of (config?.slackChannels ?? []) as Array<{ id: string; name: string }>) {
+    nameFor.set(c.id, c.name);
+  }
+  for (const c of available ?? []) nameFor.set(c.id, c.name);
+  const routingOptions = Array.from(selectedChannelIds).map((id) => ({
+    id,
+    name: nameFor.get(id) ?? id,
+  }));
+
   return (
     <SettingsCard number="03" title="Slack">
       <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Connect a Slack workspace to pull relevant messages into AI meeting summaries. Once the
-        bot is connected, Foundry pulls the live channel list so you can multi-select instead
-        of pasting IDs. Bot needs{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:read</code>,{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">groups:read</code>, and{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1 text-[11px]">channels:history</code>{" "}
-        scopes.
+        Foundry posts standups, doc events, and the daily roll-up to Slack via an{" "}
+        <strong>internal Slack app</strong> (one app, paste credentials, no OAuth). The same app
+        also drives interactive cards — &ldquo;Show notes&rdquo;, mark-done buttons, modals — so it
+        needs the bot token <em>and</em> the signing secret.
       </p>
 
-      <div className="mt-5 space-y-5">
-        {/* Bot token */}
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-            Slack bot token
-          </label>
-          {config?.slackBotTokenMasked && !tokenInput && (
-            <div className="mb-2 flex items-center gap-2 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
-              <span className="font-mono text-xs text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
-              <span className="ml-auto text-[10px] text-emerald-600">Connected</span>
-            </div>
-          )}
-          <input
-            type="password"
-            className="app-input w-full font-mono text-sm"
-            placeholder={config?.slackBotTokenMasked ? "Paste new token to replace…" : "xoxb-…"}
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-          />
-        </div>
+      {saveError && (
+        <p className="mt-3 rounded-[6px] border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {saveError}
+        </p>
+      )}
 
-        {/* Channel multi-select — fetched from Slack */}
-        <div>
-          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <label className="block text-xs font-medium text-[var(--text-2)]">
-              Channels to search ({selectedChannelIds.size} selected)
-            </label>
+      <div className="mt-5 space-y-4">
+        {/* ─── STEP 1 — Credentials (paste, save, verify, diagnostics) ─── */}
+        <SlackSubBlock
+          step="01"
+          title={verified ? "Connection" : "Credentials"}
+          right={
+            verified ? (
+              <span className="text-[10px] uppercase tracking-[0.08em] text-emerald-600">Verified</span>
+            ) : null
+          }
+        >
+          {verified ? (
+            <>
+              <dl className="grid grid-cols-[140px_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
+                <dt className="text-[var(--text-4)]">Team</dt>
+                <dd className="font-medium text-[var(--text-1)]">{config?.slackTeamName ?? config?.slackTeamId}</dd>
+                <dt className="text-[var(--text-4)]">Bot user</dt>
+                <dd className="font-mono text-[var(--text-2)]">{config?.slackBotUserId ?? "—"}</dd>
+                <dt className="text-[var(--text-4)]">App id</dt>
+                <dd className="font-mono text-[var(--text-2)]">{config?.slackAppId ?? "—"}</dd>
+                <dt className="text-[var(--text-4)]">Signing secret</dt>
+                <dd className="text-[var(--text-2)]">
+                  {config?.slackSigningSecretSet ? "Configured" : (
+                    <span className="text-amber-600">Not set — buttons &amp; modals won&rsquo;t work</span>
+                  )}
+                </dd>
+                <dt className="text-[var(--text-4)]">Last successful post</dt>
+                <dd className="text-[var(--text-2)]">
+                  {config?.lastSlackPostAt ? new Date(config.lastSlackPostAt).toLocaleString() : "—"}
+                </dd>
+              </dl>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowManifest((v) => !v)}
+                  className="text-[11px] font-medium text-[var(--brand-700)] hover:underline"
+                >
+                  {showManifest ? "Hide manifest" : "View manifest"}
+                </button>
+                <span className="text-[var(--border-2)]">·</span>
+                <button
+                  type="button"
+                  onClick={() => void handleDisconnect()}
+                  disabled={disconnecting}
+                  className="text-[11px] font-medium text-rose-600 hover:underline disabled:opacity-40"
+                >
+                  {disconnecting ? "Disconnecting…" : "Disconnect"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <ol className="space-y-1.5 text-xs leading-relaxed text-[var(--text-3)]">
+              <li>
+                1. Open{" "}
+                <a
+                  href="https://api.slack.com/apps"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--brand-700)] hover:underline"
+                >
+                  api.slack.com/apps
+                </a>
+                {" "}— update the manifest of the existing Foundry app (or create one from manifest).
+              </li>
+              <li>2. Install / reinstall to the workspace. Copy the Bot token + Signing Secret + App ID.</li>
+              <li>3. Paste them below and click <strong>Save &amp; verify</strong>.</li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setShowManifest((v) => !v)}
+                  className="text-[var(--brand-700)] hover:underline"
+                >
+                  {showManifest ? "Hide manifest ↑" : "Show manifest ↓"}
+                </button>
+              </li>
+            </ol>
+          )}
+
+          {showManifest && (
+            <pre className="mt-3 max-h-72 overflow-auto rounded-[6px] border border-[var(--border-3)] bg-white p-3 font-mono text-[11px] leading-relaxed text-[var(--text-2)]">
+{SLACK_APP_MANIFEST_JSON}
+            </pre>
+          )}
+
+          {/* Paste grid: one row when collapsed, sane responsive layout */}
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Bot OAuth token
+              </label>
+              {config?.slackBotTokenMasked && !tokenInput && (
+                <div className="mb-1.5 flex items-center gap-2 rounded-[6px] bg-white px-2.5 py-1.5">
+                  <span className="font-mono text-[11px] text-[var(--text-2)]">{config.slackBotTokenMasked}</span>
+                  <span className="ml-auto text-[10px] text-emerald-600">Connected</span>
+                </div>
+              )}
+              <input
+                type="password"
+                className="app-input w-full font-mono text-sm"
+                placeholder={config?.slackBotTokenMasked ? "Paste new xoxb-… to replace" : "xoxb-…"}
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Signing secret
+              </label>
+              {config?.slackSigningSecretSet && !signingSecretInput && (
+                <div className="mb-1.5 flex items-center gap-2 rounded-[6px] bg-white px-2.5 py-1.5">
+                  <span className="font-mono text-[11px] text-[var(--text-2)]">••••••••••••••••</span>
+                  <span className="ml-auto text-[10px] text-emerald-600">Encrypted</span>
+                </div>
+              )}
+              <input
+                type="password"
+                className="app-input w-full font-mono text-sm"
+                placeholder={config?.slackSigningSecretSet ? "Paste new secret to replace" : "Basic Information → Signing Secret"}
+                value={signingSecretInput}
+                onChange={(e) => setSigningSecretInput(e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                App ID
+              </label>
+              <input
+                type="text"
+                className="app-input w-full font-mono text-sm"
+                placeholder="A012ABCDEF"
+                value={appIdInput || config?.slackAppId || ""}
+                onChange={(e) => setAppIdInput(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => void handleSaveAndVerify()}
+              disabled={verifying || saving}
+              className="app-button app-button-primary px-4 py-2 text-sm disabled:opacity-40"
+            >
+              {verifying ? "Verifying with Slack…" : "Save & verify"}
+            </button>
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving || verifying}
+              className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
+            >
+              {saving ? "Saving…" : saved ? "Saved ✓" : "Save without verifying"}
+            </button>
+            {isFullyConfigured && !verified && (
+              <span className="text-[11px] text-amber-600">
+                Click <strong>Save &amp; verify</strong> to confirm credentials.
+              </span>
+            )}
+          </div>
+        </SlackSubBlock>
+
+        {/* ─── STEP 2 — Channels the bot can read ─── */}
+        <SlackSubBlock
+          step="02"
+          title="Channels the bot reads from"
+          right={
             <button
               type="button"
               onClick={() => void loadChannels()}
@@ -2243,15 +2501,20 @@ function SlackSection({
             >
               {loadingChannels ? "Refreshing…" : "Refresh from Slack"}
             </button>
-          </div>
+          }
+        >
+          <p className="mb-2 text-[11px] leading-snug text-[var(--text-4)]">
+            Used by AI meeting summaries + Care context lookup. <strong>{selectedChannelIds.size}</strong>{" "}
+            selected. Invite the bot from Slack ({`/invite @foundry`}) before selecting — Slack
+            won&apos;t let it read history otherwise.
+          </p>
 
           {!config?.slackBotTokenMasked ? (
-            <p className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-xs text-[var(--text-3)]">
-              Connect a bot token above and save — the channel list will appear once Slack
-              authenticates.
+            <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-3)]">
+              Paste a bot token above and Save &amp; verify — the channel list appears once Slack authenticates.
             </p>
           ) : channelsError ? (
-            <div className="rounded-[6px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+            <div className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {channelsError}
             </div>
           ) : available === null && loadingChannels ? (
@@ -2265,7 +2528,7 @@ function SlackSection({
                 placeholder="Filter channels…"
                 className="app-input mb-2 w-full text-sm"
               />
-              <div className="max-h-72 overflow-y-auto rounded-[8px] border border-[var(--border-2)]">
+              <div className="max-h-64 overflow-y-auto rounded-[8px] border border-[var(--border-2)] bg-white">
                 {(available ?? [])
                   .filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()))
                   .map((ch) => {
@@ -2275,9 +2538,7 @@ function SlackSection({
                         key={ch.id}
                         className={cn(
                           "flex cursor-pointer items-center gap-3 border-b border-[var(--border-3)] px-3 py-2 text-sm last:border-b-0",
-                          checked
-                            ? "bg-[var(--surface-brand)]"
-                            : "bg-white hover:bg-[var(--surface-1)]",
+                          checked ? "bg-[var(--surface-brand)]" : "hover:bg-[var(--surface-1)]",
                         )}
                       >
                         <input
@@ -2309,51 +2570,36 @@ function SlackSection({
                   </p>
                 ) : null}
               </div>
-              <p className="mt-2 text-[11px] text-[var(--text-4)]">
-                Tip: invite the bot to a channel from Slack ({`/invite @your-bot`}) before
-                selecting it — Slack won&apos;t let the bot read history otherwise.
-              </p>
             </>
           )}
-        </div>
+        </SlackSubBlock>
 
-        {saveError && (
-          <p className="text-xs text-red-500">{saveError}</p>
-        )}
-
-        {/* Per-event routing — assign a channel to each Foundry event. Empty = no Slack post. */}
-        {(() => {
-          // Build the dropdown options from the currently-selected channels — names come from
-          // either the live Slack list or the previously-saved workspace data.
-          const nameFor = new Map<string, string>();
-          for (const c of (config?.slackChannels ?? []) as Array<{ id: string; name: string }>) {
-            nameFor.set(c.id, c.name);
+        {/* ─── STEP 3 — Per-event routing ─── */}
+        <SlackSubBlock
+          step="03"
+          title="Per-event routing"
+          right={
+            <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+              {Object.keys(routes).length} routed
+            </span>
           }
-          for (const c of available ?? []) nameFor.set(c.id, c.name);
-          const routingOptions = Array.from(selectedChannelIds).map((id) => ({
-            id,
-            name: nameFor.get(id) ?? id,
-          }));
-          if (routingOptions.length === 0) return null;
-          return (
-            <div>
-              <label className="mb-2 block text-xs font-medium text-[var(--text-2)]">
-                Per-event routing
-              </label>
-              <p className="mb-1.5 text-[11px] text-[var(--text-4)]">
-                Route specific Foundry events to specific channels. Events left as &ldquo;None&rdquo;
-                won&rsquo;t post to Slack — they&rsquo;ll still appear in per-user notification
-                preferences and email/push if configured.
-              </p>
-              <p className="mb-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]">
-                <strong>Saved &mdash; not yet firing.</strong> Per-event Slack delivery ships
-                alongside the notification dispatcher in the next release.
+        >
+          {routingOptions.length === 0 ? (
+            <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-3)]">
+              Pick one or more channels in step 02 first — they become the targets here.
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-[11px] leading-snug text-[var(--text-4)]">
+                Where each Foundry event posts. Events left as &ldquo;None&rdquo; skip Slack but still
+                fire email / in-app notifications. <strong>Standups + roll-up</strong> use the per-client
+                channel on the Client record (Edit client → Slack channels) — they don&apos;t live here.
               </p>
               <div className="space-y-1.5">
                 {SLACK_ROUTE_EVENTS.map((event) => (
                   <div
                     key={event.id}
-                    className="grid grid-cols-[120px_minmax(0,1fr)_minmax(0,180px)] items-center gap-3 rounded-[6px] border border-[var(--border-3)] bg-[var(--surface-1)] px-3 py-2"
+                    className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,180px)] items-center gap-3 rounded-[6px] border border-[var(--border-3)] bg-white px-3 py-2"
                   >
                     <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                       {event.module}
@@ -2381,19 +2627,43 @@ function SlackSection({
                   </div>
                 ))}
               </div>
-            </div>
-          );
-        })()}
-
-        <button
-          onClick={() => void handleSave()}
-          disabled={saving}
-          className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
-        >
-          {saving ? "Saving…" : saved ? "Saved ✓" : "Save Slack settings"}
-        </button>
+            </>
+          )}
+        </SlackSubBlock>
       </div>
     </SettingsCard>
+  );
+}
+
+/**
+ * Reusable visual chrome for the three Slack sub-blocks. Numbered eyebrow + title +
+ * optional right-aligned status / action chip, with a thin divider. Keeps the long
+ * Slack card scannable.
+ */
+function SlackSubBlock({
+  step,
+  title,
+  right,
+  children,
+}: {
+  step: string;
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+      <header className="mb-3 flex items-center justify-between gap-2 border-b border-[var(--border-3)] pb-2">
+        <h4 className="flex items-baseline gap-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)]">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+            {step}
+          </span>
+          {title}
+        </h4>
+        {right ? <div>{right}</div> : null}
+      </header>
+      {children}
+    </section>
   );
 }
 

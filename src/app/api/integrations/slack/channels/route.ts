@@ -8,7 +8,9 @@
  */
 
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { getSlackBotToken } from "@/server/slack/client";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +42,12 @@ interface SlackApiResponse {
 export async function GET() {
   try {
     const { workspace } = await ensureBaseRecords();
-    if (!workspace.slackBotToken) {
+    const wsWithToken = await prisma.workspace.findUnique({
+      where: { id: workspace.id },
+      select: { slackBotToken: true, slackBotTokenEncrypted: true },
+    });
+    const botToken = getSlackBotToken(wsWithToken);
+    if (!botToken) {
       return apiError("Slack isn't connected. Add a bot token in Settings → Integrations.", 422);
     }
 
@@ -58,7 +65,7 @@ export async function GET() {
       if (cursor) params.set("cursor", cursor);
 
       const res = await fetch(`https://slack.com/api/conversations.list?${params}`, {
-        headers: { Authorization: `Bearer ${workspace.slackBotToken}` },
+        headers: { Authorization: `Bearer ${botToken}` },
         signal: AbortSignal.timeout(10_000),
       });
       const data = (await res.json()) as SlackApiResponse;

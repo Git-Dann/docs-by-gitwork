@@ -31,6 +31,16 @@ import type { OnboardingLinkRecord } from "@/lib/api";
 type Tab = "active" | "pending" | "onboarding";
 
 /** Format a whole-currency amount, e.g. 6200 USD → "$6,200". Falls back to "6200 USD". */
+/** Live preview of the channel name as the operator types — matches the slug
+ *  rules in slack/provisioning.ts (lowercase, dashes only). */
+function slugifyForPreview(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function formatMoney(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat("en-US", {
@@ -620,6 +630,9 @@ export function ClientManagement() {
   const [showCreate, setShowCreate] = useState(false);
   const [showNewLink, setShowNewLink] = useState(false);
   const [clientName, setClientName] = useState("");
+  const [createInternalChannel, setCreateInternalChannel] = useState(true);
+  const [createExternalChannel, setCreateExternalChannel] = useState(false);
+  const [externalInviteeEmail, setExternalInviteeEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const activeQuery = useClientList({ search, status: "ACTIVE" });
   const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
@@ -657,10 +670,24 @@ export function ClientManagement() {
   async function handleCreateClient() {
     const trimmed = clientName.trim();
     if (!trimmed) { setFormError("Client name is required."); return; }
+    if (createExternalChannel && !externalInviteeEmail.trim()) {
+      setFormError("Slack Connect requires the external invitee's email.");
+      return;
+    }
     setFormError(null);
     try {
-      const result = await createClientMutation.mutateAsync({ name: trimmed });
+      const result = await createClientMutation.mutateAsync({
+        name: trimmed,
+        createInternalChannel: createInternalChannel || undefined,
+        createExternalChannel: createExternalChannel || undefined,
+        externalInviteeEmail: createExternalChannel
+          ? externalInviteeEmail.trim() || undefined
+          : undefined,
+      });
       setClientName("");
+      setCreateInternalChannel(true);
+      setCreateExternalChannel(false);
+      setExternalInviteeEmail("");
       setShowCreate(false);
       router.push(`/app/portal/${result.client.slug}`);
     } catch (mutationError) {
@@ -872,6 +899,52 @@ export function ClientManagement() {
                       autoFocus
                     />
                   </label>
+                  {/* Slack channel provisioning — best-effort; Slack failures don't block creation. */}
+                  <fieldset className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
+                    <legend className="px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                      Slack channels (optional)
+                    </legend>
+                    <label className="flex items-start gap-2 py-1 text-sm text-[var(--text-1)]">
+                      <input
+                        type="checkbox"
+                        checked={createInternalChannel}
+                        onChange={(e) => setCreateInternalChannel(e.target.checked)}
+                        className="mt-0.5 h-4 w-4"
+                      />
+                      <span>
+                        Create internal channel{" "}
+                        <code className="rounded bg-white px-1 text-[11px] text-[var(--text-3)]">
+                          #client-{clientName.trim() ? slugifyForPreview(clientName) : "{slug}"}-internal
+                        </code>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 py-1 text-sm text-[var(--text-1)]">
+                      <input
+                        type="checkbox"
+                        checked={createExternalChannel}
+                        onChange={(e) => setCreateExternalChannel(e.target.checked)}
+                        className="mt-0.5 h-4 w-4"
+                      />
+                      <span>
+                        Create Slack Connect channel{" "}
+                        <code className="rounded bg-white px-1 text-[11px] text-[var(--text-3)]">
+                          #client-{clientName.trim() ? slugifyForPreview(clientName) : "{slug}"}
+                        </code>
+                      </span>
+                    </label>
+                    {createExternalChannel ? (
+                      <input
+                        value={externalInviteeEmail}
+                        onChange={(e) => setExternalInviteeEmail(e.target.value)}
+                        className="app-input mt-2 text-sm"
+                        placeholder="client-contact@theirdomain.com"
+                        type="email"
+                      />
+                    ) : null}
+                    <p className="mt-1.5 text-[11px] leading-snug text-[var(--text-4)]">
+                      If Slack fails, the client is still created — retry from the Edit modal.
+                    </p>
+                  </fieldset>
                   {formError ? (
                     <p className="text-sm text-rose-700">{formError}</p>
                   ) : null}

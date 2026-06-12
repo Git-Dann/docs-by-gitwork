@@ -413,9 +413,40 @@ export async function revealClientBankApi(
 }
 
 export async function createClient(
-  input: { name: string; logoUrl?: string },
+  input: {
+    name: string;
+    logoUrl?: string;
+    /** Phase 3 — optional Slack channel provisioning on create. Failure to
+     *  provision is non-blocking (the client is created either way). */
+    createInternalChannel?: boolean;
+    createExternalChannel?: boolean;
+    externalInviteeEmail?: string;
+    customInternalName?: string;
+    customExternalName?: string;
+  },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>("/api/clients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Retry / belated Slack channel provisioning for an existing client. Surfaces
+ * Slack's verbatim error on failure so the UI can render it inline.
+ */
+export async function provisionClientSlackChannels(
+  slug: string,
+  input: {
+    createInternal?: boolean;
+    createExternal?: boolean;
+    externalInviteeEmail?: string;
+    customInternalName?: string;
+    customExternalName?: string;
+  },
+): Promise<{ internal: { id: string; name: string } | null; external: { id: string; name: string } | null }> {
+  return apiFetch(`/api/clients/${slug}/provision-slack-channels`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -445,6 +476,9 @@ export async function updateClient(
     primaryContactPhone?: string;
     googleDriveFolderUrl?: string;
     clickupUrl?: string;
+    slackChannelId?: string;
+    slackInternalChannelId?: string;
+    slackExternalChannelId?: string;
     retainerDays?: number | null;
     retainerDaysUsed?: number | null;
   },
@@ -1206,6 +1240,18 @@ export interface IntegrationsResponse {
   /** Whether the workspace-shared sync Google account is configured (admin-managed, cron only). */
   workspaceGoogleOAuthConnected: boolean;
   slackBotTokenMasked: string | null;
+  /** True once a Slack signing secret has been pasted + encrypted on the workspace. */
+  slackSigningSecretSet: boolean;
+  /** Slack app id, e.g. "A012ABC". Display-only, not a secret. */
+  slackAppId: string | null;
+  /** Slack team id, written by `auth.test` after a successful Save & verify. */
+  slackTeamId: string | null;
+  /** Slack team / workspace name, written by `auth.test`. Display-only. */
+  slackTeamName: string | null;
+  /** Bot user id, written by `auth.test`. Display-only. */
+  slackBotUserId: string | null;
+  /** ISO timestamp of the most recent successful Slack post — diagnostics only. */
+  lastSlackPostAt: string | null;
   slackSummaryChannelId: string | null; // legacy
   slackChannels: SlackChannel[];
   channelRoutes: Record<string, string>;
@@ -1273,6 +1319,12 @@ export async function saveIntegrations(data: {
   googleSubjectEmail?: string;
   googleCalendarId?: string;
   slackBotToken?: string;
+  slackSigningSecret?: string;
+  slackAppId?: string;
+  /** Run `auth.test` against the (newly) pasted bot token; persist team / user fields on success. */
+  slackVerify?: boolean;
+  /** Clear every Slack credential + cached channels. */
+  slackDisconnect?: boolean;
   slackSummaryChannelId?: string;
   slackChannels?: SlackChannel[];
   channelRoutes?: Record<string, string>;

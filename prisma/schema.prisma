@@ -232,59 +232,77 @@ model DeviceToken {
 }
 
 model Workspace {
-  id                       String                     @id @default(cuid())
-  name                     String
-  slug                     String                     @unique
-  anthropicApiKey          String?
-  anthropicModel           String?
-  aiProvider               String                     @default("ANTHROPIC")
-  openaiApiKey             String?
-  openaiModel              String?
-  geminiApiKey             String?
-  geminiModel              String?
-  localLlmUrl              String?
-  localLlmModel            String?
+  id                          String                     @id @default(cuid())
+  name                        String
+  slug                        String                     @unique
+  anthropicApiKey             String?
+  anthropicModel              String?
+  aiProvider                  String                     @default("ANTHROPIC")
+  openaiApiKey                String?
+  openaiModel                 String?
+  geminiApiKey                String?
+  geminiModel                 String?
+  localLlmUrl                 String?
+  localLlmModel               String?
   /// Read-only org Admin API keys used ONLY by the Super-Admin AI Spend card to read
   /// billed cost from the provider Cost APIs. Distinct from the workspace API keys above.
   /// Env vars ANTHROPIC_ADMIN_KEY / OPENAI_ADMIN_KEY take precedence when set.
-  anthropicAdminApiKey     String?
-  openaiAdminApiKey        String?
-  externalApiKey           String?
-  googleServiceAccountJson String?
-  googleSubjectEmail       String?
-  googleCalendarId         String?
-  googleOAuthRefreshToken  String?
-  slackBotToken            String?
-  slackSummaryChannelId    String? // legacy single-channel — kept for migration
-  slackChannels            Json? // Array<{ id: string; name: string }>
-  channelRoutes            Json? // { "pulse.alert": "C123", "care.escalation": "C456", ... }
-  emailProvider            String? // "RESEND" | "SMTP" | null
-  emailApiKey              String? // Resend API key when emailProvider = RESEND
-  emailFromAddress         String?
-  emailFromName            String?
-  emailReplyTo             String?
-  emailSmtpHost            String?
-  emailSmtpPort            Int?
-  emailSmtpUser            String?
-  emailSmtpPassword        String?
-  branding                 Json? // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
-  proposalDefaults         Json? // preparedBy, team, contactDetails, objectiveSnippets
+  anthropicAdminApiKey        String?
+  openaiAdminApiKey           String?
+  externalApiKey              String?
+  googleServiceAccountJson    String?
+  googleSubjectEmail          String?
+  googleCalendarId            String?
+  googleOAuthRefreshToken     String?
+  slackBotToken               String? // legacy plaintext — kept for migration; new reads go through slackBotTokenEncrypted
+  /// Bot token (xoxb-…) stored as an AES-256-GCM JSON envelope via src/lib/encryption.ts.
+  /// `getSlackBotToken(ws)` decrypts this if present, else falls back to the legacy `slackBotToken`.
+  slackBotTokenEncrypted      String?
+  /// Slack app signing secret (needed to verify inbound interactivity requests).
+  /// Encrypted with the same AES-256-GCM envelope. Required for buttons/modals.
+  slackSigningSecretEncrypted String?
+  /// Slack app identifier (e.g. "A0123456"). Display-only; not a secret.
+  slackAppId                  String?
+  /// Slack team / workspace identifier returned by auth.test (e.g. "T012ABC").
+  slackTeamId                 String?
+  /// Slack team / workspace name returned by auth.test. Display-only.
+  slackTeamName               String?
+  /// Bot user ID returned by auth.test (e.g. "U012BOT"). Lets us ignore the bot's
+  /// own events when the Events API is wired up later.
+  slackBotUserId              String?
+  /// Timestamp of the most recent successful Slack post — diagnostics for the
+  /// Settings → Integrations connected-state card.
+  lastSlackPostAt             DateTime?
+  slackSummaryChannelId       String? // legacy single-channel — kept for migration
+  slackChannels               Json? // Array<{ id: string; name: string }>
+  channelRoutes               Json? // { "pulse.alert": "C123", "care.escalation": "C456", ... }
+  emailProvider               String? // "RESEND" | "SMTP" | null
+  emailApiKey                 String? // Resend API key when emailProvider = RESEND
+  emailFromAddress            String?
+  emailFromName               String?
+  emailReplyTo                String?
+  emailSmtpHost               String?
+  emailSmtpPort               Int?
+  emailSmtpUser               String?
+  emailSmtpPassword           String?
+  branding                    Json? // Cover branding: brandLogoUrl, accents, default confidentiality, etc.
+  proposalDefaults            Json? // preparedBy, team, contactDetails, objectiveSnippets
   /// Workspace-wide default rates per CodeClear tier. Shape:
   /// { tier1: { rate, currency, period }, tier2: {...}, tier3: {...} }
   /// Populated by /api/codeclear/admin/tier-defaults; consumed when a
   /// candidate's tier changes (unless RateCardPerson.manualRateOverride).
-  tierRateDefaults         Json?
+  tierRateDefaults            Json?
   // ── Public-share branding (P5.19) ───────────────────────────────────
-  customHostname           String?                    @unique // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
-  customHostnameVerified   Boolean                    @default(false)
-  customHostnameToken      String? // Random CNAME challenge value for DNS verification
+  customHostname              String?                    @unique // Workspace-chosen domain for /docs/[token] (e.g. docs.client.com)
+  customHostnameVerified      Boolean                    @default(false)
+  customHostnameToken         String? // Random CNAME challenge value for DNS verification
   // ── Backstage (internal ops) ────────────────────────────────────────
-  defaultAnnualLeaveDays   Int                        @default(25)
-  expenseCategories        Json? // Optional override of the hardcoded category list
+  defaultAnnualLeaveDays      Int                        @default(25)
+  expenseCategories           Json? // Optional override of the hardcoded category list
   /// ISO-3166-1 alpha-2 country codes whose public/religious holidays show on the
   /// team calendar for EVERYONE (workspace-wide), independent of where each member
   /// is based. Defaults to UK + Pakistan; admins can extend to other countries.
-  holidayCountries         Json                       @default("[\"GB\", \"PK\"]")
+  holidayCountries            Json                       @default("[\"GB\", \"PK\"]")
   // ── Roles & Permissions ─────────────────────────────────────────────
   /// The role permission matrix — source of truth for what each configurable role
   /// (ADMIN/STAFF/DEVELOPER) can do. Shape: { ADMIN: string[], STAFF: string[], DEVELOPER: string[] }
@@ -292,47 +310,48 @@ model Workspace {
   /// SUPER_ADMIN is implicit-all and never stored here. Null → DEFAULT_ROLE_PERMISSIONS.
   /// Edited only by Super Admins via /app/settings/roles. A member's resolved
   /// `WorkspaceMember.permissions` is recomputed from this matrix + their overrides.
-  rolePermissions          Json?
+  rolePermissions             Json?
   // ── MCP / Claude integration (Phase 3) ──────────────────────────────
   /// Workspace-level master switch for the in-app MCP route at /api/mcp.
   /// Off by default — a Super Admin flips this on in Settings → MCP before
   /// any user can connect Claude (or any other MCP client). When off, the
   /// authorize/token endpoints return 503 and no new tokens issue.
-  mcpEnabled               Boolean                    @default(false)
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime                   @updatedAt
-  members                  WorkspaceMember[]
-  invites                  WorkspaceInvite[]
-  documents                Document[]
-  documentCounters         DocumentCounter[]
-  templates                DocumentTemplate[]
-  clients                  WorkspaceClient[]
-  clientOnboardings        ClientOnboarding[]
-  onboardingForms          OnboardingForm[]
-  rateCardPeople           RateCardPerson[]
-  proofDocuments           ProofDocument[]
-  candidates               Candidate[]
-  pulseScans               PulseScan[]
-  pulseMonitors            PulseMonitor[]
-  supportClients           SupportClient[]
-  studies                  Study[]
-  agentConfigs             AgentConfig[]
-  checkConfigs             PulseCheckConfig[]
-  signatureRequests        SignatureRequest[]
-  slackWebhooks            SlackWebhookSubscription[]
-  auditLogs                AuditLog[]
-  meetingSummaries         MeetingSummary[]
-  meetings                 Meeting[]
-  aiResponseCache          AiResponseCache[]
-  leaveRequests            LeaveRequest[]
-  expenses                 Expense[]
-  clientAssignments        ClientAssignment[]
-  tasks                    Task[]
-  dailyUpdates             DailyUpdate[]
-  featureBlocks            FeatureBlock[]
-  milestones               Milestone[]
-  contentSnippets          ContentSnippet[]
-  mcpConnections           McpConnection[]
+  mcpEnabled                  Boolean                    @default(false)
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  members                     WorkspaceMember[]
+  invites                     WorkspaceInvite[]
+  documents                   Document[]
+  documentCounters            DocumentCounter[]
+  templates                   DocumentTemplate[]
+  clients                     WorkspaceClient[]
+  clientOnboardings           ClientOnboarding[]
+  onboardingForms             OnboardingForm[]
+  rateCardPeople              RateCardPerson[]
+  proofDocuments              ProofDocument[]
+  candidates                  Candidate[]
+  pulseScans                  PulseScan[]
+  pulseMonitors               PulseMonitor[]
+  supportClients              SupportClient[]
+  studies                     Study[]
+  agentConfigs                AgentConfig[]
+  checkConfigs                PulseCheckConfig[]
+  signatureRequests           SignatureRequest[]
+  slackWebhooks               SlackWebhookSubscription[]
+  auditLogs                   AuditLog[]
+  meetingSummaries            MeetingSummary[]
+  meetings                    Meeting[]
+  aiResponseCache             AiResponseCache[]
+  leaveRequests               LeaveRequest[]
+  expenses                    Expense[]
+  clientAssignments           ClientAssignment[]
+  tasks                       Task[]
+  dailyUpdates                DailyUpdate[]
+  featureBlocks               FeatureBlock[]
+  milestones                  Milestone[]
+  contentSnippets             ContentSnippet[]
+  mcpConnections              McpConnection[]
+  slackMessageRefs            SlackMessageRef[]
 }
 
 /**
@@ -869,10 +888,23 @@ model WorkspaceClient {
   invoiceEmail         String?
   googleDriveFolderUrl String?
   clickupUrl           String?               @db.Text
-  /// Slack channel ID (e.g. C0123ABC) the client's project updates live in.
-  /// Read-only: the Portal mobile app pulls recent messages via the workspace
-  /// Slack bot token. Null when no channel is linked.
+  /// Legacy single Slack channel id (pre-Phase-3). New code reads
+  /// `effectiveInternalChannel(client) = slackInternalChannelId ?? slackChannelId`
+  /// — kept until Phase 4 drops it so deploys roll forward / back without losing the link.
   slackChannelId       String?
+  /// Internal channel (Gitwork-only, typically private) for the client's project
+  /// updates. Set by `provisionClientChannels` on create OR manually picked in the
+  /// Edit-client modal. Replaces `slackChannelId` going forward.
+  slackInternalChannelId   String?
+  slackInternalChannelName String?
+  /// External / Slack Connect channel shared with the client's Slack workspace.
+  /// Provisioned via conversations.inviteShared — requires the bot's
+  /// `conversations.connect:write/manage` scopes (granted at install).
+  slackExternalChannelId   String?
+  slackExternalChannelName String?
+  /// Sticky error string from the last channel-provisioning attempt. Cleared on
+  /// success. Drives the "Provision Slack channels" retry button on Edit Client.
+  slackProvisionError      String?
   hidden               Boolean               @default(false)
   /// Lifecycle status. New onboarding submissions arrive as PENDING_REVIEW;
   /// Dan/Harry flip to ACTIVE via Move-to-workflow. Pulse scans are gated to
@@ -2535,17 +2567,18 @@ model Task {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
-  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client       WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client           WorkspaceClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Legacy single assignee — kept (not dropped) so prisma db push stays additive;
   // the app reads `assignees`, falling back to this when the join is empty.
-  assignee     User?           @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  assignees    User[]          @relation("TaskAssignees")
-  createdBy    User?           @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  featureBlock FeatureBlock?   @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
-  parent       Task?           @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks     Task[]          @relation("Subtasks")
-  comments     TaskComment[]
+  assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignees        User[]            @relation("TaskAssignees")
+  createdBy        User?             @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  featureBlock     FeatureBlock?     @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
+  parent           Task?             @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks         Task[]            @relation("Subtasks")
+  comments         TaskComment[]
+  slackMessageRefs SlackMessageRef[]
 
   @@index([workspaceId, clientId, status])
   @@index([assigneeId, status])
@@ -2553,6 +2586,32 @@ model Task {
   @@index([featureBlockId])
   @@index([parentId])
   @@index([clickupId])
+}
+
+/// Message↔task linkage for Slack interactivity. Persisted when Foundry posts a
+/// rich Block Kit card so an incoming button-click payload (which carries the
+/// message channel + ts + a SlackMessageRef id) can be authoritatively resolved
+/// back to a Task without trusting client-supplied IDs.
+///
+/// `kind` is a free-form string ("STANDUP_AM" | "STANDUP_PM" | "ROLLUP" | …)
+/// rather than an enum so new card types can ship without a schema change.
+model SlackMessageRef {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channelId   String
+  /// Slack message timestamp ("1718000000.000100") — identifies the message
+  /// inside its channel. Paired with channelId in the unique index.
+  messageTs   String
+  taskId      String?
+  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  kind        String
+  postedById  String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([channelId, messageTs])
+  @@index([workspaceId, taskId])
+  @@index([workspaceId, kind, createdAt])
 }
 
 /// Free-text notes on a task. A simple append-only thread (mirrors how Care
