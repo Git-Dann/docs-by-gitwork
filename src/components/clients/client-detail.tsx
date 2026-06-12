@@ -51,7 +51,7 @@ import {
 import { useCreateTask } from "@/hooks/use-tasks";
 import { cn, formatDate } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
-import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate } from "@/lib/api";
+import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -1190,20 +1190,28 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   // call that wasn't auto-matched (different naming, internal-only attendees) can be grabbed by hand.
   const allCallsQ = useClientMeetings(slug, pickerOpen, "", true);
 
-  async function addActionItemAsTask(clientId: string, itemId: string, text: string) {
-    setAddingTaskId(itemId);
-    try { await createTask.mutateAsync({ clientId, title: text }); setAddedTaskIds((s) => ({ ...s, [itemId]: true })); }
+  // The action item's title becomes the task title; the fuller text becomes the description
+  // (falling back to the text as the title for older notes that have no AI title yet).
+  function taskFromItem(it: { title: string | null; text: string }) {
+    const title = it.title?.trim() || it.text;
+    const description = it.title?.trim() && it.text !== it.title?.trim() ? it.text : undefined;
+    return { title, description };
+  }
+
+  async function addActionItemAsTask(clientId: string, item: { id: string; title: string | null; text: string }) {
+    setAddingTaskId(item.id);
+    try { await createTask.mutateAsync({ clientId, ...taskFromItem(item) }); setAddedTaskIds((s) => ({ ...s, [item.id]: true })); }
     catch { /* swallow */ } finally { setAddingTaskId(null); }
   }
 
   // Bulk: add every not-yet-added action item to the client's board, one at a time.
-  async function addAllActionItems(clientId: string, items: { id: string; text: string }[]) {
+  async function addAllActionItems(clientId: string, items: { id: string; title: string | null; text: string }[]) {
     setAddingAll(true);
     try {
       for (const it of items) {
         if (addedTaskIds[it.id]) continue;
         setAddingTaskId(it.id);
-        try { await createTask.mutateAsync({ clientId, title: it.text }); setAddedTaskIds((s) => ({ ...s, [it.id]: true })); }
+        try { await createTask.mutateAsync({ clientId, ...taskFromItem(it) }); setAddedTaskIds((s) => ({ ...s, [it.id]: true })); }
         catch { /* swallow per-item */ }
       }
     } finally { setAddingTaskId(null); setAddingAll(false); }
@@ -1348,7 +1356,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
           isRefetching={busyId === viewing.calendarEventId}
           onAddTask={addActionItemAsTask}
           onAddAll={viewing.clientId
-            ? () => void addAllActionItems(viewing.clientId!, viewing.actionItems.map((a) => ({ id: a.id, text: a.text })))
+            ? () => void addAllActionItems(viewing.clientId!, viewing.actionItems.map((a) => ({ id: a.id, title: a.title, text: a.text })))
             : undefined}
           addingTaskId={addingTaskId}
           addedTaskIds={addedTaskIds}
@@ -1507,7 +1515,7 @@ function MeetingNotesModal({
   onClose: () => void;
   onRefetch?: () => void;
   isRefetching?: boolean;
-  onAddTask: (clientId: string, itemId: string, text: string) => void;
+  onAddTask: (clientId: string, item: ScribeActionItem) => void;
   onAddAll?: () => void;
   addingTaskId: string | null;
   addedTaskIds: Record<string, boolean>;
@@ -1631,35 +1639,30 @@ function MeetingNotesModal({
                     </button>
                   )}
                 </div>
-                <ul className="mt-3 space-y-2">
+                <ul className="mt-3 space-y-1.5">
                   {meeting.actionItems.map((a) => {
                     const added = Boolean(addedTaskIds[a.id]);
                     const adding = addingTaskId === a.id;
                     return (
-                      <li key={a.id} className="rounded-[8px] border border-[var(--border-1)] px-3 py-2.5">
-                        <p className="text-sm leading-snug text-[var(--text-1)]">{a.text}</p>
-                        {a.owner && (
-                          <span
-                            className="mt-1.5 inline-block rounded-[4px] border border-[var(--border-1)] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)]"
-                            style={{ fontFamily: "var(--font-mono)" }}
-                          >
-                            {a.owner}
-                          </span>
+                      <li key={a.id} className="rounded-[6px] border border-[var(--border-1)] px-2.5 py-2">
+                        <p className="text-[13px] font-semibold leading-snug text-[var(--text-1)]">{a.title || a.text}</p>
+                        {a.title && a.text && a.text !== a.title && (
+                          <p className="mt-0.5 text-[12px] leading-snug text-[var(--text-3)]">{a.text}</p>
                         )}
                         {meeting.clientId && (
                           <button
                             type="button"
                             disabled={adding || added}
-                            onClick={() => onAddTask(meeting.clientId!, a.id, a.text)}
+                            onClick={() => onAddTask(meeting.clientId!, a)}
                             className={cn(
-                              "mt-2 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-default",
+                              "mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default",
                               added
                                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                 : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60",
                             )}
                             title="Add to this client's task board"
                           >
-                            {added ? (<><CheckCircleIcon className="h-3.5 w-3.5" />Added</>) : adding ? "Adding…" : (<><PlusIcon className="h-3 w-3" />Add task</>)}
+                            {added ? (<><CheckCircleIcon className="h-3 w-3" />Added</>) : adding ? "Adding…" : (<><PlusIcon className="h-3 w-3" />Add task</>)}
                           </button>
                         )}
                       </li>

@@ -2426,6 +2426,7 @@ model MeetingActionItem {
   id        String   @id @default(cuid())
   meetingId String
   meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title     String? // short imperative title (AI); `text` holds the fuller detail/description
   text      String
   owner     String? // free-text owner name/email pulled from the transcript
   done      Boolean  @default(false)

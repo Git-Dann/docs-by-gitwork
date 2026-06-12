@@ -149,17 +149,17 @@ export async function ingestMeeting(args: IngestMeetingArgs) {
 interface SummaryShape {
   summary: string;
   decisions: string[];
-  actionItems: Array<{ text: string; owner?: string | null }>;
+  actionItems: Array<{ title?: string | null; text: string; owner?: string | null }>;
 }
 
 const SUMMARY_SYSTEM = `You are Scribe, the meeting-notes assistant for Gitwork, a UK digital design-and-build agency.
-You are given Google's AI-generated notes ("Notes by Gemini") for a client meeting — typically with summary, decisions, and next-steps sections. Re-express them in our house format — British English, no filler, never invent content not supported by the source. Preserve action-item owners where Gemini names them (e.g. "[Saf] Draft Privacy Policy").
+You are given Google's AI-generated notes ("Notes by Gemini") for a client meeting — typically with summary, decisions, and next-steps sections. Re-express them in our house format — British English, no filler, never invent content not supported by the source. Preserve action-item owners where Gemini names them (e.g. "[Saf] Draft Privacy Policy"). For each action item give a short imperative "title" (≤8 words, e.g. "Build messaging service") plus a fuller "text" describing what to do.
 
 Respond with ONLY a JSON object, no prose, no code fences, in exactly this shape:
 {
   "summary": "2–4 sentence plain-English overview of what the meeting covered",
   "decisions": ["each clear decision made, one per string"],
-  "actionItems": [{ "text": "the action to be taken", "owner": "person responsible, or null if unclear" }]
+  "actionItems": [{ "title": "short imperative title, ≤8 words", "text": "the action / detail in one or two sentences", "owner": "person responsible, or null if unclear" }]
 }
 Use empty arrays when there are no decisions or action items.`;
 
@@ -215,7 +215,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
   const actionItems = Array.isArray(parsed?.actionItems)
     ? parsed!.actionItems
         .filter((a) => a && typeof a.text === "string" && a.text.trim().length > 0)
-        .map((a) => ({ text: a.text.trim(), owner: a.owner?.toString().trim() || null }))
+        .map((a) => ({ title: a.title?.toString().trim() || null, text: a.text.trim(), owner: a.owner?.toString().trim() || null }))
     : [];
 
   await prisma.$transaction([
@@ -230,7 +230,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     }),
     prisma.meetingActionItem.deleteMany({ where: { meetingId } }),
     ...(actionItems.length > 0
-      ? [prisma.meetingActionItem.createMany({ data: actionItems.map((a) => ({ meetingId, text: a.text, owner: a.owner })) })]
+      ? [prisma.meetingActionItem.createMany({ data: actionItems.map((a) => ({ meetingId, title: a.title, text: a.text, owner: a.owner })) })]
       : []),
   ]);
 }

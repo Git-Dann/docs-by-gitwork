@@ -1815,6 +1815,7 @@ export type ScribeMeetingStatus =
 
 export interface ScribeActionItem {
   id: string;
+  title: string | null;
   text: string;
   owner: string | null;
   done: boolean;
