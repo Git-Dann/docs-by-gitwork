@@ -5,10 +5,14 @@
  * triggers a shortcut. The endpoint must:
  *   1. read the raw body (signature is computed over byte-exact content)
  *   2. verify X-Slack-Signature against the workspace's signing secret
- *   3. respond 200 within 3s (Slack times out otherwise)
- *   4. dispatch the real handler in the background via `after()`
+ *   3. respond 200 within 3s — AND, for any modal-opening action, the
+ *      `views.open` call must complete before that 3s window closes, because
+ *      `trigger_id`s expire 3 seconds after issue. Using `after()` to defer
+ *      the work pushed the openView past the trigger_id expiry in some cases
+ *      (Notes worked when fast, Comment didn't), so the handler now runs
+ *      SYNCHRONOUSLY before the 200 response.
  *
- * Mirrors src/app/api/webhooks/github/[monitorId]/route.ts.
+ * Mirrors src/app/api/webhooks/github/[monitorId]/route.ts otherwise.
  *
  * Single-workspace shortcut: this app currently runs against one Workspace row,
  * so we look up the first Workspace whose signing secret is set. If/when we
@@ -16,7 +20,7 @@
  * `Workspace.slackTeamId`.
  */
 
-import { after, NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { apiError, apiOk } from "@/lib/api-response";
 import { decryptNullable } from "@/lib/encryption";
 import { prisma } from "@/lib/prisma";
@@ -24,7 +28,6 @@ import { verifySlackSignature } from "@/server/slack/signature";
 import { handleInteraction, parseInteractionBody } from "@/server/slack/interactions";
 
 export const dynamic = "force-dynamic";
-// Slack times out interactivity calls at 3s. The real work runs in after().
 export const maxDuration = 10;
 
 async function resolveSigningSecret(teamId: string | undefined): Promise<string | null> {
@@ -77,7 +80,14 @@ export async function POST(request: NextRequest) {
     return apiError("Malformed Slack payload.", 400);
   }
 
-  // 3. ACK immediately. 4. dispatch the real handler in the background.
-  after(() => handleInteraction(peeked));
+  // 3. Run the handler SYNCHRONOUSLY so views.open finishes before the
+  //    trigger_id expires (Slack: 3-second window). Errors are swallowed
+  //    inside handleInteraction itself; the route always 200s so Slack
+  //    doesn't surface a "something went wrong" toast to the operator.
+  try {
+    await handleInteraction(peeked);
+  } catch (err) {
+    console.warn("[slack] interaction dispatch failed", err);
+  }
   return apiOk({ status: "received" });
 }

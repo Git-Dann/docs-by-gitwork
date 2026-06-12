@@ -281,14 +281,17 @@ export function buildNotesModal(input: {
       },
     });
   }
+  // Footer — markdown link instead of a button. URL buttons in modals
+  // trigger a hover-tooltip with the full URL splatted on screen; the
+  // hyperlink in a context block doesn't, and the smaller treatment is
+  // appropriate for a read-only modal anyway.
+  blocks.push({ type: "divider" });
   blocks.push({
-    type: "actions",
+    type: "context",
     elements: [
       {
-        type: "button",
-        text: { type: "plain_text", text: "Open in Foundry ↗" },
-        url: taskDeepLink({ clientSlug: input.clientSlug, taskId: input.taskId }),
-        action_id: SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY,
+        type: "mrkdwn",
+        text: `<${taskDeepLink({ clientSlug: input.clientSlug, taskId: input.taskId })}|Open in Foundry ↗>`,
       },
     ],
   });
