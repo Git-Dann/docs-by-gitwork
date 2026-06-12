@@ -10,8 +10,9 @@ import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
-import { OnYourDesk } from "@/components/dashboard/on-your-desk";
-import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
+import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
+import { DailyRollup } from "@/components/tasks/daily-rollup";
+import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
@@ -83,7 +84,10 @@ export function AppOverview() {
   const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;
 
   const acct = { role, permissions: resolvedPermissions };
-  const attention = ATTENTION_CARDS.filter((c) => c.when(acct));
+  const canApprove = showAll || can(acct, "backstage.approve") || can(acct, "backstage.expenses");
+  const canSeeTasks = showAll || can(acct, "clients");
+  const canSeeSignoff = showAll || can(acct, "proposals");
+  const canPublishRollup = showAll || can(acct, "tasks.publish");
   const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
@@ -99,21 +103,21 @@ export function AppOverview() {
         {hasBackstage ? <WhoIsOffToday /> : null}
       </div>
 
-      {/* Needs-attention row (role/permission gated) */}
-      {attention.length > 0 ? (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {attention.map(({ id, Component }) => (
-            <Component key={id} />
-          ))}
-        </div>
-      ) : null}
+      {/* 01 // ON YOUR DESK — consolidates tasks + approvals + sign-offs. Card
+          auto-hides if every section is empty, so the dashboard stays scannable
+          when there's nothing waiting. */}
+      <OnYourDeskCard
+        canApprove={canApprove}
+        canSeeTasks={canSeeTasks}
+        canSeeSignoff={canSeeSignoff}
+      />
 
-      {/* "On your desk" — personal task strip. Devs see an equivalent inside
-          DevOverview's My Day card, so this only renders for staff/admin who
-          fall through to the bento layout. */}
-      <OnYourDesk />
+      {/* 02 // DAILY ROLL-UP — kept separate from "On your desk" because it's a
+          publishing UI for the DevOps lead (Shahab), not a personal to-do.
+          Only renders for tasks.publish holders; admins bypass. */}
+      {canPublishRollup ? <DailyRollup /> : null}
 
-      {/* Module bento — filtered to the user's access. */}
+      {/* 03+ // Module bento — filtered to the user's access. */}
       <div
         className="flex flex-col gap-3 lg:grid lg:gap-3"
         style={{
