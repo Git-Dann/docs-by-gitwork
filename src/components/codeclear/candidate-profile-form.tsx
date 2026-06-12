@@ -14,6 +14,29 @@ import {
 } from "@/types/codeclear";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
+// Curated IANA list rather than a free-text input — the team works across
+// London + Islamabad with a few overseas collaborators, so the menu covers
+// every realistic answer + a generic UTC. Easy to extend later.
+const TIMEZONE_OPTIONS: readonly string[] = [
+  "Europe/London",
+  "Europe/Dublin",
+  "Europe/Berlin",
+  "Europe/Paris",
+  "Europe/Madrid",
+  "Asia/Karachi",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Sao_Paulo",
+  "Australia/Sydney",
+  "UTC",
+];
+
 export interface CandidateProfileValue {
   name: string;
   githubHandle: string;
@@ -57,12 +80,6 @@ export const emptyCandidateProfile: CandidateProfileValue = {
 
 const COMMON_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "CAD", "AUD"] as const;
 
-const AVAILABILITY_LABELS: Record<CandidateAvailability, string> = {
-  AVAILABLE: "Available",
-  ENGAGED: "Engaged",
-  UNAVAILABLE: "Unavailable",
-};
-
 /**
  * Shared add + edit form for a Candidate. Controlled: hand it `value` +
  * `onChange` and you own state. Used by both the Add Dev modal in the
@@ -96,11 +113,12 @@ export function CandidateProfileForm({
   }
 
   return (
-    // Two-column outer grid on wide screens, stacked on narrow.
-    // Sections each pick whether to span 1 column or both via `span`.
-    <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
-      {/* Identity */}
-      <Section title="Identity" span="full">
+    // Sections stack full-width — fewer fields after the trim, so the
+    // outer 2-col grid bought us nothing but visual imbalance.
+    <div className="grid grid-cols-1 gap-y-6">
+      {/* Identity — Name / GitHub on row 1, Email / Location on row 2,
+          LinkedIn (full row) on row 3. */}
+      <Section title="Identity">
         <Field label="Name">
           <input
             value={value.name}
@@ -135,12 +153,6 @@ export function CandidateProfileForm({
             autoComplete="off"
           />
         </Field>
-      </Section>
-
-      {/* Row 2 — paired half-width sections so the 2-column rhythm is
-          balanced. Profile links (3 URL fields) + Rate & availability
-          (3-4 fields) have similar field counts. */}
-      <Section title="Profile links" span="half">
         <Field label="LinkedIn URL" span="full">
           <input
             value={value.linkedinUrl}
@@ -150,27 +162,11 @@ export function CandidateProfileForm({
             autoComplete="off"
           />
         </Field>
-        <Field label="CV URL" span="full">
-          <input
-            value={value.cvUrl}
-            onChange={(event) => patch("cvUrl", event.target.value)}
-            placeholder="https://…"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="Portfolio URL" span="full">
-          <input
-            value={value.portfolioUrl}
-            onChange={(event) => patch("portfolioUrl", event.target.value)}
-            placeholder="https://…"
-            className="app-input"
-            autoComplete="off"
-          />
-        </Field>
       </Section>
 
-      <Section title="Rate & availability" span="half">
+      {/* Rate & schedule — Years / Timezone on row 1, Monthly rate full row.
+          Hidden rate row collapses gracefully when canViewRates is false. */}
+      <Section title="Rate & schedule">
         <Field label="Years of experience">
           <input
             type="number"
@@ -182,24 +178,23 @@ export function CandidateProfileForm({
           />
         </Field>
         <Field label="Timezone">
-          <input
+          <select
             value={value.timezone}
             onChange={(event) => patch("timezone", event.target.value)}
-            placeholder="e.g. Europe/London"
-            className="app-input"
-            autoComplete="off"
-          />
+            className="app-select pr-9"
+          >
+            <option value="">Select…</option>
+            {TIMEZONE_OPTIONS.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
         </Field>
-        {/* Rate: currency selector (110px) + numeric input. Label adapts
-            to the Hour/Month toggle above so admins can enter either
-            without changing fields. Hidden when the viewer lacks
-            `code.viewRates`. */}
         {canViewRates ? (
-          // Monthly only for now. The HOUR/MONTH toggle was UI-only since
-          // the Candidate.ratePeriod schema change got backed out; keeping
-          // it visible would mislead admins into thinking hourly persists.
-          // Drop the toggle, label the field "Monthly rate", and the PATCH
-          // endpoint writes the figure through to RateCardPerson with
+          // Monthly only — the HOUR/MONTH toggle was UI-only since the
+          // Candidate.ratePeriod schema change got backed out. PATCH
+          // writes the figure through to RateCardPerson with
           // billingPeriod=MONTH (see candidates/[id]/route.ts).
           <Field label="Monthly rate" span="full">
             <div className="grid grid-cols-[110px_1fr] gap-1.5">
@@ -227,27 +222,10 @@ export function CandidateProfileForm({
             </div>
           </Field>
         ) : null}
-        <Field label="Availability" span="full">
-          <select
-            value={value.availability}
-            onChange={(event) =>
-              patch("availability", event.target.value as CandidateAvailability | "")
-            }
-            className="app-select pr-9"
-          >
-            <option value="">Auto (from placements)</option>
-            {(Object.keys(AVAILABILITY_LABELS) as CandidateAvailability[]).map((entry) => (
-              <option key={entry} value={entry}>
-                {AVAILABILITY_LABELS[entry]}
-              </option>
-            ))}
-          </select>
-        </Field>
       </Section>
 
-      {/* Row 3 — Tech stack spans the full width below the paired row
-          so the chip picker has room to breathe with many stacks. */}
-      <Section title="Tech stack" span="full">
+      {/* Tech stack — chip picker has room to breathe with many stacks. */}
+      <Section title="Tech stack">
         <Field label="Primary stack" span="full">
           <input
             value={value.primaryStack}
@@ -276,7 +254,7 @@ export function CandidateProfileForm({
           One control to pick all the clients this dev is engaged with
           right now. They land in those clients' columns in the Pipeline. */}
       {showClientsPicker ? (
-        <Section title="Clients" span="full">
+        <Section title="Clients">
           <Field label="Current clients" span="full">
             <ClientMultiSelect
               selectedIds={value.clientIds}
@@ -290,20 +268,24 @@ export function CandidateProfileForm({
       ) : null}
 
       {/* Bio */}
-      <Section title="About" span="full">
+      <Section title="About">
         <Field label="Bio" span="full">
           <textarea
             value={value.bio}
             onChange={(event) => patch("bio", event.target.value)}
             rows={3}
-            className="app-input min-h-[88px] resize-y"
+            // Explicit py-2.5 + leading-relaxed — without this the text
+            // hugs the top edge of the textarea (default browser styles
+            // put zero padding on textareas, and `app-input` only sets
+            // height).
+            className="app-input min-h-[96px] resize-y py-2.5 leading-relaxed"
             placeholder="A short note about this dev — strengths, focus areas, anything worth remembering."
           />
         </Field>
       </Section>
 
       {showOriginToggle ? (
-        <Section title="Origin (admin)" span="full">
+        <Section title="Origin (admin)">
           <Field label="Roster" span="full">
             <div className="flex gap-1.5">
               {(["INTERNAL", "EXTERNAL"] as const).map((origin) => (
@@ -330,21 +312,18 @@ export function CandidateProfileForm({
 }
 
 /**
- * Section block. `span` decides whether the section occupies one column
- * of the outer 2-col grid ("half") or both ("full"). On narrow screens
- * the outer grid collapses to one column, so span is a no-op there.
+ * Section block — mono-caps label, two-column inner grid for paired fields.
+ * Fields opt into full-width via `span="full"`.
  */
 function Section({
   title,
   children,
-  span = "full",
 }: {
   title: string;
   children: React.ReactNode;
-  span?: "half" | "full";
 }) {
   return (
-    <div className={span === "full" ? "lg:col-span-2" : "lg:col-span-1"}>
+    <div>
       <p className="widget-data-label mb-3">{title}</p>
       <div className="grid grid-cols-2 gap-3">{children}</div>
     </div>
