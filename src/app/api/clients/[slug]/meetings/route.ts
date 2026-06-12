@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
             meetings.map((m: { calendarEventId: string | null }) => m.calendarEventId).filter(Boolean),
           );
           const found = all
-            ? await listRecentMeetCalls(auth.client)
+            ? await listRecentMeetCalls(auth.client, 90) // manual picker: look back a full quarter so older missed calls still appear
             : await findPastClientCalls(auth.client, { domains: deriveClientDomains(client), name: client.name });
           candidates = found.filter((c) => !ingestedEventIds.has(c.calendarEventId));
         } catch {
