@@ -19,6 +19,7 @@ import {
   getClientMeetings,
   ingestClientMeeting,
   updateMeetingActionItem,
+  linkMeetingActionItemTask,
   getProposal,
   listClients,
   listOnboardingLinks,
@@ -495,6 +496,17 @@ export function useToggleMeetingActionItem(slug: string) {
   return useMutation({
     mutationFn: ({ meetingId, actionItemId, done }: { meetingId: string; actionItemId: string; done: boolean }) =>
       updateMeetingActionItem(slug, meetingId, { actionItemId, done }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
+    },
+  });
+}
+
+export function useLinkMeetingActionItemTask(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meetingId, actionItemId, taskId }: { meetingId: string; actionItemId: string; taskId: string | null }) =>
+      linkMeetingActionItemTask(slug, meetingId, { actionItemId, taskId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
     },

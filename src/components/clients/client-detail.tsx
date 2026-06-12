@@ -38,6 +38,7 @@ import {
   useClientMeetings,
   useClientSlackActivity,
   useIngestClientMeeting,
+  useLinkMeetingActionItemTask,
   useCreateClientDesign,
   useCreateClientPlatform,
   useDeleteClientDesign,
@@ -48,7 +49,7 @@ import {
   useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
-import { useCreateTask } from "@/hooks/use-tasks";
+import { useCreateTask, useDeleteTask } from "@/hooks/use-tasks";
 import { cn, formatDate } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
@@ -1180,9 +1181,14 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const { data, isLoading } = useClientMeetings(slug, true, query);
   const ingest = useIngestClientMeeting(slug);
   const createTask = useCreateTask();
+  const deleteTask = useDeleteTask();
+  const linkTask = useLinkMeetingActionItemTask(slug);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
+  // Session-local overrides for instant feedback before the meetings query refetches the
+  // persistent taskId link: addedTaskIds = added this session, removedItemIds = removed this session.
   const [addedTaskIds, setAddedTaskIds] = useState<Record<string, boolean>>({});
+  const [removedItemIds, setRemovedItemIds] = useState<Record<string, boolean>>({});
   const [addingAll, setAddingAll] = useState(false);
   const [viewing, setViewing] = useState<ScribeMeeting | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1199,20 +1205,41 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   }
 
   async function addActionItemAsTask(clientId: string, item: { id: string; title: string | null; text: string }) {
+    if (!viewing) return;
     setAddingTaskId(item.id);
-    try { await createTask.mutateAsync({ clientId, ...taskFromItem(item) }); setAddedTaskIds((s) => ({ ...s, [item.id]: true })); }
-    catch { /* swallow */ } finally { setAddingTaskId(null); }
+    try {
+      const task = await createTask.mutateAsync({ clientId, ...taskFromItem(item) });
+      await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: task.id });
+      setAddedTaskIds((s) => ({ ...s, [item.id]: true }));
+      setRemovedItemIds((s) => { const n = { ...s }; delete n[item.id]; return n; });
+    } catch { /* swallow */ } finally { setAddingTaskId(null); }
+  }
+
+  // Click an already-added item → delete its board task and unlink (reverts to "Add task").
+  async function removeActionItemTask(item: { id: string; taskId: string | null }) {
+    if (!viewing || !item.taskId) return;
+    setAddingTaskId(item.id);
+    try {
+      try { await deleteTask.mutateAsync(item.taskId); } catch { /* task may already be gone */ }
+      await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: null });
+      setRemovedItemIds((s) => ({ ...s, [item.id]: true }));
+      setAddedTaskIds((s) => { const n = { ...s }; delete n[item.id]; return n; });
+    } catch { /* swallow */ } finally { setAddingTaskId(null); }
   }
 
   // Bulk: add every not-yet-added action item to the client's board, one at a time.
-  async function addAllActionItems(clientId: string, items: { id: string; title: string | null; text: string }[]) {
+  async function addAllActionItems(clientId: string, items: { id: string; title: string | null; text: string; taskId: string | null }[]) {
+    if (!viewing) return;
     setAddingAll(true);
     try {
       for (const it of items) {
-        if (addedTaskIds[it.id]) continue;
+        if (it.taskId || addedTaskIds[it.id]) continue;
         setAddingTaskId(it.id);
-        try { await createTask.mutateAsync({ clientId, ...taskFromItem(it) }); setAddedTaskIds((s) => ({ ...s, [it.id]: true })); }
-        catch { /* swallow per-item */ }
+        try {
+          const task = await createTask.mutateAsync({ clientId, ...taskFromItem(it) });
+          await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: it.id, taskId: task.id });
+          setAddedTaskIds((s) => ({ ...s, [it.id]: true }));
+        } catch { /* swallow per-item */ }
       }
     } finally { setAddingTaskId(null); setAddingAll(false); }
   }
@@ -1355,11 +1382,12 @@ function MeetingNotesSection({ slug }: { slug: string }) {
             : undefined}
           isRefetching={busyId === viewing.calendarEventId}
           onAddTask={addActionItemAsTask}
+          onRemoveTask={removeActionItemTask}
           onAddAll={viewing.clientId
-            ? () => void addAllActionItems(viewing.clientId!, viewing.actionItems.map((a) => ({ id: a.id, title: a.title, text: a.text })))
+            ? () => void addAllActionItems(viewing.clientId!, viewing.actionItems.map((a) => ({ id: a.id, title: a.title, text: a.text, taskId: a.taskId })))
             : undefined}
           addingTaskId={addingTaskId}
-          addedTaskIds={addedTaskIds}
+          addedTaskIds={Object.fromEntries(viewing.actionItems.map((a) => [a.id, removedItemIds[a.id] ? false : (Boolean(a.taskId) || Boolean(addedTaskIds[a.id]))]))}
           isAddingAll={addingAll}
         />
       )}
@@ -1506,6 +1534,7 @@ function MeetingNotesModal({
   onRefetch,
   isRefetching,
   onAddTask,
+  onRemoveTask,
   onAddAll,
   addingTaskId,
   addedTaskIds,
@@ -1516,6 +1545,7 @@ function MeetingNotesModal({
   onRefetch?: () => void;
   isRefetching?: boolean;
   onAddTask: (clientId: string, item: ScribeActionItem) => void;
+  onRemoveTask?: (item: ScribeActionItem) => void;
   onAddAll?: () => void;
   addingTaskId: string | null;
   addedTaskIds: Record<string, boolean>;
@@ -1652,17 +1682,28 @@ function MeetingNotesModal({
                         {meeting.clientId && (
                           <button
                             type="button"
-                            disabled={adding || added}
-                            onClick={() => onAddTask(meeting.clientId!, a)}
+                            disabled={adding}
+                            onClick={() => (added ? onRemoveTask?.(a) : onAddTask(meeting.clientId!, a))}
                             className={cn(
-                              "mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default",
+                              "group mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default disabled:opacity-60",
                               added
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60",
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                                : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
                             )}
-                            title="Add to this client's task board"
+                            title={added ? "Click to remove from the task board" : "Add to this client's task board"}
                           >
-                            {added ? (<><CheckCircleIcon className="h-3 w-3" />Added</>) : adding ? "Adding…" : (<><PlusIcon className="h-3 w-3" />Add task</>)}
+                            {adding ? (
+                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : added ? (
+                              <>
+                                <CheckCircleIcon className="h-3 w-3 group-hover:hidden" />
+                                <XMarkIcon className="hidden h-3 w-3 group-hover:inline" />
+                                <span className="group-hover:hidden">Added</span>
+                                <span className="hidden group-hover:inline">Remove</span>
+                              </>
+                            ) : (
+                              <><PlusIcon className="h-3 w-3" />Add task</>
+                            )}
                           </button>
                         )}
                       </li>

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { getMeeting, setActionItemDone, reassignMeetingClient } from "@/server/meetings";
+import { getMeeting, setActionItemDone, linkActionItemTask, reassignMeetingClient } from "@/server/meetings";
 import { meetingUpdateSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
@@ -38,6 +38,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     if (body.actionItemId !== undefined && body.done !== undefined) {
       const updated = await setActionItemDone(workspace.id, body.actionItemId, body.done);
+      if (!updated) return apiError("Action item not found", 404);
+    }
+
+    if (body.actionItemId !== undefined && body.taskId !== undefined) {
+      const updated = await linkActionItemTask(workspace.id, body.actionItemId, body.taskId);
       if (!updated) return apiError("Action item not found", 404);
     }
 

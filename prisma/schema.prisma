@@ -2430,6 +2430,7 @@ model MeetingActionItem {
   text      String
   owner     String? // free-text owner name/email pulled from the transcript
   done      Boolean  @default(false)
+  taskId    String? // the board Task created from this item (set on "Add task", cleared on remove)
   createdAt DateTime @default(now())
 
   @@index([meetingId])

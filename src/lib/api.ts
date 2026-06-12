@@ -1819,6 +1819,7 @@ export interface ScribeActionItem {
   text: string;
   owner: string | null;
   done: boolean;
+  taskId: string | null;
 }
 
 export interface ScribeMeeting {
@@ -1889,6 +1890,19 @@ export async function updateMeetingActionItem(
   slug: string,
   meetingId: string,
   body: { actionItemId: string; done: boolean },
+): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/${meetingId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Link (taskId set) or unlink (taskId null) the board Task created from an action item. */
+export async function linkMeetingActionItemTask(
+  slug: string,
+  meetingId: string,
+  body: { actionItemId: string; taskId: string | null },
 ): Promise<{ meeting: ScribeMeeting }> {
   return apiFetch(`/api/clients/${slug}/meetings/${meetingId}`, {
     method: "PATCH",

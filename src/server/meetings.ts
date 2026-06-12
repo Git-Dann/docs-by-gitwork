@@ -298,6 +298,17 @@ export async function setActionItemDone(workspaceId: string, itemId: string, don
   return prisma.meetingActionItem.update({ where: { id: itemId }, data: { done } });
 }
 
+/** Link (or, with null, unlink) the board Task created from an action item — drives the
+ *  persistent "Added" state. Verifies the item belongs to a meeting in this workspace. */
+export async function linkActionItemTask(workspaceId: string, itemId: string, taskId: string | null) {
+  const item = await prisma.meetingActionItem.findFirst({
+    where: { id: itemId, meeting: { workspaceId } },
+    select: { id: true },
+  });
+  if (!item) return null;
+  return prisma.meetingActionItem.update({ where: { id: itemId }, data: { taskId } });
+}
+
 /** Re-attribute a meeting to a different client (manual override for missed attribution). */
 export async function reassignMeetingClient(workspaceId: string, meetingId: string, clientId: string | null) {
   const meeting = await prisma.meeting.findFirst({ where: { id: meetingId, workspaceId }, select: { id: true } });

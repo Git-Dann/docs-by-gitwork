@@ -1019,11 +1019,15 @@ export const meetingUpdateSchema = z
   .object({
     actionItemId: z.string().optional(),
     done: z.boolean().optional(),
+    taskId: z.string().nullable().optional(),
     clientId: z.string().nullable().optional(),
   })
   .refine(
-    (v) => (v.actionItemId !== undefined && v.done !== undefined) || v.clientId !== undefined,
-    { message: "Provide actionItemId + done to toggle an item, or clientId to reassign." },
+    (v) =>
+      (v.actionItemId !== undefined && v.done !== undefined) ||
+      (v.actionItemId !== undefined && v.taskId !== undefined) ||
+      v.clientId !== undefined,
+    { message: "Provide actionItemId + done to toggle, actionItemId + taskId to link/unlink a task, or clientId to reassign." },
   );
 
 // ── Design system (per-client brand tokens; see src/types/design-tokens.ts) ──
