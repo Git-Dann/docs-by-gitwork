@@ -49,7 +49,6 @@ import {
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
 import { useCreateTask } from "@/hooks/use-tasks";
-import { useClientDesignSystem, useSetClientDesignSystemEnabled } from "@/hooks/use-design-system";
 import { cn, formatDate } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
@@ -80,8 +79,23 @@ type EditFormState = {
   slackExternalChannelId: string;
   retainerDays: string;
   retainerDaysUsed: string;
-  designSystemEnabled: boolean;
 };
+
+/** Official Slack mark (4-colour). Labels the Internal / External channel fields. */
+function SlackGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 122.8 122.8" aria-hidden="true" focusable="false">
+      <path d="M25.8 77.6c0 7.1-5.8 12.9-12.9 12.9S0 84.7 0 77.6s5.8-12.9 12.9-12.9h12.9v12.9z" fill="#E01E5A" />
+      <path d="M32.3 77.6c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9v32.3c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V77.6z" fill="#E01E5A" />
+      <path d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9H45.2z" fill="#36C5F0" />
+      <path d="M45.2 32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58.1 0 52.3 0 45.2s5.8-12.9 12.9-12.9h32.3z" fill="#36C5F0" />
+      <path d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97V45.2z" fill="#2EB67D" />
+      <path d="M90.5 45.2c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C64.7 5.8 70.5 0 77.6 0s12.9 5.8 12.9 12.9v32.3z" fill="#2EB67D" />
+      <path d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97h12.9z" fill="#ECB22E" />
+      <path d="M77.6 90.5c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H77.6z" fill="#ECB22E" />
+    </svg>
+  );
+}
 
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
@@ -108,10 +122,6 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
-  // The design-system entry button shows when the page is enabled (Edit client toggle;
-  // defaults on once tokens are imported). See the action stack below.
-  const { data: designSystem } = useClientDesignSystem(slug);
-  const setDesignSystemEnabled = useSetClientDesignSystemEnabled(slug);
 
   if (isPending) {
     return (
@@ -159,7 +169,6 @@ export function ClientDetail({ slug }: { slug: string }) {
       slackExternalChannelId: client.slackExternalChannelId ?? "",
       retainerDays: client.retainerDays != null ? String(client.retainerDays) : "",
       retainerDaysUsed: client.retainerDaysUsed != null ? String(client.retainerDaysUsed) : "",
-      designSystemEnabled: designSystem?.enabled ?? false,
     });
     setEditing(true);
   }
@@ -189,9 +198,6 @@ export function ClientDetail({ slug }: { slug: string }) {
         retainerDays: editForm.retainerDays.trim() === "" ? null : Number(editForm.retainerDays),
         retainerDaysUsed: editForm.retainerDaysUsed.trim() === "" ? null : Number(editForm.retainerDaysUsed),
       });
-      if (editForm.designSystemEnabled !== (designSystem?.enabled ?? false)) {
-        await setDesignSystemEnabled.mutateAsync(editForm.designSystemEnabled);
-      }
       setEditing(false);
       setEditForm(null);
       // Renaming changes the slug; the current route (/app/portal/[oldSlug]) would 404
@@ -2301,10 +2307,11 @@ function ClientEditModal({
                   </label>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="app-field-label">
-                        Internal Slack channel
+                      <span className="app-field-label flex items-center gap-1.5">
+                        <SlackGlyph className="h-3.5 w-3.5 shrink-0" />
+                        Internal
                         {loadingChannels && (
-                          <span className="ml-2 text-[var(--text-4)]">Loading…</span>
+                          <span className="text-[var(--text-4)]">Loading…</span>
                         )}
                       </span>
                       <select
@@ -2322,7 +2329,10 @@ function ClientEditModal({
                       </select>
                     </label>
                     <label className="block">
-                      <span className="app-field-label">External (Slack Connect) channel</span>
+                      <span className="app-field-label flex items-center gap-1.5">
+                        <SlackGlyph className="h-3.5 w-3.5 shrink-0" />
+                        External
+                      </span>
                       <select
                         value={form.slackExternalChannelId}
                         onChange={(e) => set("slackExternalChannelId", e.target.value)}
@@ -2344,32 +2354,6 @@ function ClientEditModal({
                     </p>
                   )}
                   <SlackProvisionRetry slug={slug} initialError={slackProvisionError} />
-
-                  <div>
-                    <span className="app-field-label">Design system page</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={form.designSystemEnabled}
-                      onClick={() => onChange({ ...form, designSystemEnabled: !form.designSystemEnabled })}
-                      className="mt-1 flex w-full items-center justify-between gap-3 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-2.5 text-left transition hover:bg-[var(--surface-1)]"
-                    >
-                      <span className="text-[12px] text-[var(--text-3)]">
-                        {form.designSystemEnabled
-                          ? "Enabled — entry + page visible"
-                          : "Disabled — hidden for this client"}
-                      </span>
-                      <span
-                        className="relative h-5 w-9 shrink-0 rounded-full transition-colors"
-                        style={{ background: form.designSystemEnabled ? "var(--brand-600)" : "var(--border-2)" }}
-                      >
-                        <span
-                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
-                          style={{ left: form.designSystemEnabled ? 18 : 2 }}
-                        />
-                      </span>
-                    </button>
-                  </div>
 
                   {/* Retainer — monthly allowance + days used (commercial; shown gated on cards) */}
                   <div className="grid grid-cols-2 gap-3">
