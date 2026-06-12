@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -50,6 +51,25 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Deep-link sync: lets Slack standup cards (and any other shared URL) jump
+  // straight to a task by opening the drawer on mount. Clearing the param on
+  // drawer close keeps the URL tidy for back-button navigation.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const fromUrl = searchParams.get("task");
+    if (fromUrl && !openTaskId) setOpenTaskId(fromUrl);
+    // Intentionally only react to the search-params object identity; opening
+    // the drawer manually shouldn't fight the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  const closeTaskDrawer = () => {
+    setOpenTaskId(null);
+    if (searchParams.get("task")) {
+      router.replace(pathname, { scroll: false });
+    }
+  };
   const [blockModal, setBlockModal] = useState<{ open: boolean; block: FeatureBlockDTO | null }>({
     open: false,
     block: null,
@@ -250,7 +270,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           onDone={() => setImporting(false)}
         />
       ) : null}
-      {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={() => setOpenTaskId(null)} /> : null}
+      {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={closeTaskDrawer} /> : null}
       {blockModal.open && clientId ? (
         <FeatureBlockFormModal
           block={blockModal.block}

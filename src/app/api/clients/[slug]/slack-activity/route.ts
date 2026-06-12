@@ -6,6 +6,7 @@ import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
+import { getSlackBotToken } from "@/server/slack/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -46,12 +47,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const [client, ws] = await Promise.all([
       prisma.workspaceClient.findFirst({
         where: { slug, workspaceId: workspace.id },
-        select: { slackChannelId: true, name: true },
+        // Prefer the new dual-channel internal field; fall back to the legacy single-channel
+        // field during the Phase-3 → Phase-4 deprecation window.
+        select: { slackChannelId: true, slackInternalChannelId: true, name: true },
       }),
       prisma.workspace.findUnique({
         where: { id: workspace.id },
         select: {
           slackBotToken: true,
+          slackBotTokenEncrypted: true,
           aiProvider: true,
           anthropicApiKey: true,
           anthropicModel: true,
@@ -66,8 +70,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     ]);
 
     if (!ws) return notConfigured("no_token");
-    const channelId = client?.slackChannelId?.trim();
-    const token = ws.slackBotToken?.trim();
+    const channelId =
+      (client?.slackInternalChannelId ?? client?.slackChannelId ?? "").trim() || undefined;
+    const token = getSlackBotToken(ws);
 
     if (!token) return notConfigured("no_token");
     if (!channelId) return notConfigured("no_channel");

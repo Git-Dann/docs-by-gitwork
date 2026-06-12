@@ -13,6 +13,8 @@ import {
   assertCanPublishTaskRollup,
 } from "@/server/auth/effective-user";
 import { listTasks } from "@/server/tasks";
+import { getSlackBotToken, postMessage } from "@/server/slack/client";
+import { buildRollupCard, buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
 import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
   TaskDTO,
@@ -146,27 +148,6 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
   };
 }
 
-// ─── Slack plumbing ─────────────────────────────────────────────────────────
-
-async function postSlack(botToken: string, channel: string, text: string): Promise<void> {
-  try {
-    await fetch("https://slack.com/api/chat.postMessage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        Authorization: `Bearer ${botToken}`,
-      },
-      body: JSON.stringify({ channel, text, unfurl_links: false, unfurl_media: false }),
-    });
-  } catch {
-    // Best-effort — never throw out of a standup push.
-  }
-}
-
-function bullet(tasks: TaskDTO[]): string {
-  return tasks.map((t) => `• ${t.title}`).join("\n");
-}
-
 // ─── Push a daily update ────────────────────────────────────────────────────
 
 export async function pushDailyUpdate(
@@ -227,9 +208,9 @@ async function postStandupToSlack(
 ): Promise<void> {
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
-    select: { slackBotToken: true },
+    select: { slackBotToken: true, slackBotTokenEncrypted: true },
   });
-  const botToken = ws?.slackBotToken?.trim();
+  const botToken = getSlackBotToken(ws);
   if (!botToken) return;
 
   const tasks = await listTasks(user, { assigneeId: "me" });
@@ -239,37 +220,108 @@ async function postStandupToSlack(
     return; // nothing to say
   }
 
-  // Resolve each involved client's internal channel.
+  // Resolve each involved client's internal channel — prefer the new dual-channel
+  // field (slackInternalChannelId), fall back to the legacy single channel.
   const clientIds = Array.from(new Set(sectionTasks.map((t) => t.client.id)));
   const clients = await prisma.workspaceClient.findMany({
     where: { workspaceId: user.workspaceId, id: { in: clientIds } },
-    select: { id: true, slackChannelId: true },
+    select: { id: true, slug: true, slackChannelId: true, slackInternalChannelId: true },
   });
-  const channelByClient = new Map(clients.map((c) => [c.id, c.slackChannelId]));
+  const channelByClient = new Map(
+    clients.map((c) => [c.id, c.slackInternalChannelId ?? c.slackChannelId] as const),
+  );
 
   const who = user.name?.trim() || user.email;
-  const note = input.note?.trim() ? `\n:memo: ${input.note.trim()}` : "";
+  const weekday = WEEKDAYS[workDate.getUTCDay()];
+  const workdayLabel = `${weekday} ${ymd(workDate)}`;
+  const isMon = isMonday(workDate);
 
   for (const clientId of clientIds) {
     const channel = channelByClient.get(clientId);
     if (!channel) continue;
     const mine = sectionTasks.filter((t) => t.client.id === clientId);
-
-    let text: string;
-    if (input.phase === "AM") {
-      const weekday = WEEKDAYS[workDate.getUTCDay()];
-      const doingBlock = mine.length ? `\n*Doing*\n${bullet(mine)}` : "";
-      const weekBlock =
-        isMonday(workDate) && input.weekPlan?.trim()
-          ? `\n*This week*\n${input.weekPlan.trim()}`
-          : "";
-      text = `:large_yellow_circle: *${who}* — standup (${weekday} ${ymd(workDate)})${doingBlock}${weekBlock}${note}`;
-      if (!doingBlock && !weekBlock) continue;
-    } else {
-      text = `:white_check_mark: *${who}* — done today (${ymd(workDate)})\n*Done*\n${bullet(mine)}${note}`;
+    if (mine.length === 0 && !(input.phase === "AM" && isMon && input.weekPlan?.trim())) {
+      continue;
     }
-    await postSlack(botToken, channel, text);
+
+    // Pre-mint a SlackMessageRef per task so the card's overflow buttons carry
+    // the ref ids we created. They share `channelId` + `messageTs` once we know
+    // them — we patch those in after chat.postMessage succeeds.
+    const kind = input.phase === "AM" ? "STANDUP_AM" : "STANDUP_PM";
+    const placeholders = await Promise.all(
+      mine.map((t) =>
+        prisma.slackMessageRef.create({
+          data: {
+            workspaceId: user.workspaceId,
+            channelId: channel,
+            // Stamp the channel id as a placeholder for messageTs so we satisfy
+            // the @@unique([channelId, messageTs]) constraint until chat.postMessage
+            // returns the real ts. Patched immediately after.
+            messageTs: `pending:${cryptoRandomId()}`,
+            taskId: t.id,
+            kind,
+            postedById: user.id,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+
+    const cardTasks: StandupTaskCardInput[] = mine.map((t, idx) => ({
+      taskId: t.id,
+      messageRefId: placeholders[idx].id,
+      title: t.title,
+      blockName: t.featureBlock?.name ?? null,
+      dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
+      clientSlug: t.client.slug,
+    }));
+
+    const card = buildStandupCard({
+      phase: input.phase,
+      who,
+      workdayLabel,
+      weekPlan: isMon ? input.weekPlan ?? null : null,
+      note: input.note ?? null,
+      tasks: cardTasks,
+    });
+
+    const result = await postMessage(botToken, {
+      channel,
+      text: card.text,
+      blocks: card.blocks,
+    });
+
+    if (result.ok && result.data.ts) {
+      // Patch the placeholder refs with the real Slack message ts so interactive
+      // payloads can resolve back to them.
+      await Promise.all(
+        placeholders.map((ref) =>
+          prisma.slackMessageRef.update({
+            where: { id: ref.id },
+            data: { messageTs: result.data.ts! },
+          }),
+        ),
+      );
+    } else {
+      // Posting failed — drop the placeholders so we don't leave dangling rows.
+      await prisma.slackMessageRef.deleteMany({
+        where: { id: { in: placeholders.map((p) => p.id) } },
+      });
+    }
   }
+
+  // Bump the workspace's lastSlackPostAt diagnostic so the Settings page
+  // shows the integration is alive.
+  await prisma.workspace.update({
+    where: { id: user.workspaceId },
+    data: { lastSlackPostAt: new Date() },
+  }).catch(() => undefined);
+}
+
+/** Short random id for the placeholder messageTs — collision-resistant within the
+ *  channel's row count. Replaced with the real Slack ts after chat.postMessage. */
+function cryptoRandomId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** One-off nudge to the roll-up channel the moment every dev's PM update is in. */
@@ -283,17 +335,21 @@ async function maybePingAllIn(workspaceId: string, workDate: Date): Promise<void
 
   const ws = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { slackBotToken: true, channelRoutes: true, slackSummaryChannelId: true },
+    select: {
+      slackBotToken: true,
+      slackBotTokenEncrypted: true,
+      channelRoutes: true,
+      slackSummaryChannelId: true,
+    },
   });
-  const botToken = ws?.slackBotToken?.trim();
+  const botToken = getSlackBotToken(ws);
   const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
   const channel = routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
   if (!botToken || !channel) return;
-  await postSlack(
-    botToken,
+  await postMessage(botToken, {
     channel,
-    `:tada: *All ${devIds.length} developers have posted their end-of-day update.* The daily roll-up is ready to publish.`,
-  );
+    text: `:tada: All ${devIds.length} developers have posted their end-of-day update. The daily roll-up is ready to publish.`,
+  });
 }
 
 // ─── DevOps roll-up ─────────────────────────────────────────────────────────
@@ -397,9 +453,14 @@ export async function publishRollup(
 
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
-    select: { slackBotToken: true, channelRoutes: true, slackSummaryChannelId: true },
+    select: {
+      slackBotToken: true,
+      slackBotTokenEncrypted: true,
+      channelRoutes: true,
+      slackSummaryChannelId: true,
+    },
   });
-  const botToken = ws?.slackBotToken?.trim() ?? null;
+  const botToken = getSlackBotToken(ws);
   const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
   const channel = routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
 
@@ -418,33 +479,52 @@ export async function publishRollup(
     orderBy: [{ clientId: "asc" }, { completedAt: "asc" }],
   });
 
-  const byClient = new Map<string, string[]>();
+  // Need slug for the per-client "View board" deep link — re-fetch with client.slug.
+  const groups = new Map<string, { clientName: string; clientSlug: string; tasks: { title: string; assignee: string | null; taskId: string }[] }>();
   for (const t of doneTasks) {
     const names = t.assignees.map((a) => a.name?.trim() || a.email);
     if (names.length === 0 && t.assignee) names.push(t.assignee.name?.trim() || t.assignee.email);
-    const who = names.length ? names.join(", ") : "Unassigned";
-    const line = `• ${t.title} — _${who}_`;
-    const arr = byClient.get(t.client.name) ?? [];
-    arr.push(line);
-    byClient.set(t.client.name, arr);
+    const who = names.length ? names.join(", ") : null;
+    const existing = groups.get(t.clientId);
+    if (existing) {
+      existing.tasks.push({ title: t.title, assignee: who, taskId: t.id });
+    } else {
+      groups.set(t.clientId, {
+        clientName: t.client.name,
+        // Slug is needed but our `include` above doesn't pull it; we patch below.
+        clientSlug: "",
+        tasks: [{ title: t.title, assignee: who, taskId: t.id }],
+      });
+    }
+  }
+  if (groups.size > 0) {
+    // Resolve slugs in one query.
+    const clientRows = await prisma.workspaceClient.findMany({
+      where: { id: { in: Array.from(groups.keys()) } },
+      select: { id: true, slug: true },
+    });
+    for (const row of clientRows) {
+      const group = groups.get(row.id);
+      if (group) group.clientSlug = row.slug;
+    }
   }
 
   if (botToken && channel) {
-    const header = `:newspaper: *Daily roll-up — ${ymd(workDate)}*`;
-    const body =
-      byClient.size === 0
-        ? "\n_No tasks were completed today._"
-        : "\n" +
-          Array.from(byClient.entries())
-            .map(([clientName, lines]) => `\n*${clientName}*\n${lines.join("\n")}`)
-            .join("\n");
-    await postSlack(botToken, channel, `${header}${body}`);
+    const card = buildRollupCard({
+      dateLabel: ymd(workDate),
+      groups: Array.from(groups.values()),
+    });
+    await postMessage(botToken, { channel, text: card.text, blocks: card.blocks });
+    await prisma.workspace.update({
+      where: { id: user.workspaceId },
+      data: { lastSlackPostAt: new Date() },
+    }).catch(() => undefined);
   }
 
   return {
     ok: true,
     channel,
-    clientCount: byClient.size,
+    clientCount: groups.size,
     taskCount: doneTasks.length,
   };
 }

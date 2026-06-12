@@ -75,6 +75,8 @@ type EditFormState = {
   googleDriveFolderUrl: string;
   clickupUrl: string;
   slackChannelId: string;
+  slackInternalChannelId: string;
+  slackExternalChannelId: string;
   retainerDays: string;
   retainerDaysUsed: string;
   designSystemEnabled: boolean;
@@ -151,6 +153,8 @@ export function ClientDetail({ slug }: { slug: string }) {
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
       clickupUrl: client.clickupUrl ?? "",
       slackChannelId: client.slackChannelId ?? "",
+      slackInternalChannelId: client.slackInternalChannelId ?? "",
+      slackExternalChannelId: client.slackExternalChannelId ?? "",
       retainerDays: client.retainerDays != null ? String(client.retainerDays) : "",
       retainerDaysUsed: client.retainerDaysUsed != null ? String(client.retainerDaysUsed) : "",
       designSystemEnabled: designSystem?.enabled ?? false,
@@ -178,6 +182,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         googleDriveFolderUrl: editForm.googleDriveFolderUrl || undefined,
         clickupUrl: editForm.clickupUrl || undefined,
         slackChannelId: editForm.slackChannelId || undefined,
+        slackInternalChannelId: editForm.slackInternalChannelId || undefined,
+        slackExternalChannelId: editForm.slackExternalChannelId || undefined,
         retainerDays: editForm.retainerDays.trim() === "" ? null : Number(editForm.retainerDays),
         retainerDaysUsed: editForm.retainerDaysUsed.trim() === "" ? null : Number(editForm.retainerDaysUsed),
       });
@@ -1090,6 +1096,8 @@ export function ClientDetail({ slug }: { slug: string }) {
           }}
           isSaving={updateClientMutation.isPending}
           error={editError}
+          slug={slug}
+          slackProvisionError={client.slackProvisionError ?? null}
         />
       )}
 
@@ -2036,6 +2044,98 @@ function DesignCard({
 // ---------------------------------------------------------------------------
 // ClientEditModal — edit client fields
 // ---------------------------------------------------------------------------
+/**
+ * "Provision Slack channels" retry banner — only renders when the previous
+ * channel provisioning attempt left an error on the client record, or when no
+ * Slack channels are linked yet. Hits POST /api/clients/[slug]/provision-slack-channels.
+ */
+function SlackProvisionRetry({
+  slug,
+  initialError,
+}: {
+  slug: string;
+  initialError: string | null;
+}) {
+  const [running, setRunning] = useState(false);
+  const [internal, setInternal] = useState(true);
+  const [external, setExternal] = useState(false);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(initialError);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  if (!initialError && !error) {
+    // Collapsed by default — operator can still open via the Edit modal save flow.
+    return null;
+  }
+
+  async function run() {
+    if (external && !email.trim()) {
+      setError("Slack Connect requires an invitee email.");
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setRunning(true);
+    try {
+      const { provisionClientSlackChannels } = await import("@/lib/api");
+      const result = await provisionClientSlackChannels(slug, {
+        createInternal: internal || undefined,
+        createExternal: external || undefined,
+        externalInviteeEmail: external ? email.trim() || undefined : undefined,
+      });
+      const parts: string[] = [];
+      if (result.internal) parts.push(`Internal: #${result.internal.name}`);
+      if (result.external) parts.push(`External: #${result.external.name}`);
+      setSuccess(parts.join(" · ") || "Done.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="rounded-[8px] border border-amber-300 bg-amber-50 px-3 py-2.5">
+      <p className="text-xs font-medium text-amber-900">
+        Slack channel provisioning needed
+      </p>
+      {error && (
+        <p className="mt-1 text-[11px] text-amber-900/80">
+          Previous attempt failed: <code>{error}</code>
+        </p>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-amber-900">
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
+          Internal
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} />
+          Slack Connect
+        </label>
+        {external && (
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            placeholder="client@theirdomain.com"
+            className="app-input flex-1 min-w-[200px] text-[11px]"
+          />
+        )}
+        <button
+          type="button"
+          onClick={() => void run()}
+          disabled={running}
+          className="app-button app-button-secondary px-3 py-1 text-[11px] disabled:opacity-40"
+        >
+          {running ? "Provisioning…" : "Retry"}
+        </button>
+      </div>
+      {success && <p className="mt-1.5 text-[11px] text-emerald-700">{success}</p>}
+    </div>
+  );
+}
+
 function ClientEditModal({
   form,
   onChange,
@@ -2043,6 +2143,8 @@ function ClientEditModal({
   onClose,
   isSaving,
   error,
+  slug,
+  slackProvisionError,
 }: {
   form: EditFormState;
   onChange: (form: EditFormState) => void;
@@ -2050,6 +2152,8 @@ function ClientEditModal({
   onClose: () => void;
   isSaving: boolean;
   error: string | null;
+  slug: string;
+  slackProvisionError: string | null;
 }) {
   const [channels, setChannels] = useState<SlackAvailableChannel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
@@ -2132,32 +2236,51 @@ function ClientEditModal({
                       type="url"
                     />
                   </label>
-                  <label className="block">
-                    <span className="app-field-label">
-                      Slack channel
-                      {loadingChannels && (
-                        <span className="ml-2 text-[var(--text-4)]">Loading…</span>
-                      )}
-                    </span>
-                    <select
-                      value={form.slackChannelId}
-                      onChange={(e) => set("slackChannelId", e.target.value)}
-                      className="app-select w-full"
-                    >
-                      <option value="">— None —</option>
-                      {channels.map((ch) => (
-                        <option key={ch.id} value={ch.id}>
-                          {ch.isPrivate ? "🔒 " : "#"}{ch.name}
-                          {ch.isMember ? "" : " (invite bot)"}
-                        </option>
-                      ))}
-                    </select>
-                    {channels.length === 0 && !loadingChannels && (
-                      <p className="mt-1 text-xs text-[var(--text-4)]">
-                        Add a Slack bot token in Settings → Integrations to enable this.
-                      </p>
-                    )}
-                  </label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="app-field-label">
+                        Internal Slack channel
+                        {loadingChannels && (
+                          <span className="ml-2 text-[var(--text-4)]">Loading…</span>
+                        )}
+                      </span>
+                      <select
+                        value={form.slackInternalChannelId || form.slackChannelId}
+                        onChange={(e) => set("slackInternalChannelId", e.target.value)}
+                        className="app-select w-full"
+                      >
+                        <option value="">— None —</option>
+                        {channels.map((ch) => (
+                          <option key={ch.id} value={ch.id}>
+                            {ch.isPrivate ? "🔒 " : "#"}{ch.name}
+                            {ch.isMember ? "" : " (invite bot)"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="app-field-label">External (Slack Connect) channel</span>
+                      <select
+                        value={form.slackExternalChannelId}
+                        onChange={(e) => set("slackExternalChannelId", e.target.value)}
+                        className="app-select w-full"
+                      >
+                        <option value="">— None —</option>
+                        {channels.map((ch) => (
+                          <option key={ch.id} value={ch.id}>
+                            {ch.isPrivate ? "🔒 " : "#"}{ch.name}
+                            {ch.isMember ? "" : " (invite bot)"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {channels.length === 0 && !loadingChannels && (
+                    <p className="text-xs text-[var(--text-4)]">
+                      Add a Slack bot token in Settings → Integrations to enable Slack pickers.
+                    </p>
+                  )}
+                  <SlackProvisionRetry slug={slug} initialError={slackProvisionError} />
 
                   <div>
                     <span className="app-field-label">Design system page</span>

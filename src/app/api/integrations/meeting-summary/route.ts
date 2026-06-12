@@ -9,6 +9,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
+import { getSlackBotToken } from "@/server/slack/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -181,7 +182,8 @@ export async function POST(req: NextRequest) {
 
     // ── Fetch Slack messages around event date ────────────────────────────────
     let slackContext = "";
-    if (workspace.slackBotToken) {
+    const slackBotToken = getSlackBotToken(workspace);
+    if (slackBotToken) {
       try {
         // Resolve which channel IDs to search:
         // 1. Use channelIds from request body if provided
@@ -206,7 +208,7 @@ export async function POST(req: NextRequest) {
               try {
                 const res = await fetch(
                   `https://slack.com/api/conversations.history?channel=${channelId}&oldest=${windowStart}&latest=${windowEnd}&limit=50`,
-                  { headers: { Authorization: `Bearer ${workspace.slackBotToken}` } },
+                  { headers: { Authorization: `Bearer ${slackBotToken}` } },
                 );
                 const data = (await res.json()) as { ok: boolean; messages?: Array<{ text: string; ts: string }> };
                 if (data.ok && data.messages) {

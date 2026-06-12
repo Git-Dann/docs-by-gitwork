@@ -181,6 +181,10 @@ const clientContactFields = {
   googleDriveFolderUrl: z.string().trim().optional(),
   clickupUrl: z.string().trim().optional(),
   slackChannelId: z.string().trim().optional(),
+  slackInternalChannelId: z.string().trim().optional(),
+  slackInternalChannelName: z.string().trim().optional(),
+  slackExternalChannelId: z.string().trim().optional(),
+  slackExternalChannelName: z.string().trim().optional(),
   legalCompanyName: z.string().trim().optional(),
   companyNumber: z.string().trim().optional(),
   vatNumber: z.string().trim().optional(),
@@ -192,6 +196,14 @@ export const clientCreateSchema = z.object({
   name: requiredTrimmedString,
   logoUrl: z.string().trim().url().optional(),
   ...clientContactFields,
+  /** Phase 3: optionally provision Slack channels for this client at create time.
+   *  Failure to provision NEVER blocks client creation — the error lands on
+   *  `WorkspaceClient.slackProvisionError` and the Edit modal shows a retry button. */
+  createInternalChannel: z.boolean().optional(),
+  createExternalChannel: z.boolean().optional(),
+  externalInviteeEmail: z.string().trim().email().optional(),
+  customInternalName: z.string().trim().optional(),
+  customExternalName: z.string().trim().optional(),
 });
 
 export const clientUpdateSchema = z

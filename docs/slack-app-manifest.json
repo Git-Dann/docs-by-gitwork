@@ -1,0 +1,42 @@
+{
+  "_comment": "Slack App manifest for Foundry by Gitwork. Source of truth for the app's scopes + URLs. Copy the contents (minus this _comment field, Slack rejects unknown top-level keys) into https://api.slack.com/apps → Create New App → From an app manifest. Scope changes ship via PRs against this file; the Settings → Integrations page renders the manifest as a copy block.",
+  "display_information": {
+    "name": "Foundry by Gitwork",
+    "description": "Foundry's standup, roll-up and client-channel automation for the Gitwork team.",
+    "background_color": "#1A1A1A",
+    "long_description": "Foundry posts the daily standup as rich Block Kit cards (with task drill-down, mark-done, add-comment), publishes the DevOps roll-up, and provisions per-client internal + Slack Connect channels when a new client is onboarded. All credentials live in Foundry's Settings → Integrations panel; nothing is stored client-side."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Foundry",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "channels:manage",
+        "groups:read",
+        "groups:write",
+        "users:read",
+        "users:read.email",
+        "team:read",
+        "conversations.connect:write",
+        "conversations.connect:manage",
+        "commands"
+      ]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://foundry.gitwork.co.uk/api/webhooks/slack/interactions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

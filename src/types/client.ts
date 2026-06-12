@@ -84,6 +84,15 @@ export interface ClientDetailFields {
   googleDriveFolderUrl: string | null;
   clickupUrl: string | null;
   slackChannelId: string | null;
+  /** Phase 3: dual-channel storage. `slackInternalChannelId ?? slackChannelId` is the
+   *  effective internal channel for standup posts. `slackExternalChannelId` is the
+   *  Slack Connect channel shared with the client. */
+  slackInternalChannelId: string | null;
+  slackInternalChannelName: string | null;
+  slackExternalChannelId: string | null;
+  slackExternalChannelName: string | null;
+  /** Sticky error from the last provisioning attempt; null when everything's healthy. */
+  slackProvisionError: string | null;
   legalCompanyName: string | null;
   companyNumber: string | null;
   vatNumber: string | null;
