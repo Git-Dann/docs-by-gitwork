@@ -239,18 +239,6 @@ export function CourseRequestsSection({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          {filtered.length > 0 && (
-            <button
-              type="button"
-              onClick={() => downloadTxt(filtered, "course-requests.txt")}
-              className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-              title="Download visible list as .txt"
-              style={{ fontFamily: MONO }}
-            >
-              <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-              .txt
-            </button>
-          )}
           {!readOnly && filtered.length > 1 && (
             <button
               type="button"
