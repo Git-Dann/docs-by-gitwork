@@ -1429,9 +1429,16 @@ function GrabNoteModal({
               className="w-full rounded-[6px] border border-[var(--border-2)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--accent)] focus:outline-none"
             />
           </div>
+          {calendarConnected && !loading && calls.length > 0 && (
+            <p className="mt-2 text-[11px] text-[var(--text-4)]">
+              {calls.length} recent {calls.length === 1 ? "call" : "calls"} — already-captured ones are hidden.
+            </p>
+          )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+        {/* Fixed-height scroll area so the picker stays a contained dialog no matter how many
+            calls come back (a busy 90-day calendar can return dozens). */}
+        <div className="max-h-[420px] overflow-y-auto px-5 py-3">
           {loading && <p className="widget-data-label animate-pulse py-6 text-center">Loading recent calls…</p>}
           {!loading && !calendarConnected && (
             <p className="py-6 text-center text-sm text-[var(--text-4)]">
