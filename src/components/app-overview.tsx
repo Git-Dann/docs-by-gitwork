@@ -28,19 +28,17 @@ type GridEntry = {
 
 const ROW_HEIGHT = 220;
 
-// 6 widgets × 1 = 6 cells = exactly 2 rows × 3 cols. Per HQ-pass-3:
-//   row 1: 03 PULSE · 04 CARE · 05 DOCS — all equal-width compact tiles
-//   row 2: 06 CLIENTS · 07 MAIL · 08 CALENDAR — same shape
-// Each widget renders at size:"sm" — uses each widget's compact variant where
-// one exists. Tall variants from before are gone; the goal is at-a-glance,
-// not full feed inside the bento (use the module page for the full feed).
+// 6 widgets: row 1 (PULSE/CARE/DOCS) = 3 short tiles; row 2-3 (CLIENTS/MAIL/
+// CALENDAR) = 3 tall tiles so the feed-style content (client list, mail
+// inbox, upcoming meetings) is actually readable instead of summarised-to-
+// uselessness. Total cells = 3 + 6 = 9 = 3 rows × 3 cols.
 const GRID: GridEntry[] = [
   { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },
   { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
   { component: ProposalsWidget, cols: 1, rows: 1, size: "sm", module: "proposals" },
-  { component: ClientsWidget,   cols: 1, rows: 1, size: "sm", module: "clients" },
-  { component: GmailWidget,     cols: 1, rows: 1, size: "sm" },
-  { component: CalendarWidget,  cols: 1, rows: 1, size: "sm" },
+  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },
+  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
+  { component: CalendarWidget,  cols: 1, rows: 2, size: "md" },
 ];
 
 function greetingPart(): string {
@@ -86,10 +84,11 @@ export function AppOverview() {
   const canSeeSignoff = showAll || can(acct, "proposals");
   // Visibility of the roll-up CARD (admins/super admins can monitor).
   const canPublishRollup = showAll || can(acct, "tasks.publish");
-  // Visibility of the Publish / Publish-anyway BUTTONS (strict — only the
-  // explicit `tasks.publish` holder, e.g. Shahab). Admins watching the roster
-  // shouldn't see the CTAs even though they could technically publish via API.
-  const canActuallyPublish = resolvedPermissions.includes("tasks.publish");
+  // Visibility of the Publish / Publish-anyway BUTTONS — admins/super admins
+  // are explicitly EXCLUDED here even though `tasks.publish` shows up in their
+  // resolved permissions (admins inherit the full set). Publishing the roll-up
+  // is the DevOps lead's job (Shahab — explicit `tasks.publish`, non-admin).
+  const canActuallyPublish = !isAdmin && resolvedPermissions.includes("tasks.publish");
   const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 

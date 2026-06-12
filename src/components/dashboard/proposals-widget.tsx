@@ -39,26 +39,55 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
   const draft = proposals.filter((p) => p.status === "DRAFT").length;
 
   if (size === "sm") {
+    // Two most-recently-updated docs as quick links — matches the Pulse sm
+    // treatment so the row feels consistent.
+    const recent = [...proposals]
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 2);
     return (
       <div className="flex h-full flex-col">
-        {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
             05 // DOCS
           </span>
-          {inReview > 0 && (
-            <span className="text-xs font-medium text-blue-600">
-              {inReview} review
-            </span>
-          )}
+          <Link href="/app/docs" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
+            View all
+          </Link>
         </div>
-        {/* Body */}
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          <div className="flex flex-1 flex-col items-center justify-center">
-            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{proposals.length}</p>
-            <p className="text-xs text-[#475569]">proposals</p>
+        <div className="flex flex-1 flex-col overflow-hidden px-3 pb-3 pt-2">
+          <div className="flex items-baseline gap-3 px-1">
+            <p className="text-2xl tabular-nums leading-none text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>
+              {proposals.length}
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              docs
+            </p>
+            <span
+              className="ml-auto font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {inReview > 0 ? <span className="text-blue-600">{inReview} review · </span> : null}
+              {draft} draft
+            </span>
           </div>
-          <p className="text-center text-xs text-[#475569]">{draft} draft</p>
+          {recent.length > 0 ? (
+            <div className="mt-3 space-y-0.5">
+              {recent.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/app/docs/${p.id}`}
+                  className="flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 transition-colors hover:bg-[var(--surface-1)]"
+                >
+                  <span className="truncate text-xs text-[#0F172A]">{p.title}</span>
+                  <span
+                    className={`ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${STATUS_STYLES[p.status] ?? STATUS_STYLES.DRAFT}`}
+                  >
+                    {STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     );

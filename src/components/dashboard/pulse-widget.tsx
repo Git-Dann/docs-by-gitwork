@@ -30,28 +30,34 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
     : "text-red-500";
 
   if (size === "sm") {
+    const recent = stats.recentScans.slice(0, 2);
     return (
       <div className="flex h-full flex-col">
-        {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
             03 // PULSE
           </span>
-          {stats.totalCriticalGaps > 0 && (
-            <span className="text-xs font-medium text-red-500">
-              {stats.totalCriticalGaps} critical
-            </span>
-          )}
+          <Link href="/app/pulse" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
+            View all
+          </Link>
         </div>
-        {/* Body */}
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          <div className="flex flex-1 flex-col items-center justify-center">
-            <p className={`text-3xl tabular-nums ${scoreColor}`} style={{ fontFamily: "var(--font-display)" }}>
+        <div className="flex flex-1 flex-col overflow-hidden px-3 pb-3 pt-2">
+          {/* Top stats line — score + critical pill, mono-caps for density */}
+          <div className="flex items-baseline gap-3 px-1">
+            <p className={`text-2xl tabular-nums leading-none ${scoreColor}`} style={{ fontFamily: "var(--font-display)" }}>
               {stats.avgHealthScore != null ? stats.avgHealthScore : "—"}
             </p>
-            <p className="text-xs text-[#475569]">avg health</p>
+            <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              avg health
+            </p>
+            {stats.totalCriticalGaps > 0 ? (
+              <span className="ml-auto text-[10px] font-semibold uppercase tracking-[0.08em] text-red-600" style={{ fontFamily: "var(--font-mono)" }}>
+                {stats.totalCriticalGaps} critical
+              </span>
+            ) : null}
           </div>
-          <div className="flex gap-1">
+          {/* Tier bars */}
+          <div className="mt-2 flex gap-1 px-1">
             {(["green", "amber", "red"] as const).map((tier) => (
               <div
                 key={tier}
@@ -61,9 +67,40 @@ export default function PulseWidget({ size }: { size: WidgetSize }) {
                     tier === "green" ? "#22c55e" : tier === "amber" ? "#f59e0b" : "#ef4444",
                   opacity: stats.healthTiers[tier] > 0 ? 1 : 0.15,
                 }}
+                title={`${stats.healthTiers[tier]} ${tier}`}
               />
             ))}
           </div>
+          {/* Recent scans — top 2 with link to the scan */}
+          {recent.length > 0 ? (
+            <div className="mt-3 space-y-0.5">
+              {recent.map((scan) => (
+                <Link
+                  key={scan.id}
+                  href={`/app/pulse/${scan.id}`}
+                  className="flex items-center justify-between rounded-[6px] px-2 py-1 transition-colors hover:bg-[var(--surface-1)]"
+                >
+                  <span className="truncate text-xs text-[#0F172A]">
+                    {scan.projectName ?? "Untitled"}
+                  </span>
+                  {scan.healthScore != null ? (
+                    <span
+                      className="ml-2 shrink-0 text-[10px] tabular-nums"
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        color:
+                          scan.healthScore >= 75 ? "#22c55e"
+                          : scan.healthScore >= 50 ? "#f59e0b"
+                          : "#ef4444",
+                      }}
+                    >
+                      {scan.healthScore}
+                    </span>
+                  ) : null}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     );
