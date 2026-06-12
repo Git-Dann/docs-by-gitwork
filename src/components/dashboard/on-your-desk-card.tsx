@@ -23,9 +23,10 @@ import {
   useRejectLeaveRequest,
   useReviewExpense,
 } from "@/hooks/use-backstage";
-import { useTaskAttention } from "@/hooks/use-tasks";
+import { useTaskAttention, usePushDailyUpdate, useMyDay } from "@/hooks/use-tasks";
 import { useProposalList } from "@/hooks/use-proposals";
 import type { LeaveType } from "@/types/backstage";
+import { useState } from "react";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   ANNUAL: "Annual leave",
@@ -52,13 +53,34 @@ interface OnYourDeskCardProps {
 }
 
 export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYourDeskCardProps) {
-  // Tasks — the "On Your Plate" stream. Server hook already filters to the
-  // current user's overdue + due-soon + in-progress.
-  const taskAttention = useTaskAttention();
+  // Tasks — scoped to the current user's assignments. A super admin/admin doesn't
+  // want the whole workspace's 242 overdue bleeding into their "On your desk"
+  // (that's a Portal-level concern); they want what THEY own.
+  const taskAttention = useTaskAttention({ mine: true });
   const overdueTasks = canSeeTasks ? taskAttention.data?.overdue ?? [] : [];
   const doingCount = canSeeTasks ? taskAttention.data?.doingCount ?? 0 : 0;
   const dueSoonCount = canSeeTasks ? taskAttention.data?.dueSoonCount ?? 0 : 0;
   const overdueTotal = canSeeTasks ? taskAttention.data?.overdueCount ?? overdueTasks.length : 0;
+
+  // Standup push to Slack — same `pushDailyUpdate` API the devs use, but
+  // surfaced here so admins (Dan) can post their own tasks for testing/dogfood.
+  // Admins are excluded from the dev roster so this doesn't pollute the roll-up
+  // count; it just posts a Block Kit card to the involved clients' channels.
+  const myDay = useMyDay();
+  const pushUpdate = usePushDailyUpdate();
+  const [pushFeedback, setPushFeedback] = useState<string | null>(null);
+  const amPushed = Boolean(myDay.data?.update?.amPushedAt);
+  const pmPushed = Boolean(myDay.data?.update?.pmPushedAt);
+  async function handlePushStandup(phase: "AM" | "PM") {
+    setPushFeedback(null);
+    try {
+      await pushUpdate.mutateAsync({ phase });
+      setPushFeedback(`${phase} standup posted to Slack ✓`);
+      setTimeout(() => setPushFeedback(null), 4000);
+    } catch (err) {
+      setPushFeedback((err as Error).message);
+    }
+  }
 
   // Approvals — leave + expenses pending.
   const leaveQuery = useLeaveRequests("all", "PENDING");
@@ -109,7 +131,33 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
       <div className="widget-body space-y-5">
         {/* ─── Tasks ──────────────────────────────────────────────────────── */}
         {hasTasks ? (
-          <SectionHeader title="Tasks" href="/app/portal" hrefLabel="Open Portal" />
+          <div>
+            <SectionHeader title="Tasks" href="/app/portal" hrefLabel="Open Portal" />
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="text-[var(--text-4)]">Standup →</span>
+              <button
+                type="button"
+                onClick={() => void handlePushStandup("AM")}
+                disabled={pushUpdate.isPending}
+                className="rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                title="Post your AM 'Doing' Block Kit card to each client's linked Slack channel"
+              >
+                {pushUpdate.isPending && pushUpdate.variables?.phase === "AM" ? "Posting…" : amPushed ? "Re-push AM" : "Push AM"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePushStandup("PM")}
+                disabled={pushUpdate.isPending}
+                className="rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                title="Post your PM 'Done today' Block Kit card to each client's linked Slack channel"
+              >
+                {pushUpdate.isPending && pushUpdate.variables?.phase === "PM" ? "Posting…" : pmPushed ? "Re-push PM" : "Push PM"}
+              </button>
+              {pushFeedback ? (
+                <span className="text-[var(--text-3)]">{pushFeedback}</span>
+              ) : null}
+            </div>
+          </div>
         ) : null}
         {overdueTasks.length > 0 ? (
           <div className="space-y-1.5">

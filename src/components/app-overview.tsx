@@ -103,19 +103,18 @@ export function AppOverview() {
         {hasBackstage ? <WhoIsOffToday /> : null}
       </div>
 
-      {/* 01 // ON YOUR DESK — consolidates tasks + approvals + sign-offs. Card
-          auto-hides if every section is empty, so the dashboard stays scannable
-          when there's nothing waiting. */}
-      <OnYourDeskCard
-        canApprove={canApprove}
-        canSeeTasks={canSeeTasks}
-        canSeeSignoff={canSeeSignoff}
-      />
-
-      {/* 02 // DAILY ROLL-UP — kept separate from "On your desk" because it's a
-          publishing UI for the DevOps lead (Shahab), not a personal to-do.
-          Only renders for tasks.publish holders; admins bypass. */}
-      {canPublishRollup ? <DailyRollup /> : null}
+      {/* 01 + 02 sit side by side: "On your desk" is the personal to-do (auto-
+          hides when empty); "Daily roll-up" is the DevOps lead's publishing UI
+          for tasks.publish holders (Shahab; admins bypass). When the roll-up
+          isn't visible to the viewer, "On your desk" spans the full row. */}
+      <div className={canPublishRollup ? "grid gap-3 lg:grid-cols-2" : ""}>
+        <OnYourDeskCard
+          canApprove={canApprove}
+          canSeeTasks={canSeeTasks}
+          canSeeSignoff={canSeeSignoff}
+        />
+        {canPublishRollup ? <DailyRollup /> : null}
+      </div>
 
       {/* 03+ // Module bento — filtered to the user's access. */}
       <div

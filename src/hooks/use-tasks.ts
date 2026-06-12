@@ -81,10 +81,11 @@ export function useClientTaskSummary(clientId: string | null) {
   });
 }
 
-export function useTaskAttention(enabled = true) {
+export function useTaskAttention(opts: { mine?: boolean; enabled?: boolean } = {}) {
+  const { mine = false, enabled = true } = opts;
   return useQuery({
-    queryKey: ["tasks", "attention"] as const,
-    queryFn: () => getTaskAttention(),
+    queryKey: ["tasks", "attention", { mine }] as const,
+    queryFn: () => getTaskAttention({ mine }),
     enabled,
     staleTime: 30_000,
   });

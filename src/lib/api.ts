@@ -2237,8 +2237,8 @@ export function getClientTaskSummary(clientId: string): Promise<ClientTaskSummar
   return apiFetch(`/api/tasks/summary?clientId=${encodeURIComponent(clientId)}`);
 }
 
-export function getTaskAttention(): Promise<TaskAttentionDTO> {
-  return apiFetch("/api/tasks/attention");
+export function getTaskAttention(opts: { mine?: boolean } = {}): Promise<TaskAttentionDTO> {
+  return apiFetch(`/api/tasks/attention${opts.mine ? "?mine=1" : ""}`);
 }
 
 export function getMyDay(date?: string): Promise<MyDayDTO> {

@@ -234,7 +234,10 @@ export async function getClientTaskSummary(
  * Dashboard "needs attention" — scoped (overdue list capped at 8) + due-soon and
  * in-progress counts. One cheap pass; works for managers (whole scope), not just "me".
  */
-export async function getTaskAttention(user: EffectiveUser): Promise<TaskAttentionDTO> {
+export async function getTaskAttention(
+  user: EffectiveUser,
+  opts: { mine?: boolean } = {},
+): Promise<TaskAttentionDTO> {
   await ensureBaseRecords();
   const scope = await clientScopeWhere(user);
   const now = new Date();
@@ -242,7 +245,18 @@ export async function getTaskAttention(user: EffectiveUser): Promise<TaskAttenti
   const in7 = new Date(startToday);
   in7.setUTCDate(in7.getUTCDate() + 7);
 
-  const open: Prisma.TaskWhereInput = { ...scope, parentId: null, status: { not: "DONE" } };
+  // Mirror listTasks's "assignee" filter: assignees join wins, legacy assigneeId
+  // is the fallback for tasks that haven't been migrated to the many-to-many.
+  const mineFilter: Prisma.TaskWhereInput | null = opts.mine
+    ? { OR: [{ assignees: { some: { id: user.id } } }, { assigneeId: user.id }] }
+    : null;
+
+  const open: Prisma.TaskWhereInput = {
+    ...scope,
+    parentId: null,
+    status: { not: "DONE" },
+    ...(mineFilter ?? {}),
+  };
   const [overdueRows, overdueCount, dueSoonCount, doingCount] = await Promise.all([
     prisma.task.findMany({
       where: { ...open, dueDate: { lt: startToday } },
@@ -252,7 +266,14 @@ export async function getTaskAttention(user: EffectiveUser): Promise<TaskAttenti
     }),
     prisma.task.count({ where: { ...open, dueDate: { lt: startToday } } }),
     prisma.task.count({ where: { ...open, dueDate: { gte: startToday, lt: in7 } } }),
-    prisma.task.count({ where: { ...scope, parentId: null, status: { in: ["DOING", "IN_REVIEW"] } } }),
+    prisma.task.count({
+      where: {
+        ...scope,
+        parentId: null,
+        status: { in: ["DOING", "IN_REVIEW"] },
+        ...(mineFilter ?? {}),
+      },
+    }),
   ]);
 
   return {
