@@ -131,23 +131,23 @@ async function refreshStandupCard(opts: {
     },
   });
   if (refs.length === 0) return;
-  const tasks: StandupTaskCardInput[] = refs
-    .map((r) => {
-      if (!r.task) return null;
-      // Annotate done/in-review tasks in the title so the card visibly reflects state.
-      let title = r.task.title;
-      if (r.task.status === "DONE") title = `~${title}~ ✓`;
-      else if (r.task.status === "IN_REVIEW") title = `${title} (in review)`;
-      return {
+  const tasks: StandupTaskCardInput[] = refs.flatMap((r) => {
+    if (!r.task) return [];
+    // Annotate done/in-review tasks in the title so the card visibly reflects state.
+    let title = r.task.title;
+    if (r.task.status === "DONE") title = `~${title}~ ✓`;
+    else if (r.task.status === "IN_REVIEW") title = `${title} (in review)`;
+    return [
+      {
         taskId: r.task.id,
         messageRefId: r.id,
         title,
         blockName: r.task.featureBlock?.name ?? null,
         dueDate: r.task.dueDate ? r.task.dueDate.toISOString().slice(0, 10) : null,
         clientSlug: r.task.client.slug,
-      };
-    })
-    .filter((t): t is StandupTaskCardInput => t !== null);
+      },
+    ];
+  });
 
   const kind = refs[0].kind;
   const phase: "AM" | "PM" = kind === "STANDUP_PM" ? "PM" : "AM";

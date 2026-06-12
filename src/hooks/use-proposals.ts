@@ -189,6 +189,8 @@ type ClientUpdatePayload = {
   googleDriveFolderUrl?: string;
   clickupUrl?: string;
   slackChannelId?: string;
+  slackInternalChannelId?: string;
+  slackExternalChannelId?: string;
   retainerDays?: number | null;
   retainerDaysUsed?: number | null;
 };

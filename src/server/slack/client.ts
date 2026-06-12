@@ -48,7 +48,7 @@ export function getSlackBotToken(workspace: WorkspaceSlackFields | null | undefi
 async function call<T = Record<string, unknown>>(
   token: string,
   method: string,
-  body: Record<string, unknown>,
+  body: object,
 ): Promise<SlackResponse<T>> {
   const res = await fetch(`${SLACK_API}/${method}`, {
     method: "POST",
