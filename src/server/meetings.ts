@@ -338,7 +338,12 @@ export async function listRecentMeetCalls(client: OAuth2Client, days = 30): Prom
     timeMax: now.toISOString(),
     singleEvents: true,
     orderBy: "startTime",
-    maxResults: 100,
+    // Google Calendar only orders ASCENDING (oldest first) and caps each page. With a low cap
+    // over a 90-day window the page fills with the OLDEST events and recent calls — including
+    // today's — never get returned, so our newest-first sort below has nothing recent to surface.
+    // Pull the whole window (2500 is the API max; 90 days of Meet calls is far under that) and
+    // let the sort put the most recent on top.
+    maxResults: 2500,
   });
 
   const out: CalendarCandidate[] = [];
