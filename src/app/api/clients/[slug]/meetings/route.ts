@@ -3,7 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
-import { listClientMeetings, findPastClientCalls, deriveClientDomains } from "@/server/meetings";
+import { listClientMeetings, findPastClientCalls, listRecentMeetCalls, deriveClientDomains } from "@/server/meetings";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 
@@ -34,20 +34,26 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     const meetings = await listClientMeetings(workspace.id, client.id, q);
 
+    // `all=1` → the manual "grab a note" picker: EVERY recent Meet call on the user's calendar,
+    // unfiltered by name/domain, so a mis-named call (or an internal-only call) can still be
+    // grabbed by hand. Default mode returns only name/domain-matched candidates.
+    const all = req.nextUrl.searchParams.get("all") === "1";
+
     // Candidate past calls from the signed-in user's calendar (best-effort). Skipped in search
     // mode — candidates have no transcript to search, and the user is looking through past notes.
     let candidates: Awaited<ReturnType<typeof findPastClientCalls>> = [];
     let calendarConnected = false;
-    if (!q) {
+    if (!q || all) {
       const auth = await getUserGoogleAuth();
       if (auth.ok) {
         calendarConnected = true;
         try {
-          const domains = deriveClientDomains(client);
           const ingestedEventIds = new Set(
             meetings.map((m: { calendarEventId: string | null }) => m.calendarEventId).filter(Boolean),
           );
-          const found = await findPastClientCalls(auth.client, { domains, name: client.name });
+          const found = all
+            ? await listRecentMeetCalls(auth.client)
+            : await findPastClientCalls(auth.client, { domains: deriveClientDomains(client), name: client.name });
           candidates = found.filter((c) => !ingestedEventIds.has(c.calendarEventId));
         } catch {
           // Calendar unavailable — keep the stored meetings, drop candidates.

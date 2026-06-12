@@ -51,7 +51,7 @@ import {
 import { useCreateTask } from "@/hooks/use-tasks";
 import { cn, formatDate } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
-import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting } from "@/lib/api";
+import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate } from "@/lib/api";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -1185,6 +1185,10 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const [addedTaskIds, setAddedTaskIds] = useState<Record<string, boolean>>({});
   const [addingAll, setAddingAll] = useState(false);
   const [viewing, setViewing] = useState<ScribeMeeting | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Manual "grab a note" picker — pulls EVERY recent Meet call (unfiltered by name/domain) so a
+  // call that wasn't auto-matched (different naming, internal-only attendees) can be grabbed by hand.
+  const allCallsQ = useClientMeetings(slug, pickerOpen, "", true);
 
   async function addActionItemAsTask(clientId: string, itemId: string, text: string) {
     setAddingTaskId(itemId);
@@ -1226,10 +1230,21 @@ function MeetingNotesSection({ slug }: { slug: string }) {
           <span className="widget-header__label--number">12</span>
           {" // MEETING NOTES"}
         </span>
-        <span className="widget-header__status">
-          <VideoCameraIcon className="h-3 w-3" />
-          Scribe
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            title="Grab notes from a recent call that wasn't auto-matched"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 text-[11px] font-medium text-[var(--text-3)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            <PlusIcon className="h-3 w-3" />
+            Grab note
+          </button>
+          <span className="widget-header__status">
+            <VideoCameraIcon className="h-3 w-3" />
+            Scribe
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 p-4">
@@ -1333,7 +1348,132 @@ function MeetingNotesSection({ slug }: { slug: string }) {
           isAddingAll={addingAll}
         />
       )}
+
+      {pickerOpen && (
+        <GrabNoteModal
+          calls={allCallsQ.data?.candidates ?? []}
+          loading={allCallsQ.isLoading}
+          calendarConnected={allCallsQ.data?.calendarConnected ?? false}
+          busyId={busyId}
+          onGrab={(c) => void fetchNotes(c)}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+// GrabNoteModal — manual escape hatch: browse EVERY recent Meet call (not just auto-matched
+// ones) and pull any call's Gemini notes into this client. The ingest route attributes to the
+// page's client explicitly, so naming mismatches don't matter — the human picks the right call.
+function GrabNoteModal({
+  calls,
+  loading,
+  calendarConnected,
+  busyId,
+  onGrab,
+  onClose,
+}: {
+  calls: ScribeCandidate[];
+  loading: boolean;
+  calendarConnected: boolean;
+  busyId: string | null;
+  onGrab: (c: ScribeCandidate) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const filtered = needle ? calls.filter((c) => c.title.toLowerCase().includes(needle)) : calls;
+
+  return (
+    <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="app-dialog-panel flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-5 py-4">
+          <div className="min-w-0">
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-700)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <VideoCameraIcon className="h-3 w-3" />
+              Scribe
+            </span>
+            <h3 className="mt-1.5 text-lg leading-tight text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
+              Grab a note
+            </h3>
+            <p className="mt-1 text-xs text-[var(--text-3)]">
+              Pick any recent Meet call to pull its notes into this client — handy when a call wasn&apos;t auto-matched.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+            title="Close"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="border-b border-[var(--border-1)] px-5 py-3">
+          <div className="relative">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-4)]" />
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filter by title…"
+              autoFocus
+              className="w-full rounded-[6px] border border-[var(--border-2)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:border-[var(--accent)] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+          {loading && <p className="widget-data-label animate-pulse py-6 text-center">Loading recent calls…</p>}
+          {!loading && !calendarConnected && (
+            <p className="py-6 text-center text-sm text-[var(--text-4)]">
+              Connect Google Calendar (sign out and back in) to browse your recent Meet calls.
+            </p>
+          )}
+          {!loading && calendarConnected && filtered.length === 0 && (
+            <p className="py-6 text-center text-sm text-[var(--text-4)]">
+              {q ? `No calls matching "${q}".` : "No recent calls to grab — they may already be captured."}
+            </p>
+          )}
+          {filtered.length > 0 && (
+            <ul className="divide-y divide-[rgba(0,0,0,0.06)] overflow-hidden rounded-[8px] border border-[var(--border-1)]">
+              {filtered.map((c) => {
+                const busy = busyId === c.calendarEventId;
+                return (
+                  <li key={c.calendarEventId} className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{c.title}</p>
+                      <p className="widget-timestamp mt-0.5">{formatDate(c.start)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy || !c.meetingCode}
+                      onClick={() => onGrab(c)}
+                      title={c.meetingCode ? "Pull this call's notes into this client" : "No Meet link on this event"}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Grabbing</>
+                      ) : (
+                        <><PlusIcon className="h-3 w-3" />{c.meetingCode ? "Grab" : "No link"}</>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

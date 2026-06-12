@@ -1856,8 +1856,9 @@ export interface ClientMeetingsResponse {
   query?: string | null;
 }
 
-export async function getClientMeetings(slug: string, q?: string): Promise<ClientMeetingsResponse> {
-  const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+export async function getClientMeetings(slug: string, q?: string, all?: boolean): Promise<ClientMeetingsResponse> {
+  // `all` = the manual "grab a note" picker: every recent Meet call, unfiltered by name/domain.
+  const qs = all ? "?all=1" : q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
   return apiFetch(`/api/clients/${slug}/meetings${qs}`);
 }
 

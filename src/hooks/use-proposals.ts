@@ -461,10 +461,10 @@ export function useClientSlackActivity(slug: string, enabled = true) {
 
 // ─── Scribe (client meeting notes) ─────────────────────────────────────────
 
-export function useClientMeetings(slug: string, enabled = true, q = "") {
+export function useClientMeetings(slug: string, enabled = true, q = "", all = false) {
   return useQuery({
-    queryKey: ["client-meetings", slug, q],
-    queryFn: () => getClientMeetings(slug, q),
+    queryKey: ["client-meetings", slug, q, all],
+    queryFn: () => getClientMeetings(slug, q, all),
     enabled: Boolean(slug) && enabled,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
