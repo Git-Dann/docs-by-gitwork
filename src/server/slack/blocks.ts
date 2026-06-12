@@ -34,14 +34,6 @@ export interface StandupTaskCardInput {
   description?: string | null;
 }
 
-const STATUS_EMOJI: Record<NonNullable<StandupTaskCardInput["status"]>, string> = {
-  BACKLOG: ":white_circle:",
-  TODO: ":large_blue_circle:",
-  DOING: ":large_yellow_circle:",
-  IN_REVIEW: ":eyes:",
-  DONE: ":white_check_mark:",
-};
-
 /** Pretty-print a YYYY-MM-DD or Weekday-prefixed label as "Friday, 12 June".
  *  Callers may pass either an ISO date or a partially-formatted string; we
  *  pluck the ISO chunk and reformat, falling back to the original on parse
@@ -103,7 +95,6 @@ function taskDeepLink(t: Pick<StandupTaskCardInput, "clientSlug" | "taskId">): s
  * Returns `{ text, blocks }` ready for chat.postMessage.
  */
 export function buildStandupCard(input: BuildStandupCardInput): { text: string; blocks: SlackBlock[] } {
-  const phaseEmoji = input.phase === "AM" ? ":large_yellow_circle:" : ":white_check_mark:";
   const phaseLabel = input.phase === "AM" ? "In Progress" : "Done today";
   const visible = input.tasks.slice(0, MAX_TASKS_PER_CARD);
   const overflowCount = Math.max(0, input.tasks.length - MAX_TASKS_PER_CARD);
@@ -125,7 +116,7 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
         text:
           `*Owner:* ${escapeMrkdwn(input.who)}\n` +
           `*Date:* ${escapeMrkdwn(friendlyDate)}\n` +
-          `${phaseEmoji} *${phaseLabel}*`,
+          `*${phaseLabel}*`,
       },
     },
   ];
@@ -157,18 +148,17 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     });
     for (const t of visible) {
       const status = t.status ?? "DOING";
-      const statusE = STATUS_EMOJI[status];
       const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
+      // Meta: drop the client name (we're posting in the client's channel
+      // already, so it's redundant). Keep block + due. Overdue gets a text
+      // "(overdue)" suffix instead of an emoji warning.
       const metaParts: string[] = [];
-      if (t.clientName) metaParts.push(escapeMrkdwn(t.clientName));
       if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
       if (t.dueDate) {
         const dueFriendly = formatFriendlyDue(t.dueDate, today);
-        metaParts.push(isOverdue ? `:warning: due ${dueFriendly}` : `due ${dueFriendly}`);
+        metaParts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
       }
       const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
-      // One-line description preview — strip markdown / newlines so the row
-      // stays scannable; full text lives in the "Show details" modal.
       const descPreview = t.description?.trim()
         ? truncate(stripToPlain(t.description.trim()), 180)
         : null;
@@ -180,33 +170,33 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
           type: "mrkdwn",
           // Title is a markdown link so the user can jump to the task with
           // a single click — no separate button needed. Description goes on
-          // the next line, dimmed, to give context without dominating.
+          // the next line, italicised, to give context without dominating.
           text:
-            `${statusE}  <${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
-            (descPreview ? `\n${escapeMrkdwn(descPreview)}` : ""),
+            `<${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
+            (descPreview ? `\n_${escapeMrkdwn(descPreview)}_` : ""),
         },
         accessory: {
           type: "overflow",
           action_id: `task.menu.${t.taskId}`,
           options: [
             {
-              text: { type: "plain_text", emoji: true, text: ":white_check_mark: Mark done" },
+              text: { type: "plain_text", text: "Mark done" },
               value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
             },
             {
-              text: { type: "plain_text", emoji: true, text: ":mag: Mark in review" },
+              text: { type: "plain_text", text: "Mark in review" },
               value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
             },
             {
-              text: { type: "plain_text", emoji: true, text: ":speech_balloon: Add comment" },
+              text: { type: "plain_text", text: "Add comment" },
               value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
             },
             {
-              text: { type: "plain_text", emoji: true, text: ":memo: Show details" },
+              text: { type: "plain_text", text: "Show details" },
               value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
             },
             {
-              text: { type: "plain_text", emoji: true, text: ":arrow_upper_right: Open in Foundry" },
+              text: { type: "plain_text", text: "Open in Foundry" },
               url: taskDeepLink(t),
               value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}`,
             },
@@ -248,7 +238,7 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     elements: [
       {
         type: "button",
-        text: { type: "plain_text", emoji: true, text: ":clipboard: View my board" },
+        text: { type: "plain_text", text: "View my board" },
         url: `${APP_BASE_URL}/app/portal`,
         action_id: "standup.viewBoard",
       },
