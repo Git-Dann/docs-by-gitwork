@@ -88,6 +88,7 @@ const SLACK_APP_MANIFEST_JSON = JSON.stringify(
         bot: [
           "chat:write",
           "chat:write.public",
+          "chat:write.customize",
           "channels:read",
           "channels:manage",
           "groups:read",

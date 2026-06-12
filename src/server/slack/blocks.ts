@@ -38,6 +38,44 @@ const STATUS_EMOJI: Record<NonNullable<StandupTaskCardInput["status"]>, string> 
   DONE: ":white_check_mark:",
 };
 
+/** Pretty-print a YYYY-MM-DD or Weekday-prefixed label as "Friday, 12 June".
+ *  Callers may pass either an ISO date or a partially-formatted string; we
+ *  pluck the ISO chunk and reformat, falling back to the original on parse
+ *  failure so the card never breaks. */
+function formatFriendlyDate(raw: string): string {
+  const iso = raw.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (!iso) return raw;
+  const d = new Date(iso + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return raw;
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(d);
+}
+
+/** Pretty-print a due-date as "today", "tomorrow", "Fri 12 Jun", etc. */
+function formatFriendlyDue(rawDue: string, todayIso: string | null): string {
+  if (!todayIso) return rawDue;
+  const due = new Date(rawDue + "T00:00:00Z");
+  const today = new Date(todayIso + "T00:00:00Z");
+  if (Number.isNaN(due.getTime()) || Number.isNaN(today.getTime())) return rawDue;
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "tomorrow";
+  if (diffDays === -1) return "yesterday";
+  if (diffDays > 1 && diffDays < 7) {
+    return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(due);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(due);
+}
+
 export interface BuildStandupCardInput {
   phase: "AM" | "PM";
   who: string;
@@ -70,10 +108,11 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     (t) => t.dueDate && today && t.dueDate < today && t.status !== "DONE",
   ).length;
 
-  const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${input.workdayLabel})`;
+  const friendlyDate = formatFriendlyDate(input.workdayLabel);
+  const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${friendlyDate})`;
 
   // ─── Owner + date header — narrative style, mirrors how the team writes
-  //     standups in chat ("Owner: @Dan / Date: Friday 12 June / In Progress").
+  //     standups in chat ("Owner: @Dan / Date: Friday, 12 June / In Progress").
   const blocks: SlackBlock[] = [
     {
       type: "section",
@@ -81,7 +120,7 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
         type: "mrkdwn",
         text:
           `*Owner:* ${escapeMrkdwn(input.who)}\n` +
-          `*Date:* ${escapeMrkdwn(input.workdayLabel)}\n` +
+          `*Date:* ${escapeMrkdwn(friendlyDate)}\n` +
           `${phaseEmoji} *${phaseLabel}*`,
       },
     },
@@ -120,7 +159,8 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
       if (t.clientName) metaParts.push(escapeMrkdwn(t.clientName));
       if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
       if (t.dueDate) {
-        metaParts.push(isOverdue ? `:warning: due ${t.dueDate}` : `due ${t.dueDate}`);
+        const dueFriendly = formatFriendlyDue(t.dueDate, today);
+        metaParts.push(isOverdue ? `:warning: due ${dueFriendly}` : `due ${dueFriendly}`);
       }
       const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
       const value = encodeActionValue(t.messageRefId, t.taskId);
