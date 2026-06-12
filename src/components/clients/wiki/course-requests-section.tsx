@@ -10,6 +10,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 
@@ -57,6 +58,24 @@ function copyLines(reqs: CourseRequestRecord[]): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function downloadTxt(reqs: CourseRequestRecord[], filename: string) {
+  const text = reqs
+    .map((r) => {
+      const country = safeCountry(r.country);
+      return country ? `${r.courseName}, ${country}` : r.courseName;
+    })
+    .filter(Boolean)
+    .join("\n");
+  if (!text) return;
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 const menuPanel =
@@ -219,16 +238,30 @@ export function CourseRequestsSection({
               : `${STATUS_LABEL[s]} (${counts[s]})`}
           </button>
         ))}
-        {!readOnly && filtered.length > 1 && (
-          <button
-            type="button"
-            onClick={toggleAll}
-            className="ml-auto text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-            style={{ fontFamily: MONO }}
-          >
-            {allVisibleSelected ? "Deselect all" : "Select all"}
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {filtered.length > 0 && (
+            <button
+              type="button"
+              onClick={() => downloadTxt(filtered, "course-requests.txt")}
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              title="Download visible list as .txt"
+              style={{ fontFamily: MONO }}
+            >
+              <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+              .txt
+            </button>
+          )}
+          {!readOnly && filtered.length > 1 && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              style={{ fontFamily: MONO }}
+            >
+              {allVisibleSelected ? "Deselect all" : "Select all"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Column header row ──────────────────────────────────────────── */}
@@ -539,6 +572,16 @@ export function CourseRequestsSection({
           >
             <ClipboardDocumentIcon className="h-3.5 w-3.5" />
             Copy only
+          </button>
+
+          {/* Download selected as .txt */}
+          <button
+            type="button"
+            onClick={() => downloadTxt(selectedRows, "course-requests.txt")}
+            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+          >
+            <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+            Download .txt
           </button>
 
           {/* Mark as any status */}
