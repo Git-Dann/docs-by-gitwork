@@ -10,6 +10,7 @@ import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
+import { OnYourDesk } from "@/components/dashboard/on-your-desk";
 import { ATTENTION_CARDS } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
@@ -106,6 +107,11 @@ export function AppOverview() {
           ))}
         </div>
       ) : null}
+
+      {/* "On your desk" — personal task strip. Devs see an equivalent inside
+          DevOverview's My Day card, so this only renders for staff/admin who
+          fall through to the bento layout. */}
+      <OnYourDesk />
 
       {/* Module bento — filtered to the user's access. */}
       <div
