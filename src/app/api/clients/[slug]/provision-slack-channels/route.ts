@@ -36,7 +36,7 @@ export async function POST(
   try {
     await ensureBaseRecords();
     const user = await getEffectiveUserOrNull(request);
-    await assertCan(user, canManageClients);
+    assertCan(user, canManageClients, "provision Slack channels");
     const { slug } = await params;
 
     const client = await prisma.workspaceClient.findFirst({
