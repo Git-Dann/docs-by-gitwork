@@ -2241,6 +2241,19 @@ export function getTaskAttention(opts: { mine?: boolean } = {}): Promise<TaskAtt
   return apiFetch(`/api/tasks/attention${opts.mine ? "?mine=1" : ""}`);
 }
 
+/**
+ * Push a single task as a Block Kit card to its client's linked Slack channel.
+ * Used by the per-task "Push" test buttons on HQ — does NOT count as the
+ * daily standup (its SlackMessageRef carries kind "TEST_PUSH").
+ */
+export function pushTaskToSlack(
+  taskId: string,
+): Promise<{ posted: boolean; channelId: string; messageTs: string }> {
+  return apiFetch(`/api/tasks/${encodeURIComponent(taskId)}/push-to-slack`, {
+    method: "POST",
+  });
+}
+
 export function getMyDay(date?: string): Promise<MyDayDTO> {
   return apiFetch(`/api/tasks/standup${date ? `?date=${encodeURIComponent(date)}` : ""}`);
 }

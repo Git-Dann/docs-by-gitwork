@@ -78,13 +78,11 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
           07 // MAIL
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
           {unread > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1D4ED8] px-1 text-xs font-bold text-white">
-              {unread}
-            </span>
+            <span className="text-[var(--brand-700)]">{unread} new</span>
           )}
-          <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>{messages.length} msgs</span>
+          <span>{messages.length} msgs</span>
         </div>
       </div>
 

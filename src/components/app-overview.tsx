@@ -28,19 +28,19 @@ type GridEntry = {
 
 const ROW_HEIGHT = 220;
 
-// 6 widgets × their col spans = 1+2+4+2+2+4 = 15 slots = exactly 5 rows × 3 cols.
-// Dropped from the bento (per Dan's feedback on the 911454a build):
-//   - CodeClearWidget — dev-count is a Code-module concern, not a day-to-day signal
-//   - StudyWidget — surface in Study module instead
-//   - BackstageWidget — folded into <OnYourDeskCard>'s Upcoming section
-// Pulse was shrunk from 2-wide to 1-wide so it pairs with Care on row 1.
+// 6 widgets × 1 = 6 cells = exactly 2 rows × 3 cols. Per HQ-pass-3:
+//   row 1: 03 PULSE · 04 CARE · 05 DOCS — all equal-width compact tiles
+//   row 2: 06 CLIENTS · 07 MAIL · 08 CALENDAR — same shape
+// Each widget renders at size:"sm" — uses each widget's compact variant where
+// one exists. Tall variants from before are gone; the goal is at-a-glance,
+// not full feed inside the bento (use the module page for the full feed).
 const GRID: GridEntry[] = [
-  { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },    // row 1: col 1
-  { component: CareWidget,      cols: 2, rows: 1, size: "md", module: "support" },  // row 1: cols 2-3
-  { component: ProposalsWidget, cols: 2, rows: 2, size: "lg", module: "proposals" },// rows 2-3: cols 1-2
-  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },  // rows 2-3: col 3
-  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },                     // rows 4-5: col 1
-  { component: CalendarWidget,  cols: 2, rows: 2, size: "lg" },                     // rows 4-5: cols 2-3
+  { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },
+  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
+  { component: ProposalsWidget, cols: 1, rows: 1, size: "sm", module: "proposals" },
+  { component: ClientsWidget,   cols: 1, rows: 1, size: "sm", module: "clients" },
+  { component: GmailWidget,     cols: 1, rows: 1, size: "sm" },
+  { component: CalendarWidget,  cols: 1, rows: 1, size: "sm" },
 ];
 
 function greetingPart(): string {

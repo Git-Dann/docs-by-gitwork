@@ -24,6 +24,7 @@ import {
   useReviewExpense,
 } from "@/hooks/use-backstage";
 import { useTaskAttention, usePushDailyUpdate, useMyDay } from "@/hooks/use-tasks";
+import { pushTaskToSlack } from "@/lib/api";
 import { useProposalList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import type { LeaveType, StaffingAlert } from "@/types/backstage";
@@ -83,6 +84,22 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
   const myDay = useMyDay();
   const pushUpdate = usePushDailyUpdate();
   const [pushFeedback, setPushFeedback] = useState<string | null>(null);
+  // Per-task push state — keyed by task id so two clicks don't fight.
+  const [pushingTaskId, setPushingTaskId] = useState<string | null>(null);
+  const [taskPushFeedback, setTaskPushFeedback] = useState<{ taskId: string; msg: string; ok: boolean } | null>(null);
+  async function handlePushTask(taskId: string) {
+    setPushingTaskId(taskId);
+    setTaskPushFeedback(null);
+    try {
+      await pushTaskToSlack(taskId);
+      setTaskPushFeedback({ taskId, msg: "posted ✓", ok: true });
+    } catch (err) {
+      setTaskPushFeedback({ taskId, msg: (err as Error).message, ok: false });
+    } finally {
+      setPushingTaskId(null);
+      setTimeout(() => setTaskPushFeedback((f) => (f?.taskId === taskId ? null : f)), 4000);
+    }
+  }
   const amPushed = Boolean(myDay.data?.update?.amPushedAt);
   const pmPushed = Boolean(myDay.data?.update?.pmPushedAt);
   async function handlePushStandup(phase: "AM" | "PM") {
@@ -224,33 +241,62 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
             >
               Doing ({doingCount})
             </p>
-            {doingTasks.slice(0, TASKS_CAP).map((t) => (
-              <Link
-                key={t.id}
-                href={`/app/portal/${t.client.slug}/tasks?task=${encodeURIComponent(t.id)}`}
-                className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className="shrink-0 text-[10px] text-[var(--text-4)]"
-                    style={{ fontFamily: "var(--font-mono)" }}
+            {doingTasks.slice(0, TASKS_CAP).map((t) => {
+              const feedback = taskPushFeedback?.taskId === t.id ? taskPushFeedback : null;
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+                >
+                  <Link
+                    href={`/app/portal/${t.client.slug}/tasks?task=${encodeURIComponent(t.id)}`}
+                    className="flex min-w-0 flex-1 items-center gap-2"
                   >
-                    {taskRef(t.id)}
-                  </span>
-                  <span className="truncate text-sm font-medium text-[var(--text-1)]">
-                    {t.title}
-                  </span>
-                  <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">
-                    · {t.client.name}
-                  </span>
+                    <span
+                      className="shrink-0 text-[10px] text-[var(--text-4)]"
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                      {taskRef(t.id)}
+                    </span>
+                    <span className="truncate text-sm font-medium text-[var(--text-1)]">
+                      {t.title}
+                    </span>
+                    <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">
+                      · {t.client.name}
+                    </span>
+                  </Link>
+                  {t.dueDate ? (
+                    <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-4)]">
+                      {formatDate(t.dueDate)}
+                    </span>
+                  ) : null}
+                  {feedback ? (
+                    <span
+                      className={
+                        "shrink-0 text-[10px] font-medium " +
+                        (feedback.ok ? "text-emerald-600" : "text-rose-600")
+                      }
+                    >
+                      {feedback.msg}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void handlePushTask(t.id);
+                      }}
+                      disabled={pushingTaskId === t.id}
+                      title="Push this task to the client's Slack channel (test the Block Kit card + interactivity)"
+                      className="shrink-0 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                    >
+                      {pushingTaskId === t.id ? "Posting…" : "Push"}
+                    </button>
+                  )}
                 </div>
-                {t.dueDate ? (
-                  <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-4)]">
-                    {formatDate(t.dueDate)}
-                  </span>
-                ) : null}
-              </Link>
-            ))}
+              );
+            })}
             {doingCount > TASKS_CAP ? (
               <p className="text-center text-[11px] text-[var(--text-4)]">
                 +{doingCount - TASKS_CAP} more in progress

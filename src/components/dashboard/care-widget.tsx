@@ -18,15 +18,21 @@ function ClientRow({ clientId, name }: { clientId: string; name: string }) {
       className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
     >
       <span className="truncate text-sm text-[#0F172A]">{name}</span>
-      <div className="ml-2 flex shrink-0 items-center gap-1.5">
+      <div className="ml-2 flex shrink-0 items-center gap-2">
         {openTickets > 0 && (
-          <span className="rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[#475569]">
-            {openTickets}t
+          <span
+            className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+            title={`${openTickets} open ticket${openTickets === 1 ? "" : "s"}`}
+          >
+            {openTickets} open
           </span>
         )}
         {unread > 0 && (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1D4ED8] text-xs font-bold text-white">
-            {unread}
+          <span
+            className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--brand-700)]"
+            title={`${unread} unread message${unread === 1 ? "" : "s"}`}
+          >
+            {unread} new
           </span>
         )}
       </div>
