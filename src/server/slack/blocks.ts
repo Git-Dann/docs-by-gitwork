@@ -28,6 +28,10 @@ export interface StandupTaskCardInput {
   clientName?: string | null;
   /** Drives the leading status emoji. Defaults to DOING when omitted. */
   status?: "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "DONE";
+  /** Task description (markdown). Rendered as a one-line preview under the
+   *  title, truncated to keep the card scannable; full text lives in the
+   *  "Show details" modal. */
+  description?: string | null;
 }
 
 const STATUS_EMOJI: Record<NonNullable<StandupTaskCardInput["status"]>, string> = {
@@ -163,6 +167,11 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
         metaParts.push(isOverdue ? `:warning: due ${dueFriendly}` : `due ${dueFriendly}`);
       }
       const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
+      // One-line description preview — strip markdown / newlines so the row
+      // stays scannable; full text lives in the "Show details" modal.
+      const descPreview = t.description?.trim()
+        ? truncate(stripToPlain(t.description.trim()), 180)
+        : null;
       const value = encodeActionValue(t.messageRefId, t.taskId);
 
       blocks.push({
@@ -170,8 +179,11 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
         text: {
           type: "mrkdwn",
           // Title is a markdown link so the user can jump to the task with
-          // a single click — no separate button needed.
-          text: `${statusE}  <${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}`,
+          // a single click — no separate button needed. Description goes on
+          // the next line, dimmed, to give context without dominating.
+          text:
+            `${statusE}  <${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
+            (descPreview ? `\n${escapeMrkdwn(descPreview)}` : ""),
         },
         accessory: {
           type: "overflow",
@@ -406,6 +418,24 @@ function escapeMrkdwn(s: string): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+/** Strip common markdown to a flat one-line preview — keeps the standup card
+ *  scannable when descriptions are multi-paragraph or have headings, lists,
+ *  bold, code etc. The full text still renders untouched in the details modal. */
+function stripToPlain(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
+    .replace(/`([^`]+)`/g, "$1")      // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // images
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links → just the label
+    .replace(/^#{1,6}\s+/gm, "")      // ATX headings
+    .replace(/^[\s]*[-*+]\s+/gm, "")  // bullet list markers
+    .replace(/^\s*>\s?/gm, "")        // blockquote markers
+    .replace(/(\*\*|__)(.*?)\1/g, "$2") // bold
+    .replace(/([*_])(.*?)\1/g, "$2")  // italic
+    .replace(/\s+/g, " ")             // collapse all whitespace incl. newlines
+    .trim();
 }
 
 /**

@@ -276,6 +276,7 @@ async function postStandupToSlack(
       blockName: t.featureBlock?.name ?? null,
       dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
       status: t.status,
+      description: t.description,
     }));
 
     const card = buildStandupCard({

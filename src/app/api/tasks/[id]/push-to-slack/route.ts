@@ -90,6 +90,7 @@ export async function POST(
       blockName: task.featureBlock?.name ?? null,
       dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null,
       status: task.status,
+      description: task.description,
     };
 
     const card = buildStandupCard({

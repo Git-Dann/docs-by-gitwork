@@ -122,6 +122,7 @@ async function refreshStandupCard(opts: {
         select: {
           id: true,
           title: true,
+          description: true,
           status: true,
           dueDate: true,
           featureBlock: { select: { name: true } },
@@ -146,6 +147,7 @@ async function refreshStandupCard(opts: {
         blockName: r.task.featureBlock?.name ?? null,
         dueDate: r.task.dueDate ? r.task.dueDate.toISOString().slice(0, 10) : null,
         status: r.task.status,
+        description: r.task.description,
       },
     ];
   });
