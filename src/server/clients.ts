@@ -845,10 +845,8 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   const proposals = await prisma.document.findMany({
     where: {
       workspaceId: workspace.id,
-      documentType: "PROPOSAL",
-      clientName: {
-        not: null,
-      },
+      documentType: { in: ["PROPOSAL", "SOW", "MSA", "NDA", "DSA"] },
+      OR: [{ clientName: { not: null } }, { clientId: { not: null } }],
     },
     include: clientProposalInclude,
     orderBy: {

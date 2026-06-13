@@ -11,6 +11,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CodeBracketIcon,
+  ExclamationTriangleIcon,
   EyeIcon,
   EyeSlashIcon,
   ArrowUpRightIcon,
@@ -56,6 +57,7 @@ import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, typ
 import type {
   ClientBankReveal,
   ClientBankSummary,
+  ClientDetailRecord,
   ClientDesignRecord,
   ClientPlatformRecord,
 } from "@/types/client";
@@ -148,6 +150,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
   const { client, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies } = data;
   const isSuggested = client.source === "SUGGESTED";
+  const activationChecklist = buildActivationChecklist({ client, proposals, platforms, designs });
 
   function openEdit() {
     setEditForm({
@@ -270,6 +273,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <PendingReviewBanner
           slug={slug}
           companyName={client.legalCompanyName ?? client.name}
+          checklist={activationChecklist}
         />
       )}
 
@@ -2714,12 +2718,129 @@ function ClientEditModal({
 
 // ─── Pending review banner ──────────────────────────────────────────────────
 
+type ActivationChecklistItem = {
+  id: string;
+  label: string;
+  detail: string;
+  complete: boolean;
+  required: boolean;
+};
+
+type ActivationChecklist = {
+  items: ActivationChecklistItem[];
+  readyCount: number;
+  requiredMissing: number;
+  totalCount: number;
+};
+
+const LEGAL_DOCUMENT_TYPES = new Set(["SOW", "MSA", "NDA", "DSA"]);
+
+function documentSummary(document: ClientDetailRecord["proposals"][number] | undefined): string {
+  if (!document) return "";
+  const type = document.documentType === "PROPOSAL" ? "Proposal" : document.documentType;
+  return `${type}: ${document.title}`;
+}
+
+function buildActivationChecklist({
+  client,
+  proposals,
+  platforms,
+  designs,
+}: Pick<ClientDetailRecord, "client" | "proposals" | "platforms" | "designs">): ActivationChecklist {
+  const acceptedProposal = proposals.find(
+    (document) => document.documentType === "PROPOSAL" && document.status === "ACCEPTED",
+  );
+  const acceptedLegalDocument = proposals.find(
+    (document) => LEGAL_DOCUMENT_TYPES.has(document.documentType) && document.status === "ACCEPTED",
+  );
+  const sentCommercialDocument = proposals.find((document) =>
+    ["SENT", "ACCEPTED"].includes(document.status),
+  );
+  const contactReady = Boolean(client.primaryContactName && client.primaryContactEmail);
+  const deliveryReady = Boolean(
+    client.googleDriveFolderUrl ||
+      client.clickupUrl ||
+      client.slackInternalChannelId ||
+      client.slackChannelId ||
+      platforms.length > 0 ||
+      designs.length > 0,
+  );
+
+  const items: ActivationChecklistItem[] = [
+    {
+      id: "onboarding",
+      label: "Onboarding submitted",
+      complete: Boolean(client.onboardingId),
+      required: true,
+      detail: client.onboardingId ? "Linked onboarding record found." : "No onboarding record linked yet.",
+    },
+    {
+      id: "commercial",
+      label: "Commercial sign-off",
+      complete: Boolean(acceptedProposal || acceptedLegalDocument),
+      required: true,
+      detail:
+        documentSummary(acceptedLegalDocument ?? acceptedProposal) ||
+        (sentCommercialDocument
+          ? `${documentSummary(sentCommercialDocument)} is still awaiting acceptance.`
+          : "No accepted proposal or legal document yet."),
+    },
+    {
+      id: "contract",
+      label: "Contract pack",
+      complete: Boolean(acceptedLegalDocument),
+      required: false,
+      detail: acceptedLegalDocument
+        ? documentSummary(acceptedLegalDocument)
+        : acceptedProposal
+          ? "Accepted proposal present; legal pack can be added separately."
+          : "Add an SOW, MSA, NDA, or DSA where the engagement needs it.",
+    },
+    {
+      id: "contact",
+      label: "Primary contact",
+      complete: contactReady,
+      required: true,
+      detail: contactReady
+        ? `${client.primaryContactName} / ${client.primaryContactEmail}`
+        : "Primary name and email are not both filled.",
+    },
+    {
+      id: "delivery",
+      label: "Delivery setup",
+      complete: deliveryReady,
+      required: false,
+      detail: deliveryReady
+        ? "At least one workspace, channel, platform, or design link exists."
+        : "No delivery workspace, channel, platform, or design link yet.",
+    },
+    {
+      id: "bank",
+      label: "Bank details",
+      complete: Boolean(client.bank?.onFile),
+      required: false,
+      detail: client.bank?.onFile
+        ? `Bank details on file${client.bank.accountNumberLast4 ? ` ending ${client.bank.accountNumberLast4}` : ""}.`
+        : "Not on file.",
+    },
+  ];
+
+  return {
+    items,
+    readyCount: items.filter((item) => item.complete).length,
+    requiredMissing: items.filter((item) => item.required && !item.complete).length,
+    totalCount: items.length,
+  };
+}
+
 function PendingReviewBanner({
   slug,
   companyName,
+  checklist,
 }: {
   slug: string;
   companyName: string;
+  checklist: ActivationChecklist;
 }) {
   const setStatus = useSetClientStatus(slug);
   const [error, setError] = useState<string | null>(null);
@@ -2737,14 +2858,16 @@ function PendingReviewBanner({
 
   return (
     <section className="rounded-[10px] border border-amber-200 bg-amber-50 px-5 py-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-amber-900">
-            Submitted via onboarding — awaiting review
+            Pending activation review
           </p>
           <p className="mt-0.5 text-xs text-amber-800">
-            {companyName} has filled in their onboarding. Review their answers below, then
-            move them to workflow to enable Pulse scans and full Portal access.
+            {companyName} has {checklist.readyCount}/{checklist.totalCount} checks ready.
+            {checklist.requiredMissing > 0
+              ? ` ${checklist.requiredMissing} required check${checklist.requiredMissing === 1 ? "" : "s"} still need attention.`
+              : " Required checks are clear."}
           </p>
         </div>
         <Button
@@ -2756,8 +2879,44 @@ function PendingReviewBanner({
           data-slug={slug}
         >
           <CheckCircleIcon className="h-4 w-4" />
-          Move to workflow
+          {checklist.requiredMissing > 0 ? "Move anyway" : "Move to workflow"}
         </Button>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {checklist.items.map((item) => (
+          <div
+            key={item.id}
+            className={cn(
+              "flex min-w-0 items-start gap-2 rounded-[8px] border bg-white px-3 py-2",
+              item.complete
+                ? "border-emerald-200"
+                : item.required
+                  ? "border-amber-300"
+                  : "border-[var(--border-2)]",
+            )}
+          >
+            {item.complete ? (
+              <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            ) : item.required ? (
+              <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            ) : (
+              <XMarkIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
+            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-xs font-semibold text-[var(--text-1)]">{item.label}</p>
+                {item.required ? (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                    Required
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">
+                {item.detail}
+              </p>
+            </div>
+          </div>
+        ))}
       </div>
       {error && (
         <p className="mt-2 text-xs text-rose-700">{error}</p>

@@ -63,6 +63,8 @@ import type {
 } from "@/types/design-tokens";
 import type {
   FoundryAutomationResponse,
+  ProjectPlanPreview,
+  ProjectPlanRequest,
   SeedProjectPlanResult,
 } from "@/types/foundry-automation";
 
@@ -82,11 +84,15 @@ export async function getFoundryAutomation(): Promise<FoundryAutomationResponse>
   return apiFetch<FoundryAutomationResponse>("/api/foundry/automation");
 }
 
-export async function seedProjectPlan(input: {
-  clientId: string;
-  documentId?: string;
-  startDate?: string;
-}): Promise<{ result: SeedProjectPlanResult }> {
+export async function previewProjectPlan(input: ProjectPlanRequest): Promise<{ preview: ProjectPlanPreview }> {
+  return apiFetch<{ preview: ProjectPlanPreview }>("/api/foundry/automation/preview-project-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function seedProjectPlan(input: ProjectPlanRequest): Promise<{ result: SeedProjectPlanResult }> {
   return apiFetch<{ result: SeedProjectPlanResult }>("/api/foundry/automation/seed-project-plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getFoundryAutomation, seedProjectPlan } from "@/lib/api";
+import { getFoundryAutomation, previewProjectPlan, seedProjectPlan } from "@/lib/api";
 
 const QK = {
   automation: ["foundry", "automation"] as const,
@@ -25,5 +25,11 @@ export function useSeedProjectPlan() {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
       void queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
+  });
+}
+
+export function usePreviewProjectPlan() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof previewProjectPlan>[0]) => previewProjectPlan(input),
   });
 }

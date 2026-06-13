@@ -102,6 +102,63 @@ export type FoundryAutomationResponse = {
   items: FoundryAutomationItem[];
 };
 
+export type ProjectPlanRequest = {
+  clientId: string;
+  documentId?: string;
+  startDate?: string;
+};
+
+export type ProjectPlanPreviewTask = {
+  key: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  existing: boolean;
+};
+
+export type ProjectPlanPreviewBlock = {
+  key: string;
+  phaseId: string;
+  name: string;
+  summary: string;
+  startDate: string;
+  endDate: string;
+  color: string;
+  existing: boolean;
+  tasks: ProjectPlanPreviewTask[];
+};
+
+export type ProjectPlanPreviewMilestone = {
+  key: string;
+  phaseId: string;
+  name: string;
+  description: string;
+  date: string;
+  color: string;
+  existing: boolean;
+};
+
+export type ProjectPlanPreview = {
+  clientId: string;
+  clientSlug: string;
+  sourceDocumentId: string;
+  sourceDocumentTitle: string;
+  startDate: string;
+  totals: {
+    featureBlocks: number;
+    milestones: number;
+    tasks: number;
+    newFeatureBlocks: number;
+    newMilestones: number;
+    newTasks: number;
+    existingFeatureBlocks: number;
+    existingMilestones: number;
+    existingTasks: number;
+  };
+  blocks: ProjectPlanPreviewBlock[];
+  milestones: ProjectPlanPreviewMilestone[];
+};
+
 export type SeedProjectPlanResult = {
   clientId: string;
   clientSlug: string;

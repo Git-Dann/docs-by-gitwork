@@ -27,6 +27,12 @@
 .DS_Store
 *.pem
 .cache/
+.* 2
+* 2.json
+* 2.mts
+* 2.ts
+* 2.tsx
+* 2.tsbuildinfo
 
 # debug
 npm-debug.log*

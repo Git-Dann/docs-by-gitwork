@@ -20,6 +20,10 @@ import type {
   AutomationStageKey,
   FoundryAutomationItem,
   FoundryAutomationResponse,
+  ProjectPlanPreview,
+  ProjectPlanPreviewBlock,
+  ProjectPlanPreviewMilestone,
+  ProjectPlanRequest,
   SeedProjectPlanResult,
 } from "@/types/foundry-automation";
 import type { WorkspaceClientStatus } from "@/types/client";
@@ -452,10 +456,19 @@ function deliverablesFrom(value: Prisma.JsonValue): string[] {
     .filter(Boolean);
 }
 
-export async function seedProjectPlanFromProposal(
-  user: EffectiveUser,
-  input: { clientId: string; documentId?: string; startDate?: string },
-): Promise<SeedProjectPlanResult> {
+function toExistingKeySet(rows: Array<{ clickupId: string | null }>): Set<string> {
+  return new Set(rows.flatMap((row) => (row.clickupId ? [row.clickupId] : [])));
+}
+
+function parseAnchorDate(startDate: string | undefined, fallback: Date): Date {
+  const value = startDate ? new Date(startDate) : fallback;
+  if (Number.isNaN(value.getTime())) {
+    throw new Error("Choose a valid plan start date before previewing the delivery plan.");
+  }
+  return startOfUtcDay(value);
+}
+
+async function resolveProjectPlanSource(user: EffectiveUser, input: ProjectPlanRequest) {
   assertCan(user, canManageClients, "seed project plans");
   await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
@@ -504,36 +517,149 @@ export async function seedProjectPlanFromProposal(
     throw new Error("The selected proposal must be accepted or signed before seeding.");
   }
 
-  const anchor = input.startDate
-    ? startOfUtcDay(new Date(input.startDate))
-    : startOfUtcDay(source.acceptedAt ?? source.signatureRequests[0]?.completedAt ?? new Date());
+  const fallbackDate = source.acceptedAt ?? source.signatureRequests[0]?.completedAt ?? new Date();
+  const anchor = parseAnchorDate(input.startDate, fallbackDate);
 
-  const result: SeedProjectPlanResult = {
+  return { client, source, anchor };
+}
+
+export async function previewProjectPlanFromProposal(
+  user: EffectiveUser,
+  input: ProjectPlanRequest,
+): Promise<ProjectPlanPreview> {
+  const { client, source, anchor } = await resolveProjectPlanSource(user, input);
+  const plannedBlocks: Omit<ProjectPlanPreviewBlock, "existing">[] = [];
+  const plannedMilestones: Omit<ProjectPlanPreviewMilestone, "existing">[] = [];
+  let cursor = anchor;
+
+  for (const [index, phase] of source.timelinePhases.entries()) {
+    const durationDays = estimateDurationDays(phase.duration, 14);
+    const startDate = cursor;
+    const endDate = addDays(startDate, durationDays - 1);
+    const color = PLAN_COLORS[index % PLAN_COLORS.length];
+    const phaseKey = `foundry-plan:${source.id}:${phase.id}`;
+    const deliverables = deliverablesFrom(phase.deliverables);
+    const taskTitles = deliverables.length > 0 ? deliverables : [phase.summary];
+
+    plannedBlocks.push({
+      key: phaseKey,
+      phaseId: phase.id,
+      name: phase.name,
+      summary: phase.summary,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      color,
+      tasks: taskTitles.map((title) => ({
+        key: `${phaseKey}:task:${compactKey(title)}`,
+        title: title.slice(0, 200),
+        description: `Seeded from ${source.title} / ${phase.name}.`,
+        dueDate: endDate.toISOString(),
+        existing: false,
+      })),
+    });
+
+    plannedMilestones.push({
+      key: `${phaseKey}:milestone`,
+      phaseId: phase.id,
+      name: `${phase.name} sign-off`,
+      description: `Generated from the accepted proposal phase "${phase.name}".`,
+      date: endDate.toISOString(),
+      color,
+    });
+
+    cursor = addDays(endDate, 1);
+  }
+
+  const blockKeys = plannedBlocks.map((block) => block.key);
+  const taskKeys = plannedBlocks.flatMap((block) => block.tasks.map((task) => task.key));
+  const milestoneKeys = plannedMilestones.map((milestone) => milestone.key);
+
+  const [existingBlocks, existingTasks, existingMilestones] = await Promise.all([
+    prisma.featureBlock.findMany({
+      where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: { in: blockKeys } },
+      select: { clickupId: true },
+    }),
+    prisma.task.findMany({
+      where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: { in: taskKeys } },
+      select: { clickupId: true },
+    }),
+    prisma.milestone.findMany({
+      where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: { in: milestoneKeys } },
+      select: { clickupId: true },
+    }),
+  ]);
+
+  const existingBlockKeys = toExistingKeySet(existingBlocks);
+  const existingTaskKeys = toExistingKeySet(existingTasks);
+  const existingMilestoneKeys = toExistingKeySet(existingMilestones);
+
+  const blocks: ProjectPlanPreviewBlock[] = plannedBlocks.map((block) => ({
+    ...block,
+    existing: existingBlockKeys.has(block.key),
+    tasks: block.tasks.map((task) => ({
+      ...task,
+      existing: existingTaskKeys.has(task.key),
+    })),
+  }));
+  const milestones: ProjectPlanPreviewMilestone[] = plannedMilestones.map((milestone) => ({
+    ...milestone,
+    existing: existingMilestoneKeys.has(milestone.key),
+  }));
+
+  const existingTaskCount = blocks.reduce(
+    (total, block) => total + block.tasks.filter((task) => task.existing).length,
+    0,
+  );
+
+  return {
     clientId: client.id,
     clientSlug: client.slug,
     sourceDocumentId: source.id,
     sourceDocumentTitle: source.title,
+    startDate: anchor.toISOString(),
+    totals: {
+      featureBlocks: blocks.length,
+      milestones: milestones.length,
+      tasks: taskKeys.length,
+      newFeatureBlocks: blocks.filter((block) => !block.existing).length,
+      newMilestones: milestones.filter((milestone) => !milestone.existing).length,
+      newTasks: taskKeys.length - existingTaskCount,
+      existingFeatureBlocks: existingBlockKeys.size,
+      existingMilestones: existingMilestoneKeys.size,
+      existingTasks: existingTaskCount,
+    },
+    blocks,
+    milestones,
+  };
+}
+
+export async function seedProjectPlanFromProposal(
+  user: EffectiveUser,
+  input: ProjectPlanRequest,
+): Promise<SeedProjectPlanResult> {
+  const preview = await previewProjectPlanFromProposal(user, input);
+  const milestoneByPhaseId = new Map(preview.milestones.map((milestone) => [milestone.phaseId, milestone]));
+
+  const result: SeedProjectPlanResult = {
+    clientId: preview.clientId,
+    clientSlug: preview.clientSlug,
+    sourceDocumentId: preview.sourceDocumentId,
+    sourceDocumentTitle: preview.sourceDocumentTitle,
     created: { featureBlocks: 0, milestones: 0, tasks: 0 },
     skipped: { featureBlocks: 0, milestones: 0, tasks: 0 },
   };
 
   await prisma.$transaction(async (tx) => {
     const topTask = await tx.task.findFirst({
-      where: { workspaceId: user.workspaceId, clientId: client.id, status: "TODO" },
+      where: { workspaceId: user.workspaceId, clientId: preview.clientId, status: "TODO" },
       orderBy: { orderKey: "desc" },
       select: { orderKey: true },
     });
     let taskOrder = (topTask?.orderKey ?? 0) + 1;
-    let cursor = anchor;
 
-    for (const [index, phase] of source.timelinePhases.entries()) {
-      const durationDays = estimateDurationDays(phase.duration, 14);
-      const startDate = cursor;
-      const endDate = addDays(startDate, durationDays - 1);
-      const phaseKey = `foundry-plan:${source.id}:${phase.id}`;
-
+    for (const [index, planBlock] of preview.blocks.entries()) {
       let block = await tx.featureBlock.findFirst({
-        where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: phaseKey },
+        where: { workspaceId: user.workspaceId, clientId: preview.clientId, clickupId: planBlock.key },
         select: { id: true },
       });
       if (block) {
@@ -542,13 +668,13 @@ export async function seedProjectPlanFromProposal(
         block = await tx.featureBlock.create({
           data: {
             workspaceId: user.workspaceId,
-            clientId: client.id,
-            name: phase.name,
-            description: phase.summary,
-            startDate,
-            endDate,
-            color: PLAN_COLORS[index % PLAN_COLORS.length],
-            clickupId: phaseKey,
+            clientId: preview.clientId,
+            name: planBlock.name,
+            description: planBlock.summary,
+            startDate: new Date(planBlock.startDate),
+            endDate: new Date(planBlock.endDate),
+            color: planBlock.color,
+            clickupId: planBlock.key,
             orderKey: index + 1,
           },
           select: { id: true },
@@ -556,12 +682,9 @@ export async function seedProjectPlanFromProposal(
         result.created.featureBlocks++;
       }
 
-      const deliverables = deliverablesFrom(phase.deliverables);
-      const taskTitles = deliverables.length > 0 ? deliverables : [phase.summary];
-      for (const title of taskTitles) {
-        const taskKey = `${phaseKey}:task:${compactKey(title)}`;
+      for (const task of planBlock.tasks) {
         const exists = await tx.task.findFirst({
-          where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: taskKey },
+          where: { workspaceId: user.workspaceId, clientId: preview.clientId, clickupId: task.key },
           select: { id: true },
         });
         if (exists) {
@@ -571,29 +694,31 @@ export async function seedProjectPlanFromProposal(
         await tx.task.create({
           data: {
             workspaceId: user.workspaceId,
-            clientId: client.id,
+            clientId: preview.clientId,
             createdById: user.id,
             featureBlockId: block.id,
-            title: title.slice(0, 200),
-            description: `Seeded from ${source.title} → ${phase.name}.`,
+            title: task.title,
+            description: task.description,
             status: "TODO",
             priority: "MEDIUM",
             orderKey: taskOrder++,
-            dueDate: endDate,
-            clickupId: taskKey,
+            dueDate: new Date(task.dueDate),
+            clickupId: task.key,
             metadata: {
               source: "foundry_automation",
-              sourceDocumentId: source.id,
-              sourceTimelinePhaseId: phase.id,
+              sourceDocumentId: preview.sourceDocumentId,
+              sourceTimelinePhaseId: planBlock.phaseId,
             } satisfies Prisma.InputJsonValue,
           },
         });
         result.created.tasks++;
       }
 
-      const milestoneKey = `${phaseKey}:milestone`;
+      const plannedMilestone = milestoneByPhaseId.get(planBlock.phaseId);
+      if (!plannedMilestone) continue;
+
       const milestone = await tx.milestone.findFirst({
-        where: { workspaceId: user.workspaceId, clientId: client.id, clickupId: milestoneKey },
+        where: { workspaceId: user.workspaceId, clientId: preview.clientId, clickupId: plannedMilestone.key },
         select: { id: true },
       });
       if (milestone) {
@@ -602,18 +727,16 @@ export async function seedProjectPlanFromProposal(
         await tx.milestone.create({
           data: {
             workspaceId: user.workspaceId,
-            clientId: client.id,
-            name: `${phase.name} sign-off`,
-            description: `Generated from the accepted proposal phase "${phase.name}".`,
-            date: endDate,
-            color: PLAN_COLORS[index % PLAN_COLORS.length],
-            clickupId: milestoneKey,
+            clientId: preview.clientId,
+            name: plannedMilestone.name,
+            description: plannedMilestone.description,
+            date: new Date(plannedMilestone.date),
+            color: plannedMilestone.color,
+            clickupId: plannedMilestone.key,
           },
         });
         result.created.milestones++;
       }
-
-      cursor = addDays(endDate, 1);
     }
   });
 

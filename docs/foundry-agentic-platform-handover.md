@@ -65,10 +65,12 @@ The returned pipeline stages are:
 
 Server function:
 
+- `previewProjectPlanFromProposal()`
 - `seedProjectPlanFromProposal()`
 
 API route:
 
+- `POST /api/foundry/automation/preview-project-plan`
 - `POST /api/foundry/automation/seed-project-plan`
 
 Input:
@@ -85,10 +87,12 @@ Behaviour:
 
 - Requires an active client.
 - Requires an accepted or signed proposal unless an explicit proposal id is supplied.
+- Preview returns the exact feature blocks, tasks, milestones, dates, and skip markers before any write occurs.
 - Converts each proposal `TimelinePhase` into a `FeatureBlock`.
 - Converts each phase deliverable into a `Task`.
 - Adds a phase-end `Milestone`.
 - Uses `clickupId` provenance keys like `foundry-plan:<documentId>:<phaseId>` so repeat runs skip previously generated records.
+- The seed write path now reuses the preview payload shape so the reviewed records and created records do not drift.
 
 ### HQ UI
 
@@ -103,13 +107,37 @@ Hook:
 API helpers:
 
 - `getFoundryAutomation()`
+- `previewProjectPlan()`
 - `seedProjectPlan()`
 
 Mounted in:
 
 - `src/components/app-overview.tsx`
 
-It appears on Foundry HQ for users who can see both clients and docs. Each row shows client stage, gate states, confidence, source context, and one next action. The only mutation button in this first slice is `Seed tasks + Gantt`.
+It appears on Foundry HQ for users who can see both clients and docs. Each row shows client stage, gate states, confidence, source context, and one next action.
+
+The `Seed tasks + Gantt` action now opens a plan review modal first. Operators can inspect the generated timeline, adjust the start date, refresh the preview, see which records already exist, then explicitly create the plan.
+
+### Pending Activation Checklist
+
+Component:
+
+- `src/components/clients/client-detail.tsx`
+
+Server context:
+
+- `src/server/clients.ts`
+
+The pending-review banner now shows a manual activation checklist before a client is moved to active:
+
+- onboarding submitted
+- commercial sign-off
+- contract pack
+- primary contact
+- delivery setup
+- bank details
+
+Required checks are visually called out, but the button still remains a human override. This preserves the manual gate while making missing setup visible. Client detail document lookup now includes linked `SOW`, `MSA`, `NDA`, and `DSA` records as well as proposals so the checklist can identify accepted legal docs where they exist.
 
 ## Deliberate Manual Gates
 
@@ -119,7 +147,7 @@ Do not remove these without Dan explicitly asking:
 - Signature/contract completion is observed, not bypassed.
 - Onboarding link sending remains manual.
 - Pending-to-active remains manual.
-- Plan seeding is manual, even though the generated records are automated.
+- Plan seeding is manual and previewed, even though the generated records are automated.
 
 This keeps the product agentic without turning it into an unchecked workflow robot.
 
@@ -153,19 +181,23 @@ Current verification results:
 - `npx -y -p node@22 -c "node node_modules/prisma/build/index.js generate"` passes.
 - `npx -y -p node@22 -c "node node_modules/typescript/bin/tsc --noEmit --pretty false"` passes.
 - Targeted lint for the touched files passes:
-  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/app-overview.tsx src/components/clients/client-management.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts"`
+  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
 - Dev server boots under Node 22:
   `npx -y -p node@22 -c "npm run dev"`
 - HTTP smoke checks:
   - `HEAD /app` returns `307` to `/login?callbackUrl=%2Fapp`, expected for unauthenticated app access.
   - `HEAD /api/health` returns `200 OK`.
 
-Note: a full `npm run lint` no longer crashes after the dependency rebuild, but it was manually stopped after several minutes of silent runtime. Use the targeted command above for this slice, and revisit full-workspace lint performance separately.
+Duplicate local files named like `* 2.ts`, `* 2.tsx`, and `* 2.mts` are now ignored by TypeScript and ESLint, and duplicate `* 2.json` / `* 2.tsbuildinfo` files are ignored by Git. This prevents local copy-conflict files from being treated as source.
+
+During this slice, `eslint-plugin-jsx-a11y` was missing an internal util file in `node_modules`; rebuilding with Node 22 restored the package tree and targeted lint passed. `npm ci` reports existing audit findings (9 moderate, 9 high) that were not changed in this slice.
+
+Note: a full `npm run lint` no longer crashes after the dependency rebuild, but it was manually stopped after about two minutes of silent runtime. Use the targeted command above for this slice, and revisit full-workspace lint performance separately.
 
 ## Recommended Next Steps
 
 1. Add an agent-assisted proposal draft action that starts from the latest Scribe meeting summary and opens a Docs draft.
 2. Add a “send onboarding” action that can mint/copy an onboarding link from the automation row.
-3. Add a stricter activation checklist in `PendingReviewBanner`: contract complete, onboarding submitted, bank details present where required.
-4. Add audit logging for seed-plan actions.
+3. Add audit logging for preview/seed-plan actions and pending-to-active moves.
+4. Add notification hooks for stale signatures, incomplete onboarding, and active clients without delivery plans.
 5. Once the internal loop is stable, design the customer portal around the already-seeded timeline, docs, comments, and onboarding status.
