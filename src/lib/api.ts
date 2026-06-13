@@ -61,6 +61,10 @@ import type {
   DesignSystemStatus,
   DesignTokens,
 } from "@/types/design-tokens";
+import type {
+  FoundryAutomationResponse,
+  SeedProjectPlanResult,
+} from "@/types/foundry-automation";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -72,6 +76,22 @@ export interface ClientListResponse {
 
 export interface CodeClearRunsResponse {
   runs: GitHubAnalysisRunRecord[];
+}
+
+export async function getFoundryAutomation(): Promise<FoundryAutomationResponse> {
+  return apiFetch<FoundryAutomationResponse>("/api/foundry/automation");
+}
+
+export async function seedProjectPlan(input: {
+  clientId: string;
+  documentId?: string;
+  startDate?: string;
+}): Promise<{ result: SeedProjectPlanResult }> {
+  return apiFetch<{ result: SeedProjectPlanResult }>("/api/foundry/automation/seed-project-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -2662,4 +2682,3 @@ export async function setWikiCourseIngest(
     },
   );
 }
-

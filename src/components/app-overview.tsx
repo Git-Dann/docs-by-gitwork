@@ -8,6 +8,7 @@ import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
+import { AgenticWorkflowCard } from "@/components/dashboard/agentic-workflow-card";
 import { DailyRollup } from "@/components/tasks/daily-rollup";
 import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
@@ -116,6 +117,8 @@ export function AppOverview() {
         />
         {canPublishRollup ? <DailyRollup canPublish={canActuallyPublish} /> : null}
       </div>
+
+      {canSeeTasks && canSeeSignoff ? <AgenticWorkflowCard /> : null}
 
       {/* 03+ // Module bento — filtered to the user's access. */}
       <div

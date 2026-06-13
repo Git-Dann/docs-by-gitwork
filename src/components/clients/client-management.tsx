@@ -639,6 +639,14 @@ export function ClientManagement() {
   const onboardingQuery = useOnboardingLinks();
   const createClientMutation = useCreateClient();
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (requestedTab === "onboarding" || requestedTab === "pending") {
+      setTab(requestedTab);
+    }
+  }, []);
+
   // Drive the right list off the active tab.
   const isPending =
     tab === "active"
@@ -895,7 +903,6 @@ export function ClientManagement() {
                       onKeyDown={(e) => { if (e.key === "Enter") void handleCreateClient(); }}
                       className="app-input"
                       placeholder="Acme Health"
-                      // eslint-disable-next-line jsx-a11y/no-autofocus
                       autoFocus
                     />
                   </label>
@@ -1070,7 +1077,6 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
                       onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
                       className="app-input"
                       placeholder="Acme — Tuesday call"
-                      // eslint-disable-next-line jsx-a11y/no-autofocus
                       autoFocus
                     />
                     <span className="app-field-hint mt-1">
