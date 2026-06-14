@@ -1,9 +1,13 @@
 import { Prisma } from "@prisma/client";
+import { applyClientNameToSections } from "@/lib/apply-client-name";
+import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { allocateDocumentNumber } from "@/server/documents";
 import {
   assertCan,
   canManageClients,
+  canManageDocs,
   canSeeAllClients,
   type EffectiveUser,
   ForbiddenError,
@@ -18,6 +22,8 @@ import type {
   AutomationOnboardingRef,
   AutomationProjectPlanRef,
   AutomationStageKey,
+  DraftProposalRequest,
+  DraftProposalResult,
   FoundryAutomationItem,
   FoundryAutomationResponse,
   ProjectPlanPreview,
@@ -27,6 +33,14 @@ import type {
   SeedProjectPlanResult,
 } from "@/types/foundry-automation";
 import type { WorkspaceClientStatus } from "@/types/client";
+import {
+  getDefaultAssetPayload,
+  getDefaultCostsPayload,
+  getDefaultCtaPayload,
+  getDefaultLinkPayload,
+  getDefaultSectionPayload,
+  getDefaultTimelinePayload,
+} from "@/server/proposals";
 
 const LEGAL_DOCUMENT_TYPES = new Set(["SOW", "MSA", "NDA", "DSA"]);
 const PLAN_COLORS = ["blue", "violet", "emerald", "amber", "rose", "slate"];
@@ -178,7 +192,7 @@ function nextActionFor(input: {
   const docHref = input.proposal ? `/app/docs/${input.proposal.id}` : "/app/docs";
   switch (input.stage) {
     case "DRAFT_PROPOSAL":
-      return { kind: "link", label: "Draft proposal", href: "/app/docs" };
+      return { kind: "draft_proposal", label: "Draft from notes" };
     case "REVIEW_PROPOSAL":
       return { kind: "link", label: "Review and send", href: docHref };
     case "WAITING_SIGNATURE":
@@ -454,6 +468,356 @@ function deliverablesFrom(value: Prisma.JsonValue): string[] {
   return value
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter(Boolean);
+}
+
+function stringsFromJson(value: Prisma.JsonValue | null | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean);
+}
+
+function truncate(value: string, maxLength: number): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function titleFromText(value: string, fallback: string): string {
+  const firstSentence = value.split(/[.!?]\s/)[0]?.trim();
+  return truncate(firstSentence || fallback, 72);
+}
+
+function isPlainObject(value: Prisma.JsonValue | null | undefined): value is Prisma.JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function existingDraftSourceMeetingId(metadata: Prisma.JsonValue | null | undefined): string | null {
+  if (!isPlainObject(metadata)) return null;
+  const foundryAutomation = metadata.foundryAutomation;
+  if (!foundryAutomation || typeof foundryAutomation !== "object" || Array.isArray(foundryAutomation)) {
+    return null;
+  }
+  const sourceMeetingId = (foundryAutomation as Record<string, unknown>).sourceMeetingId;
+  return typeof sourceMeetingId === "string" ? sourceMeetingId : null;
+}
+
+function sourceMeetingLabel(meeting: { title: string; startedAt: Date | null }): string {
+  const date = meeting.startedAt ? meeting.startedAt.toISOString().slice(0, 10) : "undated";
+  return `${meeting.title} (${date})`;
+}
+
+function buildProposalSectionsFromMeeting(input: {
+  clientName: string;
+  clientLogoUrl: string | null;
+  ownerName: string | null;
+  meeting: {
+    title: string;
+    startedAt: Date | null;
+    summary: string | null;
+    decisions: Prisma.JsonValue | null;
+    actionItems: Array<{ title: string | null; text: string; owner: string | null }>;
+  };
+}): Array<Prisma.DocumentSectionCreateWithoutDocumentInput> {
+  const summary = input.meeting.summary?.trim() || "Draft generated from Scribe meeting notes.";
+  const decisions = stringsFromJson(input.meeting.decisions);
+  const actionItems = input.meeting.actionItems;
+  const meetingLabel = sourceMeetingLabel(input.meeting);
+  const objectiveSources = [
+    ...decisions.map((decision) => ({ title: titleFromText(decision, "Confirm decision"), detail: decision })),
+    ...actionItems.map((action) => ({
+      title: action.title?.trim() || titleFromText(action.text, "Follow up action"),
+      detail: action.text,
+    })),
+  ].slice(0, 4);
+  const objectives =
+    objectiveSources.length > 0
+      ? objectiveSources
+      : [{ title: "Align scope from discovery", detail: summary }];
+  const touchpoints =
+    actionItems.length > 0
+      ? actionItems.slice(0, 5).map((action, index) => ({
+          id: `scribe-touch-${index + 1}`,
+          title: action.title?.trim() || titleFromText(action.text, `Workstream ${index + 1}`),
+          summary: truncate(action.text, 220),
+          features: [
+            action.owner ? `Owner to confirm: ${action.owner}` : "Owner to confirm",
+            "Acceptance criteria to confirm during proposal review",
+          ],
+          notes: `Pulled from Scribe action item in ${meetingLabel}.`,
+          graphic: "",
+          callout: "Review scope, commercials, and timeline before sending.",
+        }))
+      : [
+          {
+            id: "scribe-touch-1",
+            title: "Discovery follow-up",
+            summary,
+            features: ["Confirm scope", "Confirm timeline", "Confirm commercial model"],
+            notes: `Drafted from ${meetingLabel}.`,
+            graphic: "",
+            callout: "Review required before client send.",
+          },
+        ];
+
+  const sections = applyClientNameToSections(getDefaultSectionPayload(), input.clientName);
+
+  return sections.map((section) => {
+    const data = isPlainObject(section.data as Prisma.JsonValue)
+      ? ({ ...(section.data as Prisma.JsonObject) } as Record<string, unknown>)
+      : {};
+
+    switch (section.key) {
+      case "cover":
+        return {
+          ...section,
+          data: {
+            ...data,
+            proposalTitle: `${input.clientName} - Proposal`,
+            productName: "Digital product delivery",
+            clientName: input.clientName,
+            subtitle: "Drafted from Scribe meeting notes",
+            date: new Date().toISOString().slice(0, 10),
+            confidentiality: "Confidential: For client stakeholder review only.",
+            confidentialityMode: "EXTERNAL",
+            brandLockup: "CLIENT_X_GITWORK",
+            clientLogoUrl: input.clientLogoUrl ?? "",
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "introduction":
+        return {
+          ...section,
+          data: {
+            ...data,
+            statement: `Gitwork has prepared this draft proposal for ${input.clientName} from the latest Scribe meeting notes.`,
+            summary,
+            graphic: "",
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "product_overview":
+        return {
+          ...section,
+          data: {
+            ...data,
+            platformDescription: summary,
+            audience: "Client stakeholders, delivery leads, and Gitwork operators.",
+            valueProposition: decisions[0] ?? "Turn the agreed discovery notes into a clear, reviewable delivery proposal.",
+            platformsSupported: "To confirm during proposal review.",
+            workflowGraphic: "",
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "objectives":
+        return {
+          ...section,
+          data: {
+            items: objectives.map((objective, index) => ({
+              id: `scribe-objective-${index + 1}`,
+              title: objective.title,
+              description: truncate(objective.detail, 220),
+              icon: index === 0 ? "bolt" : "shield",
+            })),
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "touchpoints":
+        return {
+          ...section,
+          data: {
+            items: touchpoints,
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "supporting_links_assets":
+        return {
+          ...section,
+          data: {
+            ...data,
+            notes: `Source: ${meetingLabel}. Draft generated by Foundry automation. Review all scope, dates, pricing, and legal wording before sending.`,
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "assumptions":
+        return {
+          ...section,
+          data: {
+            items: [
+              `This draft is based on Scribe notes from ${meetingLabel}.`,
+              "Scope, pricing, timeline, and legal wording require human review before sending.",
+              "Client stakeholders will confirm priorities, dependencies, and acceptance criteria.",
+            ],
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "out_of_scope":
+        return {
+          ...section,
+          data: {
+            items: [
+              "Any work not explicitly confirmed in the reviewed proposal remains out of scope.",
+              "Commercial, legal, and delivery assumptions are placeholders until approved by Gitwork.",
+            ],
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "cta_next_steps":
+        return {
+          ...section,
+          data: {
+            ...data,
+            headline: "Review this draft",
+            body: "Confirm scope, commercials, timeline, and legal wording before sending to the client.",
+          } satisfies Prisma.InputJsonObject,
+        };
+      case "signoff_footer":
+        return {
+          ...section,
+          data: {
+            ...data,
+            preparedBy: input.ownerName ?? "",
+            team: "Gitwork",
+            contactDetails: "hello@gitwork.io",
+            footerNote: "Draft generated from Scribe notes. Valid only after Gitwork review and approval.",
+          } satisfies Prisma.InputJsonObject,
+        };
+      default:
+        return section;
+    }
+  }) as Array<Prisma.DocumentSectionCreateWithoutDocumentInput>;
+}
+
+export async function draftProposalFromMeeting(
+  user: EffectiveUser,
+  input: DraftProposalRequest,
+): Promise<DraftProposalResult> {
+  assertCan(user, canManageDocs, "draft proposals");
+  const { template } = await ensureBaseRecords();
+  await assertClientInScope(user, input.clientId);
+
+  const client = await prisma.workspaceClient.findFirst({
+    where: { id: input.clientId, workspaceId: user.workspaceId, hidden: false },
+    select: { id: true, slug: true, name: true, legalCompanyName: true, logoUrl: true },
+  });
+  if (!client) throw new ForbiddenError("Client not found");
+
+  const meeting = await prisma.meeting.findFirst({
+    where: input.meetingId
+      ? { id: input.meetingId, workspaceId: user.workspaceId, clientId: client.id }
+      : {
+          workspaceId: user.workspaceId,
+          clientId: client.id,
+          summary: { not: null },
+          status: "SUMMARISED",
+        },
+    orderBy: input.meetingId ? undefined : [{ startedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      startedAt: true,
+      status: true,
+      summary: true,
+      decisions: true,
+      actionItems: {
+        orderBy: { createdAt: "asc" },
+        select: { title: true, text: true, owner: true },
+      },
+    },
+  });
+  if (!meeting) {
+    throw new Error("No summarised Scribe meeting found for this client.");
+  }
+
+  const decisions = stringsFromJson(meeting.decisions);
+  if (!meeting.summary?.trim() && decisions.length === 0 && meeting.actionItems.length === 0) {
+    throw new Error("The selected meeting has no summary, decisions, or action items to draft from.");
+  }
+
+  const existingDrafts = await prisma.document.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      clientId: client.id,
+      documentType: "PROPOSAL",
+      status: "DRAFT",
+      archivedAt: null,
+    },
+    select: { id: true, title: true, metadata: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  const existingDraft = existingDrafts.find((draft) => existingDraftSourceMeetingId(draft.metadata) === meeting.id);
+  if (existingDraft) {
+    return {
+      clientId: client.id,
+      clientSlug: client.slug,
+      meetingId: meeting.id,
+      meetingTitle: meeting.title,
+      proposalId: existingDraft.id,
+      proposalTitle: existingDraft.title,
+      href: `/app/docs/${existingDraft.id}`,
+      created: false,
+    };
+  }
+
+  const clientName = client.legalCompanyName?.trim() || client.name;
+  const title = `${clientName} - Proposal draft`;
+  const documentNumber = await allocateDocumentNumber(user.workspaceId, "PROPOSAL");
+  const sections = buildProposalSectionsFromMeeting({
+    clientName,
+    clientLogoUrl: client.logoUrl,
+    ownerName: user.name,
+    meeting,
+  });
+
+  const document = await prisma.document.create({
+    data: {
+      workspaceId: user.workspaceId,
+      ownerId: user.id,
+      templateId: template.id,
+      documentType: "PROPOSAL",
+      documentNumber,
+      status: "DRAFT",
+      title,
+      productName: "Digital product delivery",
+      clientName,
+      clientId: client.id,
+      summary: meeting.summary?.trim() || "",
+      version: "v1.0",
+      labels: ["Scribe draft"] satisfies Prisma.InputJsonValue,
+      metadata: {
+        ...DEFAULT_PROPOSAL_METADATA,
+        client: clientName,
+        owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+        notes: `Drafted from Scribe meeting "${meeting.title}".`,
+        internalComments: [
+          meeting.summary ? `Summary:\n${meeting.summary}` : null,
+          decisions.length > 0 ? `Decisions:\n${decisions.map((decision) => `- ${decision}`).join("\n")}` : null,
+          meeting.actionItems.length > 0
+            ? `Action items:\n${meeting.actionItems
+                .map((action) => `- ${action.title ? `${action.title}: ` : ""}${action.text}`)
+                .join("\n")}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        foundryAutomation: {
+          source: "scribe_meeting",
+          sourceMeetingId: meeting.id,
+          draftedAt: new Date().toISOString(),
+        },
+      } satisfies Prisma.InputJsonObject,
+      sections: { create: sections },
+      costLineItems: { create: getDefaultCostsPayload() },
+      timelinePhases: { create: getDefaultTimelinePayload() },
+      links: { create: getDefaultLinkPayload() },
+      ctas: { create: getDefaultCtaPayload() },
+      assets: { create: getDefaultAssetPayload() },
+    },
+    select: { id: true, title: true },
+  });
+
+  return {
+    clientId: client.id,
+    clientSlug: client.slug,
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    proposalId: document.id,
+    proposalTitle: document.title,
+    href: `/app/docs/${document.id}`,
+    created: true,
+  };
 }
 
 function toExistingKeySet(rows: Array<{ clickupId: string | null }>): Set<string> {

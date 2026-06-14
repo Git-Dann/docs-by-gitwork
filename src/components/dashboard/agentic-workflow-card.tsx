@@ -9,11 +9,13 @@ import {
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
 import {
+  useDraftProposalFromMeeting,
   useFoundryAutomation,
   usePreviewProjectPlan,
   useSeedProjectPlan,
@@ -44,7 +46,9 @@ const GATE_TONE: Record<AutomationGateState, string> = {
 };
 
 export function AgenticWorkflowCard() {
+  const router = useRouter();
   const { data, isLoading, error, refetch, isFetching } = useFoundryAutomation();
+  const draftProposal = useDraftProposalFromMeeting();
   const previewPlan = usePreviewProjectPlan();
   const seedPlan = useSeedProjectPlan();
   const [reviewing, setReviewing] = useState<{
@@ -52,12 +56,35 @@ export function AgenticWorkflowCard() {
     startDate: string;
   } | null>(null);
   const [preview, setPreview] = useState<ProjectPlanPreview | null>(null);
+  const [draftingClientId, setDraftingClientId] = useState<string | null>(null);
   const [previewingClientId, setPreviewingClientId] = useState<string | null>(null);
   const [seedingClientId, setSeedingClientId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   const items = useMemo(() => data?.items.slice(0, 6) ?? [], [data?.items]);
+
+  async function handleDraftProposal(item: FoundryAutomationItem) {
+    setNotice(null);
+    setReviewError(null);
+    setDraftingClientId(item.client.id);
+    try {
+      const response = await draftProposal.mutateAsync({
+        clientId: item.client.id,
+        meetingId: item.latestMeeting?.id,
+      });
+      setNotice(
+        response.result.created
+          ? `${item.client.name}: drafted ${response.result.proposalTitle} from ${response.result.meetingTitle}.`
+          : `${item.client.name}: opening existing draft ${response.result.proposalTitle}.`,
+      );
+      router.push(response.result.href);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not draft a proposal from these notes.");
+    } finally {
+      setDraftingClientId(null);
+    }
+  }
 
   async function loadPreview(item: FoundryAutomationItem, startDate?: string) {
     setNotice(null);
@@ -172,8 +199,13 @@ export function AgenticWorkflowCard() {
               <AutomationRow
                 key={item.client.id}
                 item={item}
-                seeding={seedingClientId === item.client.id || previewingClientId === item.client.id}
-                seedDisabled={seedPlan.isPending || previewPlan.isPending}
+                actionPending={
+                  draftingClientId === item.client.id ||
+                  seedingClientId === item.client.id ||
+                  previewingClientId === item.client.id
+                }
+                actionDisabled={draftProposal.isPending || seedPlan.isPending || previewPlan.isPending}
+                onDraft={() => void handleDraftProposal(item)}
                 onSeed={() => void handleOpenReview(item)}
               />
             ))
@@ -223,13 +255,15 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
 
 function AutomationRow({
   item,
-  seeding,
-  seedDisabled,
+  actionPending,
+  actionDisabled,
+  onDraft,
   onSeed,
 }: {
   item: FoundryAutomationItem;
-  seeding: boolean;
-  seedDisabled: boolean;
+  actionPending: boolean;
+  actionDisabled: boolean;
+  onDraft: () => void;
   onSeed: () => void;
 }) {
   const detail = item.sourceProposal
@@ -280,13 +314,24 @@ function AutomationRow({
           <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
         )}
 
-        {item.nextAction.kind === "seed_project_plan" ? (
+        {item.nextAction.kind === "draft_proposal" ? (
           <Button
             type="button"
             size="xs"
             variant="primary"
-            loading={seeding}
-            disabled={seedDisabled}
+            loading={actionPending}
+            disabled={actionDisabled}
+            onClick={onDraft}
+          >
+            {item.nextAction.label}
+          </Button>
+        ) : item.nextAction.kind === "seed_project_plan" ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="primary"
+            loading={actionPending}
+            disabled={actionDisabled}
             onClick={onSeed}
           >
             {item.nextAction.label}

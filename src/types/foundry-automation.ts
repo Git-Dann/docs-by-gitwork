@@ -21,7 +21,7 @@ export type AutomationStageKey =
   | "READY_TO_SEED_PLAN"
   | "DELIVERY_ACTIVE";
 
-export type AutomationActionKind = "link" | "seed_project_plan" | "none";
+export type AutomationActionKind = "link" | "draft_proposal" | "seed_project_plan" | "none";
 
 export type AutomationGate = {
   key: AutomationGateKey;
@@ -106,6 +106,22 @@ export type ProjectPlanRequest = {
   clientId: string;
   documentId?: string;
   startDate?: string;
+};
+
+export type DraftProposalRequest = {
+  clientId: string;
+  meetingId?: string;
+};
+
+export type DraftProposalResult = {
+  clientId: string;
+  clientSlug: string;
+  meetingId: string;
+  meetingTitle: string;
+  proposalId: string;
+  proposalTitle: string;
+  href: string;
+  created: boolean;
 };
 
 export type ProjectPlanPreviewTask = {

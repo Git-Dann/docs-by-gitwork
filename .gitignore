@@ -29,6 +29,7 @@
 .cache/
 .* 2
 * 2.json
+* 2.md
 * 2.mts
 * 2.ts
 * 2.tsx

@@ -62,6 +62,8 @@ import type {
   DesignTokens,
 } from "@/types/design-tokens";
 import type {
+  DraftProposalRequest,
+  DraftProposalResult,
   FoundryAutomationResponse,
   ProjectPlanPreview,
   ProjectPlanRequest,
@@ -82,6 +84,14 @@ export interface CodeClearRunsResponse {
 
 export async function getFoundryAutomation(): Promise<FoundryAutomationResponse> {
   return apiFetch<FoundryAutomationResponse>("/api/foundry/automation");
+}
+
+export async function draftProposalFromMeeting(input: DraftProposalRequest): Promise<{ result: DraftProposalResult }> {
+  return apiFetch<{ result: DraftProposalResult }>("/api/foundry/automation/draft-proposal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function previewProjectPlan(input: ProjectPlanRequest): Promise<{ preview: ProjectPlanPreview }> {

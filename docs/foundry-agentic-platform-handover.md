@@ -25,7 +25,7 @@ Every product area must continue to work on its own:
 - Tasks, feature blocks, milestones, and Gantt planning remain editable by hand.
 - The automation console is a coordinator and readiness layer, not a replacement system of record.
 
-The current implementation respects this by deriving state from existing tables and by keeping all workflow transitions manual. The only write action is an explicit operator-triggered `Seed tasks + Gantt` button.
+The current implementation respects this by deriving state from existing tables and by keeping all workflow transitions manual. Write actions are explicit operator-triggered buttons: `Draft from notes`, `Seed tasks + Gantt`, and the existing pending-to-active move.
 
 ## What Was Built In This Slice
 
@@ -60,6 +60,35 @@ The returned pipeline stages are:
 - `READY_TO_ACTIVATE`
 - `READY_TO_SEED_PLAN`
 - `DELIVERY_ACTIVE`
+
+### Scribe-To-Proposal Drafting
+
+Server function:
+
+- `draftProposalFromMeeting()`
+
+API route:
+
+- `POST /api/foundry/automation/draft-proposal`
+
+Input:
+
+```json
+{
+  "clientId": "cuid",
+  "meetingId": "optional meeting cuid"
+}
+```
+
+Behaviour:
+
+- Requires Docs manage permission and client scope.
+- Uses the selected meeting or latest summarised Scribe meeting for the client.
+- Refuses to create an empty draft if the meeting has no summary, decisions, or action items.
+- Creates a normal Docs `DRAFT` proposal with the standard proposal graph: sections, costing rows, timeline phases, links, CTAs, and assets.
+- Prefills cover, intro, overview, objectives, scope touchpoints, assumptions, out-of-scope, next steps, and internal drafting notes from the Scribe summary/decisions/action items.
+- Stores provenance in `Document.metadata.foundryAutomation.sourceMeetingId`.
+- If the same meeting already has an open draft proposal, returns that existing draft instead of creating a duplicate.
 
 ### Manual Plan Seeding
 
@@ -106,6 +135,7 @@ Hook:
 
 API helpers:
 
+- `draftProposalFromMeeting()`
 - `getFoundryAutomation()`
 - `previewProjectPlan()`
 - `seedProjectPlan()`
@@ -115,6 +145,8 @@ Mounted in:
 - `src/components/app-overview.tsx`
 
 It appears on Foundry HQ for users who can see both clients and docs. Each row shows client stage, gate states, confidence, source context, and one next action.
+
+The `Draft from notes` action appears when a client has Scribe notes but no proposal draft. It creates or reopens the meeting-derived draft and routes the operator into Docs for review.
 
 The `Seed tasks + Gantt` action now opens a plan review modal first. Operators can inspect the generated timeline, adjust the start date, refresh the preview, see which records already exist, then explicitly create the plan.
 
@@ -143,7 +175,7 @@ Required checks are visually called out, but the button still remains a human ov
 
 Do not remove these without Dan explicitly asking:
 
-- Proposal drafting can be agent-assisted, but human review/send remains required.
+- Proposal drafting can be agent-assisted from Scribe notes, but human review/send remains required.
 - Signature/contract completion is observed, not bypassed.
 - Onboarding link sending remains manual.
 - Pending-to-active remains manual.
@@ -181,7 +213,7 @@ Current verification results:
 - `npx -y -p node@22 -c "node node_modules/prisma/build/index.js generate"` passes.
 - `npx -y -p node@22 -c "node node_modules/typescript/bin/tsc --noEmit --pretty false"` passes.
 - Targeted lint for the touched files passes:
-  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
+  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
 - Dev server boots under Node 22:
   `npx -y -p node@22 -c "npm run dev"`
 - HTTP smoke checks:
@@ -190,14 +222,16 @@ Current verification results:
 
 Duplicate local files named like `* 2.ts`, `* 2.tsx`, and `* 2.mts` are now ignored by TypeScript and ESLint, and duplicate `* 2.json` / `* 2.tsbuildinfo` files are ignored by Git. This prevents local copy-conflict files from being treated as source.
 
+Markdown duplicates like `* 2.md` are also ignored after an extra local duplicate handover file appeared.
+
 During this slice, `eslint-plugin-jsx-a11y` was missing an internal util file in `node_modules`; rebuilding with Node 22 restored the package tree and targeted lint passed. `npm ci` reports existing audit findings (9 moderate, 9 high) that were not changed in this slice.
 
 Note: a full `npm run lint` no longer crashes after the dependency rebuild, but it was manually stopped after about two minutes of silent runtime. Use the targeted command above for this slice, and revisit full-workspace lint performance separately.
 
 ## Recommended Next Steps
 
-1. Add an agent-assisted proposal draft action that starts from the latest Scribe meeting summary and opens a Docs draft.
-2. Add a “send onboarding” action that can mint/copy an onboarding link from the automation row.
-3. Add audit logging for preview/seed-plan actions and pending-to-active moves.
-4. Add notification hooks for stale signatures, incomplete onboarding, and active clients without delivery plans.
+1. Add a “send onboarding” action that can mint/copy an onboarding link from the automation row.
+2. Add audit logging for draft/preview/seed-plan actions and pending-to-active moves.
+3. Add notification hooks for stale signatures, incomplete onboarding, and active clients without delivery plans.
+4. Add a proposal draft review screen that previews the generated sections before creating the Docs record.
 5. Once the internal loop is stable, design the customer portal around the already-seeded timeline, docs, comments, and onboarding status.
