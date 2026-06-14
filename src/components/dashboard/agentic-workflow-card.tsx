@@ -153,7 +153,7 @@ export function AgenticWorkflowCard() {
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">02</span>
+          <span className="widget-header__label--number">09</span>
           {" // AGENTIC WORKFLOW"}
         </span>
         <button

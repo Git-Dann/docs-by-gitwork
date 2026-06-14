@@ -118,8 +118,6 @@ export function AppOverview() {
         {canPublishRollup ? <DailyRollup canPublish={canActuallyPublish} /> : null}
       </div>
 
-      {canSeeTasks && canSeeSignoff ? <AgenticWorkflowCard /> : null}
-
       {/* 03+ // Module bento — filtered to the user's access. */}
       <div
         className="flex flex-col gap-3 lg:grid lg:gap-3"
@@ -147,6 +145,8 @@ export function AppOverview() {
           );
         })}
       </div>
+
+      {canSeeTasks && canSeeSignoff ? <AgenticWorkflowCard /> : null}
     </div>
   );
 }
