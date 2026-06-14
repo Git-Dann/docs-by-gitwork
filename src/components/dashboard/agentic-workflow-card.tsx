@@ -274,6 +274,13 @@ function toDateInput(value: string | null | undefined): string {
   return value ? value.slice(0, 10) : "";
 }
 
+function activityLine(item: FoundryAutomationItem): string | null {
+  const latest = item.activity[0];
+  if (!latest) return null;
+  const actor = latest.actorName ? ` · ${latest.actorName}` : "";
+  return `Last action: ${latest.label} · ${formatDate(latest.at)}${actor}`;
+}
+
 function SummaryTile({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
@@ -307,6 +314,8 @@ function AutomationRow({
     : item.latestMeeting
       ? `${item.latestMeeting.title} · ${formatDate(item.latestMeeting.startedAt)}`
       : "No proposal context yet";
+  const latestActivity = activityLine(item);
+  const primaryNudge = item.nudges[0] ?? null;
 
   return (
     <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_180px]">
@@ -321,9 +330,21 @@ function AutomationRow({
           <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]">
             {item.confidence}% ready
           </span>
+          {primaryNudge ? (
+            <span
+              title={primaryNudge.detail}
+              className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+            >
+              <ExclamationTriangleIcon className="h-3 w-3" />
+              {primaryNudge.label}
+            </span>
+          ) : null}
         </div>
 
         <p className="mt-1 truncate text-xs text-[var(--text-3)]">{detail}</p>
+        {latestActivity ? (
+          <p className="mt-1 truncate text-[11px] text-[var(--text-4)]">{latestActivity}</p>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {item.gates.map((gate) => (

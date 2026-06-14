@@ -49,6 +49,7 @@ It currently reads:
 - `SignatureRequest` status
 - `ClientOnboarding` status
 - task, feature block, and milestone counts
+- workspace `AuditLog` rows for Foundry automation actions
 
 The returned pipeline stages are:
 
@@ -60,6 +61,36 @@ The returned pipeline stages are:
 - `READY_TO_ACTIVATE`
 - `READY_TO_SEED_PLAN`
 - `DELIVERY_ACTIVE`
+
+`DELIVERY_ACTIVE` is still derived so the lifecycle can recognise completed clients, but the default `items` queue now filters those rows out. The dashboard should behave as an action queue: draft, review, signature, onboarding, activation, and plan gaps. Fully active clients belong in Clients/Portal or a future completed/recently-completed view.
+
+`DELIVERY_ACTIVE` also has a non-action fallback now; it must not surface an "Open delivery plan" task shortcut in the automation card. Developers continue to use their task-focused dashboard and task links only when there is task work to do.
+
+Each returned row now includes compact operator context:
+
+- `activity`: newest three lifecycle/activity entries, combining Foundry audit rows with derived signature/onboarding facts.
+- `nudges`: advisory attention items only. They never block manual operation or trigger automatic sending, activation, or plan seeding.
+
+Current quiet nudge thresholds:
+
+- `signature_stale`: waiting signature for at least 5 business days after sign-off was sent.
+- `onboarding_stale`: onboarding incomplete for at least 3 business days after link creation, or 3 business days after sign-off if no link exists.
+- `active_plan_gap`: active client with accepted/signed proposal context but no feature blocks, tasks, or milestones.
+
+The automation GET endpoint is an operator surface and requires client-management permission for signed-in users. The individual write actions still enforce their own existing permissions.
+
+### Automation Audit Trail
+
+Existing workspace `AuditLog` is reused; no new table was added.
+
+Recorded actions:
+
+- `foundry.proposal_draft.prepared`
+- `foundry.onboarding_link.prepared`
+- `foundry.client.activated`
+- `foundry.delivery_plan.seeded`
+
+Targets use `client:<clientId>` so client-specific activity can be grouped without coupling the audit table to a new relation. Audit writes are append-only and should remain lightweight; failures do not block the underlying manual action.
 
 ### Scribe-To-Proposal Drafting
 
@@ -89,6 +120,7 @@ Behaviour:
 - Prefills cover, intro, overview, objectives, scope touchpoints, assumptions, out-of-scope, next steps, and internal drafting notes from the Scribe summary/decisions/action items.
 - Stores provenance in `Document.metadata.foundryAutomation.sourceMeetingId`.
 - If the same meeting already has an open draft proposal, returns that existing draft instead of creating a duplicate.
+- Records a Foundry audit entry whether it creates a new draft or reopens an existing meeting-derived draft.
 
 ### Manual Plan Seeding
 
@@ -122,6 +154,7 @@ Behaviour:
 - Adds a phase-end `Milestone`.
 - Uses `clickupId` provenance keys like `foundry-plan:<documentId>:<phaseId>` so repeat runs skip previously generated records.
 - The seed write path now reuses the preview payload shape so the reviewed records and created records do not drift.
+- Successful seed runs record how many blocks, tasks, and milestones were created or skipped.
 
 ### Manual Onboarding Link Action
 
@@ -151,6 +184,7 @@ Behaviour:
 - Prefills the onboarding row from the existing client record where possible.
 - The automation modal gives the operator copy, preview, and `mailto:` handoff controls; it does not auto-send email.
 - Public submit for a client-linked onboarding row now updates that existing `WorkspaceClient` and marks the onboarding `SUBMITTED`, instead of creating a duplicate pending client.
+- Preparing or reusing a link records a Foundry audit entry.
 
 ### HQ UI
 
@@ -174,7 +208,9 @@ Mounted in:
 
 - `src/components/app-overview.tsx`
 
-It appears on Foundry HQ for users who can see both clients and docs. Each row shows client stage, gate states, confidence, source context, and one next action.
+It appears on Foundry HQ for users who can see Portal and Docs and can manage clients. Each row shows client stage, gate states, confidence, source context, one next action, at most one attention nudge, and a muted latest-activity line.
+
+The row list intentionally excludes fully active delivery clients by default. Summary counts are based on actionable rows, so active clients with seeded delivery plans do not crowd out work that needs an operator or agent action.
 
 The `Draft from notes` action appears when a client has Scribe notes but no proposal draft. It creates or reopens the meeting-derived draft and routes the operator into Docs for review.
 
@@ -203,6 +239,8 @@ The pending-review banner now shows a manual activation checklist before a clien
 
 Required checks are visually called out, but the button still remains a human override. This preserves the manual gate while making missing setup visible. Client detail document lookup now includes linked `SOW`, `MSA`, `NDA`, and `DSA` records as well as proposals so the checklist can identify accepted legal docs where they exist.
 
+The status route now requires client-management permission for signed-in users. Moving `PENDING_REVIEW` to `ACTIVE` records `foundry.client.activated` in the workspace audit log.
+
 ## Deliberate Manual Gates
 
 Do not remove these without Dan explicitly asking:
@@ -225,7 +263,7 @@ Relevant existing modules:
 - Tasks/Gantt: `src/server/tasks.ts`, `src/server/feature-blocks.ts`, `src/server/milestones.ts`
 - Portal client detail: `src/components/clients/client-detail.tsx`
 
-Existing “Move to workflow” currently only flips `PENDING_REVIEW` to `ACTIVE`; this slice does not alter that gate.
+Existing “Move to workflow” still only flips `PENDING_REVIEW` to `ACTIVE`; this slice keeps that manual gate but now audits the move.
 
 ## Verification Notes
 
@@ -245,7 +283,7 @@ Current verification results:
 - `npx -y -p node@22 -c "node node_modules/prisma/build/index.js generate"` passes.
 - `npx -y -p node@22 -c "node node_modules/typescript/bin/tsc --noEmit --pretty false"` passes.
 - Targeted lint for the touched files passes:
-  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/onboarding.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/onboarding-link/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
+  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/audit-log.ts src/server/clients.ts src/types/foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/app-overview.tsx src/app/api/clients/[slug]/status/route.ts src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/onboarding-link/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
 - Dev server boots under Node 22:
   `npx -y -p node@22 -c "npm run dev"`
 - HTTP smoke checks:
@@ -262,8 +300,8 @@ Note: a full `npm run lint` no longer crashes after the dependency rebuild, but 
 
 ## Recommended Next Steps
 
-1. Add audit logging for draft/onboarding/preview/seed-plan actions and pending-to-active moves.
-2. Add real email sending for onboarding links once an email provider is configured; keep copy/mailto as fallback.
-3. Add notification hooks for stale signatures, incomplete onboarding, and active clients without delivery plans.
-4. Add a proposal draft review screen that previews the generated sections before creating the Docs record.
+1. Add real email sending for onboarding links once an email provider is configured; keep copy/mailto as fallback.
+2. Turn advisory nudges into optional notifications once Dan wants proactive alerts outside HQ.
+3. Add a proposal draft review screen that previews the generated sections before creating the Docs record.
+4. Add a compact completed/recently-completed lifecycle view outside the default action queue.
 5. Once the internal loop is stable, design the customer portal around the already-seeded timeline, docs, comments, and onboarding status.

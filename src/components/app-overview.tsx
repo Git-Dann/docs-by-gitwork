@@ -83,6 +83,7 @@ export function AppOverview() {
   const canApprove = showAll || can(acct, "backstage.approve") || can(acct, "backstage.expenses");
   const canSeeTasks = showAll || can(acct, "clients");
   const canSeeSignoff = showAll || can(acct, "proposals");
+  const canManageClientRecords = showAll || can(acct, "clients.manage");
   // Visibility of the roll-up CARD (admins/super admins can monitor).
   const canPublishRollup = showAll || can(acct, "tasks.publish");
   // Visibility of the Publish / Publish-anyway BUTTONS — admins/super admins
@@ -146,7 +147,7 @@ export function AppOverview() {
         })}
       </div>
 
-      {canSeeTasks && canSeeSignoff ? <AgenticWorkflowCard /> : null}
+      {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard /> : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
 import { createOnboardingLinkForClient } from "@/server/onboarding";
+import { recordAuditEntry } from "@/server/audit-log";
 import {
   assertCan,
   canManageClients,
@@ -16,10 +17,12 @@ import {
 import { assertClientInScope, assignedClientIds } from "@/server/tasks";
 import type {
   AutomationAction,
+  AutomationActivityRef,
   AutomationDocumentRef,
   AutomationGate,
   AutomationGateState,
   AutomationMeetingRef,
+  AutomationNudge,
   AutomationOnboardingRef,
   AutomationOnboardingLinkRequest,
   AutomationOnboardingLinkResult,
@@ -47,6 +50,14 @@ import {
 
 const LEGAL_DOCUMENT_TYPES = new Set(["SOW", "MSA", "NDA", "DSA"]);
 const PLAN_COLORS = ["blue", "violet", "emerald", "amber", "rose", "slate"];
+const FOUNDRY_AUDIT_ACTIONS = [
+  "foundry.proposal_draft.prepared",
+  "foundry.onboarding_link.prepared",
+  "foundry.client.activated",
+  "foundry.delivery_plan.seeded",
+] as const;
+const SIGNATURE_STALE_BUSINESS_DAYS = 5;
+const ONBOARDING_STALE_BUSINESS_DAYS = 3;
 
 type AutomationDocumentRow = {
   id: string;
@@ -172,6 +183,7 @@ function onboardingRef(
     | {
         id: string;
         status: string;
+        createdAt: Date;
         submittedAt: Date | null;
         linkedAt: Date | null;
       }
@@ -182,6 +194,7 @@ function onboardingRef(
   return {
     id: row.id,
     status: row.status,
+    createdAt: row.createdAt.toISOString(),
     submittedAt: iso(row.submittedAt),
     linkedAt: iso(row.linkedAt),
   };
@@ -207,13 +220,292 @@ function nextActionFor(input: {
     case "READY_TO_SEED_PLAN":
       return { kind: "seed_project_plan", label: "Seed tasks + Gantt" };
     case "DELIVERY_ACTIVE":
-      return { kind: "link", label: "Open delivery plan", href: `/app/portal/${input.clientSlug}/tasks` };
+      return { kind: "none", label: "Delivery active" };
     case "INTAKE_NEEDED":
       return { kind: "link", label: "Open client record", href: `/app/portal/${input.clientSlug}` };
   }
 }
 
+type AutomationAuditRow = {
+  id: string;
+  action: string;
+  target: string | null;
+  metadata: Prisma.JsonValue;
+  createdAt: Date;
+  actor: { name: string | null; email: string } | null;
+};
+
+function clientTarget(clientId: string): string {
+  return `client:${clientId}`;
+}
+
+function groupAuditRowsByClient(rows: AutomationAuditRow[]): Map<string, AutomationAuditRow[]> {
+  const grouped = new Map<string, AutomationAuditRow[]>();
+  for (const row of rows) {
+    const clientId = row.target?.startsWith("client:") ? row.target.slice("client:".length) : null;
+    if (!clientId) continue;
+    const entries = grouped.get(clientId) ?? [];
+    entries.push(row);
+    grouped.set(clientId, entries);
+  }
+  return grouped;
+}
+
+function metadataRecord(value: Prisma.JsonValue): Prisma.JsonObject {
+  return isPlainObject(value) ? value : {};
+}
+
+function metadataString(metadata: Prisma.JsonObject, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataNumber(metadata: Prisma.JsonObject, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metadataBoolean(metadata: Prisma.JsonObject, key: string): boolean | null {
+  const value = metadata[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function actorName(actor: AutomationAuditRow["actor"]): string | null {
+  return actor?.name || actor?.email || null;
+}
+
+function auditActivity(row: AutomationAuditRow): AutomationActivityRef | null {
+  const metadata = metadataRecord(row.metadata);
+  const proposalTitle = metadataString(metadata, "proposalTitle") ?? "Proposal draft";
+  const meetingTitle = metadataString(metadata, "meetingTitle") ?? "Scribe notes";
+  const created = metadataBoolean(metadata, "created");
+  const createdBlocks = metadataNumber(metadata, "createdFeatureBlocks") ?? 0;
+  const createdTasks = metadataNumber(metadata, "createdTasks") ?? 0;
+  const createdMilestones = metadataNumber(metadata, "createdMilestones") ?? 0;
+
+  switch (row.action) {
+    case "foundry.proposal_draft.prepared":
+      return {
+        id: `audit:${row.id}`,
+        kind: "proposal_draft",
+        label: "Proposal draft prepared",
+        detail: `${proposalTitle} ${created === false ? "reopened" : "created"} from ${meetingTitle}.`,
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
+    case "foundry.onboarding_link.prepared":
+      return {
+        id: `audit:${row.id}`,
+        kind: "onboarding_link",
+        label: "Onboarding link ready",
+        detail: created === false ? "Existing onboarding link reused." : "New onboarding link prepared.",
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
+    case "foundry.client.activated":
+      return {
+        id: `audit:${row.id}`,
+        kind: "client_activated",
+        label: "Client activated",
+        detail: "Moved from pending review to active.",
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
+    case "foundry.delivery_plan.seeded":
+      return {
+        id: `audit:${row.id}`,
+        kind: "delivery_plan_seeded",
+        label: "Delivery plan seeded",
+        detail: `${createdBlocks} blocks, ${createdTasks} tasks, and ${createdMilestones} milestones created.`,
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
+    default:
+      return null;
+  }
+}
+
+function latestDate(values: Array<Date | null | undefined>): Date | null {
+  return values.reduce<Date | null>((latest, value) => {
+    if (!value) return latest;
+    if (!latest || value > latest) return value;
+    return latest;
+  }, null);
+}
+
+function latestCompletedAt(row: AutomationDocumentRow | null | undefined): Date | null {
+  if (!row) return null;
+  return latestDate([
+    row.acceptedAt,
+    ...row.signatureRequests.map((request) =>
+      request.status === "COMPLETED" ? request.completedAt : null,
+    ),
+  ]);
+}
+
+function latestSentAt(row: AutomationDocumentRow | null | undefined): Date | null {
+  if (!row) return null;
+  return latestDate([
+    row.status === "SENT" ? row.updatedAt : null,
+    ...row.signatureRequests.map((request) =>
+      request.status === "SENT" || request.status === "COMPLETED" ? request.sentAt : null,
+    ),
+  ]);
+}
+
+function latestSignoffAt(
+  proposal: AutomationDocumentRow | null,
+  contract: AutomationDocumentRow | null,
+): Date | null {
+  return latestDate([latestCompletedAt(proposal), latestCompletedAt(contract)]);
+}
+
+function businessDaysElapsedSince(start: Date, end: Date): number {
+  let count = 0;
+  let cursor = addDays(startOfUtcDay(start), 1);
+  const endDay = startOfUtcDay(end);
+  while (cursor <= endDay) {
+    const day = cursor.getUTCDay();
+    if (day !== 0 && day !== 6) count++;
+    cursor = addDays(cursor, 1);
+  }
+  return count;
+}
+
+function buildActivity(input: {
+  clientId: string;
+  auditRows: AutomationAuditRow[];
+  signedProposal: AutomationDocumentRow | null;
+  contractDocument: AutomationDocumentRow | null;
+  onboarding:
+    | {
+        submittedAt: Date | null;
+      }
+    | null
+    | undefined;
+}): AutomationActivityRef[] {
+  const activity = input.auditRows.flatMap((row) => {
+    const entry = auditActivity(row);
+    return entry ? [entry] : [];
+  });
+  const signoffAt = latestSignoffAt(input.signedProposal, input.contractDocument);
+  if (signoffAt) {
+    activity.push({
+      id: `derived:signature:${input.clientId}:${signoffAt.toISOString()}`,
+      kind: "signature_completed",
+      label: "Signature complete",
+      detail: "Commercial sign-off is complete.",
+      at: signoffAt.toISOString(),
+      actorName: null,
+    });
+  }
+  if (input.onboarding?.submittedAt) {
+    activity.push({
+      id: `derived:onboarding:${input.clientId}:${input.onboarding.submittedAt.toISOString()}`,
+      kind: "onboarding_submitted",
+      label: "Onboarding submitted",
+      detail: "Client onboarding form has been submitted.",
+      at: input.onboarding.submittedAt.toISOString(),
+      actorName: null,
+    });
+  }
+  return activity
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, 3);
+}
+
+function buildNudges(input: {
+  stage: AutomationStageKey;
+  sentProposal: AutomationDocumentRow | null;
+  signedProposal: AutomationDocumentRow | null;
+  contractDocument: AutomationDocumentRow | null;
+  onboarding:
+    | {
+        createdAt: Date;
+        submittedAt: Date | null;
+        linkedAt: Date | null;
+      }
+    | null
+    | undefined;
+  now: Date;
+}): AutomationNudge[] {
+  const nudges: AutomationNudge[] = [];
+  if (input.stage === "WAITING_SIGNATURE") {
+    const sentAt = latestSentAt(input.sentProposal);
+    if (sentAt) {
+      const days = businessDaysElapsedSince(sentAt, input.now);
+      if (days >= SIGNATURE_STALE_BUSINESS_DAYS) {
+        nudges.push({
+          kind: "signature_stale",
+          label: "Signature stale",
+          detail: `Waiting ${days} business days since sign-off was sent.`,
+          since: sentAt.toISOString(),
+        });
+      }
+    }
+  }
+
+  if (input.stage === "SEND_ONBOARDING" && !input.onboarding?.submittedAt) {
+    const signoffAt = latestSignoffAt(input.signedProposal, input.contractDocument);
+    const anchor = input.onboarding?.createdAt ?? input.onboarding?.linkedAt ?? signoffAt;
+    if (anchor) {
+      const days = businessDaysElapsedSince(anchor, input.now);
+      if (days >= ONBOARDING_STALE_BUSINESS_DAYS) {
+        nudges.push({
+          kind: "onboarding_stale",
+          label: "Onboarding stale",
+          detail: input.onboarding
+            ? `Onboarding has been open for ${days} business days.`
+            : `Sign-off completed ${days} business days ago; onboarding still needs sending.`,
+          since: anchor.toISOString(),
+        });
+      }
+    }
+  }
+
+  if (input.stage === "READY_TO_SEED_PLAN") {
+    nudges.push({
+      kind: "active_plan_gap",
+      label: "Plan gap",
+      detail: "Active client has no feature blocks, tasks, or milestones yet.",
+      since: latestSignoffAt(input.signedProposal, input.contractDocument)?.toISOString() ?? null,
+    });
+  }
+
+  return nudges;
+}
+
+async function recordAutomationAudit(
+  user: EffectiveUser,
+  input: {
+    action: (typeof FOUNDRY_AUDIT_ACTIONS)[number];
+    clientId: string;
+    clientSlug?: string;
+    clientName?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const metadata = Object.fromEntries(
+    Object.entries({
+      source: "foundry_automation",
+      clientId: input.clientId,
+      clientSlug: input.clientSlug,
+      clientName: input.clientName,
+      ...(input.metadata ?? {}),
+    }).filter(([, value]) => value !== undefined),
+  );
+
+  await recordAuditEntry({
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    action: input.action,
+    target: clientTarget(input.clientId),
+    metadata,
+  });
+}
+
 export async function getFoundryAutomation(user: EffectiveUser): Promise<FoundryAutomationResponse> {
+  assertCan(user, canManageClients, "view the automation workflow");
   await ensureBaseRecords();
   const where: Prisma.WorkspaceClientWhereInput = {
     workspaceId: user.workspaceId,
@@ -231,7 +523,7 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
     orderBy: [{ status: "desc" }, { updatedAt: "desc" }],
     include: {
       onboarding: {
-        select: { id: true, status: true, submittedAt: true, linkedAt: true },
+        select: { id: true, status: true, createdAt: true, submittedAt: true, linkedAt: true },
       },
       meetings: {
         orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
@@ -269,6 +561,24 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
       },
     },
   });
+
+  const clientIds = clients.map((client) => client.id);
+  const auditRows = clientIds.length
+    ? await prisma.auditLog.findMany({
+        where: {
+          workspaceId: user.workspaceId,
+          action: { in: [...FOUNDRY_AUDIT_ACTIONS] },
+          target: { in: clientIds.map(clientTarget) },
+        },
+        orderBy: { createdAt: "desc" },
+        take: Math.max(60, clientIds.length * 4),
+        include: {
+          actor: { select: { name: true, email: true } },
+        },
+      })
+    : [];
+  const auditsByClient = groupAuditRowsByClient(auditRows);
+  const now = new Date();
 
   const items: FoundryAutomationItem[] = clients.map((client) => {
     const documents = client.documents as AutomationDocumentRow[];
@@ -412,10 +722,27 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
       contractDocument: docRef(contractDocument),
       onboarding: onboardingRef(client.onboarding),
       projectPlan: plan,
+      activity: buildActivity({
+        clientId: client.id,
+        auditRows: auditsByClient.get(client.id) ?? [],
+        signedProposal,
+        contractDocument,
+        onboarding: client.onboarding,
+      }),
+      nudges: buildNudges({
+        stage,
+        sentProposal,
+        signedProposal,
+        contractDocument,
+        onboarding: client.onboarding,
+        now,
+      }),
     };
   });
 
-  items.sort((left, right) => {
+  const queueItems = items.filter((item) => item.stage !== "DELIVERY_ACTIVE");
+
+  queueItems.sort((left, right) => {
     const rank = stageRank(left.stage) - stageRank(right.stage);
     if (rank !== 0) return rank;
     return right.confidence - left.confidence;
@@ -423,17 +750,17 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
 
   return {
     summary: {
-      total: items.length,
-      humanGates: items.filter((item) =>
+      total: queueItems.length,
+      humanGates: queueItems.filter((item) =>
         ["REVIEW_PROPOSAL", "READY_TO_ACTIVATE", "SEND_ONBOARDING"].includes(item.stage),
       ).length,
-      agentReady: items.filter((item) =>
+      agentReady: queueItems.filter((item) =>
         ["DRAFT_PROPOSAL", "READY_TO_SEED_PLAN"].includes(item.stage),
       ).length,
-      waitingOnClient: items.filter((item) => item.stage === "WAITING_SIGNATURE").length,
-      activePlanGaps: items.filter((item) => item.stage === "READY_TO_SEED_PLAN").length,
+      waitingOnClient: queueItems.filter((item) => item.stage === "WAITING_SIGNATURE").length,
+      activePlanGaps: queueItems.filter((item) => item.stage === "READY_TO_SEED_PLAN").length,
     },
-    items,
+    items: queueItems,
   };
 }
 
@@ -742,6 +1069,19 @@ export async function draftProposalFromMeeting(
   });
   const existingDraft = existingDrafts.find((draft) => existingDraftSourceMeetingId(draft.metadata) === meeting.id);
   if (existingDraft) {
+    await recordAutomationAudit(user, {
+      action: "foundry.proposal_draft.prepared",
+      clientId: client.id,
+      clientSlug: client.slug,
+      clientName: client.name,
+      metadata: {
+        proposalId: existingDraft.id,
+        proposalTitle: existingDraft.title,
+        meetingId: meeting.id,
+        meetingTitle: meeting.title,
+        created: false,
+      },
+    });
     return {
       clientId: client.id,
       clientSlug: client.slug,
@@ -811,6 +1151,20 @@ export async function draftProposalFromMeeting(
     select: { id: true, title: true },
   });
 
+  await recordAutomationAudit(user, {
+    action: "foundry.proposal_draft.prepared",
+    clientId: client.id,
+    clientSlug: client.slug,
+    clientName: client.name,
+    metadata: {
+      proposalId: document.id,
+      proposalTitle: document.title,
+      meetingId: meeting.id,
+      meetingTitle: meeting.title,
+      created: true,
+    },
+  });
+
   return {
     clientId: client.id,
     clientSlug: client.slug,
@@ -869,6 +1223,19 @@ export async function createAutomationOnboardingLink(
     workspaceId: user.workspaceId,
     clientId: client.id,
     label: `${client.name} - onboarding`,
+  });
+
+  await recordAutomationAudit(user, {
+    action: "foundry.onboarding_link.prepared",
+    clientId: client.id,
+    clientSlug: client.slug,
+    clientName: client.name,
+    metadata: {
+      onboardingId: link.id,
+      label: link.label,
+      status: link.status,
+      created,
+    },
   });
 
   return {
@@ -1167,6 +1534,22 @@ export async function seedProjectPlanFromProposal(
         result.created.milestones++;
       }
     }
+  });
+
+  await recordAutomationAudit(user, {
+    action: "foundry.delivery_plan.seeded",
+    clientId: result.clientId,
+    clientSlug: result.clientSlug,
+    metadata: {
+      sourceDocumentId: result.sourceDocumentId,
+      sourceDocumentTitle: result.sourceDocumentTitle,
+      createdFeatureBlocks: result.created.featureBlocks,
+      createdTasks: result.created.tasks,
+      createdMilestones: result.created.milestones,
+      skippedFeatureBlocks: result.skipped.featureBlocks,
+      skippedTasks: result.skipped.tasks,
+      skippedMilestones: result.skipped.milestones,
+    },
   });
 
   return result;

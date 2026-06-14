@@ -19,6 +19,8 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
 import { computeClientDevCounts, computeClientFinancials } from "@/server/client-metrics";
+import { recordAuditEntry } from "@/server/audit-log";
+import type { EffectiveUser } from "@/server/auth/effective-user";
 
 const clientBankAccounts = (prisma as unknown as {
   clientBankAccount: Prisma.ClientBankAccountDelegate;
@@ -1143,12 +1145,35 @@ export async function getClientIdBySlug(
 export async function setClientStatus(
   slug: string,
   status: WorkspaceClientStatus,
+  actor?: EffectiveUser | null,
 ): Promise<ClientListItem | null> {
   const { workspace } = await ensureBaseRecords();
+  const previous = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true, name: true, slug: true, status: true },
+  });
+  if (!previous) return null;
+
   const persisted = await workspaceClients.update({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     data: { status },
   });
+  if (previous.status === "PENDING_REVIEW" && persisted.status === "ACTIVE") {
+    await recordAuditEntry({
+      workspaceId: workspace.id,
+      actorId: actor?.id ?? null,
+      action: "foundry.client.activated",
+      target: `client:${persisted.id}`,
+      before: { status: previous.status },
+      after: { status: persisted.status },
+      metadata: {
+        source: "foundry_manual_activation",
+        clientId: persisted.id,
+        clientSlug: persisted.slug,
+        clientName: persisted.name,
+      },
+    });
+  }
   revalidateTag("client-collections");
   return toClientListItem({
     id: persisted.id,

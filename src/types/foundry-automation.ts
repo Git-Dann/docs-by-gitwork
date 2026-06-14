@@ -43,6 +43,35 @@ export type AutomationAction = {
   reason?: string;
 };
 
+export type AutomationActivityKind =
+  | "proposal_draft"
+  | "onboarding_link"
+  | "signature_completed"
+  | "onboarding_submitted"
+  | "client_activated"
+  | "delivery_plan_seeded";
+
+export type AutomationActivityRef = {
+  id: string;
+  kind: AutomationActivityKind;
+  label: string;
+  detail: string;
+  at: string;
+  actorName: string | null;
+};
+
+export type AutomationNudgeKind =
+  | "signature_stale"
+  | "onboarding_stale"
+  | "active_plan_gap";
+
+export type AutomationNudge = {
+  kind: AutomationNudgeKind;
+  label: string;
+  detail: string;
+  since: string | null;
+};
+
 export type AutomationClientRef = {
   id: string;
   name: string;
@@ -70,6 +99,7 @@ export type AutomationMeetingRef = {
 export type AutomationOnboardingRef = {
   id: string;
   status: "IN_PROGRESS" | "SUBMITTED" | "LINKED" | string;
+  createdAt: string;
   submittedAt: string | null;
   linkedAt: string | null;
 };
@@ -92,6 +122,8 @@ export type FoundryAutomationItem = {
   contractDocument: AutomationDocumentRef | null;
   onboarding: AutomationOnboardingRef | null;
   projectPlan: AutomationProjectPlanRef;
+  activity: AutomationActivityRef[];
+  nudges: AutomationNudge[];
 };
 
 export type FoundryAutomationSummary = {
