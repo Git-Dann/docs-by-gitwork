@@ -62,6 +62,8 @@ import type {
   DesignTokens,
 } from "@/types/design-tokens";
 import type {
+  AutomationOnboardingLinkRequest,
+  AutomationOnboardingLinkResult,
   DraftProposalRequest,
   DraftProposalResult,
   FoundryAutomationResponse,
@@ -88,6 +90,16 @@ export async function getFoundryAutomation(): Promise<FoundryAutomationResponse>
 
 export async function draftProposalFromMeeting(input: DraftProposalRequest): Promise<{ result: DraftProposalResult }> {
   return apiFetch<{ result: DraftProposalResult }>("/api/foundry/automation/draft-proposal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createAutomationOnboardingLink(
+  input: AutomationOnboardingLinkRequest,
+): Promise<{ result: AutomationOnboardingLinkResult }> {
+  return apiFetch<{ result: AutomationOnboardingLinkResult }>("/api/foundry/automation/onboarding-link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

@@ -4,6 +4,7 @@ import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
+import { createOnboardingLinkForClient } from "@/server/onboarding";
 import {
   assertCan,
   canManageClients,
@@ -20,6 +21,8 @@ import type {
   AutomationGateState,
   AutomationMeetingRef,
   AutomationOnboardingRef,
+  AutomationOnboardingLinkRequest,
+  AutomationOnboardingLinkResult,
   AutomationProjectPlanRef,
   AutomationStageKey,
   DraftProposalRequest,
@@ -198,7 +201,7 @@ function nextActionFor(input: {
     case "WAITING_SIGNATURE":
       return { kind: "link", label: "Check signature request", href: docHref };
     case "SEND_ONBOARDING":
-      return { kind: "link", label: "Send onboarding/contract", href: "/app/portal?tab=onboarding" };
+      return { kind: "send_onboarding", label: "Send onboarding" };
     case "READY_TO_ACTIVATE":
       return { kind: "link", label: "Review and activate", href: `/app/portal/${input.clientSlug}` };
     case "READY_TO_SEED_PLAN":
@@ -817,6 +820,68 @@ export async function draftProposalFromMeeting(
     proposalTitle: document.title,
     href: `/app/docs/${document.id}`,
     created: true,
+  };
+}
+
+export async function createAutomationOnboardingLink(
+  user: EffectiveUser,
+  input: AutomationOnboardingLinkRequest,
+): Promise<AutomationOnboardingLinkResult> {
+  assertCan(user, canManageClients, "send onboarding links");
+  await ensureBaseRecords();
+  await assertClientInScope(user, input.clientId);
+
+  const client = await prisma.workspaceClient.findFirst({
+    where: { id: input.clientId, workspaceId: user.workspaceId, hidden: false },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      primaryContactEmail: true,
+    },
+  });
+  if (!client) throw new ForbiddenError("Client not found");
+
+  const documents = await prisma.document.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      clientId: client.id,
+      archivedAt: null,
+      documentType: { in: ["PROPOSAL", "SOW", "MSA", "NDA", "DSA"] },
+    },
+    select: {
+      status: true,
+      signatureRequests: {
+        select: { status: true },
+      },
+    },
+  });
+  const signatureComplete = documents.some(
+    (document) =>
+      document.status === "ACCEPTED" ||
+      document.signatureRequests.some((request) => request.status === "COMPLETED"),
+  );
+  if (!signatureComplete) {
+    throw new Error("Complete proposal or contract sign-off before sending onboarding.");
+  }
+
+  const { link, created } = await createOnboardingLinkForClient({
+    workspaceId: user.workspaceId,
+    clientId: client.id,
+    label: `${client.name} - onboarding`,
+  });
+
+  return {
+    clientId: client.id,
+    clientSlug: client.slug,
+    clientName: client.name,
+    contactEmail: client.primaryContactEmail,
+    linkId: link.id,
+    accessToken: link.accessToken,
+    path: `/onboarding/${link.accessToken}`,
+    label: link.label,
+    status: link.status,
+    created,
   };
 }
 

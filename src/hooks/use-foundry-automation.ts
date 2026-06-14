@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createAutomationOnboardingLink,
   draftProposalFromMeeting,
   getFoundryAutomation,
   previewProjectPlan,
@@ -40,6 +41,19 @@ export function useDraftProposalFromMeeting() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: QK.automation });
       void queryClient.invalidateQueries({ queryKey: ["proposals"] });
+      void queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useCreateAutomationOnboardingLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createAutomationOnboardingLink>[0]) =>
+      createAutomationOnboardingLink(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QK.automation });
+      void queryClient.invalidateQueries({ queryKey: ["onboarding-links"] });
       void queryClient.invalidateQueries({ queryKey: ["clients"] });
     },
   });

@@ -206,6 +206,110 @@ export async function createOnboardingLink(input?: { label?: string; formId?: st
   return toAdminRecord(row);
 }
 
+function splitContactName(value: string | null | undefined): { firstName: string | null; lastName: string | null } {
+  const parts = value?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (parts.length === 0) return { firstName: null, lastName: null };
+  if (parts.length === 1) return { firstName: parts[0], lastName: null };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) ?? null };
+}
+
+export async function createOnboardingLinkForClient(input: {
+  workspaceId: string;
+  clientId: string;
+  label?: string;
+  formId?: string;
+}): Promise<{ link: OnboardingAdminRecord; created: boolean }> {
+  const client = await workspaceClients.findFirst({
+    where: { id: input.clientId, workspaceId: input.workspaceId, hidden: false },
+    select: {
+      id: true,
+      name: true,
+      website: true,
+      addressLine1: true,
+      addressLine2: true,
+      city: true,
+      county: true,
+      postcode: true,
+      country: true,
+      primaryContactName: true,
+      primaryContactEmail: true,
+      primaryContactPhone: true,
+      invoiceEmail: true,
+      legalCompanyName: true,
+      companyNumber: true,
+      vatNumber: true,
+      billingAddressLine1: true,
+      billingAddressLine2: true,
+      billingCity: true,
+      billingCounty: true,
+      billingPostcode: true,
+      billingCountry: true,
+    },
+  });
+  if (!client) throw new Error("Client not found.");
+
+  const existing = await onboardings.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      workspaceClientId: client.id,
+      status: { in: ["IN_PROGRESS", "SUBMITTED"] },
+    },
+    include: { bankAccount: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (existing) return { link: toAdminRecord(existing), created: false };
+
+  const form = await resolveForm(input.formId);
+  const snapshot = (form?.steps ?? getDefaultOnboardingForm()) as unknown as Prisma.InputJsonValue;
+  const accessToken = generateAccessToken();
+  const contact = splitContactName(client.primaryContactName);
+  const billingDiffers = Boolean(
+    client.billingAddressLine1 ||
+      client.billingAddressLine2 ||
+      client.billingCity ||
+      client.billingCounty ||
+      client.billingPostcode ||
+      client.billingCountry,
+  );
+
+  const row = await onboardings.create({
+    data: {
+      workspaceId: input.workspaceId,
+      workspaceClientId: client.id,
+      accessToken,
+      label: input.label?.trim() || `${client.name} - onboarding`,
+      formId: form?.id ?? null,
+      formSnapshot: snapshot,
+      companyName: client.name,
+      legalCompanyName: client.legalCompanyName,
+      companyNumber: client.companyNumber,
+      vatNumber: client.vatNumber,
+      contactFirstName: contact.firstName,
+      contactLastName: contact.lastName,
+      contactEmail: client.primaryContactEmail,
+      contactPhone: client.primaryContactPhone,
+      invoiceEmail: client.invoiceEmail,
+      productUrl: client.website,
+      addressLine1: client.addressLine1,
+      addressLine2: client.addressLine2,
+      city: client.city,
+      county: client.county,
+      postcode: client.postcode,
+      country: client.country,
+      billingDiffers,
+      billingAddressLine1: client.billingAddressLine1,
+      billingAddressLine2: client.billingAddressLine2,
+      billingCity: client.billingCity,
+      billingCounty: client.billingCounty,
+      billingPostcode: client.billingPostcode,
+      billingCountry: client.billingCountry,
+    },
+    include: { bankAccount: true },
+  });
+
+  return { link: toAdminRecord(row), created: true };
+}
+
 export async function listOnboardingLinks(options?: {
   includeLinked?: boolean;
 }): Promise<{ links: OnboardingAdminRecord[] }> {
@@ -514,6 +618,89 @@ async function materializePendingClient(
   return { id: client.id, slug };
 }
 
+function optionalText(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+async function applyOnboardingToExistingClient(
+  row: OnboardingRow,
+  workspaceId: string,
+  clientId: string,
+): Promise<void> {
+  const existing = await workspaceClients.findFirst({
+    where: { id: clientId, workspaceId },
+    select: { id: true, notes: true },
+  });
+  if (!existing) throw new Error("Linked client not found.");
+
+  const contactName = [row.contactFirstName, row.contactLastName]
+    .map((p) => p?.trim())
+    .filter(Boolean)
+    .join(" ");
+  const notes = buildClientNotes(row);
+  const billingPatch = row.billingDiffers
+    ? {
+        billingAddressLine1: optionalText(row.billingAddressLine1),
+        billingAddressLine2: optionalText(row.billingAddressLine2),
+        billingCity: optionalText(row.billingCity),
+        billingCounty: optionalText(row.billingCounty),
+        billingPostcode: optionalText(row.billingPostcode),
+        billingCountry: optionalText(row.billingCountry),
+      }
+    : {};
+
+  await workspaceClients.update({
+    where: { id: existing.id },
+    data: {
+      name: optionalText(row.companyName),
+      website: optionalText(row.productUrl),
+      addressLine1: optionalText(row.addressLine1),
+      addressLine2: optionalText(row.addressLine2),
+      city: optionalText(row.city),
+      county: optionalText(row.county),
+      postcode: optionalText(row.postcode),
+      country: optionalText(row.country),
+      primaryContactName: optionalText(contactName),
+      primaryContactEmail: optionalText(row.contactEmail),
+      primaryContactPhone: optionalText(row.contactPhone),
+      invoiceEmail: optionalText(row.invoiceEmail),
+      legalCompanyName: optionalText(row.legalCompanyName),
+      companyNumber: optionalText(row.companyNumber),
+      vatNumber: optionalText(row.vatNumber),
+      notes: notes ? [existing.notes, notes].filter(Boolean).join("\n\n") : undefined,
+      ...billingPatch,
+    },
+  });
+
+  if (row.bankAccount) {
+    await clientBankAccounts.upsert({
+      where: { clientId: existing.id },
+      update: {
+        accountHolderCipher: row.bankAccount.accountHolderCipher,
+        bankNameCipher: row.bankAccount.bankNameCipher,
+        sortCodeCipher: row.bankAccount.sortCodeCipher,
+        accountNumberCipher: row.bankAccount.accountNumberCipher,
+        ibanCipher: row.bankAccount.ibanCipher,
+        swiftBicCipher: row.bankAccount.swiftBicCipher,
+        currency: row.bankAccount.currency,
+        accountNumberLast4: row.bankAccount.accountNumberLast4,
+      },
+      create: {
+        clientId: existing.id,
+        accountHolderCipher: row.bankAccount.accountHolderCipher,
+        bankNameCipher: row.bankAccount.bankNameCipher,
+        sortCodeCipher: row.bankAccount.sortCodeCipher,
+        accountNumberCipher: row.bankAccount.accountNumberCipher,
+        ibanCipher: row.bankAccount.ibanCipher,
+        swiftBicCipher: row.bankAccount.swiftBicCipher,
+        currency: row.bankAccount.currency,
+        accountNumberLast4: row.bankAccount.accountNumberLast4,
+      },
+    });
+  }
+}
+
 /**
  * Final submit. Validates the required answers, then materialises a
  * PENDING_REVIEW client so the submission lands in Portal immediately (under
@@ -529,8 +716,7 @@ export async function submitOnboarding(
     include: { bankAccount: true },
   });
   if (!row) return null;
-  // Already materialised — nothing to do.
-  if (row.workspaceClientId) return getOnboardingByTokenPublic(token);
+  if (row.status === "SUBMITTED" || row.status === "LINKED") return getOnboardingByTokenPublic(token);
 
   // Enforce the form's own required fields (the wizard also gates this client-side).
   // Derived from the snapshot so custom forms work — not the old fixed 3-column check.
@@ -539,6 +725,18 @@ export async function submitOnboarding(
     throw new Error(
       `Please complete the required field${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`,
     );
+  }
+
+  if (row.workspaceClientId) {
+    await applyOnboardingToExistingClient(row, workspace.id, row.workspaceClientId);
+    await onboardings.update({
+      where: { id: row.id },
+      data: {
+        status: "SUBMITTED",
+        submittedAt: new Date(),
+      },
+    });
+    return getOnboardingByTokenPublic(token);
   }
 
   const client = await materializePendingClient(row, workspace.id);

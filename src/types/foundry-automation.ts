@@ -21,7 +21,12 @@ export type AutomationStageKey =
   | "READY_TO_SEED_PLAN"
   | "DELIVERY_ACTIVE";
 
-export type AutomationActionKind = "link" | "draft_proposal" | "seed_project_plan" | "none";
+export type AutomationActionKind =
+  | "link"
+  | "draft_proposal"
+  | "send_onboarding"
+  | "seed_project_plan"
+  | "none";
 
 export type AutomationGate = {
   key: AutomationGateKey;
@@ -121,6 +126,23 @@ export type DraftProposalResult = {
   proposalId: string;
   proposalTitle: string;
   href: string;
+  created: boolean;
+};
+
+export type AutomationOnboardingLinkRequest = {
+  clientId: string;
+};
+
+export type AutomationOnboardingLinkResult = {
+  clientId: string;
+  clientSlug: string;
+  clientName: string;
+  contactEmail: string | null;
+  linkId: string;
+  accessToken: string;
+  path: string;
+  label: string | null;
+  status: "IN_PROGRESS" | "SUBMITTED" | "LINKED";
   created: boolean;
 };
 

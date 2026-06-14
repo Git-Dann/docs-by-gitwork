@@ -25,7 +25,7 @@ Every product area must continue to work on its own:
 - Tasks, feature blocks, milestones, and Gantt planning remain editable by hand.
 - The automation console is a coordinator and readiness layer, not a replacement system of record.
 
-The current implementation respects this by deriving state from existing tables and by keeping all workflow transitions manual. Write actions are explicit operator-triggered buttons: `Draft from notes`, `Seed tasks + Gantt`, and the existing pending-to-active move.
+The current implementation respects this by deriving state from existing tables and by keeping all workflow transitions manual. Write actions are explicit operator-triggered buttons: `Draft from notes`, `Send onboarding`, `Seed tasks + Gantt`, and the existing pending-to-active move.
 
 ## What Was Built In This Slice
 
@@ -123,6 +123,35 @@ Behaviour:
 - Uses `clickupId` provenance keys like `foundry-plan:<documentId>:<phaseId>` so repeat runs skip previously generated records.
 - The seed write path now reuses the preview payload shape so the reviewed records and created records do not drift.
 
+### Manual Onboarding Link Action
+
+Server functions:
+
+- `createAutomationOnboardingLink()`
+- `createOnboardingLinkForClient()`
+
+API route:
+
+- `POST /api/foundry/automation/onboarding-link`
+
+Input:
+
+```json
+{
+  "clientId": "cuid"
+}
+```
+
+Behaviour:
+
+- Requires Clients manage permission and client scope.
+- Requires an accepted proposal or completed signature request before minting.
+- Reuses any open client-linked onboarding row before creating a new one.
+- Creates a normal public `/onboarding/[token]` URL using the default onboarding form snapshot.
+- Prefills the onboarding row from the existing client record where possible.
+- The automation modal gives the operator copy, preview, and `mailto:` handoff controls; it does not auto-send email.
+- Public submit for a client-linked onboarding row now updates that existing `WorkspaceClient` and marks the onboarding `SUBMITTED`, instead of creating a duplicate pending client.
+
 ### HQ UI
 
 Component:
@@ -135,6 +164,7 @@ Hook:
 
 API helpers:
 
+- `createAutomationOnboardingLink()`
 - `draftProposalFromMeeting()`
 - `getFoundryAutomation()`
 - `previewProjectPlan()`
@@ -147,6 +177,8 @@ Mounted in:
 It appears on Foundry HQ for users who can see both clients and docs. Each row shows client stage, gate states, confidence, source context, and one next action.
 
 The `Draft from notes` action appears when a client has Scribe notes but no proposal draft. It creates or reopens the meeting-derived draft and routes the operator into Docs for review.
+
+The `Send onboarding` action appears after commercial sign-off but before onboarding is submitted. It creates/reuses a client-linked onboarding URL, then shows copy/preview/email controls in a modal.
 
 The `Seed tasks + Gantt` action now opens a plan review modal first. Operators can inspect the generated timeline, adjust the start date, refresh the preview, see which records already exist, then explicitly create the plan.
 
@@ -177,7 +209,7 @@ Do not remove these without Dan explicitly asking:
 
 - Proposal drafting can be agent-assisted from Scribe notes, but human review/send remains required.
 - Signature/contract completion is observed, not bypassed.
-- Onboarding link sending remains manual.
+- Onboarding link creation/sending remains manual.
 - Pending-to-active remains manual.
 - Plan seeding is manual and previewed, even though the generated records are automated.
 
@@ -213,7 +245,7 @@ Current verification results:
 - `npx -y -p node@22 -c "node node_modules/prisma/build/index.js generate"` passes.
 - `npx -y -p node@22 -c "node node_modules/typescript/bin/tsc --noEmit --pretty false"` passes.
 - Targeted lint for the touched files passes:
-  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
+  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/onboarding.ts src/server/clients.ts src/types/foundry-automation.ts src/lib/api.ts src/hooks/use-foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/clients/client-detail.tsx src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/onboarding-link/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
 - Dev server boots under Node 22:
   `npx -y -p node@22 -c "npm run dev"`
 - HTTP smoke checks:
@@ -230,8 +262,8 @@ Note: a full `npm run lint` no longer crashes after the dependency rebuild, but 
 
 ## Recommended Next Steps
 
-1. Add a “send onboarding” action that can mint/copy an onboarding link from the automation row.
-2. Add audit logging for draft/preview/seed-plan actions and pending-to-active moves.
+1. Add audit logging for draft/onboarding/preview/seed-plan actions and pending-to-active moves.
+2. Add real email sending for onboarding links once an email provider is configured; keep copy/mailto as fallback.
 3. Add notification hooks for stale signatures, incomplete onboarding, and active clients without delivery plans.
 4. Add a proposal draft review screen that previews the generated sections before creating the Docs record.
 5. Once the internal loop is stable, design the customer portal around the already-seeded timeline, docs, comments, and onboarding status.

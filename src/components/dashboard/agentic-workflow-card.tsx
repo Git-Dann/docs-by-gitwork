@@ -5,7 +5,10 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
   ClockIcon,
+  ClipboardDocumentIcon,
+  EnvelopeIcon,
   ExclamationTriangleIcon,
+  LinkIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
@@ -15,12 +18,14 @@ import { Button, buttonStyles } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
 import {
+  useCreateAutomationOnboardingLink,
   useDraftProposalFromMeeting,
   useFoundryAutomation,
   usePreviewProjectPlan,
   useSeedProjectPlan,
 } from "@/hooks/use-foundry-automation";
 import type {
+  AutomationOnboardingLinkResult,
   AutomationGateState,
   AutomationStageKey,
   FoundryAutomationItem,
@@ -48,6 +53,7 @@ const GATE_TONE: Record<AutomationGateState, string> = {
 export function AgenticWorkflowCard() {
   const router = useRouter();
   const { data, isLoading, error, refetch, isFetching } = useFoundryAutomation();
+  const onboardingLink = useCreateAutomationOnboardingLink();
   const draftProposal = useDraftProposalFromMeeting();
   const previewPlan = usePreviewProjectPlan();
   const seedPlan = useSeedProjectPlan();
@@ -57,12 +63,28 @@ export function AgenticWorkflowCard() {
   } | null>(null);
   const [preview, setPreview] = useState<ProjectPlanPreview | null>(null);
   const [draftingClientId, setDraftingClientId] = useState<string | null>(null);
+  const [onboardingClientId, setOnboardingClientId] = useState<string | null>(null);
+  const [onboardingShare, setOnboardingShare] = useState<AutomationOnboardingLinkResult | null>(null);
   const [previewingClientId, setPreviewingClientId] = useState<string | null>(null);
   const [seedingClientId, setSeedingClientId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   const items = useMemo(() => data?.items.slice(0, 6) ?? [], [data?.items]);
+
+  async function handleOnboardingLink(item: FoundryAutomationItem) {
+    setNotice(null);
+    setReviewError(null);
+    setOnboardingClientId(item.client.id);
+    try {
+      const response = await onboardingLink.mutateAsync({ clientId: item.client.id });
+      setOnboardingShare(response.result);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not prepare an onboarding link.");
+    } finally {
+      setOnboardingClientId(null);
+    }
+  }
 
   async function handleDraftProposal(item: FoundryAutomationItem) {
     setNotice(null);
@@ -200,11 +222,18 @@ export function AgenticWorkflowCard() {
                 key={item.client.id}
                 item={item}
                 actionPending={
+                  onboardingClientId === item.client.id ||
                   draftingClientId === item.client.id ||
                   seedingClientId === item.client.id ||
                   previewingClientId === item.client.id
                 }
-                actionDisabled={draftProposal.isPending || seedPlan.isPending || previewPlan.isPending}
+                actionDisabled={
+                  onboardingLink.isPending ||
+                  draftProposal.isPending ||
+                  seedPlan.isPending ||
+                  previewPlan.isPending
+                }
+                onOnboarding={() => void handleOnboardingLink(item)}
                 onDraft={() => void handleDraftProposal(item)}
                 onSeed={() => void handleOpenReview(item)}
               />
@@ -232,6 +261,11 @@ export function AgenticWorkflowCard() {
           setReviewError(null);
         }}
       />
+
+      <OnboardingLinkModal
+        result={onboardingShare}
+        onClose={() => setOnboardingShare(null)}
+      />
     </section>
   );
 }
@@ -257,12 +291,14 @@ function AutomationRow({
   item,
   actionPending,
   actionDisabled,
+  onOnboarding,
   onDraft,
   onSeed,
 }: {
   item: FoundryAutomationItem;
   actionPending: boolean;
   actionDisabled: boolean;
+  onOnboarding: () => void;
   onDraft: () => void;
   onSeed: () => void;
 }) {
@@ -325,6 +361,17 @@ function AutomationRow({
           >
             {item.nextAction.label}
           </Button>
+        ) : item.nextAction.kind === "send_onboarding" ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="primary"
+            loading={actionPending}
+            disabled={actionDisabled}
+            onClick={onOnboarding}
+          >
+            {item.nextAction.label}
+          </Button>
         ) : item.nextAction.kind === "seed_project_plan" ? (
           <Button
             type="button"
@@ -347,6 +394,93 @@ function AutomationRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function OnboardingLinkModal({
+  result,
+  onClose,
+}: {
+  result: AutomationOnboardingLinkResult | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const fullUrl = useMemo(() => {
+    if (!result) return "";
+    if (typeof window === "undefined") return result.path;
+    return `${window.location.origin}${result.path}`;
+  }, [result]);
+  const mailtoHref = useMemo(() => {
+    if (!result) return "";
+    const subject = encodeURIComponent("Gitwork onboarding link");
+    const body = encodeURIComponent(
+      `Hi,\n\nPlease complete your Gitwork onboarding using the link below:\n\n${fullUrl}\n\nThanks,\nGitwork`,
+    );
+    const recipient = result.contactEmail ?? "";
+    return `mailto:${recipient}?subject=${subject}&body=${body}`;
+  }, [fullUrl, result]);
+
+  async function handleCopy() {
+    if (!fullUrl) return;
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={Boolean(result)}
+      onClose={onClose}
+      title="Onboarding link"
+      panelClassName="w-full max-w-lg"
+    >
+      <div className="p-4">
+        <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+          <p className="text-sm font-semibold text-[var(--text-1)]">
+            {result?.created ? "Link created" : "Existing link ready"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[var(--text-3)]">
+            {result?.clientName ?? "Client"} can complete this form whenever you send the URL.
+            The client record stays in human review until the form is submitted and manually activated.
+          </p>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+          <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--text-2)]">
+            {fullUrl || "-"}
+          </code>
+          <Button type="button" variant="secondary" size="xs" onClick={() => void handleCopy()}>
+            <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <a
+            href={fullUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonStyles({ variant: "secondary", size: "sm" })}
+          >
+            <LinkIcon className="h-4 w-4" />
+            Preview
+          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+              Done
+            </Button>
+            <a href={mailtoHref} className={buttonStyles({ variant: "primary", size: "sm" })}>
+              <EnvelopeIcon className="h-4 w-4" />
+              Email link
+            </a>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
