@@ -12,6 +12,7 @@ import {
   FlagIcon,
   PlusIcon,
   ServerStackIcon,
+  TrashIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 
@@ -49,6 +50,9 @@ interface Props {
   addableSections?: Array<{ section: WikiSection; label: string }>;
   onAddSection?: (section: WikiSection) => void;
   isAddingSection?: boolean;
+  deletableSections?: WikiSection[];
+  onDeleteSection?: (section: WikiSection) => void;
+  isDeletingSection?: boolean;
 }
 
 export function WikiSidebar({
@@ -59,6 +63,9 @@ export function WikiSidebar({
   addableSections = [],
   onAddSection,
   isAddingSection = false,
+  deletableSections = [],
+  onDeleteSection,
+  isDeletingSection = false,
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -89,6 +96,7 @@ export function WikiSidebar({
   );
   visibleSections.add(active);
 
+  const deletable = new Set(deletableSections);
   const navItem = (
     section: WikiSection,
     label: string,
@@ -96,31 +104,44 @@ export function WikiSidebar({
   ) => {
     if (!visibleSections.has(section)) return null;
     const isActive = active === section;
+    const canDelete = deletable.has(section) && Boolean(onDeleteSection);
     return (
-      <button
-        key={section}
-        type="button"
-        onClick={() => onSelect(section)}
-        className={[
-          "flex w-auto shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[6px] px-3 py-2 text-left text-sm transition-colors md:w-full",
-          isActive
-            ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] md:border-l-2 md:border-[var(--brand-700)] md:rounded-l-none"
-            : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-        ].join(" ")}
-      >
-        <span className="h-4 w-4 shrink-0">{icon}</span>
-        <span
-          className="flex-1 truncate"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "11px",
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-          }}
+      <div key={section} className="group flex w-auto shrink-0 items-center gap-1 md:w-full">
+        <button
+          type="button"
+          onClick={() => onSelect(section)}
+          className={[
+            "flex min-w-0 flex-1 items-center gap-2.5 whitespace-nowrap rounded-[6px] px-3 py-2 text-left text-sm transition-colors",
+            isActive
+              ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] md:border-l-2 md:border-[var(--brand-700)] md:rounded-l-none"
+              : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+          ].join(" ")}
         >
-          {label}
-        </span>
-      </button>
+          <span className="h-4 w-4 shrink-0">{icon}</span>
+          <span
+            className="flex-1 truncate"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+            }}
+          >
+            {label}
+          </span>
+        </button>
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={() => onDeleteSection?.(section)}
+            disabled={isDeletingSection}
+            title={`Delete ${label}`}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] opacity-100 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
     );
   };
 

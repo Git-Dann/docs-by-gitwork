@@ -762,7 +762,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   // Reset editor state when switching sections
   useEffect(() => {
-    setPageMode("edit");
+    setPageMode(activeSection === "api-docs" ? "preview" : "edit");
     setPageSavedLabel(null);
   }, [activeSection]);
 
@@ -855,6 +855,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     await deletePage.mutateAsync({ type });
     const nextSection = availableSections.find((item) => item !== section) ?? "design-system";
     setActiveSection(nextSection);
+  }
+
+  function confirmDeletePage(section: WikiSection) {
+    if (!isDocsPageSection(section)) return;
+    const ok = window.confirm(`Delete ${SECTION_TITLES[section]} from this wiki? You can add it back later from Add New.`);
+    if (!ok) return;
+    void handleDeletePage(section);
   }
 
   /** Delete all entries in a version group (called with all their IDs). */
@@ -1300,13 +1307,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           {isDocsPageSection(activeSection) && (
             <button
               type="button"
-              onClick={() => void handleDeletePage(activeSection)}
+              onClick={() => confirmDeletePage(activeSection)}
               disabled={deletePage.isPending}
-              className={chipBtn}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-rose-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
               title={`Delete ${SECTION_TITLES[activeSection]}`}
             >
               <TrashIcon className="h-3.5 w-3.5" />
-              {deletePage.isPending ? "Deleting…" : "Delete"}
+              {deletePage.isPending ? "Deleting…" : "Delete page"}
             </button>
           )}
         </div>
@@ -1387,6 +1394,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             addableSections={addableSections}
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}
+            deletableSections={availableSections.filter(isDocsPageSection)}
+            onDeleteSection={confirmDeletePage}
+            isDeletingSection={deletePage.isPending}
           />
         </div>
 

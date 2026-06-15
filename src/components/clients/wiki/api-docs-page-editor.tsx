@@ -260,8 +260,17 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
 
     useImperativeHandle(ref, () => ({ save: () => save("Saved") }), [save]);
 
+    const previewContent = useMemo(
+      () => ({
+        ...doc,
+        servers: parseServers(serversText),
+        endpoints: parseEndpoints(endpointsText),
+      }),
+      [doc, serversText, endpointsText],
+    );
+
     if (readOnly || mode === "preview") {
-      return <ApiDocsReference content={buildContent()} />;
+      return <ApiDocsReference content={previewContent} />;
     }
 
     const inputCls =
@@ -375,6 +384,8 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
             spellCheck={false}
           />
         </label>
+
+        <ApiDocsReference content={previewContent} />
       </div>
     );
   },
