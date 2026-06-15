@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ArrowTopRightOnSquareIcon,
   PencilIcon,
   TrashIcon,
   XMarkIcon,
@@ -13,7 +14,9 @@ import {
   ClockIcon,
   ClipboardDocumentIcon,
   CheckIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import {
@@ -23,10 +26,11 @@ import {
   useAddTaskComment,
   useCreateTask,
 } from "@/hooks/use-tasks";
-import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatus } from "@/types/tasks";
+import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityBadge } from "@/components/tasks/task-badges";
 import { TaskFormModal } from "@/components/tasks/task-form";
+import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 
@@ -58,6 +62,86 @@ function MetaRow({ icon, label, children }: { icon: React.ReactNode; label: stri
         {label}
       </span>
       <div className="min-w-0 text-sm text-[var(--text-2)]">{children}</div>
+    </div>
+  );
+}
+
+function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"> | null | undefined): string | null {
+  const id = meeting?.conferenceRecordName?.trim();
+  if (!id || id.includes("/")) return null;
+  return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
+}
+
+function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
+  const source = task.scribeSource;
+  const { data, isPending } = useQuery({
+    queryKey: ["client-meeting", task.client.slug, source?.meetingId ?? ""],
+    queryFn: () => getClientMeeting(task.client.slug, source!.meetingId),
+    enabled: Boolean(source?.meetingId),
+    staleTime: 60_000,
+  });
+  if (!source) return null;
+
+  const meeting = data?.meeting ?? null;
+  const sourceFileUrl = scribeSourceFileUrl(meeting);
+  const decisions = Array.isArray(meeting?.decisions) ? meeting.decisions : [];
+
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-[var(--brand-200)] bg-[var(--surface-brand)]">
+      <div className="flex items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.06)] px-3 py-3">
+        <div className="min-w-0">
+          <p
+            className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-700)]"
+            style={MONO}
+          >
+            <VideoCameraIcon className="h-3.5 w-3.5" />
+            Scribe source
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-[var(--text-1)]">{source.meetingTitle}</p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-4)]" style={MONO}>
+            {source.meetingStartedAt ? formatDate(source.meetingStartedAt) : "Meeting date unavailable"} ·{" "}
+            {source.kind === "ACTION_ITEM" ? "Generated from action item" : "Manual task from note"}
+          </p>
+        </div>
+        {sourceFileUrl ? (
+          <a
+            href={sourceFileUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--brand-200)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+          >
+            Source file
+            <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+          </a>
+        ) : null}
+      </div>
+      <div className="space-y-3 px-3 py-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
+            Source detail
+          </p>
+          <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
+            {source.actionTitle || (source.kind === "ACTION_ITEM" ? task.title : "Manual task")}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+            {source.actionText || "Created manually from this Scribe meeting note."}
+          </p>
+        </div>
+        {isPending ? (
+          <p className="widget-data-label animate-pulse">Loading full note...</p>
+        ) : decisions.length > 0 ? (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
+              Decisions from note
+            </p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-5 text-[var(--text-2)]">
+              {decisions.slice(0, 3).map((decision, index) => (
+                <li key={`${decision}-${index}`}>{decision}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -210,6 +294,8 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                   <span style={MONO}>{formatDate(task.updatedAt)}</span>
                 </MetaRow>
               </div>
+
+              {task.scribeSource ? <ScribeSourcePanel task={task} /> : null}
 
               {/* Description */}
               {task.description ? (

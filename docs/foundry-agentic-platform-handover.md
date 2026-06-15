@@ -348,6 +348,7 @@ Meeting Notes now bridge more directly into the Kanban board while preserving ma
 - Operators can also create an ad-hoc/manual task from inside the Meeting Notes modal. Those tasks are not forced through action items; they use task metadata with `source: "scribe_meeting"` and the meeting id/title/date.
 - The Meeting Notes modal now includes a compact `Tasks from this note` section and a `View board` link to `/app/portal/[slug]/tasks?sourceMeeting=[meetingId]`.
 - Kanban cards show a small Scribe source icon next to the task title when a task has meeting provenance. Clicking it opens the Scribe source modal with meeting notes, decisions, source file link, task creator, and either action-item context or manual-task context.
+- The task detail drawer also renders an inline `Scribe source` audit panel for sourced tasks, so the provenance is visible inside the task itself and not only from the board card.
 - The task board/list filter bar includes `Scribe source`, so operators can view/report all tasks generated from a specific meeting without creating a separate reporting page.
 
 Touched areas:
