@@ -311,6 +311,29 @@ Relevant existing modules:
 
 Existing “Move to workflow” still only flips `PENDING_REVIEW` to `ACTIVE`; this slice keeps that manual gate but now audits the move.
 
+## Portal Wiki Documentation Slice
+
+The client Portal wiki now supports optional documentation pages beyond IA and Developer Guide:
+
+- API Docs
+- Architecture
+- Runbook
+- Data Model
+
+These are first-class `WikiPageType` enum values in `prisma/schema.prisma` and are stored in `ClientWikiPage` like the existing markdown guide pages. The change is additive; existing wiki rows are untouched.
+
+Because the new pages are enum values, any environment needs the Prisma schema synced before writes to these page types will succeed. Locally this was fixed with `npx -y -p node@22 -c "node node_modules/prisma/build/index.js db push"`.
+
+The private wiki sidebar now has a compact `Add New` menu. Core pages remain visible, while optional docs pages appear in the sidebar once created. Adding a page creates it with a markdown starter template, selects it, and uses the existing editor autosave/preview/share workflow.
+
+Touched areas:
+
+- Schema: `prisma/schema.prisma`
+- Server/share allow-list: `src/server/wiki.ts`
+- Private wiki UI: `src/components/clients/wiki/wiki-workspace.tsx`, `src/components/clients/wiki/wiki-sidebar.tsx`, `src/components/clients/wiki/wiki-page-editor.tsx`
+- Public wiki UI and labels: `src/components/clients/wiki/wiki-public-view.tsx`, `src/app/wiki/[token]/page.tsx`, `src/lib/og/load-entity.ts`
+- API validation: `src/app/api/clients/[slug]/wiki/pages/route.ts`, `src/app/api/clients/[slug]/wiki/share/route.ts`
+
 ## Verification Notes
 
 The previous local failures were caused by running/installing dependencies under Node 24 while the project declares Node 22. The fix was:

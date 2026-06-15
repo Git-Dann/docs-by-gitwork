@@ -7,7 +7,12 @@ import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 const SECTION_LABELS: Record<string, string> = {
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
+  "api-docs": "API Docs",
+  architecture: "Architecture",
+  runbook: "Runbook",
+  "data-model": "Data Model",
   changelog: "Changelog",
+  "course-requests": "Course Requests",
 };
 
 export async function generateMetadata({

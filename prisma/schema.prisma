@@ -1050,7 +1050,7 @@ model ClientWiki {
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
   platforms         Json?
   /// Per-page public share tokens: { "<section>": "<token>" } for individually
-  /// shared sections (ia / dev-guide / changelog). shareToken above is whole-wiki.
+  /// shared sections (ia / dev-guide / api-docs / changelog etc.). shareToken above is whole-wiki.
   pageShares        Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens   String[]               @default([])
@@ -1066,7 +1066,7 @@ model ClientWiki {
 
 /// A single page/section within a ClientWiki. One row per type per wiki
 /// (enforced by the unique constraint). Content is a JSON blob whose shape
-/// varies by type: markdown string for IA_GUIDE / DEV_API_GUIDE, structured
+/// varies by type: markdown string for guide/docs pages, structured
 /// key-value record for APP_STORE_* pages.
 model ClientWikiPage {
   id        String       @id @default(cuid())
@@ -1139,6 +1139,10 @@ enum CourseRequestStatus {
 enum WikiPageType {
   IA_GUIDE
   DEV_API_GUIDE
+  API_DOCS
+  ARCHITECTURE
+  RUNBOOK
+  DATA_MODEL
   APP_STORE_IOS
   APP_STORE_ANDROID
   APP_STORE_FIRESTICK

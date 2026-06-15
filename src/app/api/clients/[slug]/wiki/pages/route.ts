@@ -6,7 +6,18 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
 
 const bodySchema = z.object({
-  type: z.enum(["IA_GUIDE", "DEV_API_GUIDE", "APP_STORE_IOS", "APP_STORE_ANDROID", "APP_STORE_FIRESTICK", "CUSTOM"]),
+  type: z.enum([
+    "IA_GUIDE",
+    "DEV_API_GUIDE",
+    "API_DOCS",
+    "ARCHITECTURE",
+    "RUNBOOK",
+    "DATA_MODEL",
+    "APP_STORE_IOS",
+    "APP_STORE_ANDROID",
+    "APP_STORE_FIRESTICK",
+    "CUSTOM",
+  ]),
   title: z.string().min(1),
   content: z.unknown().optional(),
 });

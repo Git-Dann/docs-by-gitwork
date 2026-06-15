@@ -8,17 +8,41 @@ import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { apiFetch } from "@/lib/api";
 
-type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
+type WikiPageType =
+  | "IA_GUIDE"
+  | "DEV_API_GUIDE"
+  | "API_DOCS"
+  | "ARCHITECTURE"
+  | "RUNBOOK"
+  | "DATA_MODEL"
+  | "CUSTOM";
 
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   ia: "IA_GUIDE",
   "dev-guide": "DEV_API_GUIDE",
+  "api-docs": "API_DOCS",
+  architecture: "ARCHITECTURE",
+  runbook: "RUNBOOK",
+  "data-model": "DATA_MODEL",
+};
+
+const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
+  IA_GUIDE: "ia",
+  DEV_API_GUIDE: "dev-guide",
+  API_DOCS: "api-docs",
+  ARCHITECTURE: "architecture",
+  RUNBOOK: "runbook",
+  DATA_MODEL: "data-model",
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
+  "api-docs": "API Docs",
+  architecture: "Architecture",
+  runbook: "Runbook",
+  "data-model": "Data Model",
   changelog: "Changelog",
   "course-requests": "Course Requests",
 };
@@ -41,6 +65,19 @@ export function WikiPublicView({
     (onlySection as WikiSection) ?? "ia",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+  const existingDocSections = wiki.pages
+    .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
+    .filter((section): section is WikiSection => Boolean(section));
+  const availableSections: WikiSection[] = [
+    "design-system",
+    "ia",
+    "dev-guide",
+    ...existingDocSections.filter((section) =>
+      ["api-docs", "architecture", "runbook", "data-model"].includes(section),
+    ),
+    "changelog",
+    "course-requests",
+  ];
 
   const handleSetStatus = useCallback(
     async (ids: string[], status: string) => {
@@ -146,6 +183,7 @@ export function WikiPublicView({
           slug={wiki.clientSlug}
           active={activeSection}
           onSelect={setActiveSection}
+          availableSections={availableSections}
         />
       </div>
       <div className="min-w-0 flex-1 overflow-auto p-4 md:p-8">

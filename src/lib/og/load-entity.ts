@@ -142,13 +142,17 @@ export function loadClientBySlug(slug: string): Promise<ClientCardData | null> {
 }
 
 // Wiki: top-level wiki carries a client name. The same `/wiki/[token]` route
-// also accepts per-section share tokens (Design System / IA / Dev Guide /
-// Changelog / Course Requests — `course-requests` added in commit e84d7b2).
+// also accepts per-section share tokens (Design System / documentation pages /
+// Changelog / Course Requests).
 // Reuse `resolvePublicWiki` so the precedence (whole-wiki then section) stays
 // in lockstep with the page itself.
 const WIKI_SECTION_LABEL: Record<string, string> = {
   ia: "IA",
   "dev-guide": "Dev Guide",
+  "api-docs": "API Docs",
+  architecture: "Architecture",
+  runbook: "Runbook",
+  "data-model": "Data Model",
   changelog: "Changelog",
   "course-requests": "Course Requests",
   "design-system": "Design System",

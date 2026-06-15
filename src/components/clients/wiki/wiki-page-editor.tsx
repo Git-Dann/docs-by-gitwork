@@ -16,6 +16,10 @@ import type { WikiSection } from "./wiki-sidebar";
 const SECTION_HINTS: Partial<Record<WikiSection, string>> = {
   ia: "Document the product's information hierarchy — navigation, content taxonomy, URL patterns, and key user flows.",
   "dev-guide": "Capture everything a developer needs: setup, architecture, env vars, API endpoints, and deployment steps.",
+  "api-docs": "Document authentication, endpoints, examples, response shapes, webhooks, pagination, and error codes.",
+  architecture: "Map the system boundaries, environments, services, data flow, security boundaries, and decisions.",
+  runbook: "Capture operating routines, contacts, incident response steps, deployment checks, and recovery notes.",
+  "data-model": "Document entities, relationships, key fields, statuses, ownership rules, and import/export expectations.",
 };
 
 // ─── Block templates ──────────────────────────────────────────────────────────

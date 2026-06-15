@@ -1,8 +1,8 @@
 /**
  * wiki.ts — Client Knowledge Wiki server module
  *
- * Handles the per-client wiki: app-store listing pages, changelog entries,
- * IA guide, developer API guide. Public read is token-gated (same pattern as
+ * Handles the per-client wiki: documentation pages, app-store listing pages,
+ * changelog entries, and course requests. Public read is token-gated (same pattern as
  * design-system `shareToken`).
  */
 
@@ -62,7 +62,7 @@ export interface WikiDTO {
   shareEnabled: boolean;
   /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
   platforms: string[];
-  /** Per-page public share tokens, keyed by section (ia / dev-guide / changelog / course-requests). */
+  /** Per-page public share tokens, keyed by section (ia / dev-guide / api-docs / changelog etc.). */
   pageShares: Record<string, string>;
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
@@ -580,7 +580,16 @@ export async function setWikiShare(
 }
 
 /** Sections that can be individually shared (Design System has its own share). */
-const SHAREABLE_SECTIONS = ["ia", "dev-guide", "changelog", "course-requests"] as const;
+const SHAREABLE_SECTIONS = [
+  "ia",
+  "dev-guide",
+  "api-docs",
+  "architecture",
+  "runbook",
+  "data-model",
+  "changelog",
+  "course-requests",
+] as const;
 
 /**
  * Toggle a per-page (per-section) public share. Mints a token for the section

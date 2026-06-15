@@ -8,7 +8,18 @@ import { z } from "zod";
 // `section` present → per-page share; absent → whole-wiki share.
 const bodySchema = z.object({
   enabled: z.boolean(),
-  section: z.enum(["ia", "dev-guide", "changelog", "course-requests"]).optional(),
+  section: z
+    .enum([
+      "ia",
+      "dev-guide",
+      "api-docs",
+      "architecture",
+      "runbook",
+      "data-model",
+      "changelog",
+      "course-requests",
+    ])
+    .optional(),
 });
 
 export async function PATCH(

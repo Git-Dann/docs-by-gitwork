@@ -12,7 +12,12 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
 } from "@heroicons/react/24/outline";
-import { WikiSidebar, type WikiSection, COURSE_REQUESTS_SLUGS } from "./wiki-sidebar";
+import {
+  WikiSidebar,
+  type WikiSection,
+  COURSE_REQUESTS_SLUGS,
+  OPTIONAL_DOC_SECTIONS,
+} from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
@@ -41,17 +46,41 @@ import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 import type { CourseRequestRecord } from "@/lib/api";
 
-type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "CUSTOM";
+type WikiPageType =
+  | "IA_GUIDE"
+  | "DEV_API_GUIDE"
+  | "API_DOCS"
+  | "ARCHITECTURE"
+  | "RUNBOOK"
+  | "DATA_MODEL"
+  | "CUSTOM";
 
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   ia: "IA_GUIDE",
   "dev-guide": "DEV_API_GUIDE",
+  "api-docs": "API_DOCS",
+  architecture: "ARCHITECTURE",
+  runbook: "RUNBOOK",
+  "data-model": "DATA_MODEL",
+};
+
+const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
+  IA_GUIDE: "ia",
+  DEV_API_GUIDE: "dev-guide",
+  API_DOCS: "api-docs",
+  ARCHITECTURE: "architecture",
+  RUNBOOK: "runbook",
+  DATA_MODEL: "data-model",
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
+  "api-docs": "API Docs",
+  architecture: "Architecture",
+  runbook: "Runbook",
+  "data-model": "Data Model",
   changelog: "Changelog",
   "course-requests": "Course Requests",
 };
@@ -59,9 +88,28 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
+  "api-docs": "API DOCS",
+  architecture: "ARCHITECTURE",
+  runbook: "RUNBOOK",
+  "data-model": "DATA MODEL",
   changelog: "CHANGELOG",
   "course-requests": "COURSE REQUESTS",
 };
+
+const MARKDOWN_DOC_SECTIONS = [
+  "ia",
+  "dev-guide",
+  "api-docs",
+  "architecture",
+  "runbook",
+  "data-model",
+] as const satisfies readonly WikiSection[];
+
+type MarkdownDocSection = (typeof MARKDOWN_DOC_SECTIONS)[number];
+
+function isMarkdownDocSection(section: WikiSection): section is MarkdownDocSection {
+  return (MARKDOWN_DOC_SECTIONS as readonly string[]).includes(section);
+}
 
 const chipBtn =
   "inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
@@ -401,6 +449,323 @@ Rebase feature branches on \`main\` — do not merge \`main\` into the branch.
 | On-call / Incidents | — | — |
 `;
 
+const API_DOCS_TEMPLATE = `## Overview
+Describe the public or internal API surface, who can use it, and the primary integration use cases.
+
+---
+
+## Base URLs
+
+| Environment | Base URL | Notes |
+|-------------|----------|-------|
+| Production | \`https://api.example.com\` | Live traffic |
+| Staging | \`https://staging-api.example.com\` | Test data |
+| Local | \`http://localhost:3000\` | Developer use |
+
+---
+
+## Authentication
+
+| Method | Header / Flow | Notes |
+|--------|---------------|-------|
+| Bearer token | \`Authorization: Bearer {token}\` | Rotate tokens when access changes |
+| API key | \`x-api-key: {key}\` | Server-to-server only |
+| Webhook signature | \`x-signature\` | Verify payload before processing |
+
+---
+
+## Endpoints
+
+| Method | Route | Description | Auth | Status |
+|--------|-------|-------------|------|--------|
+| \`GET\` | \`/api/v1/[resource]\` | List records | Bearer | Draft |
+| \`POST\` | \`/api/v1/[resource]\` | Create record | Bearer | Draft |
+| \`GET\` | \`/api/v1/[resource]/{id}\` | Fetch one record | Bearer | Draft |
+| \`PATCH\` | \`/api/v1/[resource]/{id}\` | Update record | Bearer | Draft |
+| \`DELETE\` | \`/api/v1/[resource]/{id}\` | Delete record | Bearer | Draft |
+
+---
+
+## Request Example
+
+\`\`\`bash
+curl -X GET "https://api.example.com/api/v1/items" \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Accept: application/json"
+\`\`\`
+
+---
+
+## Response Shape
+
+\`\`\`json
+{
+  "data": [],
+  "pagination": {
+    "nextCursor": null,
+    "hasMore": false
+  }
+}
+\`\`\`
+
+---
+
+## Errors
+
+| Code | Meaning | Operator note |
+|------|---------|---------------|
+| \`400\` | Invalid request | Validate payload shape |
+| \`401\` | Missing or invalid auth | Check token/key |
+| \`403\` | Permission denied | Confirm scopes |
+| \`404\` | Resource not found | Check id/environment |
+| \`429\` | Rate limited | Back off and retry |
+| \`500\` | Server error | Escalate with request id |
+
+---
+
+## Pagination, Filtering & Sorting
+
+| Feature | Pattern | Example |
+|---------|---------|---------|
+| Pagination | Cursor | \`?cursor=abc&limit=50\` |
+| Filtering | Query params | \`?status=active\` |
+| Sorting | Sort key | \`?sort=-createdAt\` |
+
+---
+
+## Webhooks
+
+| Event | Trigger | Payload owner |
+|-------|---------|---------------|
+| \`resource.created\` | New record created | Backend |
+| \`resource.updated\` | Existing record changed | Backend |
+| \`resource.deleted\` | Existing record removed | Backend |
+
+Include verification rules, retry policy, idempotency keys, and sample payloads.
+`;
+
+const ARCHITECTURE_TEMPLATE = `## System Summary
+Describe the system boundaries, major apps/services, and the high-level data flow.
+
+---
+
+## Architecture Map
+
+| Area | Responsibility | Owner |
+|------|----------------|-------|
+| Web app | User interface and app shell | — |
+| API | Business logic and integrations | — |
+| Database | Persistent product data | — |
+| Background jobs | Scheduled or async work | — |
+| Third-party services | Payments, email, analytics, storage | — |
+
+---
+
+## Runtime Environments
+
+| Environment | Purpose | Deployment |
+|-------------|---------|------------|
+| Local | Developer work | Manual |
+| Preview | Branch testing | Automatic |
+| Staging | Client/UAT sign-off | Automatic/manual |
+| Production | Live users | Protected |
+
+---
+
+## Core Data Flow
+
+1. User enters the app through [entry point].
+2. App reads/writes through [API/service].
+3. Server validates auth, permissions, and payload.
+4. Data persists to [database/storage].
+5. Events trigger [notifications/jobs/webhooks].
+6. Monitoring captures success/failure signals.
+
+---
+
+## Key Services
+
+| Service | Purpose | Criticality | Failure mode |
+|---------|---------|-------------|--------------|
+| [Service] | [What it does] | High/Med/Low | [What breaks] |
+| [Service] | [What it does] | High/Med/Low | [What breaks] |
+
+---
+
+## Security Boundaries
+
+| Boundary | Rule | Notes |
+|----------|------|-------|
+| Authentication | [Session/API key/OAuth] | — |
+| Authorization | [Roles/scopes] | — |
+| Secrets | [Where stored] | Never commit secrets |
+| Public data | [What can be shared] | — |
+
+---
+
+## Known Constraints
+
+- [Constraint]
+- [Constraint]
+- [Constraint]
+
+---
+
+## Decision Log
+
+| Date | Decision | Reason | Owner |
+|------|----------|--------|-------|
+| YYYY-MM-DD | [Decision] | [Why] | — |
+`;
+
+const RUNBOOK_TEMPLATE = `## Operating Model
+Define how this product is operated day to day: owners, escalation paths, routine checks, and recovery steps.
+
+---
+
+## Contacts
+
+| Role | Person/team | Channel |
+|------|-------------|---------|
+| Product owner | — | — |
+| Technical owner | — | — |
+| Support owner | — | — |
+| Escalation | — | — |
+
+---
+
+## Routine Checks
+
+| Cadence | Check | Owner |
+|---------|-------|-------|
+| Daily | Review error logs and support queue | — |
+| Weekly | Check analytics, uptime, failed jobs | — |
+| Monthly | Rotate keys, review access, archive stale data | — |
+
+---
+
+## Common Incidents
+
+### API outage
+
+1. Confirm health endpoint and hosting status.
+2. Check recent deploys and environment variables.
+3. Review logs for request ids and repeated errors.
+4. Roll back or patch forward.
+5. Record incident notes and follow-up actions.
+
+### Failed integration
+
+1. Confirm provider status.
+2. Check credentials and rate limits.
+3. Retry a known-safe request.
+4. Notify affected stakeholders.
+
+---
+
+## Deployment Checklist
+
+- [ ] Change reviewed
+- [ ] TypeScript/lint/tests pass
+- [ ] Database changes are additive or migration-approved
+- [ ] Environment variables configured
+- [ ] Rollback path understood
+- [ ] Stakeholders notified where needed
+
+---
+
+## Recovery Notes
+
+| Scenario | Recovery step | Verification |
+|----------|---------------|--------------|
+| Bad deploy | Roll back to previous deployment | Smoke critical routes |
+| Broken env var | Restore last known value | Check service health |
+| Data issue | Restore/fix with approved script | Confirm affected records |
+
+---
+
+## Post-Incident Template
+
+| Field | Notes |
+|-------|-------|
+| Start/end time | — |
+| Impact | — |
+| Root cause | — |
+| Resolution | — |
+| Follow-ups | — |
+`;
+
+const DATA_MODEL_TEMPLATE = `## Data Model Overview
+Document the core entities, relationships, and ownership rules.
+
+---
+
+## Entities
+
+| Entity | Description | Owner | Lifecycle |
+|--------|-------------|-------|-----------|
+| User | Authenticated account | Product | invited / active / disabled |
+| Organisation | Customer workspace | Product | trial / active / churned |
+| [Entity] | [What it represents] | — | — |
+
+---
+
+## Relationships
+
+| Parent | Child | Cardinality | Notes |
+|--------|-------|-------------|-------|
+| Organisation | User | 1:many | Members belong to one org |
+| User | [Entity] | 1:many | Created by / assigned to |
+
+---
+
+## Key Fields
+
+| Entity | Field | Type | Required | Notes |
+|--------|-------|------|----------|-------|
+| [Entity] | \`id\` | string | Yes | Primary identifier |
+| [Entity] | \`status\` | enum | Yes | Drives lifecycle |
+| [Entity] | \`createdAt\` | datetime | Yes | Audit trail |
+
+---
+
+## Statuses
+
+| Status | Meaning | Allowed transitions |
+|--------|---------|---------------------|
+| \`DRAFT\` | Not yet published | ACTIVE / ARCHIVED |
+| \`ACTIVE\` | Live and usable | ARCHIVED |
+| \`ARCHIVED\` | Hidden from normal use | ACTIVE |
+
+---
+
+## Data Ownership
+
+| Data | Source of truth | Edited by | Retention |
+|------|-----------------|-----------|-----------|
+| Profile data | App database | User/admin | Account lifetime |
+| Billing data | Payment provider | Provider/admin | Legal requirement |
+| Analytics | Analytics provider | System | Policy-defined |
+
+---
+
+## Privacy & Compliance
+
+- Identify personal data fields.
+- Identify sensitive operational data.
+- Record export/delete expectations.
+- Record audit-log coverage.
+
+---
+
+## Import / Export Notes
+
+| Flow | Format | Owner | Notes |
+|------|--------|-------|-------|
+| Import | CSV / API / manual | — | Validate before write |
+| Export | CSV / JSON | — | Include timestamps and ids |
+`;
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -466,6 +831,29 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   if (!wiki) return null;
 
+  const optionalSectionSet = new Set<WikiSection>(OPTIONAL_DOC_SECTIONS.map((item) => item.section));
+  const existingOptionalSections = new Set<WikiSection>(
+    wiki.pages
+      .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
+      .filter((section): section is WikiSection => {
+        if (!section) return false;
+        return optionalSectionSet.has(section);
+      }),
+  );
+  const availableSections: WikiSection[] = [
+    "design-system",
+    "ia",
+    "dev-guide",
+    ...OPTIONAL_DOC_SECTIONS.filter((item) => existingOptionalSections.has(item.section)).map(
+      (item) => item.section,
+    ),
+    "changelog",
+    ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
+  ];
+  const addableSections = OPTIONAL_DOC_SECTIONS.filter(
+    (item) => !existingOptionalSections.has(item.section),
+  );
+
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return null;
@@ -476,6 +864,19 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
     await upsertPage.mutateAsync({ type, title, content });
+  }
+
+  async function handleAddSection(section: WikiSection) {
+    if (!isMarkdownDocSection(section)) return;
+    const type = SECTION_TO_TYPE[section];
+    if (!type) return;
+    await upsertPage.mutateAsync({
+      type,
+      title: SECTION_TITLES[section],
+      content: getDefaultContent(section),
+    });
+    setActiveSection(section);
+    setPageMode("edit");
   }
 
   /** Delete all entries in a version group (called with all their IDs). */
@@ -560,6 +961,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   function getDefaultContent(section: WikiSection): string {
     if (section === "ia") return IA_TEMPLATE;
     if (section === "dev-guide") return DEV_TEMPLATE;
+    if (section === "api-docs") return API_DOCS_TEMPLATE;
+    if (section === "architecture") return ARCHITECTURE_TEMPLATE;
+    if (section === "runbook") return RUNBOOK_TEMPLATE;
+    if (section === "data-model") return DATA_MODEL_TEMPLATE;
     return "";
   }
 
@@ -597,7 +1002,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   /** Share dropdown for a wiki page — per-page link + whole-wiki link. */
-  function renderShareMenu(section: "ia" | "dev-guide" | "changelog" | "course-requests") {
+  function renderShareMenu(section: Exclude<WikiSection, "design-system">) {
     return (
       <WikiShareMenu
         pageLabel={SECTION_TITLES[section]}
@@ -908,8 +1313,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {upsertPage.isPending ? "Saving…" : "Save"}
           </button>
-          {(activeSection === "ia" || activeSection === "dev-guide") &&
-            renderShareMenu(activeSection)}
+          {isMarkdownDocSection(activeSection) && renderShareMenu(activeSection)}
         </div>
 
         {/* Widget card */}
@@ -970,6 +1374,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             slug={slug}
             active={activeSection}
             onSelect={setActiveSection}
+            availableSections={availableSections}
+            addableSections={addableSections}
+            onAddSection={(section) => void handleAddSection(section)}
+            isAddingSection={upsertPage.isPending}
           />
         </div>
 

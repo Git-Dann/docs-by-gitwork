@@ -136,7 +136,7 @@ export function WikiShareMenu({
             <div>
               <p className="text-[13px] font-medium text-[var(--text-1)]">Share entire wiki</p>
               <p className="text-[11px] text-[var(--text-4)]">
-                One link to all pages — Design System, IA, Dev Guide, Changelog & Course Requests.
+                One link to all pages, docs, changelog, and client-specific sections.
               </p>
             </div>
             <Toggle on={wikiEnabled} disabled={wikiBusy} onClick={() => onToggleWiki(!wikiEnabled)} />
