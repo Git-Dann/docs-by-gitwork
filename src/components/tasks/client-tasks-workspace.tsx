@@ -355,7 +355,7 @@ function TaskScribeSourceModal({
   return (
     <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="app-dialog-panel flex max-h-[82vh] w-full max-w-[720px] flex-col overflow-hidden"
+        className="app-dialog-panel flex h-[720px] max-h-[calc(100dvh-32px)] w-full max-w-[980px] flex-col overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-6 py-4">
@@ -397,56 +397,62 @@ function TaskScribeSourceModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          <section>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-              {source.kind === "ACTION_ITEM" ? "Generated task" : "Manual task"}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">{task.title}</p>
-            {task.createdBy ? (
-              <p className="mt-1 text-xs text-[var(--text-3)]">Created by {task.createdBy.name}</p>
-            ) : null}
-          </section>
-
-          <section className="rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-              {source.kind === "ACTION_ITEM" ? "Action item" : "Meeting reference"}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">
-              {source.actionTitle || source.meetingTitle}
-            </p>
-            <p className="mt-1 text-sm leading-6 text-[var(--text-2)]">
-              {source.actionText || "Created manually from this meeting note."}
-            </p>
-          </section>
-
-          {isPending ? (
-            <p className="widget-data-label animate-pulse py-4 text-center">Loading Scribe note...</p>
-          ) : (
-            <>
+        <div className="grid min-h-0 flex-1 md:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="min-h-0 overflow-y-auto border-b border-[var(--border-1)] px-6 py-5 md:border-b-0 md:border-r">
+            <div className="space-y-5">
               <section>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                  Notes
+                  {source.kind === "ACTION_ITEM" ? "Generated task" : "Manual task"}
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text-1)]">
-                  {meeting?.summary || "No summary captured."}
-                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">{task.title}</p>
+                {task.createdBy ? (
+                  <p className="mt-1 text-xs text-[var(--text-3)]">Created by {task.createdBy.name}</p>
+                ) : null}
               </section>
 
-              {decisions.length > 0 ? (
+              <section className="rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                  {source.kind === "ACTION_ITEM" ? "Action item" : "Meeting reference"}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">
+                  {source.actionTitle || source.meetingTitle}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[var(--text-2)]">
+                  {source.actionText || "Created manually from this meeting note."}
+                </p>
+              </section>
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            {isPending ? (
+              <p className="widget-data-label animate-pulse py-4 text-center">Loading Scribe note...</p>
+            ) : (
+              <div className="space-y-6">
                 <section>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    Decisions
+                    Notes
                   </p>
-                  <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
-                    {decisions.map((decision, index) => (
-                      <li key={`${decision}-${index}`}>{decision}</li>
-                    ))}
-                  </ul>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text-1)]">
+                    {meeting?.summary || "No summary captured."}
+                  </p>
                 </section>
-              ) : null}
-            </>
-          )}
+
+                {decisions.length > 0 ? (
+                  <section>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                      Decisions
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
+                      {decisions.map((decision, index) => (
+                        <li key={`${decision}-${index}`}>{decision}</li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

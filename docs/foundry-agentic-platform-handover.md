@@ -328,7 +328,7 @@ The private wiki sidebar now has a compact `Add New` menu. Core pages remain vis
 
 Documentation pages can now be removed from the private sidebar without deleting the whole wiki. The delete action removes the underlying `ClientWikiPage`, clears any per-page share token, and records the section slug in `ClientWiki.hiddenSections`. Re-adding the page through `Add New` removes it from `hiddenSections` and restores the starter page. Wedge Course Requests are intentionally not part of this delete surface.
 
-API Docs now uses a structured editor/reference view rather than a plain markdown page. It stores title, schema path, environment, OAS version, server list, website link, and endpoint rows in the existing `ClientWikiPage.content` JSON. The private editor supports editable metadata plus endpoint/server textareas; the public and private preview render a compact Swagger-style reference with method chips, grouped endpoints, auth lock indicators, filter, server selector, and expandable endpoint details.
+API Docs now uses a structured editor/reference view rather than a plain markdown page. It stores title, schema path, environment, OAS version, server list, website link, and endpoint rows in the existing `ClientWikiPage.content` JSON. The private editor supports metadata fields plus add/remove server and endpoint rows; the public and private preview render a compact Swagger-style reference with method chips, grouped endpoints, auth lock indicators, filter, server selector, expandable endpoint details, and an in-session Authorize modal.
 
 Touched areas:
 
@@ -347,7 +347,7 @@ Meeting Notes now bridge more directly into the Kanban board while preserving ma
 - Action-item task creation stamps source metadata on the task: meeting id, title, date, action item id/title/text. The existing `MeetingActionItem.taskId` relation remains the strongest source link.
 - Operators can also create an ad-hoc/manual task from inside the Meeting Notes modal. Those tasks are not forced through action items; they use task metadata with `source: "scribe_meeting"` and the meeting id/title/date.
 - The Meeting Notes modal now includes a compact `Tasks from this note` section and a `View board` link to `/app/portal/[slug]/tasks?sourceMeeting=[meetingId]`.
-- Kanban cards show a small Scribe source icon next to the task title when a task has meeting provenance. Clicking it opens the Scribe source modal with meeting notes, decisions, source file link, task creator, and either action-item context or manual-task context.
+- Kanban cards show a small Scribe source icon next to the task title when a task has meeting provenance. Clicking it opens the fixed-height, two-column Scribe source modal with meeting notes, decisions, source file link, task creator, and either action-item context or manual-task context.
 - The task detail drawer also renders an inline `Scribe source` audit panel for sourced tasks, so the provenance is visible inside the task itself and not only from the board card.
 - The task board/list filter bar includes `Scribe source`, so operators can view/report all tasks generated from a specific meeting without creating a separate reporting page.
 

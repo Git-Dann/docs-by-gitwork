@@ -11,8 +11,12 @@ import {
 } from "react";
 import {
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
   ChevronDownIcon,
   LockClosedIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { WikiPageEditorHandle } from "./wiki-page-editor";
@@ -156,57 +160,6 @@ export function normalizeApiDocsContent(content: unknown, fallbackTitle = "API D
   };
 }
 
-function serversToText(servers: ApiDocsServer[]): string {
-  return servers.map((server) => `${server.url} | ${server.label}`).join("\n");
-}
-
-function endpointsToText(endpoints: ApiDocsEndpoint[]): string {
-  return endpoints
-    .map((endpoint) =>
-      [
-        endpoint.tag,
-        endpoint.method,
-        endpoint.path,
-        endpoint.operationId,
-        endpoint.auth ? "auth" : "public",
-        endpoint.summary,
-      ].join(" | "),
-    )
-    .join("\n");
-}
-
-function parseServers(text: string): ApiDocsServer[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [url, label] = line.split("|").map((part) => part.trim());
-      return { url, label: label || "Server" };
-    })
-    .filter((server) => server.url);
-}
-
-function parseEndpoints(text: string): ApiDocsEndpoint[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [tag, method, path, operationId, auth, ...summaryParts] = line
-        .split("|")
-        .map((part) => part.trim());
-      return {
-        tag: tag || "default",
-        method: methodValue(method),
-        path: path || "/api/resource/",
-        operationId: operationId || (path || "resource").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, ""),
-        auth: (auth || "auth").toLowerCase() !== "public",
-        summary: summaryParts.join(" | "),
-      };
-    });
-}
-
 function endpointGroups(endpoints: ApiDocsEndpoint[]) {
   const groups = new Map<string, ApiDocsEndpoint[]>();
   for (const endpoint of endpoints) {
@@ -221,20 +174,14 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
   function ApiDocsPageEditor({ title, content, onSave, mode, onSaved, readOnly = false }, ref) {
     const initial = useMemo(() => normalizeApiDocsContent(content, title), [content, title]);
     const [doc, setDoc] = useState(initial);
-    const [serversText, setServersText] = useState(() => serversToText(initial.servers));
-    const [endpointsText, setEndpointsText] = useState(() => endpointsToText(initial.endpoints));
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const latest = useRef({ doc, serversText, endpointsText });
+    const latest = useRef(doc);
 
     useEffect(() => {
-      latest.current = { doc, serversText, endpointsText };
-    }, [doc, serversText, endpointsText]);
+      latest.current = doc;
+    }, [doc]);
 
-    const buildContent = useCallback(() => ({
-      ...latest.current.doc,
-      servers: parseServers(latest.current.serversText),
-      endpoints: parseEndpoints(latest.current.endpointsText),
-    }), []);
+    const buildContent = useCallback(() => normalizeApiDocsContent(latest.current, title), [title]);
 
     const save = useCallback(async (label: "Saved" | "Auto-saved") => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -260,132 +207,270 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
 
     useImperativeHandle(ref, () => ({ save: () => save("Saved") }), [save]);
 
-    const previewContent = useMemo(
-      () => ({
-        ...doc,
-        servers: parseServers(serversText),
-        endpoints: parseEndpoints(endpointsText),
-      }),
-      [doc, serversText, endpointsText],
-    );
+    const previewContent = useMemo(() => normalizeApiDocsContent(doc, title), [doc, title]);
 
     if (readOnly || mode === "preview") {
       return <ApiDocsReference content={previewContent} />;
     }
 
+    function patchDoc(patch: Partial<ApiDocsContent>) {
+      setDoc((current) => ({ ...current, ...patch }));
+      scheduleAutoSave();
+    }
+
+    function patchServer(index: number, patch: Partial<ApiDocsServer>) {
+      setDoc((current) => ({
+        ...current,
+        servers: current.servers.map((server, i) => (i === index ? { ...server, ...patch } : server)),
+      }));
+      scheduleAutoSave();
+    }
+
+    function addServer() {
+      setDoc((current) => ({
+        ...current,
+        servers: [...current.servers, { url: "", label: "STAGE" }],
+      }));
+      scheduleAutoSave();
+    }
+
+    function removeServer(index: number) {
+      setDoc((current) => ({
+        ...current,
+        servers: current.servers.filter((_, i) => i !== index),
+      }));
+      scheduleAutoSave();
+    }
+
+    function patchEndpoint(index: number, patch: Partial<ApiDocsEndpoint>) {
+      setDoc((current) => ({
+        ...current,
+        endpoints: current.endpoints.map((endpoint, i) => (i === index ? { ...endpoint, ...patch } : endpoint)),
+      }));
+      scheduleAutoSave();
+    }
+
+    function addEndpoint() {
+      setDoc((current) => ({
+        ...current,
+        endpoints: [
+          ...current.endpoints,
+          {
+            tag: "default",
+            method: "GET",
+            path: "/api/resource/",
+            operationId: "resource_retrieve",
+            auth: true,
+            summary: "",
+          },
+        ],
+      }));
+      scheduleAutoSave();
+    }
+
+    function removeEndpoint(index: number) {
+      setDoc((current) => ({
+        ...current,
+        endpoints: current.endpoints.filter((_, i) => i !== index),
+      }));
+      scheduleAutoSave();
+    }
+
     const inputCls =
       "w-full rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]";
-    const textareaCls = `${inputCls} min-h-[120px] font-mono text-[12px] leading-5`;
+    const labelCls = "text-[11px] font-medium text-[var(--text-4)]";
 
     return (
-      <div className="space-y-5">
-        <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Title</span>
+            <span className={labelCls}>Title</span>
             <input
               value={doc.title}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, title: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ title: event.target.value })}
               className={inputCls}
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Schema path</span>
+            <span className={labelCls}>Schema path</span>
             <input
               value={doc.schemaPath}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, schemaPath: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ schemaPath: event.target.value })}
               className={inputCls}
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Environment</span>
+            <span className={labelCls}>Environment</span>
             <input
               value={doc.environment}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, environment: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ environment: event.target.value })}
               className={inputCls}
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Spec version</span>
+            <span className={labelCls}>Spec version</span>
             <input
               value={doc.specVersion}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, specVersion: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ specVersion: event.target.value })}
               className={inputCls}
             />
           </label>
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Description</span>
+            <span className={labelCls}>Description</span>
             <textarea
               value={doc.description}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, description: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ description: event.target.value })}
               className={`${inputCls} min-h-[78px]`}
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Website label</span>
+            <span className={labelCls}>Website label</span>
             <input
               value={doc.websiteLabel}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, websiteLabel: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ websiteLabel: event.target.value })}
               className={inputCls}
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[11px] font-medium text-[var(--text-4)]">Website URL</span>
+            <span className={labelCls}>Website URL</span>
             <input
               value={doc.websiteUrl}
-              onChange={(event) => {
-                setDoc((current) => ({ ...current, websiteUrl: event.target.value }));
-                scheduleAutoSave();
-              }}
+              onChange={(event) => patchDoc({ websiteUrl: event.target.value })}
               className={inputCls}
             />
           </label>
-        </div>
+          </div>
+        </section>
 
-        <label className="block space-y-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-4)]">Servers</span>
-          <textarea
-            value={serversText}
-            onChange={(event) => {
-              setServersText(event.target.value);
-              scheduleAutoSave();
-            }}
-            className={textareaCls}
-            spellCheck={false}
-          />
-        </label>
+        <section className="space-y-3 border-t border-[var(--border-1)] pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-[var(--text-1)]">Servers</h3>
+            <button
+              type="button"
+              onClick={addServer}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add server
+            </button>
+          </div>
+          <div className="space-y-2">
+            {doc.servers.map((server, index) => (
+              <div key={`${index}-${server.url}`} className="grid gap-2 rounded-[8px] border border-[var(--border-2)] bg-white p-3 md:grid-cols-[minmax(0,1.6fr)_minmax(140px,0.5fr)_auto]">
+                <label className="space-y-1.5">
+                  <span className={labelCls}>URL</span>
+                  <input
+                    value={server.url}
+                    onChange={(event) => patchServer(index, { url: event.target.value })}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className={labelCls}>Label</span>
+                  <input
+                    value={server.label}
+                    onChange={(event) => patchServer(index, { label: event.target.value })}
+                    className={inputCls}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removeServer(index)}
+                  className="mt-6 inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
+                  title="Remove server"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        <label className="block space-y-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-4)]">Endpoints</span>
-          <textarea
-            value={endpointsText}
-            onChange={(event) => {
-              setEndpointsText(event.target.value);
-              scheduleAutoSave();
-            }}
-            className={`${textareaCls} min-h-[220px]`}
-            spellCheck={false}
-          />
-        </label>
-
-        <ApiDocsReference content={previewContent} />
+        <section className="space-y-3 border-t border-[var(--border-1)] pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-[var(--text-1)]">Endpoints</h3>
+            <button
+              type="button"
+              onClick={addEndpoint}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add endpoint
+            </button>
+          </div>
+          <div className="space-y-3">
+            {doc.endpoints.map((endpoint, index) => (
+              <div key={`${index}-${endpoint.method}-${endpoint.path}`} className="rounded-[8px] border border-[var(--border-2)] bg-white p-3">
+                <div className="grid gap-2 md:grid-cols-[110px_minmax(120px,0.7fr)_minmax(0,1.3fr)_minmax(0,1fr)_auto]">
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Method</span>
+                    <select
+                      value={endpoint.method}
+                      onChange={(event) => patchEndpoint(index, { method: methodValue(event.target.value) })}
+                      className={inputCls}
+                    >
+                      {(["GET", "POST", "PATCH", "PUT", "DELETE"] as ApiMethod[]).map((method) => (
+                        <option key={method} value={method}>{method}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Tag</span>
+                    <input
+                      value={endpoint.tag}
+                      onChange={(event) => patchEndpoint(index, { tag: event.target.value })}
+                      className={inputCls}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Path</span>
+                    <input
+                      value={endpoint.path}
+                      onChange={(event) => patchEndpoint(index, { path: event.target.value })}
+                      className={`${inputCls} font-mono`}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Operation ID</span>
+                    <input
+                      value={endpoint.operationId}
+                      onChange={(event) => patchEndpoint(index, { operationId: event.target.value })}
+                      className={`${inputCls} font-mono`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeEndpoint(index)}
+                    className="mt-6 inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
+                    title="Remove endpoint"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Summary</span>
+                    <textarea
+                      value={endpoint.summary}
+                      onChange={(event) => patchEndpoint(index, { summary: event.target.value })}
+                      className={`${inputCls} min-h-[66px]`}
+                    />
+                  </label>
+                  <label className="mt-6 flex h-9 items-center gap-2 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 text-sm text-[var(--text-2)]">
+                    <input
+                      type="checkbox"
+                      checked={endpoint.auth}
+                      onChange={(event) => patchEndpoint(index, { auth: event.target.checked })}
+                      className="accent-[var(--brand-700)]"
+                    />
+                    Requires auth
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     );
   },
@@ -395,6 +480,10 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
   const [filter, setFilter] = useState("");
   const [selectedServer, setSelectedServer] = useState(content.servers[0]?.url ?? "");
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authScheme, setAuthScheme] = useState<"bearer" | "apiKey">("bearer");
+  const [authValue, setAuthValue] = useState("");
+  const [authorizedLabel, setAuthorizedLabel] = useState<string | null>(null);
   const needle = filter.trim().toLowerCase();
   const filteredEndpoints = needle
     ? content.endpoints.filter((endpoint) =>
@@ -406,7 +495,20 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
     : content.endpoints;
   const groups = endpointGroups(filteredEndpoints);
 
+  function saveAuthorization() {
+    if (!authValue.trim()) return;
+    setAuthorizedLabel(authScheme === "bearer" ? "Bearer token" : "API key");
+    setAuthOpen(false);
+  }
+
+  function clearAuthorization() {
+    setAuthValue("");
+    setAuthorizedLabel(null);
+    setAuthOpen(false);
+  }
+
   return (
+    <>
     <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
       <div className="bg-[var(--surface-0)] px-5 py-6 md:px-7">
         <div className="flex flex-wrap items-center gap-2">
@@ -454,10 +556,16 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
         </label>
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-[6px] border border-emerald-400 bg-white px-4 py-2 text-sm font-semibold text-emerald-600"
+          onClick={() => setAuthOpen(true)}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-[6px] border bg-white px-4 py-2 text-sm font-semibold transition",
+            authorizedLabel
+              ? "border-emerald-500 text-emerald-700"
+              : "border-emerald-400 text-emerald-600 hover:bg-emerald-50",
+          )}
         >
-          Authorize
-          <LockClosedIcon className="h-4 w-4" />
+          {authorizedLabel ? "Authorized" : "Authorize"}
+          {authorizedLabel ? <CheckIcon className="h-4 w-4" /> : <LockClosedIcon className="h-4 w-4" />}
         </button>
       </div>
 
@@ -541,5 +649,85 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
         ) : null}
       </div>
     </div>
+    {authOpen ? (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/25"
+          aria-label="Close authorization"
+          onClick={() => setAuthOpen(false)}
+        />
+        <div className="relative z-10 w-full max-w-[420px] rounded-[10px] border border-[var(--border-2)] bg-white shadow-[0_16px_48px_rgba(0,0,0,0.18)]">
+          <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-5 py-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-700)]" style={{ fontFamily: "var(--font-mono)" }}>
+                API auth
+              </p>
+              <h3 className="mt-1 text-base font-semibold text-[var(--text-1)]">Authorize requests</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAuthOpen(false)}
+              className="rounded-[5px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              title="Close"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="space-y-3 px-5 py-4">
+            <label className="block space-y-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-4)]">Type</span>
+              <select
+                value={authScheme}
+                onChange={(event) => setAuthScheme(event.target.value === "apiKey" ? "apiKey" : "bearer")}
+                className="w-full rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]"
+              >
+                <option value="bearer">Bearer token</option>
+                <option value="apiKey">API key</option>
+              </select>
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-4)]">Value</span>
+              <input
+                type="password"
+                value={authValue}
+                onChange={(event) => setAuthValue(event.target.value)}
+                className="w-full rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]"
+              />
+            </label>
+            {authorizedLabel ? (
+              <p className="text-xs text-emerald-700">Current session is authorized with {authorizedLabel}.</p>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--border-1)] px-5 py-4">
+            <button
+              type="button"
+              onClick={clearAuthorization}
+              className="text-xs font-medium text-[var(--text-4)] transition hover:text-rose-600"
+            >
+              Clear
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAuthOpen(false)}
+                className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveAuthorization}
+                disabled={!authValue.trim()}
+                className="rounded-[6px] bg-[var(--text-1)] px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-40"
+              >
+                Authorize
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
