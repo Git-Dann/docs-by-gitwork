@@ -15,6 +15,7 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   VideoCameraIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"
 
 function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
   const source = task.scribeSource;
+  const [open, setOpen] = useState(false);
   const { data, isPending } = useQuery({
     queryKey: ["client-meeting", task.client.slug, source?.meetingId ?? ""],
     queryFn: () => getClientMeeting(task.client.slug, source!.meetingId),
@@ -115,33 +117,47 @@ function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
           </a>
         ) : null}
       </div>
-      <div className="space-y-3 px-3 py-3">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
-            Source detail
-          </p>
-          <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
-            {source.actionTitle || (source.kind === "ACTION_ITEM" ? task.title : "Manual task")}
-          </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-            {source.actionText || "Created manually from this Scribe meeting note."}
-          </p>
-        </div>
-        {isPending ? (
-          <p className="widget-data-label animate-pulse">Loading full note...</p>
-        ) : decisions.length > 0 ? (
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`scribe-source-detail-${task.id}`}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-white/45"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
+          Source detail
+        </span>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--brand-700)]">
+          {open ? "Hide" : "Reveal"}
+          <ChevronDownIcon className={cn("h-3.5 w-3.5 transition-transform", open ? "rotate-180" : "")} />
+        </span>
+      </button>
+      {open ? (
+        <div id={`scribe-source-detail-${task.id}`} className="space-y-3 border-t border-[rgba(0,0,0,0.06)] px-3 py-3">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
-              Decisions from note
+            <p className="text-sm font-medium text-[var(--text-1)]">
+              {source.actionTitle || (source.kind === "ACTION_ITEM" ? task.title : "Manual task")}
             </p>
-            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-5 text-[var(--text-2)]">
-              {decisions.slice(0, 3).map((decision, index) => (
-                <li key={`${decision}-${index}`}>{decision}</li>
-              ))}
-            </ul>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+              {source.actionText || "Created manually from this Scribe meeting note."}
+            </p>
           </div>
-        ) : null}
-      </div>
+          {isPending ? (
+            <p className="widget-data-label animate-pulse">Loading full note...</p>
+          ) : decisions.length > 0 ? (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
+                Decisions from note
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-5 text-[var(--text-2)]">
+                {decisions.slice(0, 3).map((decision, index) => (
+                  <li key={`${decision}-${index}`}>{decision}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
