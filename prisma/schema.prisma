@@ -1052,6 +1052,9 @@ model ClientWiki {
   /// Per-page public share tokens: { "<section>": "<token>" } for individually
   /// shared sections (ia / dev-guide / api-docs / changelog etc.). shareToken above is whole-wiki.
   pageShares        Json?
+  /// Section slugs manually removed from the private sidebar. Add New removes
+  /// entries from this list when a page is restored.
+  hiddenSections    Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens   String[]               @default([])
   pages             ClientWikiPage[]

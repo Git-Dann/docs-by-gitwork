@@ -9,6 +9,7 @@ import {
   createClientPlatform,
   createOnboardingLink,
   createProposal,
+  addMeetingDecisionApi,
   deleteClient,
   deleteClientDesign,
   deleteClientPlatform,
@@ -20,6 +21,7 @@ import {
   ingestClientMeeting,
   updateMeetingActionItem,
   linkMeetingActionItemTask,
+  removeMeetingDecisionApi,
   getProposal,
   listClients,
   listOnboardingLinks,
@@ -507,6 +509,28 @@ export function useLinkMeetingActionItemTask(slug: string) {
   return useMutation({
     mutationFn: ({ meetingId, actionItemId, taskId }: { meetingId: string; actionItemId: string; taskId: string | null }) =>
       linkMeetingActionItemTask(slug, meetingId, { actionItemId, taskId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useUpdateMeetingDecision(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      meetingId,
+      decisionText,
+      removeDecisionIndex,
+    }: {
+      meetingId: string;
+      decisionText?: string;
+      removeDecisionIndex?: number;
+    }) =>
+      decisionText !== undefined
+        ? addMeetingDecisionApi(slug, meetingId, decisionText)
+        : removeMeetingDecisionApi(slug, meetingId, removeDecisionIndex ?? -1),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-meetings", slug] });
     },

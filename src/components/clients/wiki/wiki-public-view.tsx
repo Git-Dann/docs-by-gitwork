@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
 import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
+import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { apiFetch } from "@/lib/api";
@@ -65,16 +66,17 @@ export function WikiPublicView({
     (onlySection as WikiSection) ?? "ia",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+  const hiddenSections = new Set(wiki.hiddenSections ?? []);
   const existingDocSections = wiki.pages
     .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
-    .filter((section): section is WikiSection => Boolean(section));
+    .filter((section): section is WikiSection => {
+      if (!section) return false;
+      return !hiddenSections.has(section);
+    });
   const availableSections: WikiSection[] = [
     "design-system",
-    "ia",
-    "dev-guide",
-    ...existingDocSections.filter((section) =>
-      ["api-docs", "architecture", "runbook", "data-model"].includes(section),
-    ),
+    ...(["ia", "dev-guide"] as const).filter((section) => !hiddenSections.has(section)),
+    ...existingDocSections.filter((section) => ["api-docs", "architecture", "runbook", "data-model"].includes(section)),
     "changelog",
     "course-requests",
   ];
@@ -157,6 +159,13 @@ export function WikiPublicView({
     }
 
     const page = getPage(activeSection);
+    if (activeSection === "api-docs") {
+      return (
+        <ApiDocsReference
+          content={normalizeApiDocsContent(page?.content, page?.title ?? SECTION_TITLES[activeSection])}
+        />
+      );
+    }
     const existingContent = typeof page?.content === "string" ? page.content : "";
     return (
       <WikiPageEditor

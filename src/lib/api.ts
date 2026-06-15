@@ -1899,6 +1899,7 @@ export interface ScribeMeeting {
   clientId: string | null;
   calendarEventId: string | null;
   meetingCode: string | null;
+  conferenceRecordName?: string | null;
   title: string;
   startedAt: string | null;
   endedAt: string | null;
@@ -1967,6 +1968,30 @@ export async function updateMeetingActionItem(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+export async function addMeetingDecisionApi(
+  slug: string,
+  meetingId: string,
+  decisionText: string,
+): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/${meetingId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decisionText }),
+  });
+}
+
+export async function removeMeetingDecisionApi(
+  slug: string,
+  meetingId: string,
+  removeDecisionIndex: number,
+): Promise<{ meeting: ScribeMeeting }> {
+  return apiFetch(`/api/clients/${slug}/meetings/${meetingId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ removeDecisionIndex }),
   });
 }
 
@@ -2197,11 +2222,13 @@ export function listTasks(opts: {
   clientId?: string;
   status?: TaskStatus;
   assigneeId?: string;
+  sourceMeetingId?: string;
 } = {}): Promise<TaskDTO[]> {
   const q = new URLSearchParams();
   if (opts.clientId) q.set("clientId", opts.clientId);
   if (opts.status) q.set("status", opts.status);
   if (opts.assigneeId) q.set("assigneeId", opts.assigneeId);
+  if (opts.sourceMeetingId) q.set("sourceMeetingId", opts.sourceMeetingId);
   const qs = q.toString();
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }
@@ -2221,6 +2248,7 @@ export function createTask(input: {
   featureBlockId?: string | null;
   parentId?: string | null;
   dueDate?: string | null;
+  metadata?: Record<string, unknown> | null;
 }): Promise<TaskDTO> {
   return apiFetch("/api/tasks", {
     method: "POST",
@@ -2240,6 +2268,7 @@ export function updateTask(
     assigneeIds?: string[];
     featureBlockId?: string | null;
     dueDate?: string | null;
+    metadata?: Record<string, unknown> | null;
   },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}`, {
@@ -2540,6 +2569,17 @@ export async function upsertWikiPage(
 ): Promise<WikiPageRecord> {
   return apiFetch<WikiPageRecord>(`/api/clients/${slug}/wiki/pages`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteWikiPage(
+  slug: string,
+  payload: { type: string },
+): Promise<{ deleted: boolean; hiddenSections: string[] }> {
+  return apiFetch<{ deleted: boolean; hiddenSections: string[] }>(`/api/clients/${slug}/wiki/pages`, {
+    method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

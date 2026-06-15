@@ -64,6 +64,8 @@ export interface WikiDTO {
   platforms: string[];
   /** Per-page public share tokens, keyed by section (ia / dev-guide / api-docs / changelog etc.). */
   pageShares: Record<string, string>;
+  /** Private sidebar sections the operator manually removed. */
+  hiddenSections: string[];
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
@@ -145,6 +147,7 @@ async function buildDTO(wiki: {
   shareEnabled: boolean;
   platforms: unknown;
   pageShares?: unknown;
+  hiddenSections?: unknown;
   updatedAt: Date;
   client: { name: string; slug: string };
   pages: Array<{
@@ -189,6 +192,9 @@ async function buildDTO(wiki: {
       wiki.pageShares && typeof wiki.pageShares === "object"
         ? (wiki.pageShares as Record<string, string>)
         : {},
+    hiddenSections: Array.isArray(wiki.hiddenSections)
+      ? wiki.hiddenSections.filter((section): section is string => typeof section === "string")
+      : [],
     pages: wiki.pages.sort((a, b) => a.sortOrder - b.sortOrder).map(serializePage),
     changelog: wiki.changelog
       .sort((a, b) => {
@@ -214,6 +220,15 @@ const WIKI_INCLUDE = {
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
 } as const;
+
+const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
+  IA_GUIDE: "ia",
+  DEV_API_GUIDE: "dev-guide",
+  API_DOCS: "api-docs",
+  ARCHITECTURE: "architecture",
+  RUNBOOK: "runbook",
+  DATA_MODEL: "data-model",
+};
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -258,8 +273,12 @@ export async function upsertWikiPage(
     where: { clientId },
     create: { clientId },
     update: {},
-    select: { id: true },
+    select: { id: true, hiddenSections: true },
   });
+  const section = PAGE_TYPE_TO_SECTION[input.type];
+  const hiddenSections = Array.isArray(wiki.hiddenSections)
+    ? wiki.hiddenSections.filter((item): item is string => typeof item === "string")
+    : [];
 
   const page = await prisma.clientWikiPage.upsert({
     where: { wikiId_type: { wikiId: wiki.id, type: input.type } },
@@ -275,7 +294,55 @@ export async function upsertWikiPage(
     },
   });
 
+  if (section && hiddenSections.includes(section)) {
+    await prisma.clientWiki.update({
+      where: { id: wiki.id },
+      data: { hiddenSections: hiddenSections.filter((item) => item !== section) },
+    });
+  }
+
   return serializePage(page);
+}
+
+/** Delete a markdown wiki page and hide its sidebar entry until it is re-added. */
+export async function deleteWikiPage(
+  clientId: string,
+  input: { type: WikiPageType },
+): Promise<{ deleted: boolean; hiddenSections: string[] }> {
+  const section = PAGE_TYPE_TO_SECTION[input.type];
+  if (!section) throw new Error(`Page type "${input.type}" cannot be deleted from the wiki sidebar.`);
+
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true, hiddenSections: true, pageShares: true },
+  });
+
+  const deleted = await prisma.clientWikiPage.deleteMany({
+    where: { wikiId: wiki.id, type: input.type },
+  });
+  const hiddenSections = Array.isArray(wiki.hiddenSections)
+    ? wiki.hiddenSections.filter((item): item is string => typeof item === "string")
+    : [];
+  if (!hiddenSections.includes(section)) hiddenSections.push(section);
+
+  const pageShares =
+    wiki.pageShares && typeof wiki.pageShares === "object"
+      ? { ...(wiki.pageShares as Record<string, string>) }
+      : {};
+  delete pageShares[section];
+
+  await prisma.clientWiki.update({
+    where: { id: wiki.id },
+    data: {
+      hiddenSections,
+      pageShares,
+      pageShareTokens: Object.values(pageShares),
+    },
+  });
+
+  return { deleted: deleted.count > 0, hiddenSections };
 }
 
 /** Add a changelog entry. Auto-creates the wiki if absent. */

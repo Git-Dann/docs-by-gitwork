@@ -36,6 +36,16 @@ export type TaskClientRef = { id: string; name: string; slug: string };
 
 export type TaskBlockRef = { id: string; name: string };
 
+export type TaskScribeSourceRef = {
+  kind: "ACTION_ITEM" | "MANUAL";
+  meetingId: string;
+  meetingTitle: string;
+  meetingStartedAt: string | null;
+  actionItemId: string | null;
+  actionTitle: string | null;
+  actionText: string | null;
+};
+
 export type TaskDTO = {
   id: string;
   workspaceId: string;
@@ -57,6 +67,7 @@ export type TaskDTO = {
   subtaskCount: number;
   subtaskDoneCount: number;
   metadata: Record<string, unknown> | null;
+  scribeSource: TaskScribeSourceRef | null;
   createdAt: string;
   updatedAt: string;
 };

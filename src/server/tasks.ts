@@ -19,6 +19,7 @@ import type {
   TaskStatus,
   TaskPriority,
   TaskUserRef,
+  TaskScribeSourceRef,
   ClientTaskSummary,
   TaskAttentionDTO,
 } from "@/types/tasks";
@@ -82,9 +83,107 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     subtaskCount: row._count.subtasks,
     subtaskDoneCount: 0,
     metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    scribeSource: null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function metadataString(metadata: Record<string, unknown> | null, key: string): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function scribeMetadata(task: Pick<TaskDTO, "metadata">): {
+  meetingId: string;
+  meetingTitle: string | null;
+  meetingStartedAt: string | null;
+  actionItemId: string | null;
+  actionTitle: string | null;
+  actionText: string | null;
+} | null {
+  if (metadataString(task.metadata, "source") !== "scribe_meeting") return null;
+  const meetingId = metadataString(task.metadata, "sourceMeetingId");
+  if (!meetingId) return null;
+  return {
+    meetingId,
+    meetingTitle: metadataString(task.metadata, "sourceMeetingTitle"),
+    meetingStartedAt: metadataString(task.metadata, "sourceMeetingStartedAt"),
+    actionItemId: metadataString(task.metadata, "sourceActionItemId"),
+    actionTitle: metadataString(task.metadata, "sourceActionTitle"),
+    actionText: metadataString(task.metadata, "sourceActionText"),
+  };
+}
+
+async function attachScribeSources<T extends TaskDTO>(
+  workspaceId: string,
+  tasks: T[],
+): Promise<T[]> {
+  const taskIds = tasks.map((task) => task.id);
+  if (taskIds.length === 0) return tasks;
+  const metadataByTaskId = new Map<string, NonNullable<ReturnType<typeof scribeMetadata>>>();
+  const metadataMeetingIds = new Set<string>();
+  for (const task of tasks) {
+    const meta = scribeMetadata(task);
+    if (!meta) continue;
+    metadataByTaskId.set(task.id, meta);
+    metadataMeetingIds.add(meta.meetingId);
+  }
+  const actionItems = await prisma.meetingActionItem.findMany({
+    where: { taskId: { in: taskIds }, meeting: { workspaceId } },
+    select: {
+      id: true,
+      taskId: true,
+      title: true,
+      text: true,
+      meeting: {
+        select: {
+          id: true,
+          title: true,
+          startedAt: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+  const byTaskId = new Map<string, TaskScribeSourceRef>();
+  for (const item of actionItems) {
+    if (!item.taskId) continue;
+    byTaskId.set(item.taskId, {
+      kind: "ACTION_ITEM",
+      meetingId: item.meeting.id,
+      meetingTitle: item.meeting.title,
+      meetingStartedAt: (item.meeting.startedAt ?? item.meeting.createdAt).toISOString(),
+      actionItemId: item.id,
+      actionTitle: item.title,
+      actionText: item.text,
+    });
+  }
+  const meetingIds = [...metadataMeetingIds];
+  const meetingRows = meetingIds.length
+    ? await prisma.meeting.findMany({
+        where: { id: { in: meetingIds }, workspaceId },
+        select: { id: true, title: true, startedAt: true, createdAt: true },
+      })
+    : [];
+  const meetingsById = new Map(meetingRows.map((meeting) => [meeting.id, meeting]));
+  for (const task of tasks) {
+    if (byTaskId.has(task.id)) continue;
+    const meta = metadataByTaskId.get(task.id);
+    if (!meta) continue;
+    const meeting = meetingsById.get(meta.meetingId);
+    byTaskId.set(task.id, {
+      kind: meta.actionItemId ? "ACTION_ITEM" : "MANUAL",
+      meetingId: meta.meetingId,
+      meetingTitle: meeting?.title ?? meta.meetingTitle ?? "Meeting notes",
+      meetingStartedAt:
+        (meeting?.startedAt ?? meeting?.createdAt)?.toISOString() ?? meta.meetingStartedAt,
+      actionItemId: meta.actionItemId,
+      actionTitle: meta.actionTitle,
+      actionText: meta.actionText,
+    });
+  }
+  return tasks.map((task) => ({ ...task, scribeSource: byTaskId.get(task.id) ?? task.scribeSource }));
 }
 
 function commentRowToDTO(row: CommentRow): TaskCommentDTO {
@@ -160,7 +259,7 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -177,13 +276,32 @@ export async function listTasks(
     const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
     where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];
   }
+  if (opts.sourceMeetingId) {
+    const linkedItems = await prisma.meetingActionItem.findMany({
+      where: {
+        meetingId: opts.sourceMeetingId,
+        meeting: { workspaceId: user.workspaceId },
+        taskId: { not: null },
+      },
+      select: { taskId: true },
+    });
+    const linkedTaskIds = linkedItems
+      .map((item) => item.taskId)
+      .filter((id): id is string => Boolean(id));
+    const sourceFilters: Prisma.TaskWhereInput[] = [
+      ...(linkedTaskIds.length > 0 ? [{ id: { in: linkedTaskIds } }] : []),
+      { metadata: { path: ["sourceMeetingId"], equals: opts.sourceMeetingId } },
+    ];
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, { OR: sourceFilters }];
+  }
 
   const rows = await prisma.task.findMany({
     where,
     orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
     include: taskInclude,
   });
-  return rows.map(taskRowToDTO);
+  return attachScribeSources(user.workspaceId, rows.map(taskRowToDTO));
 }
 
 export async function getTask(user: EffectiveUser, id: string): Promise<TaskDetailDTO> {
@@ -207,7 +325,8 @@ export async function getTask(user: EffectiveUser, id: string): Promise<TaskDeta
     }),
   ]);
   const subtasks = subtaskRows.map(taskRowToDTO);
-  const dto = taskRowToDTO(row);
+  const [dtoWithSource] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
+  const dto = dtoWithSource ?? taskRowToDTO(row);
   dto.subtaskCount = subtasks.length;
   dto.subtaskDoneCount = subtasks.filter((s) => s.status === "DONE").length;
   return { ...dto, comments: comments.map(commentRowToDTO), subtasks };
@@ -283,9 +402,9 @@ export async function getTaskAttention(
   ]);
 
   return {
-    overdue: overdueRows.map(taskRowToDTO),
+    overdue: await attachScribeSources(user.workspaceId, overdueRows.map(taskRowToDTO)),
     overdueCount,
-    doing: doingRows.map(taskRowToDTO),
+    doing: await attachScribeSources(user.workspaceId, doingRows.map(taskRowToDTO)),
     dueSoonCount,
     doingCount,
   };
@@ -373,7 +492,8 @@ export async function createTask(
     },
     include: taskInclude,
   });
-  return taskRowToDTO(row);
+  const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
+  return task;
 }
 
 /**
@@ -508,7 +628,8 @@ export async function updateTask(
   }
 
   const row = await prisma.task.update({ where: { id }, data, include: taskInclude });
-  return taskRowToDTO(row);
+  const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
+  return task;
 }
 
 /** Drag move: set status + fractional order key, stamping timestamps. */

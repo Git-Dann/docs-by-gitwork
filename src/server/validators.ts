@@ -878,6 +878,7 @@ export const taskInputSchema = z.object({
   featureBlockId: z.string().cuid().nullable().optional(),
   parentId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const taskUpdateSchema = z.object({
@@ -889,6 +890,7 @@ export const taskUpdateSchema = z.object({
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 /**
@@ -910,6 +912,7 @@ export const taskListQuerySchema = z.object({
   status: taskStatusSchema.optional(),
   // "me" resolves to the caller server-side; a cuid filters to that assignee.
   assigneeId: z.string().optional(),
+  sourceMeetingId: z.string().cuid().optional(),
 });
 
 /** Bulk edit — apply one patch (any subset of fields) to many tasks at once. */
@@ -1021,13 +1024,20 @@ export const meetingUpdateSchema = z
     done: z.boolean().optional(),
     taskId: z.string().nullable().optional(),
     clientId: z.string().nullable().optional(),
+    decisionText: z.string().trim().min(1).max(1000).optional(),
+    removeDecisionIndex: z.number().int().nonnegative().optional(),
   })
   .refine(
     (v) =>
       (v.actionItemId !== undefined && v.done !== undefined) ||
       (v.actionItemId !== undefined && v.taskId !== undefined) ||
-      v.clientId !== undefined,
-    { message: "Provide actionItemId + done to toggle, actionItemId + taskId to link/unlink a task, or clientId to reassign." },
+      v.clientId !== undefined ||
+      v.decisionText !== undefined ||
+      v.removeDecisionIndex !== undefined,
+    {
+      message:
+        "Provide actionItemId + done, actionItemId + taskId, clientId, decisionText, or removeDecisionIndex.",
+    },
   );
 
 // ── Design system (per-client brand tokens; see src/types/design-tokens.ts) ──

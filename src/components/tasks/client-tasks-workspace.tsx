@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftIcon,
+  ArrowTopRightOnSquareIcon,
   PlusIcon,
   ArrowUpTrayIcon,
   Squares2X2Icon,
@@ -13,11 +15,13 @@ import {
   ShareIcon,
   CheckIcon,
   ClipboardDocumentIcon,
+  VideoCameraIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { cn, taskRef } from "@/lib/format";
+import { cn, formatDate, taskRef } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/use-permissions";
-import { useClientDetail } from "@/hooks/use-proposals";
+import { useClientDetail, useClientMeetings } from "@/hooks/use-proposals";
 import {
   useTasks,
   useUpdateTask,
@@ -26,7 +30,8 @@ import {
   useTimelineShare,
   useSetTimelineShare,
 } from "@/hooks/use-tasks";
-import type { FeatureBlockDTO, MilestoneDTO } from "@/types/tasks";
+import type { FeatureBlockDTO, MilestoneDTO, TaskDTO } from "@/types/tasks";
+import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskList } from "@/components/tasks/task-list";
 import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
@@ -51,6 +56,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
   // Deep-link sync: lets Slack standup cards (and any other shared URL) jump
   // straight to a task by opening the drawer on mount. Clearing the param on
   // drawer close keeps the URL tidy for back-button navigation.
@@ -60,6 +66,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   useEffect(() => {
     const fromUrl = searchParams.get("task");
     if (fromUrl && !openTaskId) setOpenTaskId(fromUrl);
+    const sourceMeetingId = searchParams.get("sourceMeeting");
+    if (sourceMeetingId) {
+      setFilters((prev) =>
+        prev.sourceMeetingIds.includes(sourceMeetingId)
+          ? prev
+          : { ...prev, sourceMeetingIds: [sourceMeetingId] },
+      );
+    }
     // Intentionally only react to the search-params object identity; opening
     // the drawer manually shouldn't fight the URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,6 +97,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
+  const { data: meetingsData } = useClientMeetings(slug, Boolean(clientId));
 
   // Board + List honour the search/filter bar; Gantt always shows everything.
   const filtered = useMemo(() => {
@@ -90,11 +105,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     const cat = new Set(filters.categoryIds);
     const asg = new Set(filters.assigneeIds);
     const pri = new Set(filters.priorities);
+    const src = new Set(filters.sourceMeetingIds);
     return tasks.filter((t) => {
       if (q && !(t.title.toLowerCase().includes(q) || taskRef(t.id).toLowerCase().includes(q))) return false;
       if (cat.size && !cat.has(t.featureBlock?.id ?? "none")) return false;
       if (asg.size && !t.assignees.some((a) => asg.has(a.id))) return false;
       if (pri.size && !pri.has(t.priority)) return false;
+      if (src.size && (!t.scribeSource || !src.has(t.scribeSource.meetingId))) return false;
       return true;
     });
   }, [tasks, filters]);
@@ -217,14 +234,25 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
       {/* Search + filters (board + list) */}
       {view !== "gantt" ? (
-        <TaskFilterBar tasks={tasks} categories={blocks} value={filters} onChange={setFilters} />
+        <TaskFilterBar
+          tasks={tasks}
+          categories={blocks}
+          sourceMeetings={meetingsData?.meetings ?? []}
+          value={filters}
+          onChange={setFilters}
+        />
       ) : null}
 
       {/* Content */}
       {tasksLoading && view !== "gantt" ? (
         <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
       ) : view === "board" ? (
-        <TaskBoard tasks={filtered} showClient={false} onCardClick={setOpenTaskId} />
+        <TaskBoard
+          tasks={filtered}
+          showClient={false}
+          onCardClick={setOpenTaskId}
+          onScribeSourceClick={setScribeSourceTask}
+        />
       ) : view === "list" ? (
         <TaskList
           tasks={filtered}
@@ -271,6 +299,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         />
       ) : null}
       {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={closeTaskDrawer} /> : null}
+      {scribeSourceTask ? (
+        <TaskScribeSourceModal
+          slug={slug}
+          task={scribeSourceTask}
+          onClose={() => setScribeSourceTask(null)}
+        />
+      ) : null}
       {blockModal.open && clientId ? (
         <FeatureBlockFormModal
           block={blockModal.block}
@@ -285,6 +320,135 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           onClose={() => setMilestoneModal({ open: false, milestone: null })}
         />
       ) : null}
+    </div>
+  );
+}
+
+function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"> | null | undefined): string | null {
+  const id = meeting?.conferenceRecordName?.trim();
+  if (!id || id.includes("/")) return null;
+  return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
+}
+
+function TaskScribeSourceModal({
+  slug,
+  task,
+  onClose,
+}: {
+  slug: string;
+  task: TaskDTO;
+  onClose: () => void;
+}) {
+  const source = task.scribeSource;
+  const { data, isPending } = useQuery({
+    queryKey: ["client-meeting", slug, source?.meetingId ?? ""],
+    queryFn: () => getClientMeeting(slug, source!.meetingId),
+    enabled: Boolean(source?.meetingId),
+    staleTime: 60_000,
+  });
+  const meeting = data?.meeting ?? null;
+  const decisions = Array.isArray(meeting?.decisions) ? meeting.decisions : [];
+  const sourceFileUrl = scribeSourceFileUrl(meeting);
+
+  if (!source) return null;
+
+  return (
+    <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="app-dialog-panel flex max-h-[82vh] w-full max-w-[720px] flex-col overflow-hidden"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-6 py-4">
+          <div className="min-w-0">
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-700)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <VideoCameraIcon className="h-3 w-3" />
+              Scribe source
+            </span>
+            <h3 className="mt-1.5 text-xl leading-tight text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
+              {source.meetingTitle}
+            </h3>
+            {source.meetingStartedAt ? (
+              <p className="mt-1 text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                {formatDate(source.meetingStartedAt)}
+              </p>
+            ) : null}
+            {sourceFileUrl ? (
+              <a
+                href={sourceFileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:underline"
+              >
+                Source file
+                <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+              </a>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+            title="Close"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          <section>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+              {source.kind === "ACTION_ITEM" ? "Generated task" : "Manual task"}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">{task.title}</p>
+            {task.createdBy ? (
+              <p className="mt-1 text-xs text-[var(--text-3)]">Created by {task.createdBy.name}</p>
+            ) : null}
+          </section>
+
+          <section className="rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+              {source.kind === "ACTION_ITEM" ? "Action item" : "Meeting reference"}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-[var(--text-1)]">
+              {source.actionTitle || source.meetingTitle}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-[var(--text-2)]">
+              {source.actionText || "Created manually from this meeting note."}
+            </p>
+          </section>
+
+          {isPending ? (
+            <p className="widget-data-label animate-pulse py-4 text-center">Loading Scribe note...</p>
+          ) : (
+            <>
+              <section>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                  Notes
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--text-1)]">
+                  {meeting?.summary || "No summary captured."}
+                </p>
+              </section>
+
+              {decisions.length > 0 ? (
+                <section>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Decisions
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
+                    {decisions.map((decision, index) => (
+                      <li key={`${decision}-${index}`}>{decision}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   ChevronDownIcon,
   CheckIcon,
 } from "@heroicons/react/16/solid";
-import { cn } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
 import type { TaskDTO, TaskPriority } from "@/types/tasks";
 
 export type TaskFilters = {
@@ -15,9 +15,10 @@ export type TaskFilters = {
   categoryIds: string[]; // feature-block ids; "none" = tasks with no category
   assigneeIds: string[];
   priorities: TaskPriority[];
+  sourceMeetingIds: string[];
 };
 
-export const EMPTY_FILTERS: TaskFilters = { q: "", categoryIds: [], assigneeIds: [], priorities: [] };
+export const EMPTY_FILTERS: TaskFilters = { q: "", categoryIds: [], assigneeIds: [], priorities: [], sourceMeetingIds: [] };
 
 const PRIORITY_OPTS: { id: TaskPriority; label: string }[] = [
   { id: "HIGH", label: "High" },
@@ -90,11 +91,13 @@ function CheckRow({ on, label, onClick }: { on: boolean; label: string; onClick:
 export function TaskFilterBar({
   tasks,
   categories,
+  sourceMeetings = [],
   value,
   onChange,
 }: {
   tasks: TaskDTO[];
   categories: { id: string; name: string }[];
+  sourceMeetings?: { id: string; title: string; startedAt?: string | null; createdAt?: string | null }[];
   value: TaskFilters;
   onChange: (f: TaskFilters) => void;
 }) {
@@ -104,9 +107,33 @@ export function TaskFilterBar({
   const assigneeOpts = [...assigneeMap.entries()]
     .map(([id, name]) => ({ id, name }))
     .sort((a, b) => a.name.localeCompare(b.name));
+  const sourcedMeetingIds = new Set(tasks.map((task) => task.scribeSource?.meetingId).filter((id): id is string => Boolean(id)));
+  const meetingMap = new Map<string, { id: string; title: string; startedAt?: string | null; createdAt?: string | null }>();
+  for (const meeting of sourceMeetings) {
+    if (sourcedMeetingIds.has(meeting.id)) meetingMap.set(meeting.id, meeting);
+  }
+  for (const task of tasks) {
+    if (!task.scribeSource) continue;
+    if (!meetingMap.has(task.scribeSource.meetingId)) {
+      meetingMap.set(task.scribeSource.meetingId, {
+        id: task.scribeSource.meetingId,
+        title: task.scribeSource.meetingTitle,
+        startedAt: task.scribeSource.meetingStartedAt,
+      });
+    }
+  }
+  const meetingOpts = [...meetingMap.values()].sort((a, b) => {
+    const aDate = a.startedAt ?? a.createdAt ?? "";
+    const bDate = b.startedAt ?? b.createdAt ?? "";
+    return bDate.localeCompare(aDate) || a.title.localeCompare(b.title);
+  });
 
   const active =
-    value.categoryIds.length + value.assigneeIds.length + value.priorities.length + (value.q.trim() ? 1 : 0);
+    value.categoryIds.length +
+    value.assigneeIds.length +
+    value.priorities.length +
+    value.sourceMeetingIds.length +
+    (value.q.trim() ? 1 : 0);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -163,6 +190,19 @@ export function TaskFilterBar({
           />
         ))}
       </Dropdown>
+
+      {meetingOpts.length > 0 ? (
+        <Dropdown label="Scribe source" count={value.sourceMeetingIds.length}>
+          {meetingOpts.map((meeting) => (
+            <CheckRow
+              key={meeting.id}
+              on={value.sourceMeetingIds.includes(meeting.id)}
+              label={`${meeting.title}${meeting.startedAt ?? meeting.createdAt ? ` · ${formatDate(meeting.startedAt ?? meeting.createdAt ?? "")}` : ""}`}
+              onClick={() => onChange({ ...value, sourceMeetingIds: toggle(value.sourceMeetingIds, meeting.id) })}
+            />
+          ))}
+        </Dropdown>
+      ) : null}
 
       {active > 0 ? (
         <button

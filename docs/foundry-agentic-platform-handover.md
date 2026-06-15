@@ -326,6 +326,10 @@ Because the new pages are enum values, any environment needs the Prisma schema s
 
 The private wiki sidebar now has a compact `Add New` menu. Core pages remain visible, while optional docs pages appear in the sidebar once created. Adding a page creates it with a markdown starter template, selects it, and uses the existing editor autosave/preview/share workflow.
 
+Documentation pages can now be removed from the private sidebar without deleting the whole wiki. The delete action removes the underlying `ClientWikiPage`, clears any per-page share token, and records the section slug in `ClientWiki.hiddenSections`. Re-adding the page through `Add New` removes it from `hiddenSections` and restores the starter page. Wedge Course Requests are intentionally not part of this delete surface.
+
+API Docs now uses a structured editor/reference view rather than a plain markdown page. It stores title, schema path, environment, OAS version, server list, website link, and endpoint rows in the existing `ClientWikiPage.content` JSON. The private editor supports editable metadata plus endpoint/server textareas; the public and private preview render a compact Swagger-style reference with method chips, grouped endpoints, auth lock indicators, filter, server selector, and expandable endpoint details.
+
 Touched areas:
 
 - Schema: `prisma/schema.prisma`
@@ -333,6 +337,26 @@ Touched areas:
 - Private wiki UI: `src/components/clients/wiki/wiki-workspace.tsx`, `src/components/clients/wiki/wiki-sidebar.tsx`, `src/components/clients/wiki/wiki-page-editor.tsx`
 - Public wiki UI and labels: `src/components/clients/wiki/wiki-public-view.tsx`, `src/app/wiki/[token]/page.tsx`, `src/lib/og/load-entity.ts`
 - API validation: `src/app/api/clients/[slug]/wiki/pages/route.ts`, `src/app/api/clients/[slug]/wiki/share/route.ts`
+
+### Scribe Meeting Notes And Task Traceability
+
+Meeting Notes now bridge more directly into the Kanban board while preserving manual control:
+
+- Each Scribe note header can show a small `Source file` link back to the Google transcript document when `conferenceRecordName` is available.
+- Operators can add or remove manual bullet points under Decisions. This writes back to the existing `Meeting.decisions` JSON; no new table was added.
+- Action-item task creation stamps source metadata on the task: meeting id, title, date, action item id/title/text. The existing `MeetingActionItem.taskId` relation remains the strongest source link.
+- Operators can also create an ad-hoc/manual task from inside the Meeting Notes modal. Those tasks are not forced through action items; they use task metadata with `source: "scribe_meeting"` and the meeting id/title/date.
+- The Meeting Notes modal now includes a compact `Tasks from this note` section and a `View board` link to `/app/portal/[slug]/tasks?sourceMeeting=[meetingId]`.
+- Kanban cards show a small Scribe source icon next to the task title when a task has meeting provenance. Clicking it opens the Scribe source modal with meeting notes, decisions, source file link, task creator, and either action-item context or manual-task context.
+- The task board/list filter bar includes `Scribe source`, so operators can view/report all tasks generated from a specific meeting without creating a separate reporting page.
+
+Touched areas:
+
+- Server meeting decisions: `src/server/meetings.ts`, `src/app/api/clients/[slug]/meetings/[id]/route.ts`
+- Task source hydration/filtering: `src/server/tasks.ts`, `src/app/api/tasks/route.ts`, `src/types/tasks.ts`
+- API/client hooks: `src/lib/api.ts`, `src/hooks/use-proposals.ts`, `src/hooks/use-tasks.ts`
+- Meeting Notes UI: `src/components/clients/client-detail.tsx`
+- Task UI: `src/components/tasks/client-tasks-workspace.tsx`, `src/components/tasks/task-board.tsx`, `src/components/tasks/task-card.tsx`, `src/components/tasks/task-filter-bar.tsx`
 
 ## Verification Notes
 
@@ -350,14 +374,19 @@ The previous local failures were caused by running/installing dependencies under
 Current verification results:
 
 - `npx -y -p node@22 -c "node node_modules/prisma/build/index.js generate"` passes.
+- `npx -y -p node@22 -c "node node_modules/prisma/build/index.js db push"` passes for the current schema, including `ClientWiki.hiddenSections`.
 - `npx -y -p node@22 -c "node node_modules/typescript/bin/tsc --noEmit --pretty false"` passes.
 - Targeted lint for the touched files passes:
   `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/foundry-automation.ts src/server/audit-log.ts src/server/clients.ts src/types/foundry-automation.ts src/components/dashboard/agentic-workflow-card.tsx src/components/app-overview.tsx src/app/api/clients/[slug]/status/route.ts src/app/api/foundry/automation/route.ts src/app/api/foundry/automation/draft-proposal/route.ts src/app/api/foundry/automation/onboarding-link/route.ts src/app/api/foundry/automation/seed-project-plan/route.ts src/app/api/foundry/automation/preview-project-plan/route.ts"`
+- Latest targeted lint for the wiki/Scribe/task traceability slice also passes:
+  `npx -y -p node@22 -c "node node_modules/eslint/bin/eslint.js src/server/wiki.ts src/app/api/clients/[slug]/wiki/pages/route.ts src/components/clients/wiki/api-docs-page-editor.tsx src/components/clients/wiki/wiki-workspace.tsx src/components/clients/wiki/wiki-sidebar.tsx src/components/clients/wiki/wiki-public-view.tsx src/lib/api.ts src/hooks/use-wiki.ts src/server/meetings.ts src/server/validators.ts src/app/api/clients/[slug]/meetings/[id]/route.ts src/hooks/use-proposals.ts src/components/clients/client-detail.tsx src/types/tasks.ts src/server/tasks.ts src/app/api/tasks/route.ts src/hooks/use-tasks.ts src/components/tasks/task-card.tsx src/components/tasks/task-board.tsx src/components/tasks/task-filter-bar.tsx src/components/tasks/client-tasks-workspace.tsx"`
+- `git diff --check` passes.
 - Dev server boots under Node 22:
   `npx -y -p node@22 -c "npm run dev"`
 - HTTP smoke checks:
   - `HEAD /app` returns `307` to `/login?callbackUrl=%2Fapp`, expected for unauthenticated app access.
   - `HEAD /api/health` returns `200 OK`.
+  - `GET /api/tasks` returns `401 Unauthorized` without a session.
 
 Duplicate local files named like `* 2.ts`, `* 2.tsx`, and `* 2.mts` are now ignored by TypeScript and ESLint, and duplicate `* 2.json` / `* 2.tsbuildinfo` files are ignored by Git. This prevents local copy-conflict files from being treated as source.
 

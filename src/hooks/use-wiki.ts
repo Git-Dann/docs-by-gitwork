@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getClientWiki,
   upsertWikiPage,
+  deleteWikiPage,
   setWikiShareApi,
   setWikiSectionShareApi,
   addWikiChangelogEntry,
@@ -37,6 +38,16 @@ export function useUpsertWikiPage(slug: string) {
   return useMutation({
     mutationFn: (payload: { type: string; title: string; content?: unknown }) =>
       upsertWikiPage(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useDeleteWikiPage(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { type: string }) => deleteWikiPage(slug, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

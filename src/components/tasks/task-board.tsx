@@ -42,10 +42,12 @@ export function TaskBoard({
   tasks,
   showClient = true,
   onCardClick,
+  onScribeSourceClick,
 }: {
   tasks: TaskDTO[];
   showClient?: boolean;
   onCardClick: (taskId: string) => void;
+  onScribeSourceClick?: (task: TaskDTO) => void;
 }) {
   const move = useMoveTask();
   const sensors = useSensors(
@@ -183,6 +185,7 @@ export function TaskBoard({
             tasks={byStatus.get(status) ?? []}
             showClient={showClient}
             onCardClick={onCardClick}
+            onScribeSourceClick={onScribeSourceClick}
             overId={overId}
             activeId={activeId}
           />
@@ -202,6 +205,7 @@ function BoardColumn({
   tasks,
   showClient,
   onCardClick,
+  onScribeSourceClick,
   overId,
   activeId,
 }: {
@@ -210,6 +214,7 @@ function BoardColumn({
   tasks: TaskDTO[];
   showClient: boolean;
   onCardClick: (taskId: string) => void;
+  onScribeSourceClick?: (task: TaskDTO) => void;
   overId: string | null;
   activeId: string | null;
 }) {
@@ -240,6 +245,7 @@ function BoardColumn({
             task={task}
             showClient={showClient}
             onClick={() => onCardClick(task.id)}
+            onScribeSourceClick={onScribeSourceClick}
             showIndicator={overId === task.id && activeId != null && activeId !== task.id}
           />
         ))}
@@ -259,11 +265,13 @@ function BoardCard({
   task,
   showClient,
   onClick,
+  onScribeSourceClick,
   showIndicator = false,
 }: {
   task: TaskDTO;
   showClient: boolean;
   onClick: () => void;
+  onScribeSourceClick?: (task: TaskDTO) => void;
   showIndicator?: boolean;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: task.id });
@@ -285,7 +293,12 @@ function BoardCard({
       {showIndicator ? (
         <div className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-full bg-[var(--brand-700)]" />
       ) : null}
-      <TaskCard task={task} showClient={showClient} onClick={onClick} />
+      <TaskCard
+        task={task}
+        showClient={showClient}
+        onClick={onClick}
+        onScribeSourceClick={onScribeSourceClick}
+      />
     </div>
   );
 }

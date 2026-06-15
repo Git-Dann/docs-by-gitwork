@@ -262,6 +262,7 @@ export function listClientMeetings(workspaceId: string, clientId: string, q?: st
       clientId: true,
       calendarEventId: true,
       meetingCode: true,
+      conferenceRecordName: true,
       title: true,
       startedAt: true,
       endedAt: true,
@@ -288,6 +289,12 @@ export function getMeeting(workspaceId: string, id: string) {
   });
 }
 
+function decisionStrings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
 /** Toggle an action item, verifying it belongs to a meeting in this workspace. */
 export async function setActionItemDone(workspaceId: string, itemId: string, done: boolean) {
   const item = await prisma.meetingActionItem.findFirst({
@@ -307,6 +314,30 @@ export async function linkActionItemTask(workspaceId: string, itemId: string, ta
   });
   if (!item) return null;
   return prisma.meetingActionItem.update({ where: { id: itemId }, data: { taskId } });
+}
+
+export async function addMeetingDecision(workspaceId: string, meetingId: string, text: string) {
+  const value = text.trim();
+  if (!value) return null;
+  const meeting = await prisma.meeting.findFirst({
+    where: { id: meetingId, workspaceId },
+    select: { id: true, decisions: true },
+  });
+  if (!meeting) return null;
+  const decisions = [...decisionStrings(meeting.decisions), value];
+  return prisma.meeting.update({ where: { id: meetingId }, data: { decisions } });
+}
+
+export async function removeMeetingDecision(workspaceId: string, meetingId: string, index: number) {
+  const meeting = await prisma.meeting.findFirst({
+    where: { id: meetingId, workspaceId },
+    select: { id: true, decisions: true },
+  });
+  if (!meeting) return null;
+  const decisions = decisionStrings(meeting.decisions);
+  if (index < 0 || index >= decisions.length) return null;
+  decisions.splice(index, 1);
+  return prisma.meeting.update({ where: { id: meetingId }, data: { decisions } });
 }
 
 /** Re-attribute a meeting to a different client (manual override for missed attribution). */

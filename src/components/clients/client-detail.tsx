@@ -40,6 +40,7 @@ import {
   useClientSlackActivity,
   useIngestClientMeeting,
   useLinkMeetingActionItemTask,
+  useUpdateMeetingDecision,
   useCreateClientDesign,
   useCreateClientPlatform,
   useDeleteClientDesign,
@@ -50,10 +51,11 @@ import {
   useUpdateClientDesign,
   useUpdateClientPlatform,
 } from "@/hooks/use-proposals";
-import { useCreateTask, useDeleteTask } from "@/hooks/use-tasks";
-import { cn, formatDate } from "@/lib/format";
+import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
+import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
+import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -1203,6 +1205,12 @@ function formatTimeRange(startISO?: string | null, endISO?: string | null): stri
   }
 }
 
+function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName">): string | null {
+  const id = meeting.conferenceRecordName?.trim();
+  if (!id || id.includes("/")) return null;
+  return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
+}
+
 function MeetingNotesSection({ slug }: { slug: string }) {
   const PAGE_SIZE = 5;
   const [page, setPage] = useState(0);
@@ -1218,6 +1226,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
   const createTask = useCreateTask();
   const deleteTask = useDeleteTask();
   const linkTask = useLinkMeetingActionItemTask(slug);
+  const updateDecision = useUpdateMeetingDecision(slug);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
   // Session-local overrides for instant feedback before the meetings query refetches the
@@ -1243,8 +1252,21 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     if (!viewing) return;
     setAddingTaskId(item.id);
     try {
-      const task = await createTask.mutateAsync({ clientId, ...taskFromItem(item) });
-      await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: task.id });
+      const task = await createTask.mutateAsync({
+        clientId,
+        ...taskFromItem(item),
+        metadata: {
+          source: "scribe_meeting",
+          sourceMeetingId: viewing.id,
+          sourceMeetingTitle: viewing.title,
+          sourceMeetingStartedAt: viewing.startedAt ?? viewing.createdAt,
+          sourceActionItemId: item.id,
+          sourceActionTitle: item.title ?? taskFromItem(item).title,
+          sourceActionText: item.text,
+        },
+      });
+      const result = await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: task.id });
+      setViewing(result.meeting);
       setAddedTaskIds((s) => ({ ...s, [item.id]: true }));
       setRemovedItemIds((s) => { const n = { ...s }; delete n[item.id]; return n; });
     } catch { /* swallow */ } finally { setAddingTaskId(null); }
@@ -1256,7 +1278,8 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     setAddingTaskId(item.id);
     try {
       try { await deleteTask.mutateAsync(item.taskId); } catch { /* task may already be gone */ }
-      await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: null });
+      const result = await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: item.id, taskId: null });
+      setViewing(result.meeting);
       setRemovedItemIds((s) => ({ ...s, [item.id]: true }));
       setAddedTaskIds((s) => { const n = { ...s }; delete n[item.id]; return n; });
     } catch { /* swallow */ } finally { setAddingTaskId(null); }
@@ -1271,8 +1294,21 @@ function MeetingNotesSection({ slug }: { slug: string }) {
         if (it.taskId || addedTaskIds[it.id]) continue;
         setAddingTaskId(it.id);
         try {
-          const task = await createTask.mutateAsync({ clientId, ...taskFromItem(it) });
-          await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: it.id, taskId: task.id });
+          const task = await createTask.mutateAsync({
+            clientId,
+            ...taskFromItem(it),
+            metadata: {
+              source: "scribe_meeting",
+              sourceMeetingId: viewing.id,
+              sourceMeetingTitle: viewing.title,
+              sourceMeetingStartedAt: viewing.startedAt ?? viewing.createdAt,
+              sourceActionItemId: it.id,
+              sourceActionTitle: it.title ?? taskFromItem(it).title,
+              sourceActionText: it.text,
+            },
+          });
+          const result = await linkTask.mutateAsync({ meetingId: viewing.id, actionItemId: it.id, taskId: task.id });
+          setViewing(result.meeting);
           setAddedTaskIds((s) => ({ ...s, [it.id]: true }));
         } catch { /* swallow per-item */ }
       }
@@ -1284,6 +1320,23 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     setBusyId(args.calendarEventId);
     try { await ingest.mutateAsync({ calendarEventId: args.calendarEventId, meetingCode: args.meetingCode, title: args.title, start: args.start, end: args.end, attendees: args.attendees }); }
     catch { /* error via ingest.isError */ } finally { setBusyId(null); }
+  }
+
+  async function createManualMeetingTask(meeting: ScribeMeeting, title: string, description: string) {
+    if (!meeting.clientId) return;
+    await createTask.mutateAsync({
+      clientId: meeting.clientId,
+      title,
+      description: description.trim() || undefined,
+      metadata: {
+        source: "scribe_meeting",
+        sourceMeetingId: meeting.id,
+        sourceMeetingTitle: meeting.title,
+        sourceMeetingStartedAt: meeting.startedAt ?? meeting.createdAt,
+        sourceActionTitle: title,
+        sourceActionText: description.trim() || "Created manually from the meeting notes.",
+      },
+    });
   }
 
   const meetings = data?.meetings ?? [];
@@ -1410,6 +1463,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
 
       {viewing && (
         <MeetingNotesModal
+          slug={slug}
           meeting={viewing}
           onClose={() => setViewing(null)}
           onRefetch={viewing.calendarEventId && viewing.meetingCode
@@ -1424,6 +1478,17 @@ function MeetingNotesSection({ slug }: { slug: string }) {
           addingTaskId={addingTaskId}
           addedTaskIds={Object.fromEntries(viewing.actionItems.map((a) => [a.id, removedItemIds[a.id] ? false : (Boolean(a.taskId) || Boolean(addedTaskIds[a.id]))]))}
           isAddingAll={addingAll}
+          isCreatingManualTask={createTask.isPending}
+          onCreateManualTask={(title, description) => createManualMeetingTask(viewing, title, description)}
+          isUpdatingDecision={updateDecision.isPending}
+          onAddDecision={async (decisionText) => {
+            const result = await updateDecision.mutateAsync({ meetingId: viewing.id, decisionText });
+            setViewing(result.meeting);
+          }}
+          onRemoveDecision={async (removeDecisionIndex) => {
+            const result = await updateDecision.mutateAsync({ meetingId: viewing.id, removeDecisionIndex });
+            setViewing(result.meeting);
+          }}
         />
       )}
 
@@ -1564,6 +1629,7 @@ function GrabNoteModal({
 
 
 function MeetingNotesModal({
+  slug,
   meeting,
   onClose,
   onRefetch,
@@ -1574,7 +1640,13 @@ function MeetingNotesModal({
   addingTaskId,
   addedTaskIds,
   isAddingAll,
+  isCreatingManualTask,
+  onCreateManualTask,
+  isUpdatingDecision,
+  onAddDecision,
+  onRemoveDecision,
 }: {
+  slug: string;
   meeting: ScribeMeeting;
   onClose: () => void;
   onRefetch?: () => void;
@@ -1585,13 +1657,48 @@ function MeetingNotesModal({
   addingTaskId: string | null;
   addedTaskIds: Record<string, boolean>;
   isAddingAll?: boolean;
+  isCreatingManualTask?: boolean;
+  onCreateManualTask?: (title: string, description: string) => Promise<void>;
+  isUpdatingDecision?: boolean;
+  onAddDecision?: (decisionText: string) => Promise<void>;
+  onRemoveDecision?: (index: number) => Promise<void>;
 }) {
+  const [newDecision, setNewDecision] = useState("");
+  const [manualTaskTitle, setManualTaskTitle] = useState("");
+  const [manualTaskDescription, setManualTaskDescription] = useState("");
+  const [manualTaskError, setManualTaskError] = useState<string | null>(null);
+  const { data: sourceTasks = [], isPending: sourceTasksLoading } = useTasks({
+    clientId: meeting.clientId ?? undefined,
+    sourceMeetingId: meeting.id,
+  });
   const decisions = Array.isArray(meeting.decisions) ? meeting.decisions : [];
   const hasActionItems = meeting.actionItems.length > 0;
+  const hasRightRail = hasActionItems || Boolean(meeting.clientId) || sourceTasks.length > 0;
   const pendingCount = meeting.actionItems.filter((a) => !addedTaskIds[a.id]).length;
   const when = [formatDate(meeting.startedAt ?? meeting.createdAt), formatTimeRange(meeting.startedAt, meeting.endedAt)]
     .filter(Boolean)
     .join(" · ");
+  const sourceFileUrl = scribeSourceFileUrl(meeting);
+
+  async function handleAddDecision() {
+    const value = newDecision.trim();
+    if (!value || !onAddDecision) return;
+    await onAddDecision(value);
+    setNewDecision("");
+  }
+
+  async function handleManualTaskCreate() {
+    const title = manualTaskTitle.trim();
+    if (!title || !onCreateManualTask) return;
+    setManualTaskError(null);
+    try {
+      await onCreateManualTask(title, manualTaskDescription.trim());
+      setManualTaskTitle("");
+      setManualTaskDescription("");
+    } catch (error) {
+      setManualTaskError(error instanceof Error ? error.message : "Couldn't create task.");
+    }
+  }
 
   return (
     <div
@@ -1601,7 +1708,7 @@ function MeetingNotesModal({
       <div
         className={cn(
           "app-dialog-panel flex max-h-[85vh] w-full flex-col overflow-hidden",
-          hasActionItems ? "max-w-[940px]" : "max-w-[680px]",
+          hasRightRail ? "max-w-[980px]" : "max-w-[680px]",
         )}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1625,6 +1732,17 @@ function MeetingNotesModal({
               <p className="mt-1 text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
                 {when}
               </p>
+            )}
+            {sourceFileUrl && (
+              <a
+                href={sourceFileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:underline"
+              >
+                Source file
+                <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+              </a>
             )}
             {meeting.attendees.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1">
@@ -1659,9 +1777,9 @@ function MeetingNotesModal({
           </div>
         </div>
 
-        {/* Body — 2-col: notes + decisions (left), action items → tasks (right, only if any) */}
+        {/* Body — 2-col: notes + decisions (left), action items/tasks (right, only when useful) */}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className={cn("grid gap-x-8 gap-y-6", hasActionItems && "md:grid-cols-[1fr_320px]")}>
+          <div className={cn("grid gap-x-8 gap-y-6", hasRightRail && "md:grid-cols-[1fr_340px]")}>
             {/* LEFT — notes + decisions */}
             <div className="min-w-0 space-y-6">
               <section>
@@ -1671,86 +1789,271 @@ function MeetingNotesModal({
                 </p>
               </section>
 
-              {decisions.length > 0 && (
-                <section>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    Decisions · {decisions.length}
-                  </p>
+              <section>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                  Decisions · {decisions.length}
+                </p>
+                {decisions.length > 0 && (
                   <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
                     {decisions.map((d, i) => (
-                      <li key={i}>{d}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </div>
-
-            {/* RIGHT — action items → client task board (only rendered when there are any) */}
-            {hasActionItems && (
-              <aside className="min-w-0 md:border-l md:border-[var(--border-1)] md:pl-8">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    Action items · {meeting.actionItems.length}
-                  </p>
-                  {meeting.clientId && onAddAll && pendingCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={onAddAll}
-                      disabled={isAddingAll}
-                      className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      <PlusIcon className="h-3 w-3" />
-                      {isAddingAll ? "Adding…" : `Add all ${pendingCount}`}
-                    </button>
-                  )}
-                </div>
-                <ul className="mt-3 space-y-1.5">
-                  {meeting.actionItems.map((a) => {
-                    const added = Boolean(addedTaskIds[a.id]);
-                    const adding = addingTaskId === a.id;
-                    return (
-                      <li key={a.id} className="rounded-[6px] border border-[var(--border-1)] px-2.5 py-2">
-                        <p className="text-[13px] font-semibold leading-snug text-[var(--text-1)]">{a.title || a.text}</p>
-                        {a.title && a.text && a.text !== a.title && (
-                          <p className="mt-0.5 text-[12px] leading-snug text-[var(--text-3)]">{a.text}</p>
-                        )}
-                        {meeting.clientId && (
+                      <li key={`${d}-${i}`} className="group pr-8">
+                        <span>{d}</span>
+                        {onRemoveDecision && (
                           <button
                             type="button"
-                            disabled={adding}
-                            onClick={() => (added ? onRemoveTask?.(a) : onAddTask(meeting.clientId!, a))}
-                            className={cn(
-                              "group mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default disabled:opacity-60",
-                              added
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-                                : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
-                            )}
-                            title={added ? "Click to remove from the task board" : "Add to this client's task board"}
+                            onClick={() => void onRemoveDecision(i)}
+                            disabled={isUpdatingDecision}
+                            className="ml-2 inline-flex rounded-[4px] p-0.5 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100 hover:bg-[var(--surface-1)] hover:text-rose-600 disabled:opacity-40"
+                            title="Remove decision"
                           >
-                            {adding ? (
-                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            ) : added ? (
-                              <>
-                                <CheckCircleIcon className="h-3 w-3 group-hover:hidden" />
-                                <XMarkIcon className="hidden h-3 w-3 group-hover:inline" />
-                                <span className="group-hover:hidden">Added</span>
-                                <span className="hidden group-hover:inline">Remove</span>
-                              </>
-                            ) : (
-                              <><PlusIcon className="h-3 w-3" />Add task</>
-                            )}
+                            <XMarkIcon className="h-3 w-3" />
                           </button>
                         )}
                       </li>
-                    );
-                  })}
-                </ul>
-              </aside>
+                    ))}
+                  </ul>
+                )}
+                {onAddDecision && (
+                  <div className="mt-3 flex items-start gap-2">
+                    <textarea
+                      value={newDecision}
+                      onChange={(event) => setNewDecision(event.target.value)}
+                      placeholder="Add a decision bullet..."
+                      className="min-h-[42px] flex-1 resize-none rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--accent)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleAddDecision()}
+                      disabled={isUpdatingDecision || !newDecision.trim()}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      <PlusIcon className="h-3 w-3" />
+                      Add
+                    </button>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* RIGHT — action items, generated tasks, manual note-task creation */}
+            {hasRightRail && (
+              <MeetingNotesTaskRail
+                slug={slug}
+                meeting={meeting}
+                actionItems={meeting.actionItems}
+                sourceTasks={sourceTasks}
+                sourceTasksLoading={sourceTasksLoading}
+                pendingCount={pendingCount}
+                addedTaskIds={addedTaskIds}
+                addingTaskId={addingTaskId}
+                isAddingAll={isAddingAll}
+                onAddAll={onAddAll}
+                onAddTask={onAddTask}
+                onRemoveTask={onRemoveTask}
+                manualTaskTitle={manualTaskTitle}
+                manualTaskDescription={manualTaskDescription}
+                manualTaskError={manualTaskError}
+                isCreatingManualTask={isCreatingManualTask}
+                onManualTaskTitleChange={setManualTaskTitle}
+                onManualTaskDescriptionChange={setManualTaskDescription}
+                onCreateManualTask={handleManualTaskCreate}
+              />
             )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function MeetingNotesTaskRail({
+  slug,
+  meeting,
+  actionItems,
+  sourceTasks,
+  sourceTasksLoading,
+  pendingCount,
+  addedTaskIds,
+  addingTaskId,
+  isAddingAll,
+  onAddAll,
+  onAddTask,
+  onRemoveTask,
+  manualTaskTitle,
+  manualTaskDescription,
+  manualTaskError,
+  isCreatingManualTask,
+  onManualTaskTitleChange,
+  onManualTaskDescriptionChange,
+  onCreateManualTask,
+}: {
+  slug: string;
+  meeting: ScribeMeeting;
+  actionItems: ScribeActionItem[];
+  sourceTasks: TaskDTO[];
+  sourceTasksLoading: boolean;
+  pendingCount: number;
+  addedTaskIds: Record<string, boolean>;
+  addingTaskId: string | null;
+  isAddingAll?: boolean;
+  onAddAll?: () => void;
+  onAddTask: (clientId: string, item: ScribeActionItem) => void;
+  onRemoveTask?: (item: ScribeActionItem) => void;
+  manualTaskTitle: string;
+  manualTaskDescription: string;
+  manualTaskError: string | null;
+  isCreatingManualTask?: boolean;
+  onManualTaskTitleChange: (value: string) => void;
+  onManualTaskDescriptionChange: (value: string) => void;
+  onCreateManualTask: () => void;
+}) {
+  const hasActionItems = actionItems.length > 0;
+
+  return (
+    <aside className="min-w-0 space-y-5 md:border-l md:border-[var(--border-1)] md:pl-8">
+      {hasActionItems ? (
+        <section>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+              Action items · {actionItems.length}
+            </p>
+            {meeting.clientId && onAddAll && pendingCount > 0 ? (
+              <button
+                type="button"
+                onClick={onAddAll}
+                disabled={isAddingAll}
+                className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <PlusIcon className="h-3 w-3" />
+                {isAddingAll ? "Adding..." : `Add all ${pendingCount}`}
+              </button>
+            ) : null}
+          </div>
+          <ul className="mt-3 space-y-1.5">
+            {actionItems.map((item) => {
+              const added = Boolean(addedTaskIds[item.id]);
+              const adding = addingTaskId === item.id;
+              return (
+                <li key={item.id} className="rounded-[6px] border border-[var(--border-1)] px-2.5 py-2">
+                  <p className="text-[13px] font-semibold leading-snug text-[var(--text-1)]">{item.title || item.text}</p>
+                  {item.title && item.text && item.text !== item.title ? (
+                    <p className="mt-0.5 text-[12px] leading-snug text-[var(--text-3)]">{item.text}</p>
+                  ) : null}
+                  {meeting.clientId ? (
+                    <button
+                      type="button"
+                      disabled={adding}
+                      onClick={() => (added ? onRemoveTask?.(item) : onAddTask(meeting.clientId!, item))}
+                      className={cn(
+                        "group mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-[6px] border px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default disabled:opacity-60",
+                        added
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                          : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+                      )}
+                      title={added ? "Click to remove from the task board" : "Add to this client's task board"}
+                    >
+                      {adding ? (
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      ) : added ? (
+                        <>
+                          <CheckCircleIcon className="h-3 w-3 group-hover:hidden" />
+                          <XMarkIcon className="hidden h-3 w-3 group-hover:inline" />
+                          <span className="group-hover:hidden">Added</span>
+                          <span className="hidden group-hover:inline">Remove</span>
+                        </>
+                      ) : (
+                        <>
+                          <PlusIcon className="h-3 w-3" />
+                          Add task
+                        </>
+                      )}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className={cn(hasActionItems && "border-t border-[var(--border-1)] pt-5")}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+            Tasks from this note · {sourceTasks.length}
+          </p>
+          <Link
+            href={`/app/portal/${slug}/tasks?sourceMeeting=${meeting.id}`}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:underline"
+          >
+            View board
+            <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+          </Link>
+        </div>
+        {sourceTasksLoading ? (
+          <p className="widget-data-label animate-pulse py-4 text-center">Loading tasks...</p>
+        ) : sourceTasks.length > 0 ? (
+          <ul className="mt-3 space-y-1.5">
+            {sourceTasks.slice(0, 5).map((task) => (
+              <li key={task.id} className="rounded-[6px] border border-[var(--border-1)] bg-white px-2.5 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-[13px] font-semibold leading-snug text-[var(--text-1)]">{task.title}</p>
+                  <span className="shrink-0 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)]">
+                    {TASK_STATUS_LABELS[task.status]}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                  {taskRef(task.id)}
+                  {task.createdBy ? ` · ${task.createdBy.name}` : ""}
+                </p>
+              </li>
+            ))}
+            {sourceTasks.length > 5 ? (
+              <li className="text-[11px] text-[var(--text-4)]">{sourceTasks.length - 5} more on the board</li>
+            ) : null}
+          </ul>
+        ) : (
+          <p className="mt-3 rounded-[6px] border border-dashed border-[var(--border-2)] px-3 py-3 text-xs leading-5 text-[var(--text-4)]">
+            No board tasks are linked to this note yet.
+          </p>
+        )}
+      </section>
+
+      {meeting.clientId ? (
+        <section className="border-t border-[var(--border-1)] pt-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+            Add task
+          </p>
+          <div className="mt-3 space-y-2">
+            <input
+              value={manualTaskTitle}
+              onChange={(event) => onManualTaskTitleChange(event.target.value)}
+              placeholder="Task title"
+              className="w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--accent)]"
+            />
+            <textarea
+              value={manualTaskDescription}
+              onChange={(event) => onManualTaskDescriptionChange(event.target.value)}
+              placeholder="Optional context from the notes"
+              className="min-h-[72px] w-full resize-none rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--accent)]"
+            />
+            {manualTaskError ? <p className="text-xs text-rose-600">{manualTaskError}</p> : null}
+            <button
+              type="button"
+              onClick={onCreateManualTask}
+              disabled={isCreatingManualTask || !manualTaskTitle.trim()}
+              className="inline-flex w-full items-center justify-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {isCreatingManualTask ? (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <PlusIcon className="h-3 w-3" />
+              )}
+              {isCreatingManualTask ? "Creating..." : "Create task"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </aside>
   );
 }
 

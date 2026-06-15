@@ -33,6 +33,8 @@ export const OPTIONAL_DOC_SECTIONS: Array<{
   section: WikiSection;
   label: string;
 }> = [
+  { section: "ia", label: "Info Architecture" },
+  { section: "dev-guide", label: "Developer Guide" },
   { section: "api-docs", label: "API Docs" },
   { section: "architecture", label: "Architecture" },
   { section: "runbook", label: "Runbook" },

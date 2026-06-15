@@ -1,4 +1,4 @@
-import { ChatBubbleLeftIcon } from "@heroicons/react/24/outline";
+import { ChatBubbleLeftIcon, VideoCameraIcon } from "@heroicons/react/24/outline";
 import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
@@ -24,6 +24,7 @@ export function TaskCard({
   showStatus = false,
   className,
   dragging = false,
+  onScribeSourceClick,
 }: {
   task: TaskDTO;
   onClick?: () => void;
@@ -31,6 +32,7 @@ export function TaskCard({
   showStatus?: boolean;
   className?: string;
   dragging?: boolean;
+  onScribeSourceClick?: (task: TaskDTO) => void;
 }) {
   const overdue = isOverdue(task);
   const flag = PRIORITY_FLAG[task.priority] ?? PRIORITY_FLAG.LOW;
@@ -55,6 +57,20 @@ export function TaskCard({
         <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-snug text-[var(--text-1)]">
           {task.title}
         </p>
+        {task.scribeSource && onScribeSourceClick ? (
+          <button
+            type="button"
+            title="Scribe source"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onScribeSourceClick(task);
+            }}
+            className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+          >
+            <VideoCameraIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
         <AssigneeStack users={task.assignees} size={22} />
       </div>
 

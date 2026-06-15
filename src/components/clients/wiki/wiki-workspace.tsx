@@ -11,6 +11,7 @@ import {
   CodeBracketIcon,
   ArrowPathIcon,
   CheckCircleIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import {
   WikiSidebar,
@@ -26,10 +27,16 @@ import { CourseRequestForm, type CourseRequestPayload } from "./course-request-f
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiShareMenu } from "./wiki-share-menu";
+import {
+  ApiDocsPageEditor,
+  normalizeApiDocsContent,
+  type ApiDocsContent,
+} from "./api-docs-page-editor";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import {
   useClientWiki,
   useUpsertWikiPage,
+  useDeleteWikiPage,
   useSetWikiShare,
   useAddChangelogEntry,
   useDeleteChangelogEntry,
@@ -99,7 +106,6 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
 const MARKDOWN_DOC_SECTIONS = [
   "ia",
   "dev-guide",
-  "api-docs",
   "architecture",
   "runbook",
   "data-model",
@@ -109,6 +115,10 @@ type MarkdownDocSection = (typeof MARKDOWN_DOC_SECTIONS)[number];
 
 function isMarkdownDocSection(section: WikiSection): section is MarkdownDocSection {
   return (MARKDOWN_DOC_SECTIONS as readonly string[]).includes(section);
+}
+
+function isDocsPageSection(section: WikiSection): section is MarkdownDocSection | "api-docs" {
+  return isMarkdownDocSection(section) || section === "api-docs";
 }
 
 const chipBtn =
@@ -449,100 +459,48 @@ Rebase feature branches on \`main\` — do not merge \`main\` into the branch.
 | On-call / Incidents | — | — |
 `;
 
-const API_DOCS_TEMPLATE = `## Overview
-Describe the public or internal API surface, who can use it, and the primary integration use cases.
-
----
-
-## Base URLs
-
-| Environment | Base URL | Notes |
-|-------------|----------|-------|
-| Production | \`https://api.example.com\` | Live traffic |
-| Staging | \`https://staging-api.example.com\` | Test data |
-| Local | \`http://localhost:3000\` | Developer use |
-
----
-
-## Authentication
-
-| Method | Header / Flow | Notes |
-|--------|---------------|-------|
-| Bearer token | \`Authorization: Bearer {token}\` | Rotate tokens when access changes |
-| API key | \`x-api-key: {key}\` | Server-to-server only |
-| Webhook signature | \`x-signature\` | Verify payload before processing |
-
----
-
-## Endpoints
-
-| Method | Route | Description | Auth | Status |
-|--------|-------|-------------|------|--------|
-| \`GET\` | \`/api/v1/[resource]\` | List records | Bearer | Draft |
-| \`POST\` | \`/api/v1/[resource]\` | Create record | Bearer | Draft |
-| \`GET\` | \`/api/v1/[resource]/{id}\` | Fetch one record | Bearer | Draft |
-| \`PATCH\` | \`/api/v1/[resource]/{id}\` | Update record | Bearer | Draft |
-| \`DELETE\` | \`/api/v1/[resource]/{id}\` | Delete record | Bearer | Draft |
-
----
-
-## Request Example
-
-\`\`\`bash
-curl -X GET "https://api.example.com/api/v1/items" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -H "Accept: application/json"
-\`\`\`
-
----
-
-## Response Shape
-
-\`\`\`json
-{
-  "data": [],
-  "pagination": {
-    "nextCursor": null,
-    "hasMore": false
-  }
-}
-\`\`\`
-
----
-
-## Errors
-
-| Code | Meaning | Operator note |
-|------|---------|---------------|
-| \`400\` | Invalid request | Validate payload shape |
-| \`401\` | Missing or invalid auth | Check token/key |
-| \`403\` | Permission denied | Confirm scopes |
-| \`404\` | Resource not found | Check id/environment |
-| \`429\` | Rate limited | Back off and retry |
-| \`500\` | Server error | Escalate with request id |
-
----
-
-## Pagination, Filtering & Sorting
-
-| Feature | Pattern | Example |
-|---------|---------|---------|
-| Pagination | Cursor | \`?cursor=abc&limit=50\` |
-| Filtering | Query params | \`?status=active\` |
-| Sorting | Sort key | \`?sort=-createdAt\` |
-
----
-
-## Webhooks
-
-| Event | Trigger | Payload owner |
-|-------|---------|---------------|
-| \`resource.created\` | New record created | Backend |
-| \`resource.updated\` | Existing record changed | Backend |
-| \`resource.deleted\` | Existing record removed | Backend |
-
-Include verification rules, retry policy, idempotency keys, and sample payloads.
-`;
+const API_DOCS_TEMPLATE: ApiDocsContent = normalizeApiDocsContent(
+  {
+    title: "Client API",
+    schemaPath: "/api/schema/",
+    environment: "STAGE",
+    specVersion: "OAS 3.0",
+    description: "API documentation for the client application.",
+    websiteLabel: "Client Website",
+    websiteUrl: "",
+    servers: [
+      { url: "https://api.example.com", label: "STAGE" },
+      { url: "https://api.example.com", label: "PRODUCTION" },
+    ],
+    endpoints: [
+      {
+        tag: "analytics",
+        method: "GET",
+        path: "/api/analytics/reports/",
+        operationId: "analytics_reports_retrieve",
+        auth: true,
+        summary: "Retrieve analytics reports.",
+      },
+      {
+        tag: "analytics",
+        method: "GET",
+        path: "/api/analytics/subscriptions/",
+        operationId: "analytics_subscriptions_retrieve",
+        auth: true,
+        summary: "Retrieve subscription analytics.",
+      },
+      {
+        tag: "users",
+        method: "POST",
+        path: "/api/users/",
+        operationId: "users_create",
+        auth: true,
+        summary: "Create a user record.",
+      },
+    ],
+  },
+  "API Docs",
+);
 
 const ARCHITECTURE_TEMPLATE = `## System Summary
 Describe the system boundaries, major apps/services, and the high-level data flow.
@@ -810,6 +768,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   const { data: wiki, isPending } = useClientWiki(slug);
   const upsertPage = useUpsertWikiPage(slug);
+  const deletePage = useDeleteWikiPage(slug);
   const setShare = useSetWikiShare(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
@@ -831,27 +790,37 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   if (!wiki) return null;
 
-  const optionalSectionSet = new Set<WikiSection>(OPTIONAL_DOC_SECTIONS.map((item) => item.section));
-  const existingOptionalSections = new Set<WikiSection>(
+  const allDocsPageSections = OPTIONAL_DOC_SECTIONS.map((item) => item.section);
+  const docsPageSectionSet = new Set<WikiSection>(allDocsPageSections);
+  const hiddenSections = new Set<WikiSection>(
+    (wiki.hiddenSections ?? []).filter((section): section is WikiSection =>
+      docsPageSectionSet.has(section as WikiSection),
+    ),
+  );
+  const existingDocsPageSections = new Set<WikiSection>(
     wiki.pages
       .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
       .filter((section): section is WikiSection => {
         if (!section) return false;
-        return optionalSectionSet.has(section);
+        return docsPageSectionSet.has(section);
       }),
   );
   const availableSections: WikiSection[] = [
     "design-system",
-    "ia",
-    "dev-guide",
-    ...OPTIONAL_DOC_SECTIONS.filter((item) => existingOptionalSections.has(item.section)).map(
+    ...OPTIONAL_DOC_SECTIONS.filter(
+      (item) =>
+        !hiddenSections.has(item.section) &&
+        (item.section === "ia" || item.section === "dev-guide" || existingDocsPageSections.has(item.section)),
+    ).map(
       (item) => item.section,
     ),
     "changelog",
     ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
   ];
   const addableSections = OPTIONAL_DOC_SECTIONS.filter(
-    (item) => !existingOptionalSections.has(item.section),
+    (item) =>
+      hiddenSections.has(item.section) ||
+      (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
   );
 
   function getPage(section: WikiSection) {
@@ -860,14 +829,14 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     return wiki!.pages.find((p) => p.type === type) ?? null;
   }
 
-  async function handleSavePage(section: WikiSection, title: string, content: string) {
+  async function handleSavePage(section: WikiSection, title: string, content: unknown) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
     await upsertPage.mutateAsync({ type, title, content });
   }
 
   async function handleAddSection(section: WikiSection) {
-    if (!isMarkdownDocSection(section)) return;
+    if (!isDocsPageSection(section)) return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
     await upsertPage.mutateAsync({
@@ -877,6 +846,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     });
     setActiveSection(section);
     setPageMode("edit");
+  }
+
+  async function handleDeletePage(section: WikiSection) {
+    if (!isDocsPageSection(section)) return;
+    const type = SECTION_TO_TYPE[section];
+    if (!type) return;
+    await deletePage.mutateAsync({ type });
+    const nextSection = availableSections.find((item) => item !== section) ?? "design-system";
+    setActiveSection(nextSection);
   }
 
   /** Delete all entries in a version group (called with all their IDs). */
@@ -958,7 +936,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
   }
 
-  function getDefaultContent(section: WikiSection): string {
+  function getDefaultContent(section: WikiSection): unknown {
     if (section === "ia") return IA_TEMPLATE;
     if (section === "dev-guide") return DEV_TEMPLATE;
     if (section === "api-docs") return API_DOCS_TEMPLATE;
@@ -1257,10 +1235,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       );
     }
 
-    // ── IA / Developer Guide — rich markdown editor
+    // ── Documentation pages
     const page = getPage(activeSection);
-    const savedContent = typeof page?.content === "string" ? page.content : "";
-    const initialContent = savedContent || getDefaultContent(activeSection);
+    const savedContent = page?.content ?? null;
+    const initialContent =
+      activeSection === "api-docs"
+        ? normalizeApiDocsContent(savedContent, SECTION_TITLES[activeSection])
+        : typeof savedContent === "string"
+          ? savedContent
+          : getDefaultContent(activeSection);
     const widgetLabel = SECTION_WIDGET_LABELS[activeSection] ?? activeSection.toUpperCase();
 
     return (
@@ -1313,7 +1296,19 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {upsertPage.isPending ? "Saving…" : "Save"}
           </button>
-          {isMarkdownDocSection(activeSection) && renderShareMenu(activeSection)}
+          {isDocsPageSection(activeSection) && renderShareMenu(activeSection)}
+          {isDocsPageSection(activeSection) && (
+            <button
+              type="button"
+              onClick={() => void handleDeletePage(activeSection)}
+              disabled={deletePage.isPending}
+              className={chipBtn}
+              title={`Delete ${SECTION_TITLES[activeSection]}`}
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+              {deletePage.isPending ? "Deleting…" : "Delete"}
+            </button>
+          )}
         </div>
 
         {/* Widget card */}
@@ -1325,21 +1320,35 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             </span>
           </div>
           <div className="p-6">
-            <WikiPageEditor
-              key={activeSection}
-              ref={editorRef}
-              section={activeSection}
-              title={page?.title ?? SECTION_TITLES[activeSection]}
-              content={initialContent}
-              isNew={!page}
-              onSave={(title, content) => handleSavePage(activeSection, title, content)}
-              mode={pageMode}
-              onSaved={(label) => {
-                setPageSavedLabel(label);
-                // Clear after 2s
-                setTimeout(() => setPageSavedLabel(null), 2000);
-              }}
-            />
+            {activeSection === "api-docs" ? (
+              <ApiDocsPageEditor
+                key={activeSection}
+                ref={editorRef}
+                title={page?.title ?? SECTION_TITLES[activeSection]}
+                content={initialContent}
+                onSave={(title, content) => handleSavePage(activeSection, title, content)}
+                mode={pageMode}
+                onSaved={(label) => {
+                  setPageSavedLabel(label);
+                  setTimeout(() => setPageSavedLabel(null), 2000);
+                }}
+              />
+            ) : (
+              <WikiPageEditor
+                key={activeSection}
+                ref={editorRef}
+                section={activeSection}
+                title={page?.title ?? SECTION_TITLES[activeSection]}
+                content={typeof initialContent === "string" ? initialContent : ""}
+                isNew={!page}
+                onSave={(title, content) => handleSavePage(activeSection, title, content)}
+                mode={pageMode}
+                onSaved={(label) => {
+                  setPageSavedLabel(label);
+                  setTimeout(() => setPageSavedLabel(null), 2000);
+                }}
+              />
+            )}
           </div>
         </section>
       </>

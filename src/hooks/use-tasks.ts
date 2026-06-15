@@ -33,11 +33,11 @@ import {
 } from "@/lib/api";
 import type { TaskStatus } from "@/types/tasks";
 
-type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string };
+type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string };
 
 const QK = {
   tasks: (f: TaskFilter) =>
-    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null] as const,
+    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   summary: (clientId: string) => ["tasks", "summary", clientId] as const,
   myDay: (date?: string) => ["tasks", "myday", date ?? "today"] as const,
