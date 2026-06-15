@@ -64,9 +64,13 @@ import type {
 import type {
   AutomationOnboardingLinkRequest,
   AutomationOnboardingLinkResult,
+  AutomationNudgeUpdateRequest,
+  AutomationNudgeUpdateResult,
   DraftProposalRequest,
   DraftProposalResult,
   FoundryAutomationResponse,
+  ProposalDraftPreview,
+  ProposalDraftPreviewRequest,
   ProjectPlanPreview,
   ProjectPlanRequest,
   SeedProjectPlanResult,
@@ -96,10 +100,30 @@ export async function draftProposalFromMeeting(input: DraftProposalRequest): Pro
   });
 }
 
+export async function previewProposalDraft(
+  input: ProposalDraftPreviewRequest,
+): Promise<{ preview: ProposalDraftPreview }> {
+  return apiFetch<{ preview: ProposalDraftPreview }>("/api/foundry/automation/preview-proposal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function createAutomationOnboardingLink(
   input: AutomationOnboardingLinkRequest,
 ): Promise<{ result: AutomationOnboardingLinkResult }> {
   return apiFetch<{ result: AutomationOnboardingLinkResult }>("/api/foundry/automation/onboarding-link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateAutomationNudge(
+  input: AutomationNudgeUpdateRequest,
+): Promise<{ result: AutomationNudgeUpdateResult }> {
+  return apiFetch<{ result: AutomationNudgeUpdateResult }>("/api/foundry/automation/nudge", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

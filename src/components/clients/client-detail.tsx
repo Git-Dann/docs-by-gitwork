@@ -148,7 +148,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies } = data;
+  const { client, lifecycle, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies } = data;
   const isSuggested = client.source === "SUGGESTED";
   const activationChecklist = buildActivationChecklist({ client, proposals, platforms, designs });
 
@@ -457,11 +457,42 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       </div>
 
-      {/* ── 07 // SLACK ACTIVITY ── */}
+      {/* ── 07 // LIFECYCLE ── */}
+      {lifecycle.length > 0 && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">07</span>
+              {" // LIFECYCLE"}
+            </span>
+          </div>
+          <div className="grid gap-2 p-5 md:grid-cols-2 xl:grid-cols-4">
+            {lifecycle.map((event) => (
+              <div key={event.id} className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      event.status === "done" ? "bg-emerald-500" : event.status === "ready" ? "bg-blue-500" : "bg-amber-400",
+                    )}
+                  />
+                  <p className="truncate text-xs font-semibold text-[var(--text-1)]">{event.label}</p>
+                </div>
+                <p className="mt-1 truncate text-[11px] text-[var(--text-3)]">{event.detail}</p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+                  {formatDate(event.at)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── 08 // SLACK ACTIVITY ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">07</span>
+            <span className="widget-header__label--number">08</span>
             {" // SLACK ACTIVITY"}
           </span>
           <div className="flex items-center gap-2">
@@ -497,12 +528,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       </section>
 
-      {/* ── 08 // CONTACT ── */}
+      {/* ── 09 // CONTACT ── */}
       {hasContactInfo && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">08</span>
+              <span className="widget-header__label--number">09</span>
               {" // CONTACT"}
             </span>
           </div>
@@ -570,7 +601,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* ── 09 // BILLING ── */}
+      {/* ── 10 // BILLING ── */}
       {(client.legalCompanyName ||
         client.vatNumber ||
         client.companyNumber ||
@@ -579,7 +610,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">09</span>
+              <span className="widget-header__label--number">10</span>
               {" // BILLING"}
             </span>
           </div>
@@ -643,11 +674,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       )}
 
-      {/* ── 10 // PLATFORMS ── */}
+      {/* ── 11 // PLATFORMS ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">10</span>
+            <span className="widget-header__label--number">12</span>
             {" // PLATFORMS"}
           </span>
           {!isSuggested && (
@@ -693,9 +724,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side) ── */}
+      {/* ── 12 // DESIGNS + 13 // MEETING NOTES (side by side) ── */}
       <div className="grid grid-cols-2 gap-4">
-      {/* 11 // DESIGNS */}
+      {/* 12 // DESIGNS */}
       <section className="widget-card flex flex-col">
         <div className="widget-header">
           <span className="widget-header__label">
@@ -747,18 +778,18 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* 12 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
+      {/* 13 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
       <section className="widget-card">
         <MeetingNotesSection slug={slug} />
       </section>
       </div>
 
-      {/* ── 13 // NOTES ── */}
+      {/* ── 14 // NOTES ── */}
       {client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">13</span>
+              <span className="widget-header__label--number">14</span>
               {" // NOTES"}
             </span>
           </div>
@@ -1273,7 +1304,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     <>
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">12</span>
+          <span className="widget-header__label--number">13</span>
           {" // MEETING NOTES"}
         </span>
         <div className="flex items-center gap-2">

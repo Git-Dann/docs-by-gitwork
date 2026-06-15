@@ -38,10 +38,12 @@ export type AuditAction =
   | "template.set_default"
   | "template.duplicated"
   // Foundry automation
+  | "foundry.proposal_draft.previewed"
   | "foundry.proposal_draft.prepared"
   | "foundry.onboarding_link.prepared"
   | "foundry.client.activated"
   | "foundry.delivery_plan.seeded"
+  | "foundry.nudge.updated"
   // Privacy
   | "workspace.data_exported"
   | "workspace.deleted";

@@ -10,6 +10,7 @@ import type {
   ClientDetailFields,
   ClientDetailRecord,
   ClientListItem,
+  ClientLifecycleEvent,
   ClientPlacementRecord,
   ClientPlatformRecord,
   ClientSource,
@@ -40,6 +41,10 @@ const clientProposalInclude = {
     select: {
       name: true,
     },
+  },
+  signatureRequests: {
+    select: { status: true, sentAt: true, completedAt: true },
+    orderBy: { updatedAt: "desc" },
   },
 } satisfies Prisma.DocumentInclude;
 
@@ -871,7 +876,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow, auditRows] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -941,9 +946,27 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     manualRecord
       ? onboardings.findUnique({
           where: { workspaceClientId: manualRecord.id },
-          select: { id: true },
+          select: { id: true, status: true, createdAt: true, submittedAt: true },
         })
       : Promise.resolve(null),
+    manualRecord
+      ? prisma.auditLog.findMany({
+          where: {
+            workspaceId: workspace.id,
+            target: clientLifecycleTarget(manualRecord.id),
+            action: {
+              in: [
+                "foundry.proposal_draft.prepared",
+                "foundry.client.activated",
+                "foundry.delivery_plan.seeded",
+              ],
+            },
+          },
+          select: { id: true, action: true, createdAt: true, metadata: true },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
   ]);
 
   const bankSummary: ClientBankSummary | null = bank
@@ -992,6 +1015,21 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       ...toClientListItem(client),
       ...contactFields,
     },
+    lifecycle: buildClientLifecycle({
+      client,
+      proposals: matchingProposals.map((proposal) => ({
+        id: proposal.id,
+        title: proposal.title,
+        status: proposal.status,
+        documentType: proposal.documentType,
+        createdAt: proposal.createdAt,
+        updatedAt: proposal.updatedAt,
+        acceptedAt: proposal.acceptedAt,
+        signatureRequests: proposal.signatureRequests,
+      })),
+      onboarding: onboardingRow,
+      auditRows,
+    }),
     platforms: (platforms as Parameters<typeof serializeClientPlatform>[0][]).map(serializeClientPlatform),
     designs: (designs as Parameters<typeof serializeClientDesign>[0][]).map(serializeClientDesign),
     proposals: matchingProposals.map((proposal) => serializeProposalListItem(proposal)),
@@ -1135,6 +1173,117 @@ export async function getClientIdBySlug(
   });
 
   return record?.id ?? null;
+}
+
+function clientLifecycleTarget(clientId: string): string {
+  return `client:${clientId}`;
+}
+
+function buildClientLifecycle(input: {
+  client: Pick<ClientListItem, "id" | "status" | "createdAt" | "updatedAt">;
+  proposals: Array<{
+    id: string;
+    title: string;
+    status: string;
+    documentType: string;
+    createdAt: Date;
+    updatedAt: Date;
+    acceptedAt: Date | null;
+    signatureRequests: Array<{ status: string; sentAt: Date | null; completedAt: Date | null }>;
+  }>;
+  onboarding: { id: string; status: string; createdAt: Date; submittedAt: Date | null } | null;
+  auditRows: Array<{ id: string; action: string; createdAt: Date; metadata: Prisma.JsonValue }>;
+}): ClientLifecycleEvent[] {
+  const events: ClientLifecycleEvent[] = [
+    {
+      id: `client:${input.client.id}`,
+      label: "Client record",
+      detail: input.client.status === "PENDING_REVIEW" ? "Pending activation review." : "Client exists in Portal.",
+      at: input.client.createdAt,
+      status: "done",
+    },
+  ];
+  const latestMeetingDraft = input.auditRows.find((row) => row.action === "foundry.proposal_draft.prepared");
+  if (latestMeetingDraft) {
+    events.push({
+      id: latestMeetingDraft.id,
+      label: "Proposal drafted",
+      detail: "Proposal draft prepared from Scribe notes.",
+      at: latestMeetingDraft.createdAt.toISOString(),
+      status: "done",
+    });
+  }
+
+  const signedProposal = input.proposals.find(
+    (proposal) =>
+      proposal.status === "ACCEPTED" ||
+      proposal.signatureRequests.some((request) => request.status === "COMPLETED"),
+  );
+  const sentProposal = input.proposals.find(
+    (proposal) => proposal.status === "SENT" || proposal.signatureRequests.some((request) => request.status === "SENT"),
+  );
+  if (signedProposal) {
+    const completedAt = signedProposal.acceptedAt ??
+      signedProposal.signatureRequests.find((request) => request.status === "COMPLETED")?.completedAt ??
+      signedProposal.updatedAt;
+    events.push({
+      id: `signoff:${signedProposal.id}`,
+      label: "Commercial sign-off",
+      detail: `${signedProposal.title} is accepted or signed.`,
+      at: completedAt.toISOString(),
+      status: "done",
+    });
+  } else if (sentProposal) {
+    events.push({
+      id: `sent:${sentProposal.id}`,
+      label: "Waiting signature",
+      detail: `${sentProposal.title} has been sent for sign-off.`,
+      at: (sentProposal.signatureRequests.find((request) => request.status === "SENT")?.sentAt ?? sentProposal.updatedAt).toISOString(),
+      status: "waiting",
+    });
+  }
+
+  if (input.onboarding) {
+    events.push({
+      id: `onboarding:${input.onboarding.id}`,
+      label: input.onboarding.submittedAt ? "Onboarding submitted" : "Onboarding link open",
+      detail: input.onboarding.submittedAt ? "Client submitted onboarding." : "Onboarding link exists but is not submitted.",
+      at: (input.onboarding.submittedAt ?? input.onboarding.createdAt).toISOString(),
+      status: input.onboarding.submittedAt ? "done" : "waiting",
+    });
+  }
+
+  const activated = input.auditRows.find((row) => row.action === "foundry.client.activated");
+  if (activated || input.client.status === "ACTIVE") {
+    events.push({
+      id: activated?.id ?? `active:${input.client.id}`,
+      label: "Client active",
+      detail: "Client is active in Portal.",
+      at: (activated?.createdAt.toISOString() ?? input.client.updatedAt),
+      status: "done",
+    });
+  }
+
+  const seeded = input.auditRows.find((row) => row.action === "foundry.delivery_plan.seeded");
+  if (seeded) {
+    events.push({
+      id: seeded.id,
+      label: "Delivery plan seeded",
+      detail: "Feature blocks, tasks, and milestones were generated from proposal timeline.",
+      at: seeded.createdAt.toISOString(),
+      status: "done",
+    });
+  } else if (input.client.status === "ACTIVE" && signedProposal) {
+    events.push({
+      id: `plan-ready:${input.client.id}`,
+      label: "Delivery plan",
+      detail: "Ready to seed tasks and milestones.",
+      at: (signedProposal.acceptedAt ?? signedProposal.updatedAt).toISOString(),
+      status: "ready",
+    });
+  }
+
+  return events.sort((left, right) => Date.parse(left.at) - Date.parse(right.at)).slice(-8);
 }
 
 /**

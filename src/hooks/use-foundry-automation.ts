@@ -5,8 +5,10 @@ import {
   createAutomationOnboardingLink,
   draftProposalFromMeeting,
   getFoundryAutomation,
+  previewProposalDraft,
   previewProjectPlan,
   seedProjectPlan,
+  updateAutomationNudge,
 } from "@/lib/api";
 
 const QK = {
@@ -42,6 +44,22 @@ export function useDraftProposalFromMeeting() {
       void queryClient.invalidateQueries({ queryKey: QK.automation });
       void queryClient.invalidateQueries({ queryKey: ["proposals"] });
       void queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function usePreviewProposalDraft() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof previewProposalDraft>[0]) => previewProposalDraft(input),
+  });
+}
+
+export function useUpdateAutomationNudge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateAutomationNudge>[0]) => updateAutomationNudge(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QK.automation });
     },
   });
 }

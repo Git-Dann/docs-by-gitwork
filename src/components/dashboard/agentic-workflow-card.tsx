@@ -13,7 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
@@ -21,14 +21,18 @@ import {
   useCreateAutomationOnboardingLink,
   useDraftProposalFromMeeting,
   useFoundryAutomation,
+  usePreviewProposalDraft,
   usePreviewProjectPlan,
   useSeedProjectPlan,
+  useUpdateAutomationNudge,
 } from "@/hooks/use-foundry-automation";
 import type {
   AutomationOnboardingLinkResult,
   AutomationGateState,
   AutomationStageKey,
   FoundryAutomationItem,
+  ProposalDraftEdits,
+  ProposalDraftPreview,
   ProjectPlanPreview,
 } from "@/types/foundry-automation";
 
@@ -55,12 +59,20 @@ export function AgenticWorkflowCard() {
   const { data, isLoading, error, refetch, isFetching } = useFoundryAutomation();
   const onboardingLink = useCreateAutomationOnboardingLink();
   const draftProposal = useDraftProposalFromMeeting();
+  const previewProposal = usePreviewProposalDraft();
   const previewPlan = usePreviewProjectPlan();
   const seedPlan = useSeedProjectPlan();
+  const updateNudge = useUpdateAutomationNudge();
   const [reviewing, setReviewing] = useState<{
     item: FoundryAutomationItem;
     startDate: string;
   } | null>(null);
+  const [draftReviewing, setDraftReviewing] = useState<FoundryAutomationItem | null>(null);
+  const [draftPreview, setDraftPreview] = useState<ProposalDraftPreview | null>(null);
+  const [draftEdits, setDraftEdits] = useState<Required<ProposalDraftEdits> | null>(null);
+  const [actionDrawerItem, setActionDrawerItem] = useState<FoundryAutomationItem | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showRuns, setShowRuns] = useState(false);
   const [preview, setPreview] = useState<ProjectPlanPreview | null>(null);
   const [draftingClientId, setDraftingClientId] = useState<string | null>(null);
   const [onboardingClientId, setOnboardingClientId] = useState<string | null>(null);
@@ -91,20 +103,80 @@ export function AgenticWorkflowCard() {
     setReviewError(null);
     setDraftingClientId(item.client.id);
     try {
+      const response = await previewProposal.mutateAsync({
+        clientId: item.client.id,
+        meetingId: item.latestMeeting?.id,
+      });
+      setDraftPreview(response.preview);
+      setDraftEdits(response.preview.draft);
+      setDraftReviewing(item);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not preview a proposal from these notes.");
+    } finally {
+      setDraftingClientId(null);
+    }
+  }
+
+  async function handleApproveDraft() {
+    if (!draftReviewing || !draftEdits) return;
+    const item = draftReviewing;
+    setNotice(null);
+    setReviewError(null);
+    setDraftingClientId(item.client.id);
+    try {
       const response = await draftProposal.mutateAsync({
         clientId: item.client.id,
         meetingId: item.latestMeeting?.id,
+        draft: draftEdits,
       });
       setNotice(
         response.result.created
           ? `${item.client.name}: drafted ${response.result.proposalTitle} from ${response.result.meetingTitle}.`
           : `${item.client.name}: opening existing draft ${response.result.proposalTitle}.`,
       );
+      setDraftReviewing(null);
+      setDraftPreview(null);
+      setDraftEdits(null);
       router.push(response.result.href);
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Could not draft a proposal from these notes.");
+      setNotice(err instanceof Error ? err.message : "Could not create the reviewed proposal draft.");
     } finally {
       setDraftingClientId(null);
+    }
+  }
+
+  async function handleAssignNudge(item: FoundryAutomationItem) {
+    const nudge = item.nudges[0];
+    if (!nudge) return;
+    setNotice(null);
+    try {
+      await updateNudge.mutateAsync({
+        clientId: item.client.id,
+        kind: nudge.kind,
+        note: "Assigned from Agentic Workflow.",
+      });
+      setNotice(`${item.client.name}: nudge assigned.`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not assign this nudge.");
+    }
+  }
+
+  async function handleSnoozeNudge(item: FoundryAutomationItem) {
+    const nudge = item.nudges[0];
+    if (!nudge) return;
+    const until = new Date();
+    until.setDate(until.getDate() + 3);
+    setNotice(null);
+    try {
+      await updateNudge.mutateAsync({
+        clientId: item.client.id,
+        kind: nudge.kind,
+        snoozedUntil: until.toISOString(),
+        note: "Snoozed for three days from Agentic Workflow.",
+      });
+      setNotice(`${item.client.name}: nudge snoozed for 3 days.`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not snooze this nudge.");
     }
   }
 
@@ -178,14 +250,30 @@ export function AgenticWorkflowCard() {
           <span className="widget-header__label--number">09</span>
           {" // AGENTIC WORKFLOW"}
         </span>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-        >
-          <ArrowPathIcon className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowRuns((value) => !value)}
+            className="text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+          >
+            Runs
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCompleted((value) => !value)}
+            className="text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+          >
+            Completed {data?.completedItems.length ?? 0}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+          >
+            <ArrowPathIcon className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="p-4">
@@ -230,17 +318,67 @@ export function AgenticWorkflowCard() {
                 actionDisabled={
                   onboardingLink.isPending ||
                   draftProposal.isPending ||
+                  previewProposal.isPending ||
                   seedPlan.isPending ||
-                  previewPlan.isPending
+                  previewPlan.isPending ||
+                  updateNudge.isPending
                 }
                 onOnboarding={() => void handleOnboardingLink(item)}
                 onDraft={() => void handleDraftProposal(item)}
                 onSeed={() => void handleOpenReview(item)}
+                onActions={() => setActionDrawerItem(item)}
+                onAssignNudge={() => void handleAssignNudge(item)}
+                onSnoozeNudge={() => void handleSnoozeNudge(item)}
               />
             ))
           )}
         </div>
+
+        {showCompleted && data?.completedItems.length ? (
+          <CompactPanel title="Recently completed">
+            {data.completedItems.map((item) => (
+              <CompletedRow key={item.client.id} item={item} />
+            ))}
+          </CompactPanel>
+        ) : null}
+
+        {showRuns && data?.runHistory.length ? (
+          <CompactPanel title="Agent run history">
+            {data.runHistory.map((run) => (
+              <div key={run.id} className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-[var(--text-1)]">{run.label}</p>
+                  <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-3)]">
+                    {run.status}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-[11px] text-[var(--text-3)]">
+                  {run.clientName ?? "Client"} · {run.inputSummary} → {run.outputSummary}
+                </p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+                  {formatDate(run.at)}{run.actorName ? ` · ${run.actorName}` : ""}
+                </p>
+              </div>
+            ))}
+          </CompactPanel>
+        ) : null}
       </div>
+
+      <ProposalDraftReviewModal
+        item={draftReviewing}
+        preview={draftPreview}
+        edits={draftEdits}
+        loading={previewProposal.isPending}
+        creating={draftProposal.isPending}
+        onEditsChange={setDraftEdits}
+        onConfirm={() => void handleApproveDraft()}
+        onClose={() => {
+          if (draftProposal.isPending) return;
+          setDraftReviewing(null);
+          setDraftPreview(null);
+          setDraftEdits(null);
+        }}
+      />
 
       <PlanReviewModal
         item={reviewing?.item ?? null}
@@ -265,6 +403,22 @@ export function AgenticWorkflowCard() {
       <OnboardingLinkModal
         result={onboardingShare}
         onClose={() => setOnboardingShare(null)}
+      />
+
+      <ActionDrawer
+        item={actionDrawerItem}
+        actionDisabled={
+          onboardingLink.isPending ||
+          draftProposal.isPending ||
+          previewProposal.isPending ||
+          seedPlan.isPending ||
+          previewPlan.isPending
+        }
+        actionPendingClientId={onboardingClientId ?? draftingClientId ?? seedingClientId ?? previewingClientId}
+        onClose={() => setActionDrawerItem(null)}
+        onDraft={() => actionDrawerItem && void handleDraftProposal(actionDrawerItem)}
+        onOnboarding={() => actionDrawerItem && void handleOnboardingLink(actionDrawerItem)}
+        onSeed={() => actionDrawerItem && void handleOpenReview(actionDrawerItem)}
       />
     </section>
   );
@@ -294,6 +448,34 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   );
 }
 
+function CompactPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mt-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+        {title}
+      </p>
+      <div className="grid gap-2 md:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
+function CompletedRow({ item }: { item: FoundryAutomationItem }) {
+  return (
+    <Link
+      href={`/app/portal/${item.client.slug}`}
+      className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-xs font-semibold text-[var(--text-1)]">{item.client.name}</p>
+        <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-600" />
+      </div>
+      <p className="mt-1 text-[11px] text-[var(--text-3)]">
+        {item.projectPlan.taskCount} tasks · {item.projectPlan.milestoneCount} milestones
+      </p>
+    </Link>
+  );
+}
+
 function AutomationRow({
   item,
   actionPending,
@@ -301,6 +483,9 @@ function AutomationRow({
   onOnboarding,
   onDraft,
   onSeed,
+  onActions,
+  onAssignNudge,
+  onSnoozeNudge,
 }: {
   item: FoundryAutomationItem;
   actionPending: boolean;
@@ -308,6 +493,9 @@ function AutomationRow({
   onOnboarding: () => void;
   onDraft: () => void;
   onSeed: () => void;
+  onActions: () => void;
+  onAssignNudge: () => void;
+  onSnoozeNudge: () => void;
 }) {
   const detail = item.sourceProposal
     ? `${item.sourceProposal.title} · ${item.sourceProposal.status.replace(/_/g, " ")}`
@@ -318,7 +506,7 @@ function AutomationRow({
   const primaryNudge = item.nudges[0] ?? null;
 
   return (
-    <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_180px]">
+    <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_260px]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/app/portal/${item.client.slug}`} className="truncate text-sm font-semibold text-[var(--text-1)] hover:underline">
@@ -345,6 +533,13 @@ function AutomationRow({
         {latestActivity ? (
           <p className="mt-1 truncate text-[11px] text-[var(--text-4)]">{latestActivity}</p>
         ) : null}
+        {primaryNudge?.state ? (
+          <p className="mt-1 truncate text-[11px] text-[var(--text-4)]">
+            {primaryNudge.state.assignedToName ? `Assigned to ${primaryNudge.state.assignedToName}` : ""}
+            {primaryNudge.state.assignedToName && primaryNudge.state.snoozedUntil ? " · " : ""}
+            {primaryNudge.state.snoozedUntil ? `Snoozed until ${formatDate(primaryNudge.state.snoozedUntil)}` : ""}
+          </p>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {item.gates.map((gate) => (
@@ -360,7 +555,7 @@ function AutomationRow({
         </div>
       </div>
 
-      <div className="flex items-center justify-start gap-2 lg:justify-end">
+      <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
         {item.stage === "READY_TO_ACTIVATE" ? (
           <ExclamationTriangleIcon className="h-4 w-4 text-amber-600" />
         ) : item.stage === "WAITING_SIGNATURE" ? (
@@ -413,8 +608,229 @@ function AutomationRow({
             <ArrowRightIcon className="h-3 w-3" />
           </Link>
         ) : null}
+        {primaryNudge ? (
+          <>
+            <Button type="button" size="xs" variant="secondary" disabled={actionDisabled} onClick={onAssignNudge}>
+              Assign
+            </Button>
+            <Button type="button" size="xs" variant="secondary" disabled={actionDisabled} onClick={onSnoozeNudge}>
+              Snooze
+            </Button>
+          </>
+        ) : null}
+        <Button type="button" size="xs" variant="secondary" onClick={onActions}>
+          Actions
+        </Button>
       </div>
     </div>
+  );
+}
+
+function linesToText(values: string[]): string {
+  return values.join("\n");
+}
+
+function textToLines(value: string): string[] {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+function ProposalDraftReviewModal({
+  item,
+  preview,
+  edits,
+  loading,
+  creating,
+  onEditsChange,
+  onConfirm,
+  onClose,
+}: {
+  item: FoundryAutomationItem | null;
+  preview: ProposalDraftPreview | null;
+  edits: Required<ProposalDraftEdits> | null;
+  loading: boolean;
+  creating: boolean;
+  onEditsChange: (value: Required<ProposalDraftEdits> | null) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const existingDraft = preview?.existingDraft;
+
+  function patch<K extends keyof Required<ProposalDraftEdits>>(
+    key: K,
+    value: Required<ProposalDraftEdits>[K],
+  ) {
+    if (!edits) return;
+    onEditsChange({ ...edits, [key]: value });
+  }
+
+  return (
+    <Modal
+      open={Boolean(item)}
+      onClose={onClose}
+      title="Proposal draft review"
+      panelClassName="flex max-h-[calc(100dvh-32px)] w-full max-w-3xl flex-col"
+    >
+      <div className="flex-1 overflow-y-auto p-4">
+        {loading && !preview ? (
+          <div className="rounded-[8px] border border-[var(--border-2)] bg-white p-4 text-sm text-[var(--text-3)]">
+            Building proposal outline...
+          </div>
+        ) : null}
+
+        {existingDraft ? (
+          <div className="rounded-[8px] border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-semibold text-amber-900">Existing draft found</p>
+            <p className="mt-1 text-xs text-amber-800">
+              This meeting already has a draft. Open it instead of creating a duplicate.
+            </p>
+            <Link href={existingDraft.href} className={cn("mt-3", buttonStyles({ variant: "primary", size: "sm" }))}>
+              Open draft
+              <ArrowRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+        ) : null}
+
+        {edits && !existingDraft ? (
+          <div className="space-y-3">
+            <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <p className="text-sm font-semibold text-[var(--text-1)]">{preview?.clientName ?? item?.client.name}</p>
+              <p className="mt-1 text-xs text-[var(--text-3)]">
+                {preview?.meetingTitle ?? item?.latestMeeting?.title ?? "Scribe meeting"} · review before Docs creation
+              </p>
+            </div>
+
+            <label className="block text-xs font-medium text-[var(--text-3)]">
+              Proposal title
+              <input
+                value={edits.title}
+                onChange={(event) => patch("title", event.target.value)}
+                className="mt-1 w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              />
+            </label>
+
+            <label className="block text-xs font-medium text-[var(--text-3)]">
+              Summary
+              <textarea
+                value={edits.summary}
+                onChange={(event) => patch("summary", event.target.value)}
+                rows={4}
+                className="mt-1 w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              />
+            </label>
+
+            {([
+              ["objectives", "Objectives"],
+              ["touchpoints", "Scope touchpoints"],
+              ["assumptions", "Assumptions"],
+              ["outOfScope", "Out of scope"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="block text-xs font-medium text-[var(--text-3)]">
+                {label}
+                <textarea
+                  value={linesToText(edits[key])}
+                  onChange={(event) => patch(key, textToLines(event.target.value))}
+                  rows={4}
+                  className="mt-1 w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                />
+              </label>
+            ))}
+
+            <label className="block text-xs font-medium text-[var(--text-3)]">
+              Next steps
+              <textarea
+                value={edits.nextSteps}
+                onChange={(event) => patch("nextSteps", event.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-[var(--border-2)] p-4">
+        <Button type="button" variant="secondary" size="sm" onClick={onClose} disabled={creating}>
+          Close
+        </Button>
+        {!existingDraft ? (
+          <Button type="button" variant="primary" size="sm" onClick={onConfirm} loading={creating} disabled={!edits}>
+            Create Docs draft
+          </Button>
+        ) : null}
+      </div>
+    </Modal>
+  );
+}
+
+function ActionDrawer({
+  item,
+  actionDisabled,
+  actionPendingClientId,
+  onClose,
+  onDraft,
+  onOnboarding,
+  onSeed,
+}: {
+  item: FoundryAutomationItem | null;
+  actionDisabled: boolean;
+  actionPendingClientId: string | null;
+  onClose: () => void;
+  onDraft: () => void;
+  onOnboarding: () => void;
+  onSeed: () => void;
+}) {
+  return (
+    <Modal
+      open={Boolean(item)}
+      onClose={onClose}
+      title="Client actions"
+      panelClassName="w-full max-w-md"
+    >
+      <div className="space-y-2 p-4">
+        <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">{item?.client.name ?? "Client"}</p>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={Boolean(item && actionPendingClientId === item.client.id)}
+          disabled={actionDisabled || !item?.latestMeeting}
+          onClick={onDraft}
+          className="w-full justify-start"
+        >
+          <SparklesIcon className="h-4 w-4" />
+          Review proposal draft
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={Boolean(item && actionPendingClientId === item.client.id)}
+          disabled={actionDisabled}
+          onClick={onOnboarding}
+          className="w-full justify-start"
+        >
+          <LinkIcon className="h-4 w-4" />
+          Prepare onboarding link
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          loading={Boolean(item && actionPendingClientId === item.client.id)}
+          disabled={actionDisabled}
+          onClick={onSeed}
+          className="w-full justify-start"
+        >
+          <CheckCircleIcon className="h-4 w-4" />
+          Review and seed delivery plan
+        </Button>
+        {item ? (
+          <Link href={`/app/portal/${item.client.slug}`} className={buttonStyles({ variant: "primary", size: "sm" })}>
+            Open client record
+            <ArrowRightIcon className="h-4 w-4" />
+          </Link>
+        ) : null}
+      </div>
+    </Modal>
   );
 }
 

@@ -70,6 +70,8 @@ Each returned row now includes compact operator context:
 
 - `activity`: newest three lifecycle/activity entries, combining Foundry audit rows with derived signature/onboarding facts.
 - `nudges`: advisory attention items only. They never block manual operation or trigger automatic sending, activation, or plan seeding.
+- `completedItems`: a separate recent-completed list for active clients with seeded delivery plans.
+- `runHistory`: latest audit-backed agent/operator runs with input, output, approval/update status, actor, and timestamp.
 
 Current quiet nudge thresholds:
 
@@ -85,10 +87,12 @@ Existing workspace `AuditLog` is reused; no new table was added.
 
 Recorded actions:
 
+- `foundry.proposal_draft.previewed`
 - `foundry.proposal_draft.prepared`
 - `foundry.onboarding_link.prepared`
 - `foundry.client.activated`
 - `foundry.delivery_plan.seeded`
+- `foundry.nudge.updated`
 
 Targets use `client:<clientId>` so client-specific activity can be grouped without coupling the audit table to a new relation. Audit writes are append-only and should remain lightweight; failures do not block the underlying manual action.
 
@@ -96,10 +100,12 @@ Targets use `client:<clientId>` so client-specific activity can be grouped witho
 
 Server function:
 
+- `previewProposalDraftFromMeeting()`
 - `draftProposalFromMeeting()`
 
 API route:
 
+- `POST /api/foundry/automation/preview-proposal`
 - `POST /api/foundry/automation/draft-proposal`
 
 Input:
@@ -116,11 +122,30 @@ Behaviour:
 - Requires Docs manage permission and client scope.
 - Uses the selected meeting or latest summarised Scribe meeting for the client.
 - Refuses to create an empty draft if the meeting has no summary, decisions, or action items.
+- Preview now happens before Docs creation. The operator reviews editable title, summary, objectives, scope touchpoints, assumptions, out-of-scope, and next steps.
+- The create endpoint accepts the reviewed outline and uses those edits when building the Docs proposal sections.
 - Creates a normal Docs `DRAFT` proposal with the standard proposal graph: sections, costing rows, timeline phases, links, CTAs, and assets.
 - Prefills cover, intro, overview, objectives, scope touchpoints, assumptions, out-of-scope, next steps, and internal drafting notes from the Scribe summary/decisions/action items.
 - Stores provenance in `Document.metadata.foundryAutomation.sourceMeetingId`.
 - If the same meeting already has an open draft proposal, returns that existing draft instead of creating a duplicate.
-- Records a Foundry audit entry whether it creates a new draft or reopens an existing meeting-derived draft.
+- Records a Foundry audit entry when a preview is generated and when a draft is created or reopened.
+
+### Nudge Controls
+
+Server function:
+
+- `updateAutomationNudge()`
+
+API route:
+
+- `POST /api/foundry/automation/nudge`
+
+Behaviour:
+
+- Requires Clients manage permission and client scope.
+- Stores assign/snooze state as append-only `AuditLog` rows, not a new workflow table.
+- The dashboard can assign a nudge to the current operator or snooze it for three days.
+- Nudge controls remain advisory and do not change the underlying client lifecycle.
 
 ### Manual Plan Seeding
 
@@ -214,9 +239,30 @@ The row list intentionally excludes fully active delivery clients by default. Su
 
 The `Draft from notes` action appears when a client has Scribe notes but no proposal draft. It creates or reopens the meeting-derived draft and routes the operator into Docs for review.
 
+Current behaviour is review-before-create: `Draft from notes` opens a proposal outline review modal first. Only `Create Docs draft` writes the proposal record.
+
 The `Send onboarding` action appears after commercial sign-off but before onboarding is submitted. It creates/reuses a client-linked onboarding URL, then shows copy/preview/email controls in a modal.
 
 The `Seed tasks + Gantt` action now opens a plan review modal first. Operators can inspect the generated timeline, adjust the start date, refresh the preview, see which records already exist, then explicitly create the plan.
+
+Additional HQ controls:
+
+- Completed toggle: shows recent `DELIVERY_ACTIVE` clients outside the default action queue.
+- Runs toggle: shows audit-backed agent/operator run history.
+- Per-row assign/snooze: updates advisory nudge state.
+- Actions drawer: independent manual shortcuts for proposal review, onboarding link, plan review/seed, and client record.
+
+### Client Lifecycle Timeline
+
+Component:
+
+- `src/components/clients/client-detail.tsx`
+
+Server context:
+
+- `src/server/clients.ts`
+
+Client detail now returns a derived `lifecycle` array. It combines client creation/status, proposal draft/signature state, onboarding state, activation audit, and delivery-plan seed audit. This gives each client record a compact lifecycle timeline without requiring operators to use the automation dashboard.
 
 ### Pending Activation Checklist
 
@@ -302,6 +348,6 @@ Note: a full `npm run lint` no longer crashes after the dependency rebuild, but 
 
 1. Add real email sending for onboarding links once an email provider is configured; keep copy/mailto as fallback.
 2. Turn advisory nudges into optional notifications once Dan wants proactive alerts outside HQ.
-3. Add a proposal draft review screen that previews the generated sections before creating the Docs record.
-4. Add a compact completed/recently-completed lifecycle view outside the default action queue.
+3. Replace assign-to-me with a real teammate picker if nudge ownership needs team routing.
+4. Expand agent run history into a full audit explorer if operators need filtering/export.
 5. Once the internal loop is stable, design the customer portal around the already-seeded timeline, docs, comments, and onboarding status.

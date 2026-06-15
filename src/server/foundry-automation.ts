@@ -23,15 +23,22 @@ import type {
   AutomationGateState,
   AutomationMeetingRef,
   AutomationNudge,
+  AutomationNudgeKind,
+  AutomationNudgeUpdateRequest,
+  AutomationNudgeUpdateResult,
   AutomationOnboardingRef,
   AutomationOnboardingLinkRequest,
   AutomationOnboardingLinkResult,
   AutomationProjectPlanRef,
+  AutomationRunHistoryItem,
   AutomationStageKey,
   DraftProposalRequest,
   DraftProposalResult,
   FoundryAutomationItem,
   FoundryAutomationResponse,
+  ProposalDraftEdits,
+  ProposalDraftPreview,
+  ProposalDraftPreviewRequest,
   ProjectPlanPreview,
   ProjectPlanPreviewBlock,
   ProjectPlanPreviewMilestone,
@@ -51,10 +58,12 @@ import {
 const LEGAL_DOCUMENT_TYPES = new Set(["SOW", "MSA", "NDA", "DSA"]);
 const PLAN_COLORS = ["blue", "violet", "emerald", "amber", "rose", "slate"];
 const FOUNDRY_AUDIT_ACTIONS = [
+  "foundry.proposal_draft.previewed",
   "foundry.proposal_draft.prepared",
   "foundry.onboarding_link.prepared",
   "foundry.client.activated",
   "foundry.delivery_plan.seeded",
+  "foundry.nudge.updated",
 ] as const;
 const SIGNATURE_STALE_BUSINESS_DAYS = 5;
 const ONBOARDING_STALE_BUSINESS_DAYS = 3;
@@ -235,6 +244,18 @@ type AutomationAuditRow = {
   actor: { name: string | null; email: string } | null;
 };
 
+type NudgeState = NonNullable<AutomationNudge["state"]>;
+
+type DraftMeetingRow = {
+  id: string;
+  title: string;
+  startedAt: Date | null;
+  status: string;
+  summary: string | null;
+  decisions: Prisma.JsonValue | null;
+  actionItems: Array<{ title: string | null; text: string; owner: string | null }>;
+};
+
 function clientTarget(clientId: string): string {
   return `client:${clientId}`;
 }
@@ -276,6 +297,7 @@ function actorName(actor: AutomationAuditRow["actor"]): string | null {
 
 function auditActivity(row: AutomationAuditRow): AutomationActivityRef | null {
   const metadata = metadataRecord(row.metadata);
+  const nudgeKind = metadataString(metadata, "nudgeKind");
   const proposalTitle = metadataString(metadata, "proposalTitle") ?? "Proposal draft";
   const meetingTitle = metadataString(metadata, "meetingTitle") ?? "Scribe notes";
   const created = metadataBoolean(metadata, "created");
@@ -284,6 +306,15 @@ function auditActivity(row: AutomationAuditRow): AutomationActivityRef | null {
   const createdMilestones = metadataNumber(metadata, "createdMilestones") ?? 0;
 
   switch (row.action) {
+    case "foundry.proposal_draft.previewed":
+      return {
+        id: `audit:${row.id}`,
+        kind: "proposal_preview",
+        label: "Proposal preview reviewed",
+        detail: `${proposalTitle} generated from ${meetingTitle}.`,
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
     case "foundry.proposal_draft.prepared":
       return {
         id: `audit:${row.id}`,
@@ -320,9 +351,127 @@ function auditActivity(row: AutomationAuditRow): AutomationActivityRef | null {
         at: row.createdAt.toISOString(),
         actorName: actorName(row.actor),
       };
+    case "foundry.nudge.updated":
+      return {
+        id: `audit:${row.id}`,
+        kind: "nudge_updated",
+        label: "Nudge updated",
+        detail: nudgeKind ? `${nudgeKind.replace(/_/g, " ")} was assigned or snoozed.` : "Nudge was updated.",
+        at: row.createdAt.toISOString(),
+        actorName: actorName(row.actor),
+      };
     default:
       return null;
   }
+}
+
+function runHistoryFromAuditRows(rows: AutomationAuditRow[]): AutomationRunHistoryItem[] {
+  return rows.flatMap((row) => {
+    const metadata = metadataRecord(row.metadata);
+    const clientId = metadataString(metadata, "clientId") ?? row.target?.replace(/^client:/, "") ?? "";
+    if (!clientId) return [];
+    const entry = (value: AutomationRunHistoryItem): AutomationRunHistoryItem[] => [value];
+    const clientName = metadataString(metadata, "clientName");
+    const meetingTitle = metadataString(metadata, "meetingTitle") ?? "Scribe notes";
+    const proposalTitle = metadataString(metadata, "proposalTitle") ?? "Proposal draft";
+    const sourceDocumentTitle = metadataString(metadata, "sourceDocumentTitle") ?? "Proposal";
+    const createdTasks = metadataNumber(metadata, "createdTasks") ?? 0;
+    const createdBlocks = metadataNumber(metadata, "createdFeatureBlocks") ?? 0;
+    const createdMilestones = metadataNumber(metadata, "createdMilestones") ?? 0;
+
+    switch (row.action) {
+      case "foundry.proposal_draft.previewed":
+        return entry({
+          id: row.id,
+          clientId,
+          clientName,
+          action: row.action,
+          label: "Proposal outline previewed",
+          status: "PREVIEWED" as const,
+          inputSummary: meetingTitle,
+          outputSummary: proposalTitle,
+          at: row.createdAt.toISOString(),
+          actorName: actorName(row.actor),
+        });
+      case "foundry.proposal_draft.prepared":
+        return entry({
+          id: row.id,
+          clientId,
+          clientName,
+          action: row.action,
+          label: "Proposal draft approved",
+          status: "APPROVED" as const,
+          inputSummary: meetingTitle,
+          outputSummary: proposalTitle,
+          at: row.createdAt.toISOString(),
+          actorName: actorName(row.actor),
+        });
+      case "foundry.onboarding_link.prepared":
+        return entry({
+          id: row.id,
+          clientId,
+          clientName,
+          action: row.action,
+          label: "Onboarding link prepared",
+          status: "APPROVED" as const,
+          inputSummary: "Commercial sign-off",
+          outputSummary: metadataString(metadata, "status") ?? "Onboarding link",
+          at: row.createdAt.toISOString(),
+          actorName: actorName(row.actor),
+        });
+      case "foundry.delivery_plan.seeded":
+        return entry({
+          id: row.id,
+          clientId,
+          clientName,
+          action: row.action,
+          label: "Delivery plan seeded",
+          status: "APPROVED" as const,
+          inputSummary: sourceDocumentTitle,
+          outputSummary: `${createdBlocks} blocks, ${createdTasks} tasks, ${createdMilestones} milestones`,
+          at: row.createdAt.toISOString(),
+          actorName: actorName(row.actor),
+        });
+      case "foundry.nudge.updated":
+        return entry({
+          id: row.id,
+          clientId,
+          clientName,
+          action: row.action,
+          label: "Nudge updated",
+          status: "UPDATED" as const,
+          inputSummary: metadataString(metadata, "nudgeKind")?.replace(/_/g, " ") ?? "Nudge",
+          outputSummary: metadataString(metadata, "note") ?? "Assigned or snoozed",
+          at: row.createdAt.toISOString(),
+          actorName: actorName(row.actor),
+        });
+      default:
+        return [];
+    }
+  });
+}
+
+function latestNudgeStatesByClient(rows: AutomationAuditRow[]): Map<string, Map<AutomationNudgeKind, NudgeState>> {
+  const grouped = new Map<string, Map<AutomationNudgeKind, NudgeState>>();
+  for (const row of rows) {
+    if (row.action !== "foundry.nudge.updated") continue;
+    const metadata = metadataRecord(row.metadata);
+    const clientId = metadataString(metadata, "clientId") ?? row.target?.replace(/^client:/, "") ?? null;
+    const kind = metadataString(metadata, "nudgeKind") as AutomationNudgeKind | null;
+    if (!clientId || !kind) continue;
+    const current = grouped.get(clientId)?.get(kind);
+    if (current?.updatedAt && Date.parse(current.updatedAt) > row.createdAt.getTime()) continue;
+    const clientStates = grouped.get(clientId) ?? new Map<AutomationNudgeKind, NudgeState>();
+    clientStates.set(kind, {
+      assignedToName: metadataString(metadata, "assignedToName"),
+      snoozedUntil: metadataString(metadata, "snoozedUntil"),
+      note: metadataString(metadata, "note"),
+      updatedAt: row.createdAt.toISOString(),
+      updatedByName: actorName(row.actor),
+    });
+    grouped.set(clientId, clientStates);
+  }
+  return grouped;
 }
 
 function latestDate(values: Array<Date | null | undefined>): Date | null {
@@ -415,6 +564,7 @@ function buildActivity(input: {
 }
 
 function buildNudges(input: {
+  clientId: string;
   stage: AutomationStageKey;
   sentProposal: AutomationDocumentRow | null;
   signedProposal: AutomationDocumentRow | null;
@@ -427,9 +577,13 @@ function buildNudges(input: {
       }
     | null
     | undefined;
+  nudgeStates: Map<string, Map<AutomationNudgeKind, NudgeState>>;
   now: Date;
 }): AutomationNudge[] {
   const nudges: AutomationNudge[] = [];
+  const stateFor = (kind: AutomationNudgeKind): NudgeState | null =>
+    input.nudgeStates.get(input.clientId)?.get(kind) ?? null;
+
   if (input.stage === "WAITING_SIGNATURE") {
     const sentAt = latestSentAt(input.sentProposal);
     if (sentAt) {
@@ -440,6 +594,7 @@ function buildNudges(input: {
           label: "Signature stale",
           detail: `Waiting ${days} business days since sign-off was sent.`,
           since: sentAt.toISOString(),
+          state: stateFor("signature_stale"),
         });
       }
     }
@@ -458,6 +613,7 @@ function buildNudges(input: {
             ? `Onboarding has been open for ${days} business days.`
             : `Sign-off completed ${days} business days ago; onboarding still needs sending.`,
           since: anchor.toISOString(),
+          state: stateFor("onboarding_stale"),
         });
       }
     }
@@ -469,6 +625,7 @@ function buildNudges(input: {
       label: "Plan gap",
       detail: "Active client has no feature blocks, tasks, or milestones yet.",
       since: latestSignoffAt(input.signedProposal, input.contractDocument)?.toISOString() ?? null,
+      state: stateFor("active_plan_gap"),
     });
   }
 
@@ -571,13 +728,15 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
           target: { in: clientIds.map(clientTarget) },
         },
         orderBy: { createdAt: "desc" },
-        take: Math.max(60, clientIds.length * 4),
+        take: Math.max(120, clientIds.length * 8),
         include: {
           actor: { select: { name: true, email: true } },
         },
       })
     : [];
   const auditsByClient = groupAuditRowsByClient(auditRows);
+  const nudgeStates = latestNudgeStatesByClient(auditRows);
+  const runHistory = runHistoryFromAuditRows(auditRows).slice(0, 12);
   const now = new Date();
 
   const items: FoundryAutomationItem[] = clients.map((client) => {
@@ -730,17 +889,23 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
         onboarding: client.onboarding,
       }),
       nudges: buildNudges({
+        clientId: client.id,
         stage,
         sentProposal,
         signedProposal,
         contractDocument,
         onboarding: client.onboarding,
+        nudgeStates,
         now,
       }),
     };
   });
 
   const queueItems = items.filter((item) => item.stage !== "DELIVERY_ACTIVE");
+  const completedItems = items
+    .filter((item) => item.stage === "DELIVERY_ACTIVE")
+    .sort((left, right) => Date.parse(right.activity[0]?.at ?? "0") - Date.parse(left.activity[0]?.at ?? "0"))
+    .slice(0, 6);
 
   queueItems.sort((left, right) => {
     const rank = stageRank(left.stage) - stageRank(right.stage);
@@ -761,6 +926,8 @@ export async function getFoundryAutomation(user: EffectiveUser): Promise<Foundry
       activePlanGaps: queueItems.filter((item) => item.stage === "READY_TO_SEED_PLAN").length,
     },
     items: queueItems,
+    completedItems,
+    runHistory,
   };
 }
 
@@ -837,58 +1004,100 @@ function sourceMeetingLabel(meeting: { title: string; startedAt: Date | null }):
   return `${meeting.title} (${date})`;
 }
 
+function cleanList(values: string[] | undefined, fallback: string[]): string[] {
+  const cleaned = (values ?? []).map((value) => value.trim()).filter(Boolean).slice(0, 8);
+  return cleaned.length ? cleaned : fallback;
+}
+
+function buildDraftEditsFromMeeting(input: {
+  clientName: string;
+  meeting: DraftMeetingRow;
+  draft?: ProposalDraftEdits;
+}): Required<ProposalDraftEdits> {
+  const summary = input.meeting.summary?.trim() || "Draft generated from Scribe meeting notes.";
+  const decisions = stringsFromJson(input.meeting.decisions);
+  const actionItems = input.meeting.actionItems;
+  const objectives = [
+    ...decisions.map((decision) => decision),
+    ...actionItems.map((action) => `${action.title?.trim() || titleFromText(action.text, "Follow up action")}: ${action.text}`),
+  ].slice(0, 4);
+  const touchpoints = actionItems.length
+    ? actionItems.slice(0, 5).map((action) => action.title?.trim() || titleFromText(action.text, "Delivery workstream"))
+    : ["Discovery follow-up"];
+  const base: Required<ProposalDraftEdits> = {
+    title: `${input.clientName} - Proposal draft`,
+    summary,
+    objectives: objectives.length ? objectives : ["Align scope from discovery"],
+    touchpoints,
+    assumptions: [
+      `This draft is based on Scribe notes from ${sourceMeetingLabel(input.meeting)}.`,
+      "Scope, pricing, timeline, and legal wording require human review before sending.",
+      "Client stakeholders will confirm priorities, dependencies, and acceptance criteria.",
+    ],
+    outOfScope: [
+      "Any work not explicitly confirmed in the reviewed proposal remains out of scope.",
+      "Commercial, legal, and delivery assumptions are placeholders until approved by Gitwork.",
+    ],
+    nextSteps: "Confirm scope, commercials, timeline, and legal wording before sending to the client.",
+  };
+
+  return {
+    title: input.draft?.title?.trim() || base.title,
+    summary: input.draft?.summary?.trim() || base.summary,
+    objectives: cleanList(input.draft?.objectives, base.objectives),
+    touchpoints: cleanList(input.draft?.touchpoints, base.touchpoints),
+    assumptions: cleanList(input.draft?.assumptions, base.assumptions),
+    outOfScope: cleanList(input.draft?.outOfScope, base.outOfScope),
+    nextSteps: input.draft?.nextSteps?.trim() || base.nextSteps,
+  };
+}
+
+function proposalPreviewSections(draft: Required<ProposalDraftEdits>): ProposalDraftPreview["sections"] {
+  return [
+    { key: "summary", label: "Intro summary", detail: draft.summary, items: [] },
+    { key: "objectives", label: "Objectives", detail: "Main outcomes pulled from decisions and actions.", items: draft.objectives },
+    { key: "touchpoints", label: "Scope touchpoints", detail: "Draft workstreams for proposal review.", items: draft.touchpoints },
+    { key: "assumptions", label: "Assumptions", detail: "Commercial and delivery guardrails.", items: draft.assumptions },
+    { key: "outOfScope", label: "Out of scope", detail: "Boundaries to keep the draft controlled.", items: draft.outOfScope },
+    { key: "nextSteps", label: "Next steps", detail: draft.nextSteps, items: [] },
+  ];
+}
+
 function buildProposalSectionsFromMeeting(input: {
   clientName: string;
   clientLogoUrl: string | null;
   ownerName: string | null;
-  meeting: {
-    title: string;
-    startedAt: Date | null;
-    summary: string | null;
-    decisions: Prisma.JsonValue | null;
-    actionItems: Array<{ title: string | null; text: string; owner: string | null }>;
-  };
+  meeting: DraftMeetingRow;
+  draft?: ProposalDraftEdits;
 }): Array<Prisma.DocumentSectionCreateWithoutDocumentInput> {
-  const summary = input.meeting.summary?.trim() || "Draft generated from Scribe meeting notes.";
+  const draft = buildDraftEditsFromMeeting({
+    clientName: input.clientName,
+    meeting: input.meeting,
+    draft: input.draft,
+  });
+  const summary = draft.summary;
   const decisions = stringsFromJson(input.meeting.decisions);
   const actionItems = input.meeting.actionItems;
   const meetingLabel = sourceMeetingLabel(input.meeting);
-  const objectiveSources = [
-    ...decisions.map((decision) => ({ title: titleFromText(decision, "Confirm decision"), detail: decision })),
-    ...actionItems.map((action) => ({
-      title: action.title?.trim() || titleFromText(action.text, "Follow up action"),
-      detail: action.text,
-    })),
-  ].slice(0, 4);
-  const objectives =
-    objectiveSources.length > 0
-      ? objectiveSources
-      : [{ title: "Align scope from discovery", detail: summary }];
-  const touchpoints =
-    actionItems.length > 0
-      ? actionItems.slice(0, 5).map((action, index) => ({
+  const objectives = draft.objectives.map((objective) => ({
+    title: titleFromText(objective, "Confirm objective"),
+    detail: objective,
+  }));
+  const touchpoints = draft.touchpoints.map((touchpoint, index) => {
+    const action = actionItems[index];
+    return {
           id: `scribe-touch-${index + 1}`,
-          title: action.title?.trim() || titleFromText(action.text, `Workstream ${index + 1}`),
-          summary: truncate(action.text, 220),
+      title: touchpoint,
+      summary: action ? truncate(action.text, 220) : truncate(summary, 220),
           features: [
-            action.owner ? `Owner to confirm: ${action.owner}` : "Owner to confirm",
+        action?.owner ? `Owner to confirm: ${action.owner}` : "Owner to confirm",
             "Acceptance criteria to confirm during proposal review",
           ],
           notes: `Pulled from Scribe action item in ${meetingLabel}.`,
           graphic: "",
           callout: "Review scope, commercials, and timeline before sending.",
-        }))
-      : [
-          {
-            id: "scribe-touch-1",
-            title: "Discovery follow-up",
-            summary,
-            features: ["Confirm scope", "Confirm timeline", "Confirm commercial model"],
-            notes: `Drafted from ${meetingLabel}.`,
-            graphic: "",
-            callout: "Review required before client send.",
-          },
-        ];
+    };
+  });
 
   const sections = applyClientNameToSections(getDefaultSectionPayload(), input.clientName);
 
@@ -903,7 +1112,7 @@ function buildProposalSectionsFromMeeting(input: {
           ...section,
           data: {
             ...data,
-            proposalTitle: `${input.clientName} - Proposal`,
+            proposalTitle: draft.title,
             productName: "Digital product delivery",
             clientName: input.clientName,
             subtitle: "Drafted from Scribe meeting notes",
@@ -967,21 +1176,14 @@ function buildProposalSectionsFromMeeting(input: {
         return {
           ...section,
           data: {
-            items: [
-              `This draft is based on Scribe notes from ${meetingLabel}.`,
-              "Scope, pricing, timeline, and legal wording require human review before sending.",
-              "Client stakeholders will confirm priorities, dependencies, and acceptance criteria.",
-            ],
+            items: draft.assumptions,
           } satisfies Prisma.InputJsonObject,
         };
       case "out_of_scope":
         return {
           ...section,
           data: {
-            items: [
-              "Any work not explicitly confirmed in the reviewed proposal remains out of scope.",
-              "Commercial, legal, and delivery assumptions are placeholders until approved by Gitwork.",
-            ],
+            items: draft.outOfScope,
           } satisfies Prisma.InputJsonObject,
         };
       case "cta_next_steps":
@@ -990,7 +1192,7 @@ function buildProposalSectionsFromMeeting(input: {
           data: {
             ...data,
             headline: "Review this draft",
-            body: "Confirm scope, commercials, timeline, and legal wording before sending to the client.",
+            body: draft.nextSteps,
           } satisfies Prisma.InputJsonObject,
         };
       case "signoff_footer":
@@ -1010,11 +1212,10 @@ function buildProposalSectionsFromMeeting(input: {
   }) as Array<Prisma.DocumentSectionCreateWithoutDocumentInput>;
 }
 
-export async function draftProposalFromMeeting(
+async function resolveProposalDraftSource(
   user: EffectiveUser,
-  input: DraftProposalRequest,
-): Promise<DraftProposalResult> {
-  assertCan(user, canManageDocs, "draft proposals");
+  input: DraftProposalRequest | ProposalDraftPreviewRequest,
+) {
   const { template } = await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
@@ -1068,6 +1269,63 @@ export async function draftProposalFromMeeting(
     orderBy: { updatedAt: "desc" },
   });
   const existingDraft = existingDrafts.find((draft) => existingDraftSourceMeetingId(draft.metadata) === meeting.id);
+  const clientName = client.legalCompanyName?.trim() || client.name;
+  const draft = buildDraftEditsFromMeeting({
+    clientName,
+    meeting,
+    draft: "draft" in input ? input.draft : undefined,
+  });
+
+  return { template, client, meeting, decisions, existingDraft, draft };
+}
+
+export async function previewProposalDraftFromMeeting(
+  user: EffectiveUser,
+  input: ProposalDraftPreviewRequest,
+): Promise<ProposalDraftPreview> {
+  assertCan(user, canManageDocs, "preview proposal drafts");
+  const { client, meeting, existingDraft, draft } = await resolveProposalDraftSource(user, input);
+
+  if (!existingDraft) {
+    await recordAutomationAudit(user, {
+      action: "foundry.proposal_draft.previewed",
+      clientId: client.id,
+      clientSlug: client.slug,
+      clientName: client.name,
+      metadata: {
+        meetingId: meeting.id,
+        meetingTitle: meeting.title,
+        proposalTitle: draft.title,
+      },
+    });
+  }
+
+  return {
+    clientId: client.id,
+    clientSlug: client.slug,
+    clientName: client.name,
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    meetingStartedAt: iso(meeting.startedAt),
+    existingDraft: existingDraft
+      ? {
+          id: existingDraft.id,
+          title: existingDraft.title,
+          href: `/app/docs/${existingDraft.id}`,
+        }
+      : null,
+    draft,
+    sections: proposalPreviewSections(draft),
+  };
+}
+
+export async function draftProposalFromMeeting(
+  user: EffectiveUser,
+  input: DraftProposalRequest,
+): Promise<DraftProposalResult> {
+  assertCan(user, canManageDocs, "draft proposals");
+  const { template, client, meeting, decisions, existingDraft, draft } =
+    await resolveProposalDraftSource(user, input);
   if (existingDraft) {
     await recordAutomationAudit(user, {
       action: "foundry.proposal_draft.prepared",
@@ -1095,13 +1353,14 @@ export async function draftProposalFromMeeting(
   }
 
   const clientName = client.legalCompanyName?.trim() || client.name;
-  const title = `${clientName} - Proposal draft`;
+  const title = draft.title;
   const documentNumber = await allocateDocumentNumber(user.workspaceId, "PROPOSAL");
   const sections = buildProposalSectionsFromMeeting({
     clientName,
     clientLogoUrl: client.logoUrl,
     ownerName: user.name,
     meeting,
+    draft,
   });
 
   const document = await prisma.document.create({
@@ -1249,6 +1508,50 @@ export async function createAutomationOnboardingLink(
     label: link.label,
     status: link.status,
     created,
+  };
+}
+
+export async function updateAutomationNudge(
+  user: EffectiveUser,
+  input: AutomationNudgeUpdateRequest,
+): Promise<AutomationNudgeUpdateResult> {
+  assertCan(user, canManageClients, "update automation nudges");
+  await ensureBaseRecords();
+  await assertClientInScope(user, input.clientId);
+
+  const client = await prisma.workspaceClient.findFirst({
+    where: { id: input.clientId, workspaceId: user.workspaceId, hidden: false },
+    select: { id: true, slug: true, name: true },
+  });
+  if (!client) throw new ForbiddenError("Client not found");
+
+  const assignedToName = input.assignedToName === undefined
+    ? user.name ?? user.email
+    : input.assignedToName?.trim() || null;
+  const note = input.note?.trim() || null;
+  const snoozedUntil = input.snoozedUntil?.trim() || null;
+
+  await recordAutomationAudit(user, {
+    action: "foundry.nudge.updated",
+    clientId: client.id,
+    clientSlug: client.slug,
+    clientName: client.name,
+    metadata: {
+      nudgeKind: input.kind,
+      assignedToName,
+      snoozedUntil,
+      note,
+    },
+  });
+
+  return {
+    clientId: client.id,
+    kind: input.kind,
+    assignedToName,
+    snoozedUntil,
+    note,
+    updatedAt: new Date().toISOString(),
+    updatedByName: user.name ?? user.email,
   };
 }
 

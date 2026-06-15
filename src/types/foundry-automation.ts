@@ -44,12 +44,14 @@ export type AutomationAction = {
 };
 
 export type AutomationActivityKind =
+  | "proposal_preview"
   | "proposal_draft"
   | "onboarding_link"
   | "signature_completed"
   | "onboarding_submitted"
   | "client_activated"
-  | "delivery_plan_seeded";
+  | "delivery_plan_seeded"
+  | "nudge_updated";
 
 export type AutomationActivityRef = {
   id: string;
@@ -70,6 +72,26 @@ export type AutomationNudge = {
   label: string;
   detail: string;
   since: string | null;
+  state: {
+    assignedToName: string | null;
+    snoozedUntil: string | null;
+    note: string | null;
+    updatedAt: string | null;
+    updatedByName: string | null;
+  } | null;
+};
+
+export type AutomationRunHistoryItem = {
+  id: string;
+  clientId: string;
+  clientName: string | null;
+  action: string;
+  label: string;
+  status: "PREVIEWED" | "APPROVED" | "UPDATED";
+  inputSummary: string;
+  outputSummary: string;
+  at: string;
+  actorName: string | null;
 };
 
 export type AutomationClientRef = {
@@ -137,6 +159,8 @@ export type FoundryAutomationSummary = {
 export type FoundryAutomationResponse = {
   summary: FoundryAutomationSummary;
   items: FoundryAutomationItem[];
+  completedItems: FoundryAutomationItem[];
+  runHistory: AutomationRunHistoryItem[];
 };
 
 export type ProjectPlanRequest = {
@@ -148,6 +172,43 @@ export type ProjectPlanRequest = {
 export type DraftProposalRequest = {
   clientId: string;
   meetingId?: string;
+  draft?: ProposalDraftEdits;
+};
+
+export type ProposalDraftEdits = {
+  title?: string;
+  summary?: string;
+  objectives?: string[];
+  touchpoints?: string[];
+  assumptions?: string[];
+  outOfScope?: string[];
+  nextSteps?: string;
+};
+
+export type ProposalDraftPreviewRequest = {
+  clientId: string;
+  meetingId?: string;
+};
+
+export type ProposalDraftPreview = {
+  clientId: string;
+  clientSlug: string;
+  clientName: string;
+  meetingId: string;
+  meetingTitle: string;
+  meetingStartedAt: string | null;
+  existingDraft: {
+    id: string;
+    title: string;
+    href: string;
+  } | null;
+  draft: Required<ProposalDraftEdits>;
+  sections: Array<{
+    key: keyof Required<ProposalDraftEdits>;
+    label: string;
+    detail: string;
+    items: string[];
+  }>;
 };
 
 export type DraftProposalResult = {
@@ -163,6 +224,24 @@ export type DraftProposalResult = {
 
 export type AutomationOnboardingLinkRequest = {
   clientId: string;
+};
+
+export type AutomationNudgeUpdateRequest = {
+  clientId: string;
+  kind: AutomationNudgeKind;
+  assignedToName?: string | null;
+  snoozedUntil?: string | null;
+  note?: string | null;
+};
+
+export type AutomationNudgeUpdateResult = {
+  clientId: string;
+  kind: AutomationNudgeKind;
+  assignedToName: string | null;
+  snoozedUntil: string | null;
+  note: string | null;
+  updatedAt: string;
+  updatedByName: string | null;
 };
 
 export type AutomationOnboardingLinkResult = {

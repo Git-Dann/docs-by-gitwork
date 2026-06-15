@@ -176,8 +176,17 @@ export interface ClientStudySummary {
   completedSessionCount: number;
 }
 
+export interface ClientLifecycleEvent {
+  id: string;
+  label: string;
+  detail: string;
+  at: string;
+  status: "done" | "ready" | "waiting";
+}
+
 export interface ClientDetailRecord {
   client: ClientListItem & ClientDetailFields;
+  lifecycle: ClientLifecycleEvent[];
   platforms: ClientPlatformRecord[];
   designs: ClientDesignRecord[];
   proposals: ProposalListItem[];
