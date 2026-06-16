@@ -529,15 +529,15 @@ function OnboardingLinksList({ links }: { links: OnboardingLinkRecord[] }) {
     );
   }
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {links.map((link) => (
-        <OnboardingLinkRow key={link.id} link={link} />
+        <OnboardingLinkCard key={link.id} link={link} />
       ))}
     </div>
   );
 }
 
-function OnboardingLinkRow({ link }: { link: OnboardingLinkRecord }) {
+function OnboardingLinkCard({ link }: { link: OnboardingLinkRecord }) {
   const [copied, setCopied] = useState(false);
   const deleteMutation = useDeleteOnboardingLink();
   const fullUrl = useMemo(() => {
@@ -566,29 +566,33 @@ function OnboardingLinkRow({ link }: { link: OnboardingLinkRecord }) {
     .join(" ");
   const contact = [contactName, link.fields.contactEmail].filter(Boolean).join(" · ");
 
+  const opened = Boolean(link.firstViewedAt);
+  const done = link.status === "SUBMITTED" || link.status === "LINKED";
+  const statusLabel =
+    link.status === "SUBMITTED"
+      ? "SUBMITTED · AWAITING REVIEW"
+      : link.status === "LINKED"
+        ? "LINKED"
+        : "IN PROGRESS";
+
   return (
-    <article className="widget-card">
+    <article className="widget-card flex flex-col">
       <div className="widget-header">
-        <span className="widget-header__label">
-          {link.status === "SUBMITTED"
-            ? "SUBMITTED · AWAITING REVIEW"
-            : link.status === "LINKED"
-              ? "LINKED"
-              : "IN PROGRESS"}
-        </span>
-        <span className="widget-header__status">
-          Step {link.currentStep} · {formatDate(link.updatedAt)}
-        </span>
+        <span className="widget-header__label">{statusLabel}</span>
+        <span className="widget-header__status">{formatDate(link.updatedAt)}</span>
       </div>
-      <div className="widget-body--compact space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[var(--text-1)]">
-              {company}
-            </p>
-            {contact && (
-              <p className="truncate text-xs text-[var(--text-4)]">{contact}</p>
-            )}
+
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        {/* Avatar + name + revoke */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]">
+            <span className="text-sm font-semibold text-[var(--text-2)]">
+              {company.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold leading-snug text-[var(--text-1)]">{company}</p>
+            {contact && <p className="truncate text-xs text-[var(--text-4)]">{contact}</p>}
           </div>
           <button
             type="button"
@@ -600,10 +604,62 @@ function OnboardingLinkRow({ link }: { link: OnboardingLinkRecord }) {
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-          <code className="flex-1 truncate font-mono text-[11px] text-[var(--text-3)]">
-            {fullUrl}
-          </code>
+
+        {/* Progress (page reached) + opened — mirrors the client card's stat row */}
+        <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
+          <div className="min-w-0">
+            {done ? (
+              <>
+                <p
+                  className="text-3xl leading-none tracking-tight text-[var(--brand-700)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  ✓
+                </p>
+                <p className="widget-data-label mt-1">submitted</p>
+              </>
+            ) : opened ? (
+              <>
+                <p
+                  className="text-3xl leading-none tracking-tight text-[var(--text-1)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {link.currentStep}
+                  <span className="text-lg text-[var(--text-4)]"> / {link.totalSteps}</span>
+                </p>
+                <p className="widget-data-label mt-1 truncate">step · {link.currentStepLabel}</p>
+              </>
+            ) : (
+              <>
+                <p
+                  className="text-3xl leading-none tracking-tight text-[var(--text-4)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  —
+                </p>
+                <p className="widget-data-label mt-1 opacity-60">not opened yet</p>
+              </>
+            )}
+          </div>
+          <div className="shrink-0 text-right">
+            <span className="widget-data-label inline-flex items-center justify-end gap-1.5">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  opened ? "bg-[var(--brand-600)]" : "bg-[var(--border-3)]",
+                )}
+              />
+              {opened ? "Opened" : "Not opened"}
+            </span>
+            {opened && link.firstViewedAt && (
+              <p className="widget-timestamp mt-1">{formatDate(link.firstViewedAt)}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Link + copy (pinned to the bottom so cards align) */}
+        <div className="mt-auto flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+          <code className="flex-1 truncate font-mono text-[11px] text-[var(--text-3)]">{fullUrl}</code>
           <button
             type="button"
             onClick={handleCopy}

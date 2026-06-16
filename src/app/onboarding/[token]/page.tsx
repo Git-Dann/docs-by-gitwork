@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getOnboardingByTokenPublic } from "@/server/onboarding";
+import { getOnboardingByTokenPublic, recordOnboardingFirstView } from "@/server/onboarding";
 import { OnboardingFlow } from "./onboarding-flow";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,10 @@ export default async function OnboardingPage({
   const { token } = await params;
   const session = await getOnboardingByTokenPublic(token);
   if (!session) notFound();
+
+  // Record the first open (best-effort; never blocks render) so Portal can show
+  // whether the client has opened the link.
+  await recordOnboardingFirstView(token);
 
   return <OnboardingFlow token={token} initialSession={session} />;
 }

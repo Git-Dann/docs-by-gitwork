@@ -370,6 +370,12 @@ export interface OnboardingLinkRecord {
   label: string | null;
   status: "IN_PROGRESS" | "SUBMITTED" | "LINKED";
   currentStep: number;
+  /** Label of the furthest screen reached (e.g. "Company & billing"). */
+  currentStepLabel: string;
+  /** Total numbered steps in the flow (the "N" in "Step X of N"). */
+  totalSteps: number;
+  /** First time the public link was opened — null = never opened. */
+  firstViewedAt: string | null;
   fields: Record<string, string | null>;
   bank: { onFile: boolean; currency: string | null; accountNumberLast4: string | null };
   workspaceClientId: string | null;

@@ -59,6 +59,12 @@ export type OnboardingAdminRecord = Omit<OnboardingPublicPayload, "structure" | 
   label: string | null;
   formId: string | null;
   workspaceClientId: string | null;
+  /** First time the public link was opened — null = never opened. */
+  firstViewedAt: string | null;
+  /** Human label of the furthest screen the client reached (e.g. "Company & billing"). */
+  currentStepLabel: string;
+  /** Total numbered steps in the flow (matches the public "Step X of N"). */
+  totalSteps: number;
   createdAt: string;
   updatedAt: string;
   linkedAt: string | null;
@@ -85,6 +91,18 @@ function structureFor(row: { formSnapshot: Prisma.JsonValue | null }): Onboardin
     return row.formSnapshot as unknown as OnboardingFormStructure;
   }
   return getDefaultOnboardingForm();
+}
+
+/** Total numbered steps — wizard steps + the review screen (matches the public "Step X of N"). */
+function totalStepsFor(structure: OnboardingFormStructure): number {
+  return structure.steps.length + 1;
+}
+
+/** Label of the screen at a given index: 0 = Welcome, 1..n = step titles, last = Review. */
+function screenLabelAt(structure: OnboardingFormStructure, index: number): string {
+  if (index <= 0) return "Welcome";
+  if (index <= structure.steps.length) return structure.steps[index - 1]?.title || `Step ${index}`;
+  return "Review & submit";
 }
 
 /** System text columns as a record keyed by column name. */
@@ -151,6 +169,7 @@ function toPublicPayload(row: OnboardingRow): OnboardingPublicPayload {
 
 function toAdminRecord(row: OnboardingRow): OnboardingAdminRecord {
   const pub = toPublicPayload(row);
+  const structure = structureFor(row);
   return {
     status: pub.status,
     currentStep: pub.currentStep,
@@ -162,6 +181,9 @@ function toAdminRecord(row: OnboardingRow): OnboardingAdminRecord {
     label: row.label,
     formId: row.formId ?? null,
     workspaceClientId: row.workspaceClientId,
+    firstViewedAt: row.firstViewedAt?.toISOString() ?? null,
+    currentStepLabel: screenLabelAt(structure, pub.currentStep),
+    totalSteps: totalStepsFor(structure),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     linkedAt: row.linkedAt?.toISOString() ?? null,
@@ -338,6 +360,23 @@ export async function getOnboardingByTokenPublic(
   });
   if (!row) return null;
   return toPublicPayload(row);
+}
+
+/**
+ * Stamp `firstViewedAt` the first time the public link is opened — powers the
+ * "opened?" signal in Portal. Only sets when null (so it records the FIRST open),
+ * and never throws: tracking must never break the client-facing page.
+ */
+export async function recordOnboardingFirstView(token: string): Promise<void> {
+  if (!token || token.length < 16) return;
+  try {
+    await onboardings.updateMany({
+      where: { accessToken: token, firstViewedAt: null },
+      data: { firstViewedAt: new Date() },
+    });
+  } catch {
+    // best-effort — swallow.
+  }
 }
 
 export async function getOnboardingAdmin(

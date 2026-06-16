@@ -1233,6 +1233,8 @@ model ClientOnboarding {
   workspaceClient     WorkspaceClient?             @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
+  /// First time the public onboarding link was opened — powers the "opened?" signal in Portal.
+  firstViewedAt       DateTime?
   submittedAt         DateTime?
   linkedAt            DateTime?
 
