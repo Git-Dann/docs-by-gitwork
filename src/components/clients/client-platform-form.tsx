@@ -171,7 +171,8 @@ function CredentialField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           type={secret && !showSecret ? "password" : "text"}
-          className="app-input pr-16"
+          // Reserve room for the icon buttons: two (show + copy) for secrets, one (copy) otherwise.
+          className={`app-input ${secret ? "pr-16" : "pr-10"}`}
           placeholder={label}
           autoComplete="off"
           spellCheck={false}

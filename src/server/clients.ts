@@ -1194,6 +1194,63 @@ export async function encryptLegacyPlatformCredentials(): Promise<{ migrated: nu
   return { migrated };
 }
 
+/**
+ * Heuristic split of a legacy credential blob into username + password. Pulls out an email-like
+ * token as the username; the leftover (after stripping common labels/delimiters) becomes the
+ * password — but ONLY when it's a single token (no internal whitespace), so multi-value notes
+ * blobs are never mangled into a bogus password. Returns null when it can't split safely.
+ */
+function splitCredentialBlob(raw: string): { username: string; password: string } | null {
+  const text = raw.trim();
+  const email = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
+  if (!email) return null;
+  let rest = text.replace(email, " ");
+  rest = rest.replace(/\b(?:e-?mail|username|user|login|password|pass(?:word)?|pwd|pw)\b\s*[:=]?/gi, " ");
+  rest = rest.replace(/\s+/g, " ").trim();
+  rest = rest.replace(/^[\s:=/|,\-–—]+|[\s:=/|,\-–—]+$/g, "").trim();
+  if (!rest) return { username: email, password: "" }; // email-only → a login, no password
+  if (/\s/.test(rest)) return null; // multi-word leftover → too risky, leave merged
+  return { username: email, password: rest };
+}
+
+/**
+ * Split already-migrated merged blobs (email + password that landed together in passwordCipher)
+ * into separate usernameCipher + passwordCipher. Only touches rows with no username yet, and only
+ * when splitCredentialBlob succeeds — password-only or multi-value blobs are left untouched.
+ * Idempotent (split rows gain a usernameCipher and are skipped next run). Returns counts.
+ */
+export async function splitPlatformCredentials(): Promise<{ split: number; unchanged: number }> {
+  const rows = await clientPlatforms.findMany({
+    where: { usernameCipher: null, passwordCipher: { not: null } },
+    select: { id: true, passwordCipher: true },
+  });
+  let split = 0;
+  let unchanged = 0;
+  for (const row of rows) {
+    let blob: string | null = null;
+    try {
+      blob = decryptNullable(row.passwordCipher);
+    } catch {
+      unchanged += 1;
+      continue; // unreadable cipher — leave it
+    }
+    const parts = blob ? splitCredentialBlob(blob) : null;
+    if (!parts) {
+      unchanged += 1;
+      continue;
+    }
+    await clientPlatforms.update({
+      where: { id: row.id },
+      data: {
+        usernameCipher: encryptNullable(parts.username),
+        passwordCipher: encryptNullable(parts.password),
+      },
+    });
+    split += 1;
+  }
+  return { split, unchanged };
+}
+
 export async function createClientDesign(
   clientId: string,
   input: { name: string; url?: string; notes?: string },
