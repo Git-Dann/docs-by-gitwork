@@ -16,6 +16,7 @@ import {
   getDefaultSectionPayload,
   getDefaultTimelinePayload,
   proposalInclude,
+  proposalListSelect,
   serializeProposal,
   serializeProposalListItem,
 } from "@/server/proposals";
@@ -89,18 +90,7 @@ export async function GET(request: NextRequest) {
     const documents = await prisma.document.findMany({
       where,
       orderBy,
-      include: {
-        template: {
-          select: {
-            name: true,
-          },
-        },
-        owner: {
-          select: {
-            name: true,
-          },
-        },
-      },
+      select: proposalListSelect,
     });
 
     return apiOk({

@@ -276,6 +276,9 @@ export function listClientMeetings(workspaceId: string, clientId: string, q?: st
       actionItems: { orderBy: { createdAt: "asc" } },
     },
     orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
+    // Defensive ceiling — the panel shows recent calls and is well above any
+    // realistic per-client meeting count. Served by the [clientId, startedAt] index.
+    take: 100,
   });
 }
 
