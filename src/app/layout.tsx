@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
@@ -53,6 +54,9 @@ export default function RootLayout({
     >
       <body className="antialiased">
         <AppProviders>{children}</AppProviders>
+        {/* Real-user Web Vitals (LCP/CLS/INP) → Vercel Speed Insights. Tiny client
+            beacon; only reports from deployed environments. Our baseline for "fast". */}
+        <SpeedInsights />
       </body>
     </html>
   );
