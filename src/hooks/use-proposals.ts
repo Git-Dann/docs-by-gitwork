@@ -36,6 +36,7 @@ import {
   updateClient,
   updateClientDesign,
   updateClientPlatform,
+  revealClientPlatformApi,
   updateProposal,
 } from "@/lib/api";
 import type {
@@ -233,7 +234,8 @@ type PlatformInput = {
   url?: string;
   stagingUrl?: string;
   repoUrl?: string;
-  credentials?: string;
+  username?: string;
+  password?: string;
   notes?: string;
   previewImageUrl?: string;
 };
@@ -258,6 +260,12 @@ export function useUpdateClientPlatform(slug: string, platformId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
     },
+  });
+}
+
+export function useRevealClientPlatform(slug: string) {
+  return useMutation({
+    mutationFn: (platformId: string) => revealClientPlatformApi(slug, platformId),
   });
 }
 

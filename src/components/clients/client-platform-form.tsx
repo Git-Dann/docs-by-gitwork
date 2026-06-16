@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { EyeIcon, EyeSlashIcon, ClipboardIcon, CheckIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
+import { useRevealClientPlatform } from "@/hooks/use-proposals";
 import type { ClientPlatformRecord } from "@/types/client";
 
 type PlatformInput = {
@@ -11,7 +13,8 @@ type PlatformInput = {
   url: string;
   stagingUrl: string;
   repoUrl: string;
-  credentials: string;
+  username: string;
+  password: string;
   notes: string;
   previewImageUrl: string;
 };
@@ -133,20 +136,95 @@ function AppStoreFields({
   );
 }
 
+/** A credential input with optional show/hide (for secrets) + copy-to-clipboard. */
+function CredentialField({
+  label,
+  value,
+  onChange,
+  secret,
+  showSecret,
+  onToggleSecret,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  secret?: boolean;
+  showSecret?: boolean;
+  onToggleSecret?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <div className="relative">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          type={secret && !showSecret ? "password" : "text"}
+          className="app-input pr-16"
+          placeholder={label}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+          {secret && onToggleSecret && (
+            <button
+              type="button"
+              onClick={onToggleSecret}
+              className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+              title={showSecret ? "Hide" : "Show"}
+            >
+              {showSecret ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void copy()}
+            disabled={!value}
+            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:text-[var(--text-2)] disabled:opacity-30"
+            title="Copy"
+          >
+            {copied ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <ClipboardIcon className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+    </label>
+  );
+}
+
 export function ClientPlatformFormModal({
   platform,
+  slug,
   onSave,
   onClose,
   isSaving,
   error,
 }: {
   platform?: ClientPlatformRecord | null;
+  slug: string;
   onSave: (input: Partial<PlatformInput> & { name: string }) => void;
   onClose: () => void;
   isSaving: boolean;
   error?: string | null;
 }) {
   const isAppStore = APP_STORE_TYPES.includes(platform?.platformType ?? "");
+  // Credentials are encrypted at rest and never sent in the list payload — fetched on demand.
+  // Show a Reveal button when editing a platform that already has saved creds; new platforms
+  // (or ones without creds) are editable straight away.
+  const hasStoredCreds = Boolean(platform?.hasUsername || platform?.hasPassword);
+  const [credsRevealed, setCredsRevealed] = useState(!hasStoredCreds);
+  const [showPassword, setShowPassword] = useState(false);
+  const revealMutation = useRevealClientPlatform(slug);
 
   const [form, setForm] = useState<PlatformInput>({
     name: platform?.name ?? "",
@@ -154,10 +232,22 @@ export function ClientPlatformFormModal({
     url: platform?.url ?? "",
     stagingUrl: platform?.stagingUrl ?? "",
     repoUrl: platform?.repoUrl ?? "",
-    credentials: platform?.credentials ?? "",
+    username: "",
+    password: "",
     notes: isAppStore ? "" : (platform?.notes ?? ""),
     previewImageUrl: platform?.previewImageUrl ?? "",
   });
+
+  async function handleReveal() {
+    if (!platform?.id) return;
+    try {
+      const { credentials } = await revealMutation.mutateAsync(platform.id);
+      setForm((prev) => ({ ...prev, username: credentials.username ?? "", password: credentials.password ?? "" }));
+      setCredsRevealed(true);
+    } catch {
+      /* surfaced via revealMutation.isError */
+    }
+  }
 
   // App store listing fields — parsed from notes JSON on edit
   const [appStoreValues, setAppStoreValues] = useState<Record<string, string>>(
@@ -176,10 +266,17 @@ export function ClientPlatformFormModal({
 
   function handleSubmit() {
     if (!form.name.trim()) return;
-    const payload: PlatformInput = { ...form };
+    const { username, password, ...rest } = form;
+    const payload: Partial<PlatformInput> & { name: string } = { ...rest };
     if (isAppStoreType) {
       // Serialize app store content to notes as JSON
       payload.notes = JSON.stringify(appStoreValues);
+    }
+    // Only send credentials when they've been revealed/edited — omitting them leaves the stored
+    // ciphers untouched, so editing the name/URL never wipes saved credentials.
+    if (credsRevealed) {
+      payload.username = username;
+      payload.password = password;
     }
     onSave(payload);
   }
@@ -327,20 +424,55 @@ export function ClientPlatformFormModal({
                       />
                     </label>
 
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                        Credentials
-                      </span>
-                      <textarea
-                        value={form.credentials}
-                        onChange={(e) => set("credentials", e.target.value)}
-                        className="app-input min-h-[80px] resize-y"
-                        placeholder="Login details, API keys, env var names…"
-                      />
-                      <p className="mt-1 text-xs text-amber-700">
-                        Stored in plain text — internal use only.
+                    <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-[var(--text-2)]">Credentials</span>
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-emerald-700"
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          <LockClosedIcon className="h-3 w-3" />
+                          Encrypted
+                        </span>
+                      </div>
+                      {hasStoredCreds && !credsRevealed ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => void handleReveal()}
+                            disabled={revealMutation.isPending}
+                            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+                          >
+                            <EyeIcon className="h-4 w-4" />
+                            {revealMutation.isPending ? "Revealing…" : "Reveal to view / edit"}
+                          </button>
+                          {revealMutation.isError && (
+                            <p className="mt-1.5 text-xs text-rose-700">
+                              {(revealMutation.error as Error)?.message ?? "Couldn't reveal credentials."}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <CredentialField
+                            label="Username / login"
+                            value={form.username}
+                            onChange={(v) => set("username", v)}
+                          />
+                          <CredentialField
+                            label="Password"
+                            value={form.password}
+                            onChange={(v) => set("password", v)}
+                            secret
+                            showSecret={showPassword}
+                            onToggleSecret={() => setShowPassword((s) => !s)}
+                          />
+                        </div>
+                      )}
+                      <p className="mt-2 text-[11px] text-[var(--text-4)]">
+                        Encrypted at rest (AES-256-GCM). Use the copy buttons to grab a value.
                       </p>
-                    </label>
+                    </div>
 
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">

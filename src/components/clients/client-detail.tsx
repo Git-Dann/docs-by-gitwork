@@ -223,7 +223,8 @@ export function ClientDetail({ slug }: { slug: string }) {
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   }) {
     setPlatformError(null);
@@ -1156,6 +1157,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       {/* ── Platform modal (create only — edit handled in card) ── */}
       {platformModal.open && !platformModal.platform && (
         <ClientPlatformFormModal
+          slug={slug}
           onSave={(input) => void handleSavePlatform(input)}
           onClose={() => setPlatformModal({ open: false, platform: null })}
           isSaving={createPlatformMutation.isPending}
@@ -2407,7 +2409,8 @@ function PlatformCard({
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
     previewImageUrl?: string;
   }) {
@@ -2520,6 +2523,7 @@ function PlatformCard({
       {editing && (
         <ClientPlatformFormModal
           platform={platform}
+          slug={slug}
           onSave={(input) => void handleSave(input)}
           onClose={() => { setEditing(false); setError(null); }}
           isSaving={updateMutation.isPending}

@@ -222,7 +222,9 @@ export const clientPlatformCreateSchema = z.object({
   url: z.string().trim().optional(),
   stagingUrl: z.string().trim().optional(),
   repoUrl: z.string().trim().optional(),
-  credentials: z.string().trim().optional(),
+  // Encrypted at rest (AES-256-GCM). Omit on update to leave existing creds untouched.
+  username: z.string().optional(),
+  password: z.string().optional(),
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
 });

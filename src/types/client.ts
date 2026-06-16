@@ -119,11 +119,20 @@ export interface ClientPlatformRecord {
   url: string | null;
   stagingUrl: string | null;
   repoUrl: string | null;
-  credentials: string | null;
+  /** Whether encrypted credentials exist — the plaintext is never sent in the list payload;
+   *  fetch it on demand via the reveal endpoint. */
+  hasUsername: boolean;
+  hasPassword: boolean;
   notes: string | null;
   previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Decrypted platform credentials — returned only by the reveal endpoint, never the list. */
+export interface ClientPlatformReveal {
+  username: string | null;
+  password: string | null;
 }
 
 export interface ClientDesignRecord {

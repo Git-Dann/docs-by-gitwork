@@ -16,6 +16,7 @@ import type {
   ClientDetailRecord,
   ClientListItem,
   ClientPlatformRecord,
+  ClientPlatformReveal,
   WorkspaceClientStatus,
 } from "@/types/client";
 import type {
@@ -580,7 +581,8 @@ export async function createClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
@@ -600,7 +602,8 @@ export async function updateClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
@@ -621,6 +624,17 @@ export async function deleteClientPlatform(
   return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/platforms/${platformId}`, {
     method: "DELETE",
   });
+}
+
+/** Reveal a platform's decrypted credentials (server-side decrypt, gated). */
+export async function revealClientPlatformApi(
+  slug: string,
+  platformId: string,
+): Promise<{ credentials: ClientPlatformReveal }> {
+  return apiFetch<{ credentials: ClientPlatformReveal }>(
+    `/api/clients/${slug}/platforms/${platformId}/reveal`,
+    { method: "POST" },
+  );
 }
 
 export async function createClientDesign(

@@ -2,7 +2,7 @@ import { unstable_cache, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
-import { decryptNullable } from "@/lib/encryption";
+import { encryptNullable, decryptNullable } from "@/lib/encryption";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -13,6 +13,7 @@ import type {
   ClientLifecycleEvent,
   ClientPlacementRecord,
   ClientPlatformRecord,
+  ClientPlatformReveal,
   ClientSource,
   WorkspaceClientStatus,
 } from "@/types/client";
@@ -425,7 +426,9 @@ function serializeClientPlatform(platform: {
   url: string | null;
   stagingUrl: string | null;
   repoUrl: string | null;
-  credentials: string | null;
+  credentials?: string | null; // legacy plaintext (fallback for hasPassword pre-migration)
+  usernameCipher?: string | null;
+  passwordCipher?: string | null;
   notes: string | null;
   previewImageUrl?: string | null;
   createdAt: Date;
@@ -439,7 +442,10 @@ function serializeClientPlatform(platform: {
     url: platform.url,
     stagingUrl: platform.stagingUrl,
     repoUrl: platform.repoUrl,
-    credentials: platform.credentials,
+    // Never leak plaintext into the list payload — only whether creds exist. The decrypted
+    // values come from revealClientPlatform() on explicit demand.
+    hasUsername: Boolean(platform.usernameCipher),
+    hasPassword: Boolean(platform.passwordCipher) || Boolean(platform.credentials),
     notes: platform.notes,
     previewImageUrl: platform.previewImageUrl ?? null,
     createdAt: platform.createdAt.toISOString(),
@@ -1074,7 +1080,8 @@ export async function createClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<ClientPlatformRecord> {
@@ -1086,7 +1093,8 @@ export async function createClientPlatform(
       url: input.url?.trim() || null,
       stagingUrl: input.stagingUrl?.trim() || null,
       repoUrl: input.repoUrl?.trim() || null,
-      credentials: input.credentials?.trim() || null,
+      usernameCipher: encryptNullable(input.username),
+      passwordCipher: encryptNullable(input.password),
       notes: input.notes?.trim() || null,
     },
   });
@@ -1102,7 +1110,8 @@ export async function updateClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
     previewImageUrl?: string;
   },
@@ -1115,7 +1124,12 @@ export async function updateClientPlatform(
       ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
       ...(input.stagingUrl !== undefined ? { stagingUrl: input.stagingUrl.trim() || null } : {}),
       ...(input.repoUrl !== undefined ? { repoUrl: input.repoUrl.trim() || null } : {}),
-      ...(input.credentials !== undefined ? { credentials: input.credentials.trim() || null } : {}),
+      // Only re-encrypt when the field is explicitly provided — omitting it leaves the stored
+      // cipher untouched (so editing the name/URL never wipes saved credentials). Setting it to
+      // a cipher of an empty string clears it. When the username/password is set, also drop any
+      // legacy plaintext blob so it stops lingering unencrypted.
+      ...(input.username !== undefined ? { usernameCipher: encryptNullable(input.username), credentials: null } : {}),
+      ...(input.password !== undefined ? { passwordCipher: encryptNullable(input.password), credentials: null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
@@ -1126,6 +1140,58 @@ export async function updateClientPlatform(
 
 export async function deleteClientPlatform(platformId: string): Promise<void> {
   await clientPlatforms.delete({ where: { id: platformId } });
+}
+
+/**
+ * Decrypt and return a platform's stored credentials. Gate at the route on canManageClients +
+ * client access (mirrors revealClientBank). Falls back to the legacy plaintext blob (as the
+ * password) for rows not yet migrated by encryptLegacyPlatformCredentials.
+ */
+export async function revealClientPlatform(
+  slug: string,
+  platformId: string,
+): Promise<ClientPlatformReveal | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  const platform = await clientPlatforms.findFirst({
+    where: { id: platformId, clientId: client.id },
+    select: { usernameCipher: true, passwordCipher: true, credentials: true },
+  });
+  if (!platform) return null;
+  return {
+    username: decryptNullable(platform.usernameCipher),
+    password: decryptNullable(platform.passwordCipher) ?? (platform.credentials?.trim() || null),
+  };
+}
+
+/**
+ * One-time migration: encrypt any platform still holding a plaintext `credentials` blob into
+ * passwordCipher (only when no password is already set), then null the plaintext. Idempotent —
+ * re-running is a no-op once every row is migrated. Returns the count actually encrypted.
+ */
+export async function encryptLegacyPlatformCredentials(): Promise<{ migrated: number }> {
+  const rows = await clientPlatforms.findMany({
+    where: { credentials: { not: null } },
+    select: { id: true, credentials: true, passwordCipher: true },
+  });
+  let migrated = 0;
+  for (const row of rows) {
+    const plain = row.credentials?.trim();
+    const encryptIt = Boolean(plain) && !row.passwordCipher;
+    await clientPlatforms.update({
+      where: { id: row.id },
+      data: {
+        ...(encryptIt ? { passwordCipher: encryptNullable(plain) } : {}),
+        credentials: null,
+      },
+    });
+    if (encryptIt) migrated += 1;
+  }
+  return { migrated };
 }
 
 export async function createClientDesign(

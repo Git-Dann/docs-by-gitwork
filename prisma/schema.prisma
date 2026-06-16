@@ -976,7 +976,9 @@ model ClientPlatform {
   url             String?
   stagingUrl      String?
   repoUrl         String?
-  credentials     String?         @db.Text
+  credentials     String?         @db.Text // LEGACY plaintext — migrated into passwordCipher then nulled (see /api/dev/encrypt-platform-credentials)
+  usernameCipher  String?         @db.Text // AES-256-GCM envelope (src/lib/encryption.ts)
+  passwordCipher  String?         @db.Text // AES-256-GCM envelope
   notes           String?         @db.Text
   previewImageUrl String?         @db.Text
   /// Placements engaged on this platform — drives the scoped GitHub scan.
