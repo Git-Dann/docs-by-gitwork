@@ -86,10 +86,13 @@ export function useClientList(filters?: {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
-    staleTime: 5 * 60 * 1000,
-    // Avoid blasting the server on every tab switch — the list rarely changes
-    // mid-session and mutations invalidate the cache when it matters.
+    // 60s (was 5min): the acting user's mutations invalidate immediately, but a
+    // 5-minute window meant *other* teammates saw stale client state — e.g. a
+    // status flipped to ACTIVE still showing PENDING. 60s keeps cross-user state
+    // fresh without refetch storms; keepPreviousData avoids a flash on refetch.
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
   });
 }
 
