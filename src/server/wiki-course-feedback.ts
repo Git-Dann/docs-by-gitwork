@@ -227,7 +227,9 @@ async function aiExtractCourses(
         `courseName/country empty. If a course is named but you cannot tell the country, leave ` +
         `country empty — do not guess.`;
       try {
-        const raw = await completeText({ config, system, user, maxTokens: 1500 });
+        // Pure classification (course-request? + name + country) — Haiku-class work.
+        // "light" routes to the cheaper model (~3.75× less) with no quality loss here.
+        const raw = await completeText({ config, system, user, maxTokens: 1500, tier: "light" });
         const parsed = parseJsonObject<{ results?: Array<{ i: number; isCourseRequest?: boolean; courseName?: string; country?: string }> }>(raw);
         for (const r of parsed?.results ?? []) {
           const item = chunk[r.i];

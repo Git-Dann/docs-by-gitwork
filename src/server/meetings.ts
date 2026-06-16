@@ -200,7 +200,12 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
 
   let raw = "";
   try {
-    raw = await completeText({ config, system: SUMMARY_SYSTEM, user: userPrompt, maxTokens: 1500 });
+    // Structured summarisation (→ {summary, decisions, actionItems}) is a Haiku-class
+    // task, and this is the recurring AI cost behind the Scribe→proposal pipeline (runs
+    // once per meeting at ingest). It's always human-reviewed before any client-facing
+    // use (the automation layer is manual-gated), so "light" trades ~3.75× cost for a
+    // small, operator-caught quality margin. Revert to standard if summaries thin out.
+    raw = await completeText({ config, system: SUMMARY_SYSTEM, user: userPrompt, maxTokens: 1500, tier: "light" });
   } catch (err) {
     console.error("[scribe] AI completion failed", meetingId, err);
     await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });
