@@ -1,6 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import {
   listTasks,
   getTask,
@@ -31,7 +37,7 @@ import {
   updateMilestone,
   deleteMilestone,
 } from "@/lib/api";
-import type { TaskStatus } from "@/types/tasks";
+import type { TaskStatus, TaskDTO } from "@/types/tasks";
 
 type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string };
 
@@ -51,6 +57,25 @@ const QK = {
 /** Invalidate every task-derived query after a write. */
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["tasks"] });
+}
+
+// ─── Optimistic helpers ────────────────────────────────────────────────────────
+// The board/list read every "tasks/list" cache variant (one per filter). These
+// patch them all in place so a move/delete/status-toggle paints instantly, then
+// reconcile against server truth via invalidateAll in onSettled. A snapshot of the
+// prior caches is returned so onError can restore exactly what was there.
+
+const TASK_LIST_FILTER = { queryKey: ["tasks", "list"] as const };
+type TaskListSnapshot = [QueryKey, TaskDTO[] | undefined][];
+
+function patchTaskLists(qc: QueryClient, updater: (tasks: TaskDTO[]) => TaskDTO[]): TaskListSnapshot {
+  const prev = qc.getQueriesData<TaskDTO[]>(TASK_LIST_FILTER);
+  qc.setQueriesData<TaskDTO[]>(TASK_LIST_FILTER, (old) => (old ? updater(old) : old));
+  return prev;
+}
+
+function restoreTaskLists(qc: QueryClient, snapshot: TaskListSnapshot) {
+  for (const [key, data] of snapshot) qc.setQueryData(key, data);
 }
 
 // ─── Board / list ────────────────────────────────────────────────────────────
@@ -106,7 +131,21 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateTask>[1] }) =>
       updateTask(id, input),
-    onSuccess: () => invalidateAll(qc),
+    onMutate: async ({ id, input }) => {
+      // Only the fields that map 1:1 onto TaskDTO patch optimistically (covers the
+      // list's instant "toggle done" + priority/title edits). Everything else
+      // (assignees, block, dates…) reconciles on settle via invalidateAll.
+      const patch: Partial<Pick<TaskDTO, "status" | "priority" | "title">> = {};
+      if (input.status) patch.status = input.status;
+      if (input.priority) patch.priority = input.priority;
+      if (typeof input.title === "string") patch.title = input.title;
+      if (Object.keys(patch).length === 0) return { prev: [] as TaskListSnapshot };
+      await qc.cancelQueries(TASK_LIST_FILTER);
+      const prev = patchTaskLists(qc, (tasks) => tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onSettled: () => invalidateAll(qc),
   });
 }
 
@@ -115,7 +154,15 @@ export function useMoveTask() {
   return useMutation({
     mutationFn: ({ id, status, orderKey }: { id: string; status: TaskStatus; orderKey: number }) =>
       moveTask(id, { status, orderKey }),
-    onSuccess: () => invalidateAll(qc),
+    onMutate: async ({ id, status, orderKey }) => {
+      await qc.cancelQueries(TASK_LIST_FILTER);
+      const prev = patchTaskLists(qc, (tasks) =>
+        tasks.map((t) => (t.id === id ? { ...t, status, orderKey } : t)),
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onSettled: () => invalidateAll(qc),
   });
 }
 
@@ -123,7 +170,13 @@ export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteTask(id),
-    onSuccess: () => invalidateAll(qc),
+    onMutate: async (id) => {
+      await qc.cancelQueries(TASK_LIST_FILTER);
+      const prev = patchTaskLists(qc, (tasks) => tasks.filter((t) => t.id !== id));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onSettled: () => invalidateAll(qc),
   });
 }
 
