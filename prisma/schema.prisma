@@ -487,6 +487,10 @@ model Document {
   @@index([updatedAt])
   @@index([shareToken])
   @@index([parentId])
+  // The Docs list query filters by documentType and orders by updatedAt (no
+  // workspace predicate today). This composite serves that exact path so the
+  // proposals/contracts list stays fast as documents accumulate.
+  @@index([documentType, updatedAt])
 }
 
 /**
@@ -1537,6 +1541,12 @@ model Placement {
   // Range queries for the schedule endpoints filter on (workspace,) startDate,
   // and endDate. Covered by the existing candidate / client indices.
   @@index([clientId, startDate])
+  // Active-placement lookups (`endDate IS NULL`) drive the Portal client cards
+  // (cost / dev-count, all clients at once) and the client-detail DEVS tile. A
+  // btree on (clientId|candidateId, endDate) serves the IS NULL filter so it never
+  // degrades to a full scan as historical placements accumulate.
+  @@index([clientId, endDate])
+  @@index([candidateId, endDate])
 }
 
 model Note {
@@ -2595,6 +2605,12 @@ model Task {
   @@index([featureBlockId])
   @@index([parentId])
   @@index([clickupId])
+  // Cross-client dashboard reads: the existing [workspaceId, clientId, status]
+  // can't serve a workspace-wide status/due query (clientId sits between the two
+  // predicates). These match getTaskAttention's overdue/due-soon/doing scans and
+  // the HQ status rollups directly — important now that the board holds 1k+ tasks.
+  @@index([workspaceId, status])
+  @@index([workspaceId, dueDate])
 }
 
 /// Message↔task linkage for Slack interactivity. Persisted when Foundry posts a

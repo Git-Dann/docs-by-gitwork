@@ -5,7 +5,6 @@ import {
   TimelineView,
   type CTA,
   type CostLineItem,
-  type Document,
   type DocumentSection,
   type Export,
   type Link,
@@ -227,9 +226,29 @@ export function serializeProposal(
   };
 }
 
-export function serializeProposalListItem(
-  proposal: Document & { template: { name: string } | null; owner: { name: string | null } },
-): ProposalListItem {
+/**
+ * Minimal column set for the Docs list. The list only renders the 12 fields below,
+ * so selecting them (instead of `include`-ing the full row) keeps heavy JSON columns
+ * — `metadata`, `exportSettings`, `summary` — and every child relation off the wire.
+ */
+export const proposalListSelect = {
+  id: true,
+  title: true,
+  clientName: true,
+  productName: true,
+  status: true,
+  updatedAt: true,
+  documentNumber: true,
+  documentType: true,
+  labels: true,
+  parentId: true,
+  template: { select: { name: true } },
+  owner: { select: { name: true } },
+} satisfies Prisma.DocumentSelect;
+
+export type ProposalListRow = Prisma.DocumentGetPayload<{ select: typeof proposalListSelect }>;
+
+export function serializeProposalListItem(proposal: ProposalListRow): ProposalListItem {
   return {
     id: proposal.id,
     title: proposal.title,

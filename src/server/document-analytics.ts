@@ -209,6 +209,10 @@ export async function getDocumentAnalytics(documentId: string): Promise<Document
   const views = await prisma.documentView.findMany({
     where: { documentId, origin: "DOCS" },
     orderBy: { createdAt: "desc" },
+    // Bound worst-case memory: a single heavily-shared doc could otherwise pull
+    // its entire view history (+ nested events) into the function. 10k most-recent
+    // visits is far beyond any real internal doc and keeps the heatmap accurate.
+    take: 10_000,
     select: {
       id: true,
       createdAt: true,
