@@ -28,6 +28,7 @@
     "@sparticuz/chromium": "^149.0.0",
     "@swc/helpers": "^0.5.19",
     "@tanstack/react-query": "^5.90.21",
+    "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "browser-image-compression": "^2.0.2",
     "browserslist": "^4.28.1",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tanstack/react-query-devtools": "^5.101.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // @heroicons/react is a barrel (151 import sites). optimizePackageImports rewrites
+  // `import { XIcon } from "@heroicons/react/24/outline"` to per-icon imports so each
+  // chunk only ships the icons it uses, not the whole set. Pure build-time transform.
+  experimental: {
+    optimizePackageImports: ["@heroicons/react"],
+  },
   // Keep the headless-Chromium packages out of the bundler so their code isn't relocated.
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "firebase-admin"],
   // …but Chromium's binary pack under bin/ is loaded by a computed path at runtime, so Next's

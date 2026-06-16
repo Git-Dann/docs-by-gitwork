@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -34,7 +35,7 @@ import type { FeatureBlockDTO, MilestoneDTO, TaskDTO } from "@/types/tasks";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskList } from "@/components/tasks/task-list";
-import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
+import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
 import { TaskFormModal } from "@/components/tasks/task-form";
 import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
@@ -42,6 +43,22 @@ import { MilestoneFormModal } from "@/components/tasks/milestone-form";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
+
+// The Gantt (day-scale axis, zoom, dependency rendering) is the heaviest of the
+// three views and only shown behind the "gantt" tab — load it on demand so the
+// default board/list views don't carry its weight in the initial chunk. It's
+// client-only here (interactive, behind a tab), so ssr:false is free.
+const GanttChart = dynamic(
+  () => import("@/components/tasks/gantt-chart").then((m) => m.GanttChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-64 items-center justify-center text-sm text-neutral-400">
+        Loading timeline…
+      </div>
+    ),
+  },
+);
 
 type View = "board" | "list" | "gantt";
 
