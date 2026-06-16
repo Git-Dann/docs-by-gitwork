@@ -235,6 +235,23 @@ export const clientPlatformUpdateSchema = clientPlatformCreateSchema
     message: "At least one platform field is required.",
   });
 
+// A platform "login" (credential set). username/password encrypted at rest.
+export const platformLoginCreateSchema = z.object({
+  label: z.string().trim().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+});
+
+export const platformLoginUpdateSchema = z
+  .object({
+    label: z.string().trim().nullable().optional(),
+    username: z.string().optional(),
+    password: z.string().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required.",
+  });
+
 export const clientDesignCreateSchema = z.object({
   name: requiredTrimmedString,
   url: z.string().trim().optional(),

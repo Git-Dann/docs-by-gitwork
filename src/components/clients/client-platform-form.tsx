@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { EyeIcon, EyeSlashIcon, ClipboardIcon, CheckIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import { EyeIcon, EyeSlashIcon, ClipboardIcon, CheckIcon, LockClosedIcon, PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
-import { useRevealClientPlatform } from "@/hooks/use-proposals";
-import type { ClientPlatformRecord } from "@/types/client";
+import { usePlatformLoginActions } from "@/hooks/use-proposals";
+import type { ClientPlatformRecord, ClientPlatformLoginSummary, ClientPlatformReveal } from "@/types/client";
 
 type PlatformInput = {
   name: string;
@@ -13,8 +13,6 @@ type PlatformInput = {
   url: string;
   stagingUrl: string;
   repoUrl: string;
-  username: string;
-  password: string;
   notes: string;
   previewImageUrl: string;
 };
@@ -144,6 +142,8 @@ function CredentialField({
   secret,
   showSecret,
   onToggleSecret,
+  readOnly,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -151,6 +151,8 @@ function CredentialField({
   secret?: boolean;
   showSecret?: boolean;
   onToggleSecret?: () => void;
+  readOnly?: boolean;
+  placeholder?: string;
 }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -170,10 +172,11 @@ function CredentialField({
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          readOnly={readOnly}
           type={secret && !showSecret ? "password" : "text"}
           // Reserve room for the icon buttons: two (show + copy) for secrets, one (copy) otherwise.
-          className={`app-input ${secret ? "pr-16" : "pr-10"}`}
-          placeholder={label}
+          className={`app-input ${secret ? "pr-16" : "pr-10"} ${readOnly ? "bg-[var(--surface-1)]" : ""}`}
+          placeholder={placeholder ?? label}
           autoComplete="off"
           spellCheck={false}
         />
@@ -203,6 +206,220 @@ function CredentialField({
   );
 }
 
+// ── Multi-login manager (live add/edit/delete/reveal per credential set) ──────
+
+function PlatformLogins({ slug, platform }: { slug: string; platform?: ClientPlatformRecord | null }) {
+  const platformId = platform?.id ?? null;
+  const logins = platform?.logins ?? [];
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium text-[var(--text-2)]">Credentials</span>
+        <span
+          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-emerald-700"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          <LockClosedIcon className="h-3 w-3" />
+          Encrypted
+        </span>
+      </div>
+
+      {!platformId ? (
+        <p className="text-[12px] text-[var(--text-4)]">Save the platform first, then add logins here.</p>
+      ) : (
+        <div className="space-y-2">
+          {logins.length === 0 && !adding && (
+            <p className="text-[12px] text-[var(--text-4)]">No logins yet — add one below.</p>
+          )}
+          {logins.map((login) => (
+            <LoginRow key={login.id} slug={slug} platformId={platformId} login={login} />
+          ))}
+          {adding ? (
+            <LoginEditor slug={slug} platformId={platformId} onDone={() => setAdding(false)} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] px-3 py-1.5 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              <PlusIcon className="h-4 w-4" />
+              Add login
+            </button>
+          )}
+        </div>
+      )}
+      <p className="mt-2 text-[11px] text-[var(--text-4)]">
+        Encrypted at rest (AES-256-GCM). Reveal to view, then copy.
+      </p>
+    </div>
+  );
+}
+
+function LoginRow({ slug, platformId, login }: { slug: string; platformId: string; login: ClientPlatformLoginSummary }) {
+  const { remove, reveal } = usePlatformLoginActions(slug, platformId);
+  const [revealed, setRevealed] = useState<ClientPlatformReveal | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function toggleReveal() {
+    if (revealed) {
+      setRevealed(null);
+      setShowPassword(false);
+      return;
+    }
+    try {
+      const { credentials } = await reveal.mutateAsync(login.id);
+      setRevealed(credentials);
+    } catch {
+      /* surfaced via reveal.isError */
+    }
+  }
+
+  // Editing requires the current values so a save doesn't wipe them — reveal first, then open.
+  async function startEdit() {
+    if (!revealed) {
+      try {
+        const { credentials } = await reveal.mutateAsync(login.id);
+        setRevealed(credentials);
+      } catch {
+        return;
+      }
+    }
+    setEditing(true);
+  }
+
+  if (editing) {
+    return (
+      <LoginEditor slug={slug} platformId={platformId} login={login} initial={revealed} onDone={() => setEditing(false)} />
+    );
+  }
+
+  return (
+    <div className="rounded-[6px] border border-[var(--border-1)] bg-white p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-[13px] font-medium text-[var(--text-1)]">{login.label || "Login"}</span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => void toggleReveal()}
+            disabled={reveal.isPending}
+            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:text-[var(--text-2)] disabled:opacity-50"
+            title={revealed ? "Hide" : "Reveal"}
+          >
+            {revealed ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => void startEdit()}
+            disabled={reveal.isPending}
+            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:text-[var(--text-2)] disabled:opacity-50"
+            title="Edit"
+          >
+            <PencilIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => (confirmDelete ? remove.mutate(login.id) : setConfirmDelete(true))}
+            onBlur={() => setConfirmDelete(false)}
+            disabled={remove.isPending}
+            className={`rounded-[4px] p-1 transition disabled:opacity-50 ${confirmDelete ? "text-rose-600" : "text-[var(--text-4)] hover:text-rose-600"}`}
+            title={confirmDelete ? "Click again to delete" : "Delete"}
+          >
+            {confirmDelete ? <span className="px-0.5 text-[11px] font-medium">Sure?</span> : <TrashIcon className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+      <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+        <CredentialField
+          label="Username / login"
+          value={revealed?.username ?? ""}
+          onChange={() => {}}
+          readOnly
+          placeholder={login.hasUsername ? "••••••••" : "(none)"}
+        />
+        <CredentialField
+          label="Password"
+          value={revealed?.password ?? ""}
+          onChange={() => {}}
+          readOnly
+          secret
+          showSecret={showPassword}
+          onToggleSecret={() => setShowPassword((s) => !s)}
+          placeholder={login.hasPassword ? "••••••••" : "(none)"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LoginEditor({
+  slug,
+  platformId,
+  login,
+  initial,
+  onDone,
+}: {
+  slug: string;
+  platformId: string;
+  login?: ClientPlatformLoginSummary;
+  initial?: ClientPlatformReveal | null;
+  onDone: () => void;
+}) {
+  const { create, update } = usePlatformLoginActions(slug, platformId);
+  const [label, setLabel] = useState(login?.label ?? "");
+  const [username, setUsername] = useState(initial?.username ?? "");
+  const [password, setPassword] = useState(initial?.password ?? "");
+  const [showPassword, setShowPassword] = useState(false);
+  const isEdit = Boolean(login);
+  const pending = create.isPending || update.isPending;
+
+  async function save() {
+    try {
+      if (isEdit && login) {
+        await update.mutateAsync({ loginId: login.id, body: { label: label || null, username, password } });
+      } else {
+        await create.mutateAsync({ label: label || undefined, username, password });
+      }
+      onDone();
+    } catch {
+      /* surfaced via mutation.isError */
+    }
+  }
+
+  return (
+    <div className="rounded-[6px] border border-[var(--accent)] bg-white p-2.5">
+      <input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        className="app-input mb-2"
+        placeholder="Label (e.g. Admin, FTP) — optional"
+      />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <CredentialField label="Username / login" value={username} onChange={setUsername} />
+        <CredentialField
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          secret
+          showSecret={showPassword}
+          onToggleSecret={() => setShowPassword((s) => !s)}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" size="sm" loading={pending} onClick={() => void save()}>
+          {isEdit ? "Save login" : "Add login"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ClientPlatformFormModal({
   platform,
   slug,
@@ -219,13 +436,6 @@ export function ClientPlatformFormModal({
   error?: string | null;
 }) {
   const isAppStore = APP_STORE_TYPES.includes(platform?.platformType ?? "");
-  // Credentials are encrypted at rest and never sent in the list payload — fetched on demand.
-  // Show a Reveal button when editing a platform that already has saved creds; new platforms
-  // (or ones without creds) are editable straight away.
-  const hasStoredCreds = Boolean(platform?.hasUsername || platform?.hasPassword);
-  const [credsRevealed, setCredsRevealed] = useState(!hasStoredCreds);
-  const [showPassword, setShowPassword] = useState(false);
-  const revealMutation = useRevealClientPlatform(slug);
 
   const [form, setForm] = useState<PlatformInput>({
     name: platform?.name ?? "",
@@ -233,22 +443,9 @@ export function ClientPlatformFormModal({
     url: platform?.url ?? "",
     stagingUrl: platform?.stagingUrl ?? "",
     repoUrl: platform?.repoUrl ?? "",
-    username: "",
-    password: "",
     notes: isAppStore ? "" : (platform?.notes ?? ""),
     previewImageUrl: platform?.previewImageUrl ?? "",
   });
-
-  async function handleReveal() {
-    if (!platform?.id) return;
-    try {
-      const { credentials } = await revealMutation.mutateAsync(platform.id);
-      setForm((prev) => ({ ...prev, username: credentials.username ?? "", password: credentials.password ?? "" }));
-      setCredsRevealed(true);
-    } catch {
-      /* surfaced via revealMutation.isError */
-    }
-  }
 
   // App store listing fields — parsed from notes JSON on edit
   const [appStoreValues, setAppStoreValues] = useState<Record<string, string>>(
@@ -267,17 +464,10 @@ export function ClientPlatformFormModal({
 
   function handleSubmit() {
     if (!form.name.trim()) return;
-    const { username, password, ...rest } = form;
-    const payload: Partial<PlatformInput> & { name: string } = { ...rest };
+    const payload: Partial<PlatformInput> & { name: string } = { ...form };
     if (isAppStoreType) {
       // Serialize app store content to notes as JSON
       payload.notes = JSON.stringify(appStoreValues);
-    }
-    // Only send credentials when they've been revealed/edited — omitting them leaves the stored
-    // ciphers untouched, so editing the name/URL never wipes saved credentials.
-    if (credsRevealed) {
-      payload.username = username;
-      payload.password = password;
     }
     onSave(payload);
   }
@@ -425,55 +615,7 @@ export function ClientPlatformFormModal({
                       />
                     </label>
 
-                    <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-[var(--text-2)]">Credentials</span>
-                        <span
-                          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-emerald-700"
-                          style={{ fontFamily: "var(--font-mono)" }}
-                        >
-                          <LockClosedIcon className="h-3 w-3" />
-                          Encrypted
-                        </span>
-                      </div>
-                      {hasStoredCreds && !credsRevealed ? (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => void handleReveal()}
-                            disabled={revealMutation.isPending}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                            {revealMutation.isPending ? "Revealing…" : "Reveal to view / edit"}
-                          </button>
-                          {revealMutation.isError && (
-                            <p className="mt-1.5 text-xs text-rose-700">
-                              {(revealMutation.error as Error)?.message ?? "Couldn't reveal credentials."}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <CredentialField
-                            label="Username / login"
-                            value={form.username}
-                            onChange={(v) => set("username", v)}
-                          />
-                          <CredentialField
-                            label="Password"
-                            value={form.password}
-                            onChange={(v) => set("password", v)}
-                            secret
-                            showSecret={showPassword}
-                            onToggleSecret={() => setShowPassword((s) => !s)}
-                          />
-                        </div>
-                      )}
-                      <p className="mt-2 text-[11px] text-[var(--text-4)]">
-                        Encrypted at rest (AES-256-GCM). Use the copy buttons to grab a value.
-                      </p>
-                    </div>
+                    <PlatformLogins slug={slug} platform={platform} />
 
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">

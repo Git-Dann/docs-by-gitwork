@@ -983,11 +983,30 @@ model ClientPlatform {
   previewImageUrl String?         @db.Text
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
+  /// Multiple credential sets ("logins") — supersedes the single username/password ciphers
+  /// above, which are migrated into one login each (see /api/dev/migrate-platform-logins).
+  logins          ClientPlatformLogin[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   @@index([clientId])
   @@map("ClientPlatform")
+}
+
+/// One credential set on a platform (e.g. "Admin", "FTP"). username/password encrypted at rest
+/// with AES-256-GCM (src/lib/encryption.ts); the plaintext is only returned by the reveal route.
+model ClientPlatformLogin {
+  id             String         @id @default(cuid())
+  platformId     String
+  platform       ClientPlatform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  label          String?
+  usernameCipher String?        @db.Text
+  passwordCipher String?        @db.Text
+  orderKey       Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([platformId])
 }
 
 model ClientDesign {

@@ -17,6 +17,7 @@ import type {
   ClientListItem,
   ClientPlatformRecord,
   ClientPlatformReveal,
+  ClientPlatformLoginSummary,
   WorkspaceClientStatus,
 } from "@/types/client";
 import type {
@@ -633,6 +634,54 @@ export async function revealClientPlatformApi(
 ): Promise<{ credentials: ClientPlatformReveal }> {
   return apiFetch<{ credentials: ClientPlatformReveal }>(
     `/api/clients/${slug}/platforms/${platformId}/reveal`,
+    { method: "POST" },
+  );
+}
+
+// ── Platform logins (multiple credential sets) ──────────────────────────────
+
+export async function createPlatformLogin(
+  slug: string,
+  platformId: string,
+  body: { label?: string; username?: string; password?: string },
+): Promise<{ login: ClientPlatformLoginSummary }> {
+  return apiFetch<{ login: ClientPlatformLoginSummary }>(`/api/clients/${slug}/platforms/${platformId}/logins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updatePlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+  body: { label?: string | null; username?: string; password?: string },
+): Promise<{ login: ClientPlatformLoginSummary }> {
+  return apiFetch<{ login: ClientPlatformLoginSummary }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+}
+
+export async function deletePlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function revealPlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+): Promise<{ credentials: ClientPlatformReveal }> {
+  return apiFetch<{ credentials: ClientPlatformReveal }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}/reveal`,
     { method: "POST" },
   );
 }

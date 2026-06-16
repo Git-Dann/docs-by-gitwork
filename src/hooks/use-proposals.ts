@@ -37,6 +37,10 @@ import {
   updateClientDesign,
   updateClientPlatform,
   revealClientPlatformApi,
+  createPlatformLogin,
+  updatePlatformLogin,
+  deletePlatformLogin,
+  revealPlatformLogin,
   updateProposal,
 } from "@/lib/api";
 import type {
@@ -267,6 +271,31 @@ export function useRevealClientPlatform(slug: string) {
   return useMutation({
     mutationFn: (platformId: string) => revealClientPlatformApi(slug, platformId),
   });
+}
+
+/** Bundled create/update/delete/reveal mutations for a platform's logins. Mutations that change
+ *  the set invalidate the client query so the platform's logins summary refreshes. */
+export function usePlatformLoginActions(slug: string, platformId: string) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["client", slug] });
+  const create = useMutation({
+    mutationFn: (body: { label?: string; username?: string; password?: string }) =>
+      createPlatformLogin(slug, platformId, body),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: ({ loginId, body }: { loginId: string; body: { label?: string | null; username?: string; password?: string } }) =>
+      updatePlatformLogin(slug, platformId, loginId, body),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (loginId: string) => deletePlatformLogin(slug, platformId, loginId),
+    onSuccess: invalidate,
+  });
+  const reveal = useMutation({
+    mutationFn: (loginId: string) => revealPlatformLogin(slug, platformId, loginId),
+  });
+  return { create, update, remove, reveal };
 }
 
 export function useDeleteClientPlatform(slug: string) {

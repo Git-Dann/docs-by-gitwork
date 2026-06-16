@@ -98,6 +98,19 @@ async function ensurePortalSchema() {
     // Encrypted credential columns for ClientPlatform (additive for already-existing tables)
     `ALTER TABLE "ClientPlatform" ADD COLUMN IF NOT EXISTS "usernameCipher" TEXT`,
     `ALTER TABLE "ClientPlatform" ADD COLUMN IF NOT EXISTS "passwordCipher" TEXT`,
+    // ClientPlatformLogin — multiple credential sets per platform (encrypted)
+    `CREATE TABLE IF NOT EXISTS "ClientPlatformLogin" (
+      "id" TEXT NOT NULL,
+      "platformId" TEXT NOT NULL,
+      "label" TEXT,
+      "usernameCipher" TEXT,
+      "passwordCipher" TEXT,
+      "orderKey" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "ClientPlatformLogin_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "ClientPlatformLogin_platformId_idx" ON "ClientPlatformLogin"("platformId")`,
     // Wave 3 — Push notifications
     // PulseScan: track who triggered the scan so we can target push notifications
     `ALTER TABLE "PulseScan" ADD COLUMN IF NOT EXISTS "triggeredByUserId" TEXT`,
