@@ -124,66 +124,82 @@ export default async function PulseReportPage({
         }
 
         p, li {
-          orphans: 3;
-          widows: 3;
+          orphans: 3; widows: 3;
           word-break: break-word;
           overflow-wrap: break-word;
           hyphens: auto;
         }
 
-        h1, h2, h3 {
-          word-break: break-word;
-          overflow-wrap: break-word;
-        }
+        h1, h2, h3 { word-break: break-word; overflow-wrap: break-word; }
 
-        .report-wrap {
-          max-width: 860px;
-          margin: 0 auto;
-          background: white;
-        }
+        .report-wrap { max-width: 860px; margin: 0 auto; background: white; }
 
-        @media screen {
-          .report-wrap { box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
-        }
-
-        /* ── Cover ─────────────────────────────── */
-        .rp-cover {
-          min-height: 100vh;
-          padding: 56px 60px 40px;
-          display: flex;
-          flex-direction: column;
-          background: white;
-        }
+        @media screen { .report-wrap { box-shadow: 0 1px 4px rgba(0,0,0,0.12); } }
 
         /* ── Content ────────────────────────────── */
-        .rp-content {
-          padding: 44px 60px 56px;
+        .rp-content { padding: 44px 60px 56px; }
+
+        /* ── Widget-style section header: 01 // SECTION NAME ── */
+        .rp-widget-h {
+          display: flex; align-items: center; justify-content: space-between;
+          height: 36px; padding: 0 16px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px 10px 0 0;
+        }
+        .rp-widget-label {
+          font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+          font-size: 10px; font-weight: 500;
+          letter-spacing: 1.2px; text-transform: uppercase; color: #64748b;
+        }
+        .rp-widget-right {
+          font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+          font-size: 10px; font-weight: 600;
+          letter-spacing: 0.8px; text-transform: uppercase; color: #94a3b8;
         }
 
-        /* ── Section heading ─────────────────────── */
-        .rp-h2 {
-          margin: 0 0 22px 0;
-          font-size: 18px;
-          font-weight: 700;
-          letter-spacing: -0.02em;
-          color: #111827;
-          padding-bottom: 10px;
-          border-bottom: 2px solid #111827;
+        /* ── Score bar ─────────────────────────── */
+        .rp-score-bar { height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
+        .rp-score-bar-fill { height: 100%; border-radius: 3px; }
+
+        /* ── Domain card ───────────────────────── */
+        .rp-domain {
+          margin-bottom: 16px;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        /* ── Blocker callout ───────────────────── */
+        .rp-blocker {
+          display: flex; gap: 14px; padding: 12px 14px;
+          border-left: 3px solid #dc2626;
+          background: #fef2f2;
+          border-radius: 0 8px 8px 0;
+        }
+
+        /* ── Roadmap phase card ─────────────────── */
+        .rp-phase {
+          flex: 1; padding: 14px 16px;
+          background: #f8fafc;
+          border-radius: 10px;
+          border: 1px solid #e2e8f0;
+        }
+
+        /* ── Per-page footer ─────────────────────── */
+        .rp-footer {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 0 0;
+          border-top: 1px solid #e2e8f0;
+          margin-top: 48px;
+          font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+          font-size: 10px; color: #94a3b8; letter-spacing: 0.04em;
         }
 
         /* ── Print overrides ─────────────────────── */
         @media print {
           .no-print { display: none !important; }
-
-          .rp-cover {
-            min-height: 297mm;
-            padding: 48px 52px 36px;
-            page-break-after: always;
-            break-after: page;
-          }
-
           .rp-content { padding: 0 0 24px; }
-
           .kb { break-inside: avoid; page-break-inside: avoid; }
           .pb { break-before: page; page-break-before: always; }
         }
@@ -227,91 +243,157 @@ export default async function PulseReportPage({
         {/* ═══════════════════════ CONTENT PAGES ═══════════════════════ */}
         <div className="rp-content">
 
-          {/* ── Automated Checks ─────────────────────────────────── */}
-          <div style={{ marginBottom: 48 }}>
-            <h2 className="rp-h2">Automated Checks</h2>
+          {/* ── Executive Overview ─────────────────────────────────── */}
+          {analysis && (analysis.executiveSummary || analysis.healthNarrative) && (
+            <div style={{ marginBottom: 48 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">00 // EXECUTIVE OVERVIEW</span>
+                <span className="rp-widget-right">{score}/100 health score</span>
+              </div>
+              <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 10px 10px", padding: "20px 20px 24px" }}>
+                {analysis.executiveSummary && (
+                  <p style={{ margin: "0 0 14px", fontSize: 14, lineHeight: 1.75, color: "#1e293b" }}>
+                    {analysis.executiveSummary}
+                  </p>
+                )}
+                {analysis.healthNarrative && analysis.healthNarrative !== analysis.executiveSummary && (
+                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.7, color: "#475569" }}>
+                    {analysis.healthNarrative}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
-            {domains.map((domain) => {
-              const allChecks = domain.categories.flatMap((c) => c.checks);
-              const applicable = allChecks.filter((c) => c.status !== "SKIPPED");
-              const pass = applicable.filter((c) => c.status === "PASS").length;
-              const total = applicable.length;
-              const allPass = pass === total;
-
-              return (
-                <div key={domain.label} style={{ marginBottom: 28 }}>
-                  {/* Domain header */}
-                  <div style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    marginBottom: 10, padding: "9px 14px",
-                    background: "#f9fafb", borderRadius: 8,
-                    borderLeft: `4px solid ${domain.color}`,
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{domain.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: allPass ? "#16a34a" : "#6b7280" }}>
-                      {pass}/{total} passing
-                    </span>
-                  </div>
-
-                  {/* Categories within domain */}
-                  <div style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {domain.categories.map(({ name, checks }) => {
-                      const catApp = checks.filter((c) => c.status !== "SKIPPED");
-                      const catPass = catApp.filter((c) => c.status === "PASS").length;
-                      const catTotal = catApp.length;
-                      const issues = checks.filter((c) => c.status === "FAIL" || c.status === "WARN");
-
-                      return (
-                        <div key={name} className="kb" style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #f3f4f6", background: "white" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: issues.length > 0 ? 8 : 0 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{name}</span>
-                            <span style={{ fontSize: 11, color: catPass === catTotal ? "#16a34a" : "#6b7280" }}>
-                              {catPass}/{catTotal}
-                            </span>
-                          </div>
-
-                          {issues.length === 0 ? (
-                            <p style={{ margin: "3px 0 0", fontSize: 11, color: "#16a34a" }}>All checks passing ✓</p>
-                          ) : (
-                            <div>
-                              {issues.map((c) => (
-                                <div key={c.checkKey} className="kb" style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: "1px solid #f9fafb", fontSize: 12 }}>
-                                  <span style={{ flexShrink: 0, width: 14, fontWeight: 700, color: c.status === "FAIL" ? "#dc2626" : "#d97706", paddingTop: 1 }}>
-                                    {statusIcon(c.status)}
-                                  </span>
-                                  <div style={{ flex: 1, minWidth: 0, lineHeight: 1.55 }}>
-                                    <span style={{ fontWeight: 500, color: "#111827" }}>{c.label}</span>
-                                    {c.detail && (
-                                      <span style={{ color: "#9ca3af", marginLeft: 4 }}>— {c.detail}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+          {/* ── Production Blockers ─────────────────────────────────── */}
+          {analysis?.productionBlockers && (analysis.productionBlockers as Array<{blocker:string;why:string;urgency:string;category:string;recommendedService?:string}>).length > 0 && (
+            <div className="pb kb" style={{ marginBottom: 48 }}>
+              <div className="rp-widget-h">
+                <span className="rp-widget-label">01 // PRODUCTION BLOCKERS</span>
+                <span className="rp-widget-right" style={{ color: "#dc2626" }}>
+                  {(analysis.productionBlockers as Array<{urgency:string}>).filter((b) => b.urgency === "CRITICAL").length} critical
+                </span>
+              </div>
+              <div style={{ border: "1px solid #fca5a5", borderTop: "none", borderRadius: "0 0 10px 10px", background: "#fff5f5", padding: "16px 16px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {(analysis.productionBlockers as Array<{blocker:string;why:string;urgency:string;category:string;recommendedService?:string}>).map((blocker, i) => {
+                  const isCrit = blocker.urgency === "CRITICAL";
+                  return (
+                    <div key={i} className="kb rp-blocker" style={{ borderLeftColor: isCrit ? "#dc2626" : "#f97316" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{blocker.blocker}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: isCrit ? "#fee2e2" : "#fff7ed", color: isCrit ? "#991b1b" : "#9a3412", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                            {blocker.urgency}
+                          </span>
+                          {blocker.recommendedService && (
+                            <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#eff6ff", color: "#1d4ed8" }}>→ {blocker.recommendedService}</span>
                           )}
                         </div>
-                      );
-                    })}
+                        <p style={{ margin: 0, fontSize: 12, color: "#6b7280", lineHeight: 1.55 }}>{blocker.why}</p>
+                      </div>
+                      <span style={{ flexShrink: 0, fontSize: 10, color: "#9ca3af", alignSelf: "flex-start", paddingTop: 2 }}>{blocker.category}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Automated Checks ─────────────────────────────────── */}
+          <div style={{ marginBottom: 48 }}>
+            <div className="rp-widget-h kb">
+              <span className="rp-widget-label">02 // AUTOMATED CHECKS</span>
+              <span className="rp-widget-right">{passCount + warnCount + failCount} checks · {passCount} passing</span>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              {domains.map((domain, di) => {
+                const allChecks  = domain.categories.flatMap((c) => c.checks);
+                const applicable = allChecks.filter((c) => c.status !== "SKIPPED");
+                const pass       = applicable.filter((c) => c.status === "PASS").length;
+                const total      = applicable.length;
+                const pct        = total > 0 ? Math.round((pass / total) * 100) : 0;
+                const barColor   = pct >= 80 ? "#16a34a" : pct >= 50 ? "#d97706" : "#dc2626";
+                const domainIdx  = String(di + 1).padStart(2, "0");
+
+                return (
+                  <div key={domain.label} className="kb rp-domain">
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+                      padding: "10px 16px",
+                      background: "#f8fafc",
+                      borderBottom: "1px solid #e2e8f0",
+                      borderLeft: `3px solid ${domain.color}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                        <span style={{ fontFamily: "'JetBrains Mono','SF Mono',Menlo,Consolas,monospace", fontSize: 10, fontWeight: 500, letterSpacing: "1.2px", textTransform: "uppercase" as const, color: "#94a3b8", flexShrink: 0 }}>
+                          {domainIdx} //
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{domain.label}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        <div className="rp-score-bar" style={{ width: 72 }}>
+                          <div className="rp-score-bar-fill" style={{ width: `${pct}%`, background: barColor }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: barColor, minWidth: 34, textAlign: "right" as const }}>{pct}%</span>
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>{pass}/{total}</span>
+                      </div>
+                    </div>
+                    <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                      {domain.categories.map(({ name, checks }) => {
+                        const catApp   = checks.filter((c) => c.status !== "SKIPPED");
+                        const catPass  = catApp.filter((c) => c.status === "PASS").length;
+                        const catTotal = catApp.length;
+                        const issues   = checks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+                        return (
+                          <div key={name} className="kb" style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #f1f5f9", background: "white" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: issues.length > 0 ? 8 : 0 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{name}</span>
+                              <span style={{ fontSize: 11, color: catPass === catTotal ? "#16a34a" : "#6b7280" }}>{catPass}/{catTotal}</span>
+                            </div>
+                            {issues.length === 0 ? (
+                              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#16a34a" }}>All checks passing ✓</p>
+                            ) : (
+                              <div>
+                                {issues.map((c) => (
+                                  <div key={c.checkKey} className="kb" style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: "1px solid #f9fafb", fontSize: 12 }}>
+                                    <span style={{ flexShrink: 0, width: 14, fontWeight: 700, color: c.status === "FAIL" ? "#dc2626" : "#d97706", paddingTop: 1 }}>
+                                      {statusIcon(c.status)}
+                                    </span>
+                                    <div style={{ flex: 1, minWidth: 0, lineHeight: 1.55 }}>
+                                      <span style={{ fontWeight: 500, color: "#111827" }}>{c.label}</span>
+                                      {c.detail && <span style={{ color: "#9ca3af", marginLeft: 4 }}>— {c.detail}</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
           {/* ── Critical Gaps ────────────────────────────────────── */}
           {analysis?.criticalGaps && analysis.criticalGaps.length > 0 && (
             <div className="pb" style={{ marginBottom: 48 }}>
-              <h2 className="rp-h2">Critical Gaps</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">03 // CRITICAL GAPS</span>
+                <span className="rp-widget-right">{analysis.criticalGaps.length} identified</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
                 {analysis.criticalGaps.map((gap, i) => {
-                  const uc = gap.urgency === "CRITICAL" ? "#dc2626" : gap.urgency === "HIGH" ? "#d97706" : "#6b7280";
+                  const uc  = gap.urgency === "CRITICAL" ? "#dc2626" : gap.urgency === "HIGH" ? "#d97706" : "#6b7280";
                   const ubg = gap.urgency === "CRITICAL" ? "#fee2e2" : gap.urgency === "HIGH" ? "#fef3c7" : "#f3f4f6";
                   const utx = gap.urgency === "CRITICAL" ? "#991b1b" : gap.urgency === "HIGH" ? "#92400e" : "#374151";
                   return (
-                    <div key={i} className="kb" style={{ borderLeft: `3px solid ${uc}`, paddingLeft: 16, paddingTop: 4, paddingBottom: 4 }}>
+                    <div key={i} className="kb" style={{ borderLeft: `3px solid ${uc}`, paddingLeft: 16, paddingTop: 6, paddingBottom: 6 }}>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 5 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{gap.gap}</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: ubg, color: utx, textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: ubg, color: utx, textTransform: "uppercase" as const, letterSpacing: "0.06em", flexShrink: 0 }}>
                           {gap.urgency}
                         </span>
                         <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>{gap.category}</span>
@@ -327,8 +409,11 @@ export default async function PulseReportPage({
           {/* ── Build Opportunities ───────────────────────────── */}
           {analysis?.buildOpportunities && analysis.buildOpportunities.length > 0 && (
             <div style={{ marginBottom: 48 }}>
-              <h2 className="rp-h2">Build Opportunities</h2>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">04 // BUILD OPPORTUNITIES</span>
+                <span className="rp-widget-right">{analysis.buildOpportunities.length} identified</span>
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ textAlign: "left", padding: "0 10px 10px 0", fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.07em" }}>Opportunity</th>
@@ -357,24 +442,27 @@ export default async function PulseReportPage({
           {/* ── Scaling Roadmap ──────────────────────────────── */}
           {analysis?.scalingRoadmap && analysis.scalingRoadmap.length > 0 && (
             <div className="pb" style={{ marginBottom: 48 }}>
-              <h2 className="rp-h2">Scaling Roadmap</h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">05 // BUILD ROADMAP</span>
+                <span className="rp-widget-right">{analysis.scalingRoadmap.length} phases</span>
+              </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
                 {analysis.scalingRoadmap.map((phase) => (
-                  <div key={phase.phase} className="kb" style={{ display: "flex", gap: 16, padding: "14px 18px", background: "#f9fafb", borderRadius: 10 }}>
-                    <div style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", background: "#111827", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>
-                      {phase.phase}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{phase.title}</span>
-                        <span style={{ fontSize: 12, color: "#9ca3af" }}>{phase.duration}</span>
+                  <div key={phase.phase} className="kb rp-phase">
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                      <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 6, background: "#111827", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>
+                        {phase.phase}
                       </div>
-                      <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
-                        {phase.goals.map((goal, gi) => (
-                          <li key={gi} style={{ fontSize: 12, color: "#374151", marginBottom: 3, lineHeight: 1.55 }}>{goal}</li>
-                        ))}
-                      </ul>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{phase.title}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{phase.duration}</div>
+                      </div>
                     </div>
+                    <ul style={{ margin: 0, padding: "0 0 0 14px" }}>
+                      {phase.goals.map((goal, gi) => (
+                        <li key={gi} style={{ fontSize: 11, color: "#374151", marginBottom: 3, lineHeight: 1.55 }}>{goal}</li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
               </div>
@@ -384,11 +472,13 @@ export default async function PulseReportPage({
           {/* ── Tech Stack Assessment ────────────────────────── */}
           {analysis?.techStackAnalysis && (
             <div style={{ marginBottom: 48 }}>
-              <h2 className="rp-h2">Tech Stack Assessment</h2>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">06 // TECH STACK</span>
+              </div>
               {scan.techStack && scan.techStack.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "14px 0" }}>
                   {scan.techStack.map((t) => (
-                    <span key={t} style={{ fontSize: 11, fontWeight: 500, padding: "3px 10px", borderRadius: 999, border: "1px solid #e5e7eb", color: "#374151", background: "#f9fafb" }}>
+                    <span key={t} style={{ fontSize: 11, fontWeight: 500, padding: "3px 10px", borderRadius: 6, border: "1px solid #e5e7eb", color: "#374151", background: "#f9fafb" }}>
                       {t}
                     </span>
                   ))}
@@ -412,10 +502,10 @@ export default async function PulseReportPage({
             </div>
           )}
 
-          {/* Report footer */}
-          <div style={{ paddingTop: 16, borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>Generated by Foundry · Gitwork Pulse</span>
-            <span style={{ fontSize: 11, color: "#9ca3af" }}>{generatedAt}</span>
+          {/* ── Footer ───────────────────────────────────────── */}
+          <div className="rp-footer">
+            <span>Confidential · Prepared by Gitwork · foundry.gitwork.co.uk</span>
+            <span>{generatedAt}</span>
           </div>
 
         </div>

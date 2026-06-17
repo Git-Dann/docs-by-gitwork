@@ -108,11 +108,12 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
   const scoreBg     = (s: number | null) => !s ? "bg-gray-50 border-gray-200" : s >= 90 ? "bg-emerald-50 border-emerald-200" : s >= 50 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200";
 
   return (
-    <div className="overflow-hidden rounded-[10px] border border-gray-200 bg-white p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Core Web Vitals</h2>
-        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-medium text-gray-500">Lighthouse · mobile</span>
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">WEB VITALS</span>
+        <span className="widget-header-right">Lighthouse · mobile</span>
       </div>
+      <div className="widget-body-compact">
       <div className="mb-4 grid grid-cols-4 gap-2">
         {[
           { label: "Performance",    score: insights.performanceScore },
@@ -155,7 +156,7 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
         </div>
       )}
       {insights.cruxCategory && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-[var(--text-4)]">
           Real-user experience (Chrome UX Report):{" "}
           <span className={cn(
             "font-semibold",
@@ -167,6 +168,7 @@ function VitalsGrid({ insights }: { insights: NonNullable<PulseScanRecord["brows
           </span>
         </p>
       )}
+      </div>
     </div>
   );
 }
@@ -218,23 +220,35 @@ function CategorySummary({ checks }: { checks: PulseScanRecord["checks"] }) {
   };
 
   return (
-    <div className="space-y-6">
-      {domainGroups.map((domain) => (
-        <div key={domain.label}>
-          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{domain.label}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {domain.categories.map(({ name, stats }) => renderCategoryCard(name, stats))}
+    <div className="space-y-4">
+      {[...domainGroups, ...(otherCats.length > 0 ? [{ label: "Other", categories: otherCats }] : [])].map((domain, di) => {
+        const domainPass  = domain.categories.reduce((s, c) => s + c.stats.pass, 0);
+        const domainWarn  = domain.categories.reduce((s, c) => s + c.stats.warn, 0);
+        const domainFail  = domain.categories.reduce((s, c) => s + c.stats.fail, 0);
+        const domainTotal = domainPass + domainWarn + domainFail;
+        const domainPct   = domainTotal > 0 ? Math.round((domainPass / domainTotal) * 100) : 100;
+        const barColor    = domainPct >= 80 ? "bg-emerald-500" : domainPct >= 50 ? "bg-amber-500" : "bg-red-500";
+        const scoreColor  = domainPct >= 80 ? "text-emerald-600" : domainPct >= 50 ? "text-amber-600" : "text-red-600";
+        const idx         = String(di + 1).padStart(2, "0");
+        return (
+          <div key={domain.label}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
+                {idx} // {domain.label}
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">
+                  <div className={cn("h-full rounded-full", barColor)} style={{ width: `${domainPct}%` }} />
+                </div>
+                <span className={cn("text-xs font-bold tabular-nums", scoreColor)}>{domainPct}%</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {domain.categories.map(({ name, stats }) => renderCategoryCard(name, stats))}
+            </div>
           </div>
-        </div>
-      ))}
-      {otherCats.length > 0 && (
-        <div>
-          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Other</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {otherCats.map(({ name, stats }) => renderCategoryCard(name, stats))}
-          </div>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -301,16 +315,21 @@ export default async function PublicReportPage({
 
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
 
-        {/* Tech stack (was previously inside the score hero) */}
+        {/* Tech stack */}
         {scan.techStack && scan.techStack.length > 0 && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tech stack</p>
-            <div className="flex flex-wrap gap-1.5">
-              {scan.techStack.map((t) => (
-                <span key={t} className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] text-gray-500">
-                  {t}
-                </span>
-              ))}
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">01 // TECH STACK</span>
+              <span className="widget-header-right">{scan.techStack.length} detected</span>
+            </div>
+            <div className="widget-body-compact">
+              <div className="flex flex-wrap gap-1.5">
+                {scan.techStack.map((t) => (
+                  <span key={t} className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]">
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -320,32 +339,75 @@ export default async function PublicReportPage({
 
         {/* Health narrative */}
         {llm?.healthNarrative && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-2 text-sm font-semibold text-gray-700">Health summary</h2>
-            <p className="text-sm leading-relaxed text-gray-600 [overflow-wrap:break-word]">{llm.healthNarrative}</p>
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">02 // HEALTH SUMMARY</span>
+            </div>
+            <div className="widget-body">
+              <p className="text-sm leading-relaxed text-[var(--text-2)] [overflow-wrap:break-word]">{llm.healthNarrative}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Production blockers */}
+        {llm?.productionBlockers && (llm.productionBlockers as Array<{blocker:string;why:string;urgency:string;category:string;recommendedService?:string}>).length > 0 && (
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">03 // PRODUCTION BLOCKERS</span>
+              <span className="widget-header-right" style={{ color: "#dc2626" }}>
+                {(llm.productionBlockers as Array<{urgency:string}>).filter((b) => b.urgency === "CRITICAL").length} critical
+              </span>
+            </div>
+            <div className="divide-y divide-[var(--border-2)]">
+              {(llm.productionBlockers as Array<{blocker:string;why:string;urgency:string;category:string;recommendedService?:string}>).map((blocker, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3.5">
+                  <XCircleIcon className={cn("mt-0.5 h-4 w-4 shrink-0", blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400")} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-[var(--text-1)] [overflow-wrap:break-word]">{blocker.blocker}</p>
+                      <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase", blocker.urgency === "CRITICAL" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>
+                        {blocker.urgency}
+                      </span>
+                      {blocker.recommendedService && (
+                        <span className="rounded-[4px] bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">→ {blocker.recommendedService}</span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">{blocker.why}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Check categories — domain-grouped */}
-        <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-          <h2 className="mb-5 text-sm font-semibold text-gray-700">Automated check results</h2>
-          <CategorySummary checks={scan.checks} />
+        <div className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header-label">04 // AUTOMATED CHECKS</span>
+            <span className="widget-header-right">{scan.checks.filter((c) => c.status !== "SKIPPED").length} checks</span>
+          </div>
+          <div className="widget-body">
+            <CategorySummary checks={scan.checks} />
+          </div>
         </div>
 
         {/* Critical gaps */}
         {llm?.criticalGaps && llm.criticalGaps.length > 0 && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">Critical gaps to address</h2>
-            <div className="space-y-3">
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">05 // CRITICAL GAPS</span>
+              <span className="widget-header-right">{llm.criticalGaps.length} identified</span>
+            </div>
+            <div className="divide-y divide-[var(--border-2)]">
               {llm.criticalGaps.map((gap, i) => (
-                <div key={i} className="flex gap-3">
+                <div key={i} className="flex gap-3 px-4 py-3">
                   <XCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{gap.gap}</span>
+                      <span className="text-sm font-medium text-[var(--text-1)] [overflow-wrap:break-word]">{gap.gap}</span>
                       <UrgencyBadge urgency={gap.urgency} />
                     </div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{gap.impact}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">{gap.impact}</p>
                   </div>
                 </div>
               ))}
@@ -355,15 +417,17 @@ export default async function PublicReportPage({
 
         {/* Strengths */}
         {llm?.strengths && llm.strengths.length > 0 && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">What&apos;s working well</h2>
-            <div className="space-y-3">
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">06 // STRENGTHS</span>
+            </div>
+            <div className="divide-y divide-[var(--border-2)]">
               {llm.strengths.slice(0, 4).map((s, i) => (
-                <div key={i} className="flex gap-3">
+                <div key={i} className="flex gap-3 px-4 py-3">
                   <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{s.title}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{s.detail}</p>
+                    <p className="text-sm font-medium text-[var(--text-1)] [overflow-wrap:break-word]">{s.title}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">{s.detail}</p>
                   </div>
                 </div>
               ))}
@@ -373,19 +437,22 @@ export default async function PublicReportPage({
 
         {/* Build opportunities */}
         {llm?.buildOpportunities && llm.buildOpportunities.length > 0 && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">Build opportunities</h2>
-            <div className="space-y-3">
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">07 // BUILD OPPORTUNITIES</span>
+              <span className="widget-header-right">{llm.buildOpportunities.length} identified</span>
+            </div>
+            <div className="divide-y divide-[var(--border-2)]">
               {llm.buildOpportunities.map((opp, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <ArrowRightIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                <div key={i} className="flex items-start gap-3 px-4 py-3">
+                  <ArrowRightIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800 [overflow-wrap:break-word]">{opp.title}</span>
+                      <span className="text-sm font-medium text-[var(--text-1)] [overflow-wrap:break-word]">{opp.title}</span>
                       <EffortBadge effort={opp.estimatedEffort} />
                       <ValueBadge value={opp.businessValue} />
                     </div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">{opp.description}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">{opp.description}</p>
                   </div>
                 </div>
               ))}
@@ -395,22 +462,25 @@ export default async function PublicReportPage({
 
         {/* Roadmap */}
         {llm?.scalingRoadmap && llm.scalingRoadmap.length > 0 && (
-          <div className="rounded-[10px] border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">Recommended roadmap</h2>
-            <div className="space-y-5">
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">08 // BUILD ROADMAP</span>
+              <span className="widget-header-right">{llm.scalingRoadmap.length} phases</span>
+            </div>
+            <div className="widget-body space-y-4">
               {llm.scalingRoadmap.map((phase) => (
                 <div key={phase.phase} className="flex gap-4">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-gray-900 text-xs font-bold text-white">
                     {phase.phase}
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-800 [overflow-wrap:break-word]">{phase.title}</p>
-                      <span className="text-xs text-gray-400">{phase.duration}</span>
+                      <p className="text-sm font-semibold text-[var(--text-1)] [overflow-wrap:break-word]">{phase.title}</p>
+                      <span className="text-xs text-[var(--text-4)]">{phase.duration}</span>
                     </div>
                     <ul className="mt-1.5 space-y-0.5">
                       {phase.goals.map((g, gi) => (
-                        <li key={gi} className="text-xs leading-relaxed text-gray-500 [overflow-wrap:break-word]">· {g}</li>
+                        <li key={gi} className="text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">· {g}</li>
                       ))}
                     </ul>
                   </div>

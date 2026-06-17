@@ -927,6 +927,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [reanalyseContext, setReanalyseContext] = useState("");
   const [reanalyseError, setReanalyseError] = useState<string | null>(null);
   const [showReanalyseInput, setShowReanalyseInput] = useState(false);
+  const [discoveryExpanded, setDiscoveryExpanded] = useState(false);
 
   // Keep local share state in sync when the scan is re-fetched externally
   useEffect(() => {
@@ -1275,137 +1276,436 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
-      {/* Tab content */}
-      {/* Web Vitals — shown on overview regardless of AI result */}
-      {activeTab === "overview" && scan.browserInsights && (
-        <WebVitalsCard insights={scan.browserInsights} />
-      )}
-      {activeTab === "overview" && scan.codeInsights && (
-        <CodeInsightsCard insights={scan.codeInsights} />
-      )}
-      {activeTab === "overview" && scan.deployInsights && (
-        <DeployInsightsCard insights={scan.deployInsights} />
-      )}
+      {/* ═══ OVERVIEW TAB — BENTO DASHBOARD ═══════════════════════════════ */}
+      {activeTab === "overview" && (
+        <div className="space-y-3">
 
-      {activeTab === "overview" && !llm && (
-        <AiUnavailable aiError={scan.aiError} />
-      )}
-
-      {activeTab === "overview" && llm && (
-        <div className="space-y-6">
-
-          {/* Project classification */}
-          {llm.projectClassification && (
-            <div className="rounded-[10px] border border-[var(--brand-500)] bg-[var(--surface-brand-soft)] p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="app-eyebrow mb-0.5">Project type detected</p>
-                  <p className="text-base font-semibold text-[var(--text-1)]">
-                    {llm.projectClassification.type}
-                    {llm.projectClassification.subtype && (
-                      <span className="ml-2 text-sm font-normal text-[var(--text-3)]">
-                        — {llm.projectClassification.subtype}
+          {/* 01 // PROJECT HEALTH */}
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">01 // PROJECT HEALTH</span>
+              {llm?.projectClassification && (
+                <span className="widget-header-right">
+                  {llm.projectClassification.type}{llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}
+                </span>
+              )}
+            </div>
+            <div className="widget-body">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                {scan.healthScore !== null && (
+                  <div className="flex shrink-0 flex-col items-center gap-2">
+                    <ScoreRing score={scan.healthScore} size={96} />
+                    {scan.previousHealthScore !== null && scan.healthScore !== scan.previousHealthScore && (
+                      <span className={cn(
+                        "rounded-[6px] px-2 py-0.5 text-xs font-bold tabular-nums",
+                        scan.healthScore > scan.previousHealthScore ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700",
+                      )}>
+                        {scan.healthScore > scan.previousHealthScore ? "+" : ""}{scan.healthScore - scan.previousHealthScore} vs last
                       </span>
                     )}
-                  </p>
-                </div>
-                <span className={cn(
-                  "rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                  llm.projectClassification.confidence === "HIGH"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : llm.projectClassification.confidence === "MEDIUM"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-600"
-                )}>
-                  {llm.projectClassification.confidence} confidence
-                </span>
-              </div>
-              {llm.projectClassification.verticalInsights.length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--brand-700)]">
-                    Vertical-specific recommendations
-                  </p>
-                  <ul className="space-y-1.5">
-                    {llm.projectClassification.verticalInsights.map((insight, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                        <ArrowRightIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-500)]" />
-                        {insight}
-                      </li>
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="mb-4 flex flex-wrap gap-5 border-b border-[var(--border-2)] pb-4">
+                    {[
+                      { count: scan.checks.filter((c) => c.status === "PASS").length,         label: "Passing",      color: "text-emerald-600" },
+                      { count: scan.checks.filter((c) => c.status === "WARN").length,         label: "Warnings",     color: "text-amber-600" },
+                      { count: scan.checks.filter((c) => c.status === "FAIL").length,         label: "Failed",       color: "text-red-600" },
+                      { count: scan.checks.filter((c) => c.status !== "SKIPPED").length,      label: "Total checks", color: "text-[var(--text-1)]" },
+                    ].map(({ count, label, color }) => (
+                      <div key={label} className="flex flex-col gap-0.5">
+                        <span className={cn("widget-stat-sm", color)}>{count}</span>
+                        <span className="widget-data-label">{label}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
+                  {llm?.executiveSummary ? (
+                    <p className="text-sm leading-7 text-[var(--text-2)]">{llm.executiveSummary}</p>
+                  ) : !llm ? (
+                    <AiUnavailable aiError={scan.aiError} />
+                  ) : null}
+                  {llm?.proposalHook && (
+                    <div className="mt-4 rounded-[6px] border border-[var(--brand-300)] bg-[var(--surface-brand-soft)] px-4 py-3">
+                      <p className="widget-data-label mb-1">Discovery call opener</p>
+                      <p className="text-sm italic leading-6 text-[var(--text-1)]">&ldquo;{llm.proposalHook}&rdquo;</p>
+                    </div>
+                  )}
                 </div>
-              )}
-              {llm.projectClassification.signals.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-[var(--brand-500)] border-opacity-20 pt-3">
-                  {llm.projectClassification.signals.map((signal, i) => (
-                    <span key={i} className="rounded-full border border-[var(--brand-500)] border-opacity-30 bg-white px-2 py-0.5 text-xs text-[var(--brand-700)]">
-                      {signal}
-                    </span>
-                  ))}
-                </div>
-              )}
+              </div>
             </div>
-          )}
-
-          <div className="rounded-[10px] border border-[var(--border-2)] p-5">
-            <p className="app-eyebrow mb-2">Executive summary</p>
-            <p className="text-sm leading-7 text-[var(--text-2)]">{llm.executiveSummary}</p>
           </div>
 
-          {llm.strengths.length > 0 && (
-            <div>
-              <p className="app-eyebrow mb-3">Strengths</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {llm.strengths.map((s) => (
-                  <div key={s.title} className="rounded-[10px] border border-emerald-200 bg-emerald-50 p-4">
-                    <p className="text-sm font-medium text-emerald-800">{s.title}</p>
-                    <p className="mt-1 text-sm text-emerald-700">{s.detail}</p>
-                  </div>
-                ))}
+          {/* Row 2: Blockers · Gaps · Quick Wins */}
+          {llm && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+
+              {/* 02 // PRODUCTION BLOCKERS */}
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">02 // PRODUCTION BLOCKERS</span>
+                  {(llm.productionBlockers as ProductionBlocker[])?.filter((b) => b.urgency === "CRITICAL").length > 0 && (
+                    <span className="widget-header-right" style={{ color: "#dc2626" }}>
+                      {(llm.productionBlockers as ProductionBlocker[]).filter((b) => b.urgency === "CRITICAL").length} critical
+                    </span>
+                  )}
+                </div>
+                <div className="widget-body-compact space-y-2.5">
+                  {!llm.productionBlockers || (llm.productionBlockers as ProductionBlocker[]).length === 0 ? (
+                    <div className="flex items-center gap-2 py-1">
+                      <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span className="text-sm text-emerald-700">No blockers found</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
+                        <span className={cn("widget-stat-sm", (llm.productionBlockers as ProductionBlocker[]).some((b) => b.urgency === "CRITICAL") ? "text-red-600" : "text-amber-600")}>
+                          {(llm.productionBlockers as ProductionBlocker[]).length}
+                        </span>
+                        <span className="widget-data-label">Blockers</span>
+                      </div>
+                      {(llm.productionBlockers as ProductionBlocker[]).slice(0, 3).map((blocker, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <XCircleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400")} />
+                          <p className="text-xs leading-5 text-[var(--text-2)]">{blocker.blocker}</p>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 03 // CRITICAL GAPS */}
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">03 // CRITICAL GAPS</span>
+                  {llm.criticalGaps.length > 0 && (
+                    <span className="widget-header-right">{llm.criticalGaps.length} total</span>
+                  )}
+                </div>
+                <div className="widget-body-compact space-y-2.5">
+                  {llm.criticalGaps.length === 0 ? (
+                    <div className="flex items-center gap-2 py-1">
+                      <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span className="text-sm text-emerald-700">No critical gaps</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
+                        <span className="widget-stat-sm text-red-600">
+                          {llm.criticalGaps.filter((g) => g.urgency === "CRITICAL" || g.urgency === "HIGH").length}
+                        </span>
+                        <span className="widget-data-label">High priority</span>
+                      </div>
+                      {llm.criticalGaps.slice(0, 3).map((gap, i) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <ExclamationTriangleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", gap.urgency === "CRITICAL" ? "text-red-500" : gap.urgency === "HIGH" ? "text-orange-500" : "text-amber-500")} />
+                          <p className="text-xs leading-5 text-[var(--text-2)]">{gap.gap}</p>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 04 // QUICK WINS */}
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">04 // QUICK WINS</span>
+                </div>
+                <div className="widget-body-compact space-y-2.5">
+                  {(() => {
+                    const wins = llm.buildOpportunities.filter((o) => o.businessValue === "HIGH" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"));
+                    const list = wins.length > 0 ? wins : llm.buildOpportunities;
+                    if (list.length === 0) return <p className="py-1 text-sm text-[var(--text-3)]">No opportunities identified.</p>;
+                    return (
+                      <>
+                        <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
+                          <span className="widget-stat-sm text-emerald-600">{list.length}</span>
+                          <span className="widget-data-label">{wins.length > 0 ? "High value · low effort" : "Opportunities"}</span>
+                        </div>
+                        {list.slice(0, 3).map((opp, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <LightBulbIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-500)]" />
+                            <p className="text-xs leading-5 text-[var(--text-2)]">{opp.title}</p>
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           )}
 
-          {llm.productionBlockers && llm.productionBlockers.length > 0 && (
-            <div>
-              <p className="app-eyebrow mb-3">Production blockers</p>
-              <div className="divide-y divide-[var(--border-2)] rounded-[14px] border border-red-200 bg-red-50/40">
-                {(llm.productionBlockers as ProductionBlocker[]).map((blocker, i) => (
-                  <div key={i} className="flex items-start gap-3 px-4 py-3.5">
-                    <XCircleIcon className={cn(
-                      "mt-0.5 h-4 w-4 shrink-0",
-                      blocker.urgency === "CRITICAL" ? "text-red-600" : "text-orange-500",
-                    )} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-[var(--text-1)]">{blocker.blocker}</p>
+          {/* 05 // AUTOMATED CHECKS */}
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">05 // AUTOMATED CHECKS</span>
+              <span className="widget-header-right">{scan.checks.filter((c) => c.status !== "SKIPPED").length} checks run</span>
+            </div>
+            <div className="widget-body">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {Array.from(checksByCategory.entries()).map(([category, checks]) => {
+                  const applicable = checks.filter((c) => c.status !== "SKIPPED");
+                  if (!applicable.length) return null;
+                  const score  = categoryScore(checks);
+                  const failed = checks.filter((c) => c.status === "FAIL").length;
+                  const warned = checks.filter((c) => c.status === "WARN").length;
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => { setActiveTab("checks"); toggleCategory(category); }}
+                      className="flex flex-col gap-2 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <ScoreRing score={score} size={38} />
                         <span className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
-                          blocker.urgency === "CRITICAL" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700",
-                        )}>
-                          {blocker.urgency}
-                        </span>
-                        {blocker.recommendedService && (
-                          <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]">
-                            → {blocker.recommendedService}
-                          </span>
+                          "text-base font-bold tabular-nums",
+                          score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600",
+                        )}>{score}%</span>
+                      </div>
+                      <p className="text-xs font-medium leading-4 text-[var(--text-2)]">{category}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {failed > 0 && <span className="rounded-[4px] bg-red-100 px-1 text-[10px] font-semibold text-red-700">{failed}F</span>}
+                        {warned > 0 && <span className="rounded-[4px] bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">{warned}W</span>}
+                        {failed === 0 && warned === 0 && <span className="rounded-[4px] bg-emerald-100 px-1 text-[10px] font-semibold text-emerald-700">All pass</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Row: Tech Stack · Web Vitals */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+            {/* 06 // TECH STACK */}
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">06 // TECH STACK</span>
+                {scan.techStack && scan.techStack.length > 0 && (
+                  <span className="widget-header-right">{scan.techStack.length} detected</span>
+                )}
+              </div>
+              <div className="widget-body-compact">
+                {scan.techStack && scan.techStack.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {scan.techStack.map((t) => (
+                      <span key={t} className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-1 text-sm text-[var(--text-3)]">No tech stack detected. Add a GitHub repo URL for code-level detection.</p>
+                )}
+                {llm?.techStackAnalysis?.assessment && (
+                  <p className="mt-3 border-t border-[var(--border-2)] pt-3 text-xs leading-5 text-[var(--text-3)]">{llm.techStackAnalysis.assessment}</p>
+                )}
+              </div>
+            </div>
+
+            {/* 07 // WEB VITALS */}
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">07 // WEB VITALS</span>
+                {scan.browserInsights && <span className="widget-header-right">Lighthouse · mobile</span>}
+              </div>
+              <div className="widget-body-compact">
+                {scan.browserInsights ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-4 gap-2">
+                      <VitalScore label="Perf"  score={scan.browserInsights.performanceScore} />
+                      <VitalScore label="A11y"  score={scan.browserInsights.accessibilityScore} />
+                      <VitalScore label="SEO"   score={scan.browserInsights.seoScore} />
+                      <VitalScore label="BP"    score={scan.browserInsights.bestPracticesScore} />
+                    </div>
+                    {(scan.browserInsights.lcp !== null || scan.browserInsights.fcp !== null) && (
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {scan.browserInsights.lcp !== null && <VitalMetric label="LCP" value={scan.browserInsights.lcp >= 1000 ? `${(scan.browserInsights.lcp / 1000).toFixed(1)} s` : `${scan.browserInsights.lcp} ms`} status={scan.browserInsights.lcp <= 2500 ? "PASS" : scan.browserInsights.lcp <= 4000 ? "WARN" : "FAIL"} />}
+                        {scan.browserInsights.fcp !== null && <VitalMetric label="FCP" value={scan.browserInsights.fcp >= 1000 ? `${(scan.browserInsights.fcp / 1000).toFixed(1)} s` : `${scan.browserInsights.fcp} ms`} status={scan.browserInsights.fcp <= 1800 ? "PASS" : scan.browserInsights.fcp <= 3000 ? "WARN" : "FAIL"} />}
+                        {scan.browserInsights.tbt !== null && <VitalMetric label="TBT" value={scan.browserInsights.tbt >= 1000 ? `${(scan.browserInsights.tbt / 1000).toFixed(1)} s` : `${scan.browserInsights.tbt} ms`} status={scan.browserInsights.tbt <= 200 ? "PASS" : scan.browserInsights.tbt <= 600 ? "WARN" : "FAIL"} />}
+                        {scan.browserInsights.cls !== null && <VitalMetric label="CLS" value={scan.browserInsights.cls.toFixed(3)} status={scan.browserInsights.cls <= 0.1 ? "PASS" : scan.browserInsights.cls <= 0.25 ? "WARN" : "FAIL"} />}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="py-1 text-sm text-[var(--text-3)]">No web vitals for this scan type. Run a URL scan to capture Lighthouse scores.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 08 // BUILD ROADMAP */}
+          {llm && llm.scalingRoadmap.length > 0 && (
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">08 // BUILD ROADMAP</span>
+                <span className="widget-header-right">{llm.scalingRoadmap.length} phases</span>
+              </div>
+              <div className="widget-body">
+                <div className="flex flex-col gap-4 sm:flex-row">
+                  {llm.scalingRoadmap.map((phase, i) => (
+                    <div key={phase.phase} className="flex flex-1 items-start gap-3 sm:flex-col sm:gap-0">
+                      <div className="flex items-center sm:mb-3 sm:w-full">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-gray-900 text-xs font-bold text-white">
+                          {phase.phase}
+                        </div>
+                        {i < llm.scalingRoadmap.length - 1 && (
+                          <div className="ml-3 hidden h-px flex-1 bg-[var(--border-2)] sm:block" />
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-[var(--text-3)]">{blocker.why}</p>
+                      <div className="min-w-0 flex-1 sm:pr-4">
+                        <p className="text-xs font-semibold text-[var(--text-1)]">{phase.title}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-4)]">{phase.duration}</p>
+                        <ul className="mt-1.5 space-y-0.5">
+                          {phase.goals.slice(0, 2).map((goal, gi) => (
+                            <li key={gi} className="text-[11px] leading-4 text-[var(--text-3)]">· {goal}</li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                    <span className="shrink-0 text-xs font-medium text-[var(--text-4)]">{blocker.category}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
-          {llm.proposalHook && (
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
-              <p className="app-eyebrow mb-2">Discovery call opener</p>
-              <p className="text-sm italic leading-7 text-[var(--text-1)]">&ldquo;{llm.proposalHook}&rdquo;</p>
+          {/* Row: Code Intelligence · Deploy Intelligence */}
+          {(scan.codeInsights || scan.deployInsights) && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+              {/* 09 // CODE INTELLIGENCE */}
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">09 // CODE INTELLIGENCE</span>
+                  {scan.codeInsights && <span className="widget-header-right">GitHub GraphQL</span>}
+                </div>
+                <div className="widget-body-compact">
+                  {scan.codeInsights ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                        <p className="widget-data-label mb-1">Vulnerabilities</p>
+                        {scan.codeInsights.vulnerabilities.length === 0 ? (
+                          <p className="text-sm font-semibold text-emerald-600">None</p>
+                        ) : (
+                          <p className="text-sm font-semibold text-red-600">
+                            {scan.codeInsights.vulnerabilities.filter((v) => v.severity === "CRITICAL").length}C · {scan.codeInsights.vulnerabilities.filter((v) => v.severity === "HIGH").length}H
+                          </p>
+                        )}
+                      </div>
+                      <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                        <p className="widget-data-label mb-1">Branch protection</p>
+                        <p className={cn("text-sm font-semibold", scan.codeInsights.branchProtected ? "text-emerald-600" : "text-red-600")}>
+                          {scan.codeInsights.branchProtected ? (scan.codeInsights.requiresReviews ? "Protected + reviews" : "Protected") : "None"}
+                        </p>
+                      </div>
+                      {scan.codeInsights.commitVelocity !== null && (
+                        <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                          <p className="widget-data-label mb-1">Velocity</p>
+                          <p className="text-sm font-semibold text-[var(--text-1)]">
+                            {scan.codeInsights.commitVelocity} <span className="text-xs font-normal text-[var(--text-3)]">commits/wk</span>
+                          </p>
+                        </div>
+                      )}
+                      {scan.codeInsights.prReviewRate !== null && (
+                        <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                          <p className="widget-data-label mb-1">PR reviews</p>
+                          <p className={cn("text-sm font-semibold", scan.codeInsights.prReviewRate >= 0.7 ? "text-emerald-600" : scan.codeInsights.prReviewRate >= 0.3 ? "text-amber-600" : "text-red-600")}>
+                            {Math.round(scan.codeInsights.prReviewRate * 100)}%
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-[6px] border border-dashed border-[var(--border-2)] p-4 text-center">
+                      <p className="text-xs font-medium text-[var(--text-3)]">No GitHub repo provided</p>
+                      <p className="mt-0.5 text-xs text-[var(--text-4)]">Add a repo URL for code-level insights</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 10 // DEPLOY INTELLIGENCE */}
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">10 // DEPLOY INTELLIGENCE</span>
+                  {scan.deployInsights?.platform && (
+                    <span className="widget-header-right capitalize">{scan.deployInsights.platform}</span>
+                  )}
+                </div>
+                <div className="widget-body-compact">
+                  {scan.deployInsights && (scan.deployInsights.platform || scan.deployInsights.recentDeployments !== null) ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {scan.deployInsights.recentDeployments !== null && scan.deployInsights.failedDeployments !== null && (() => {
+                        const rate = (scan.deployInsights.recentDeployments! - scan.deployInsights.failedDeployments!) / scan.deployInsights.recentDeployments!;
+                        return (
+                          <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                            <p className="widget-data-label mb-1">Success rate</p>
+                            <p className={cn("text-sm font-semibold", rate >= 0.9 ? "text-emerald-600" : rate >= 0.7 ? "text-amber-600" : "text-red-600")}>
+                              {scan.deployInsights.recentDeployments! - scan.deployInsights.failedDeployments!}/{scan.deployInsights.recentDeployments}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                      {scan.deployInsights.avgBuildMs !== null && (
+                        <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                          <p className="widget-data-label mb-1">Avg build</p>
+                          <p className={cn("text-sm font-semibold",
+                            scan.deployInsights.avgBuildMs < 60_000 ? "text-emerald-600"
+                            : scan.deployInsights.avgBuildMs < 180_000 ? "text-amber-600"
+                            : "text-red-600",
+                          )}>
+                            {Math.round(scan.deployInsights.avgBuildMs / 1000)}s
+                          </p>
+                        </div>
+                      )}
+                      {scan.deployInsights.buildWarnings.length > 0 && (
+                        <div className="col-span-2 rounded-[6px] bg-amber-50 p-2.5">
+                          <p className="widget-data-label mb-1" style={{ color: "#92400e" }}>Build warnings</p>
+                          <p className="text-sm font-semibold text-amber-700">{scan.deployInsights.buildWarnings.length}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-[6px] border border-dashed border-[var(--border-2)] p-4 text-center">
+                      <p className="text-xs font-medium text-[var(--text-3)]">No deploy data available</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
+
+          {/* 11 // DISCOVERY KIT */}
+          {scan.discoveryKit && (
+            <div className="widget-card">
+              <button
+                type="button"
+                className="widget-header w-full text-left"
+                onClick={() => setDiscoveryExpanded((v) => !v)}
+              >
+                <span className="widget-header-label">11 // DISCOVERY KIT</span>
+                <span className="widget-header-right flex items-center gap-1.5">
+                  {scan.discoveryKit.questions.length} questions · £{scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£{scan.discoveryKit.pricingAnchor.high.toLocaleString()}
+                  <ChevronDownIcon className={cn("h-3 w-3 transition-transform", discoveryExpanded && "rotate-180")} />
+                </span>
+              </button>
+              {discoveryExpanded ? (
+                <div className="widget-body">
+                  <DiscoveryTab kit={scan.discoveryKit} />
+                </div>
+              ) : (
+                <div className="widget-body-compact">
+                  <p className="text-sm italic leading-6 text-[var(--text-1)]">&ldquo;{scan.discoveryKit.openingStatement}&rdquo;</p>
+                  <p className="mt-2 text-xs text-[var(--text-4)]">Expand to see questions, objections, and pricing anchor</p>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
 
