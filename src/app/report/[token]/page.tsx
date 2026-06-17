@@ -234,7 +234,7 @@ function CategorySummary({ checks }: { checks: PulseScanRecord["checks"] }) {
           <div key={domain.label}>
             <div className="mb-2 flex items-center justify-between gap-3">
               <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-                {idx} // {domain.label}
+                {`${idx} // ${domain.label}`}
               </span>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">

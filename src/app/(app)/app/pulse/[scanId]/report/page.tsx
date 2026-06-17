@@ -326,9 +326,8 @@ export default async function PulseReportPage({
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
                         <span style={{ fontFamily: "'JetBrains Mono','SF Mono',Menlo,Consolas,monospace", fontSize: 10, fontWeight: 500, letterSpacing: "1.2px", textTransform: "uppercase" as const, color: "#94a3b8", flexShrink: 0 }}>
-                          {domainIdx} //
+                          {`${domainIdx} // ${domain.label}`}
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{domain.label}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                         <div className="rp-score-bar" style={{ width: 72 }}>
