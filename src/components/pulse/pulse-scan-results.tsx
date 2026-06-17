@@ -1426,11 +1426,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header-label">01 // PROJECT HEALTH</span>
-              {llm?.projectClassification && (
-                <span className="widget-header-right max-w-[40%] truncate" title={`${llm.projectClassification.type}${llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}`}>
-                  {llm.projectClassification.type}{llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}
-                </span>
-              )}
             </div>
             <div className="widget-body">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -1461,6 +1456,18 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       </div>
                     ))}
                   </div>
+                  {llm?.projectClassification && (
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      <span className="inline-flex items-center rounded-[6px] bg-[var(--surface-brand-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-600)]">
+                        {llm.projectClassification.type}
+                      </span>
+                      {llm.projectClassification.subtype && (
+                        <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
+                          {llm.projectClassification.subtype}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {llm?.executiveSummary ? (
                     <p className="text-sm leading-7 text-[var(--text-2)]">{llm.executiveSummary}</p>
                   ) : !llm ? (
@@ -1593,25 +1600,31 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   const score  = categoryScore(checks);
                   const failed = checks.filter((c) => c.status === "FAIL").length;
                   const warned = checks.filter((c) => c.status === "WARN").length;
+                  const scoreColor = score >= 80 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+                  const scoreTextColor = score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600";
                   return (
                     <button
                       key={category}
                       type="button"
                       onClick={() => { setActiveTab("checks"); toggleCategory(category); }}
-                      className="flex flex-col gap-2 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
+                      className="flex flex-col gap-3 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <ScoreRing score={score} size={38} />
-                        <span className={cn(
-                          "text-base font-bold tabular-nums",
-                          score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600",
-                        )}>{score}%</span>
+                      <div className="flex items-end justify-between gap-1">
+                        <span className={cn("font-serif text-3xl font-bold leading-none tabular-nums", scoreTextColor)}>{score}</span>
+                        <span className="widget-data-label mb-0.5">/100</span>
                       </div>
-                      <p className="text-xs font-medium leading-4 text-[var(--text-2)]">{category}</p>
-                      <div className="flex flex-wrap gap-1">
-                        {failed > 0 && <span className="rounded-[4px] bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">{failed} failing</span>}
-                        {warned > 0 && <span className="rounded-[4px] bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">{warned} warn</span>}
-                        {failed === 0 && warned === 0 && <span className="rounded-[4px] bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">All passing</span>}
+                      <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
+                        <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: scoreColor }} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold leading-4 text-[var(--text-1)]">{category}</p>
+                        <p className="mt-0.5 text-[10px] leading-4 text-[var(--text-3)]">
+                          {failed > 0
+                            ? <span className="text-red-600">{failed} failing{warned > 0 ? ` · ${warned} warn` : ""}</span>
+                            : warned > 0
+                              ? <span className="text-amber-600">{warned} warnings</span>
+                              : <span className="text-emerald-600">All passing</span>}
+                        </p>
                       </div>
                     </button>
                   );
