@@ -98,6 +98,30 @@ function FilterOption<T extends string>({
   );
 }
 
+function MiniSparkline({ scores }: { scores: number[] }) {
+  if (scores.length < 2) return null;
+  const W = 48;
+  const H = 18;
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+  const range = max - min || 1;
+  const points = scores
+    .map((s, i) => {
+      const x = (i / (scores.length - 1)) * (W - 2) + 1;
+      const y = H - ((s - min) / range) * (H - 4) - 2;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const last = scores[scores.length - 1];
+  const first = scores[0];
+  const color = last > first ? "#10b981" : last < first ? "#ef4444" : "#94a3b8";
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" className="shrink-0">
+      <polyline points={points} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function FiltersDropdown({
   statusFilter,
   healthFilter,
@@ -304,10 +328,12 @@ function ScanRow({
   scan,
   selected,
   onToggle,
+  trend,
 }: {
   scan: PulseScanListItem;
   selected: boolean;
   onToggle: () => void;
+  trend?: { delta: number | null; sparkline: number[] };
 }) {
   const inputLabel =
     scan.inputType === "URL"
@@ -349,6 +375,19 @@ function ScanRow({
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
         </p>
+        {trend && (trend.sparkline.length >= 2 || trend.delta !== null) && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <MiniSparkline scores={trend.sparkline} />
+            {trend.delta !== null && (
+              <span className={cn(
+                "rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                trend.delta > 0 ? "bg-emerald-50 text-emerald-700" : trend.delta < 0 ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-500",
+              )}>
+                {trend.delta > 0 ? `+${trend.delta}` : trend.delta}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-1.5 flex items-center gap-2 sm:hidden">
           <HealthPill score={scan.healthScore} />
           <PulseScanStatusBadge status={scan.status} />
@@ -411,6 +450,33 @@ export function PulseScanListView() {
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
   const allScans = useMemo<PulseScanListItem[]>(() => data?.scans ?? [], [data?.scans]);
+
+  const scanTrends = useMemo<Map<string, { delta: number | null; sparkline: number[] }>>(() => {
+    const projectMap = new Map<string, PulseScanListItem[]>();
+    for (const s of allScans) {
+      const key = (s.inputUrl ?? s.inputGithubRepo ?? s.projectName).toLowerCase().trim();
+      const list = projectMap.get(key) ?? [];
+      list.push(s);
+      projectMap.set(key, list);
+    }
+    const trends = new Map<string, { delta: number | null; sparkline: number[] }>();
+    for (const [, scansForProject] of projectMap) {
+      const completed = [...scansForProject]
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .filter((s) => s.status === "COMPLETED" && s.healthScore !== null);
+      for (let i = 0; i < completed.length; i++) {
+        const curr = completed[i];
+        const prev = i > 0 ? completed[i - 1] : null;
+        const delta =
+          prev && curr.healthScore !== null && prev.healthScore !== null
+            ? curr.healthScore - prev.healthScore
+            : null;
+        const sparkline = completed.slice(Math.max(0, i - 4), i + 1).map((s) => s.healthScore as number);
+        trends.set(curr.id, { delta, sparkline });
+      }
+    }
+    return trends;
+  }, [allScans]);
 
   const filtered = useMemo(() => {
     let list = allScans;
@@ -702,6 +768,7 @@ export function PulseScanListView() {
                 scan={scan}
                 selected={selected.has(scan.id)}
                 onToggle={() => toggleOne(scan.id)}
+                trend={scanTrends.get(scan.id)}
               />
             ))}
           </div>

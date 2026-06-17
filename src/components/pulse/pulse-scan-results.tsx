@@ -906,6 +906,109 @@ function AiUnavailable({ aiError }: { aiError: string | null }) {
   );
 }
 
+// ── Wave 2A: Priority Action Plan ────────────────────────────────────────────
+
+type PriorityActionItem = {
+  type: "blocker" | "gap" | "opp";
+  title: string;
+  tab: Tab;
+  urgency?: "CRITICAL" | "HIGH" | "MEDIUM";
+  effort?: "S" | "M" | "L" | "XL";
+};
+
+function PriorityActionPlan({
+  llm,
+  onTabChange,
+}: {
+  llm: NonNullable<PulseScanRecord["llmAnalysis"]>;
+  onTabChange: (tab: Tab) => void;
+}) {
+  const blockers = (llm.productionBlockers as ProductionBlocker[]) ?? [];
+
+  const fixNow: PriorityActionItem[] = [
+    ...blockers
+      .filter((b) => b.urgency === "CRITICAL")
+      .map((b): PriorityActionItem => ({ type: "blocker", title: b.blocker, tab: "readiness", urgency: "CRITICAL" })),
+    ...llm.criticalGaps
+      .filter((g) => g.urgency === "CRITICAL")
+      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "CRITICAL" })),
+  ];
+
+  const thisSprint: PriorityActionItem[] = [
+    ...blockers
+      .filter((b) => b.urgency === "HIGH")
+      .map((b): PriorityActionItem => ({ type: "blocker", title: b.blocker, tab: "readiness", urgency: "HIGH" })),
+    ...llm.criticalGaps
+      .filter((g) => g.urgency === "HIGH")
+      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "HIGH" })),
+    ...llm.buildOpportunities
+      .filter((o) => o.businessValue === "HIGH" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"))
+      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
+  ];
+
+  const nextSprint: PriorityActionItem[] = [
+    ...llm.criticalGaps
+      .filter((g) => g.urgency === "MEDIUM")
+      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "MEDIUM" })),
+    ...llm.buildOpportunities
+      .filter((o) => o.businessValue === "HIGH" && o.estimatedEffort !== "S" && o.estimatedEffort !== "M")
+      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
+    ...llm.buildOpportunities
+      .filter((o) => o.businessValue === "MEDIUM" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"))
+      .slice(0, 3)
+      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
+  ];
+
+  const totalActions = fixNow.length + thisSprint.length + nextSprint.length;
+  if (totalActions === 0) return null;
+
+  const tiers = [
+    { key: "fix-now",     label: "Fix now",     items: fixNow.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
+    { key: "this-sprint", label: "This sprint", items: thisSprint.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
+    { key: "next-sprint", label: "Next sprint", items: nextSprint.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
+  ].filter(({ items }) => items.length > 0);
+
+  return (
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">{"12 // PRIORITY ACTION PLAN"}</span>
+        <span className="widget-header-right">{totalActions} action{totalActions !== 1 ? "s" : ""}</span>
+      </div>
+      <div className="widget-body">
+        <div className="grid gap-5 sm:grid-cols-3">
+          {tiers.map(({ key, label, items, dotColor, borderCls, textCls, tagCls }) => (
+            <div key={key}>
+              <p className="widget-data-label mb-2.5">{label} · {items.length}</p>
+              <div className="space-y-1.5">
+                {items.map((item, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onTabChange(item.tab)}
+                    className={cn("flex w-full items-start gap-2.5 rounded-[8px] border px-3 py-2.5 text-left transition", borderCls)}
+                  >
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
+                    <p className={cn("flex-1 text-xs leading-5", textCls)}>{item.title}</p>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {item.type === "blocker" && (
+                        <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", tagCls)}>
+                          BLOCKER
+                        </span>
+                      )}
+                      {item.effort && <PulseEffortBadge effort={item.effort} />}
+                      {item.urgency && item.type === "gap" && <PulseUrgencyBadge urgency={item.urgency} />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { canRunFixAgent } = usePermissions();
@@ -928,6 +1031,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [reanalyseError, setReanalyseError] = useState<string | null>(null);
   const [showReanalyseInput, setShowReanalyseInput] = useState(false);
   const [discoveryExpanded, setDiscoveryExpanded] = useState(false);
+  const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "PASS">("ALL");
+  const [checksSortBySeverity, setChecksSortBySeverity] = useState(false);
 
   // Keep local share state in sync when the scan is re-fetched externally
   useEffect(() => {
@@ -1039,10 +1144,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
   const missingCount = (llm?.productionBlockers?.length ?? 0) + (llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0);
 
-  const tabs: Array<{ id: Tab; label: string; count?: number }> = [
+  const tabs: Array<{ id: Tab; label: string; count?: number; badgeColor?: "red" }> = [
     { id: "overview", label: "Overview" },
     { id: "readiness", label: "Readiness", count: missingCount },
-    { id: "checks", label: "Health Checks", count: scan.checks.filter((c) => c.status !== "SKIPPED").length },
+    { id: "checks", label: "Health Checks", count: scan.checks.filter((c) => c.status === "FAIL").length, badgeColor: "red" as const },
     { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
@@ -1204,7 +1309,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             >
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
-                <span className="rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[var(--text-3)]">
+                <span className={cn(
+                  "rounded-full px-1.5 py-0.5 text-xs",
+                  tab.badgeColor === "red" ? "bg-red-100 text-red-700" : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                )}>
                   {tab.count}
                 </span>
               )}
@@ -1687,7 +1795,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 className="widget-header w-full text-left"
                 onClick={() => setDiscoveryExpanded((v) => !v)}
               >
-                <span className="widget-header-label">11 // DISCOVERY KIT</span>
+                <span className="widget-header-label">{"11 // DISCOVERY KIT"}</span>
                 <span className="widget-header-right flex items-center gap-1.5">
                   {scan.discoveryKit.questions.length} questions · £{scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£{scan.discoveryKit.pricingAnchor.high.toLocaleString()}
                   <ChevronDownIcon className={cn("h-3 w-3 transition-transform", discoveryExpanded && "rotate-180")} />
@@ -1706,72 +1814,138 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
+          {/* 12 // PRIORITY ACTION PLAN */}
+          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} />}
+
         </div>
       )}
 
-      {activeTab === "checks" && (
-        <div className="space-y-2">
-          {Array.from(checksByCategory.entries()).map(([category, checks]) => {
-            const applicable = checks.filter((c) => c.status !== "SKIPPED");
-            if (!applicable.length) return null;
-            const score = categoryScore(checks);
-            const failed = checks.filter((c) => c.status === "FAIL").length;
-            const warned = checks.filter((c) => c.status === "WARN").length;
-            const passed = checks.filter((c) => c.status === "PASS").length;
-            const isExpanded = expandedCategories.has(category);
-            const hasIssues = failed > 0 || warned > 0;
+      {activeTab === "checks" && (() => {
+        const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
+        const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
+        const passCount = scan.checks.filter((c) => c.status === "PASS").length;
 
-            return (
-              <div key={category} className="rounded-[10px] border border-[var(--border-2)] overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface-1)] transition-colors"
-                >
-                  <span className="text-[var(--text-4)]">
-                    {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
-                  </span>
-                  <span className="flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
-                  <div className="flex items-center gap-2">
-                    {failed > 0 && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{failed} failed</span>
+        let entries = Array.from(checksByCategory.entries());
+        if (checkStatusFilter !== "ALL") {
+          entries = entries.filter(([, checks]) => checks.some((c) => c.status === checkStatusFilter));
+        }
+        if (checksSortBySeverity) {
+          entries = [...entries].sort(([, a], [, b]) => {
+            const aFail = a.filter((c) => c.status === "FAIL").length;
+            const bFail = b.filter((c) => c.status === "FAIL").length;
+            if (aFail !== bFail) return bFail - aFail;
+            return b.filter((c) => c.status === "WARN").length - a.filter((c) => c.status === "WARN").length;
+          });
+        }
+
+        return (
+          <div className="space-y-3">
+            {/* Filter chips + sort toggle */}
+            <div className="flex flex-wrap items-center gap-2">
+              {(["ALL", "FAIL", "WARN", "PASS"] as const).map((f) => {
+                const count = f === "ALL" ? scan.checks.filter((c) => c.status !== "SKIPPED").length : f === "FAIL" ? failCount : f === "WARN" ? warnCount : passCount;
+                const isActive = checkStatusFilter === f;
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setCheckStatusFilter(f)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition",
+                      isActive && f === "FAIL" ? "border-red-300 bg-red-100 text-red-700"
+                      : isActive && f === "WARN" ? "border-amber-300 bg-amber-100 text-amber-700"
+                      : isActive && f === "PASS" ? "border-emerald-300 bg-emerald-100 text-emerald-700"
+                      : isActive ? "border-[var(--brand-300)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+                      : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                     )}
-                    {warned > 0 && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{warned} warn</span>
-                    )}
-                    {!hasIssues && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{passed} passed</span>
-                    )}
-                    <span className={cn(
-                      "text-xs font-semibold tabular-nums",
-                      score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600",
-                    )}>
-                      {score}%
-                    </span>
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="divide-y divide-[var(--border-2)] border-t border-[var(--border-2)]">
-                    {checks.filter((c) => c.status !== "SKIPPED").map((check) => (
-                      <div key={check.id} className="flex items-start gap-3 bg-[var(--surface-1)] px-4 py-3">
-                        <span className="mt-0.5 text-base">
-                          <PulseCheckStatusIcon status={check.status} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
-                          {check.detail && (
-                            <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  >
+                    {f === "ALL" ? "All" : f === "FAIL" ? "Failing" : f === "WARN" ? "Warnings" : "Passing"} ({count})
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setChecksSortBySeverity((v) => !v)}
+                className={cn(
+                  "ml-auto rounded-[6px] border px-3 py-1 text-xs font-medium transition",
+                  checksSortBySeverity
+                    ? "border-gray-700 bg-gray-900 text-white"
+                    : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                 )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              >
+                {checksSortBySeverity ? "Severity ↓" : "Sort: Category"}
+              </button>
+            </div>
+
+            {/* Category list */}
+            <div className="space-y-2">
+              {entries.map(([category, checks]) => {
+                const applicable = checks.filter((c) => c.status !== "SKIPPED");
+                if (!applicable.length) return null;
+                const score = categoryScore(checks);
+                const failed = checks.filter((c) => c.status === "FAIL").length;
+                const warned = checks.filter((c) => c.status === "WARN").length;
+                const passed = checks.filter((c) => c.status === "PASS").length;
+                const hasIssues = failed > 0 || warned > 0;
+                const isExpanded = expandedCategories.has(category) || checkStatusFilter !== "ALL";
+                const visibleChecks = applicable.filter((c) => checkStatusFilter === "ALL" || c.status === checkStatusFilter);
+
+                return (
+                  <div key={category} className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(category)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--surface-1)]"
+                    >
+                      <span className="text-[var(--text-4)]">
+                        {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+                      </span>
+                      <span className="flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
+                      <div className="flex items-center gap-2">
+                        {failed > 0 && (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{failed} failed</span>
+                        )}
+                        {warned > 0 && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{warned} warn</span>
+                        )}
+                        {!hasIssues && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{passed} passed</span>
+                        )}
+                        <span className={cn(
+                          "text-xs font-semibold tabular-nums",
+                          score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600",
+                        )}>
+                          {score}%
+                        </span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="divide-y divide-[var(--border-2)] border-t border-[var(--border-2)]">
+                        {visibleChecks.map((check) => (
+                          <div key={check.id} className={cn(
+                            "flex items-start gap-3 px-4 py-3",
+                            check.status === "FAIL" ? "bg-red-50" : "bg-[var(--surface-1)]",
+                          )}>
+                            <span className="mt-0.5 text-base">
+                              <PulseCheckStatusIcon status={check.status} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
+                              {check.detail && (
+                                <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {activeTab === "gaps" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
