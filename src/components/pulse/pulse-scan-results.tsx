@@ -26,6 +26,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
+import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   ScoreRing,
   PulseCheckStatusIcon,
@@ -1456,14 +1457,31 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       </div>
                     ))}
                   </div>
-                  {llm?.projectClassification && (
+                  {(llm?.projectClassification || llm?.aiMaturityScore != null) && (
                     <div className="mb-3 flex flex-wrap gap-1.5">
-                      <span className="inline-flex items-center rounded-[6px] bg-[var(--surface-brand-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-600)]">
-                        {llm.projectClassification.type}
-                      </span>
-                      {llm.projectClassification.subtype && (
+                      {llm?.projectClassification && (
+                        <span className="inline-flex items-center rounded-[6px] bg-[var(--surface-brand-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--brand-600)]">
+                          {llm.projectClassification.type}
+                        </span>
+                      )}
+                      {llm?.projectClassification?.subtype && (
                         <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)]">
                           {llm.projectClassification.subtype}
+                        </span>
+                      )}
+                      {llm?.aiMaturityScore != null && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-[6px] px-2.5 py-1 text-xs font-semibold",
+                            llm.aiMaturityScore >= 3
+                              ? "bg-emerald-50 text-emerald-700"
+                              : llm.aiMaturityScore >= 2
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-red-50 text-red-600",
+                          )}
+                          title="AI Maturity Score — how production-ready this AI-powered product is"
+                        >
+                          AI L{llm.aiMaturityScore} — {AI_MATURITY_LABELS[llm.aiMaturityScore]}
                         </span>
                       )}
                     </div>

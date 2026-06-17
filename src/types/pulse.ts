@@ -124,7 +124,10 @@ export interface PulseAnalysisOutput {
   productionBlockers: ProductionBlocker[];
   productionReadinessChecklist: ProductionReadinessItem[];
   techStackAnalysis: PulseTechStackAnalysis;
+  aiMaturityScore?: number; // 0–4: Prototype / Functional / Production / Robust / Mature
 }
+
+export const AI_MATURITY_LABELS: readonly string[] = ["Prototype", "Functional", "Production", "Robust", "Mature"];
 
 export interface PulseScanRecord {
   id: string;

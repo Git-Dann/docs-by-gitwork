@@ -608,6 +608,23 @@ export async function runAnalysis(
 
     const healthScore = calculateHealthScore(allChecks);
 
+    // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
+    // Only set when AI Readiness checks actually ran (not all SKIPPED).
+    const aiReadinessChecks = allChecks.filter(
+      (c) => c.category === "AI Readiness" && c.status !== "SKIPPED",
+    );
+    const aiMaturityScore: number | null =
+      aiReadinessChecks.length > 0
+        ? (() => {
+            const passes = aiReadinessChecks.filter((c) => c.status === "PASS").length;
+            if (passes <= 2) return 0;
+            if (passes <= 4) return 1;
+            if (passes <= 6) return 2;
+            if (passes <= 8) return 3;
+            return 4;
+          })()
+        : null;
+
     // Mark the deterministic phase done. status stays RUNNING — the UI now shows
     // the full checks view + a "checks complete, AI analysis running" state,
     // instead of waiting for the LLM. Browser/PSI checks are already persisted.
@@ -772,7 +789,9 @@ export async function runAnalysis(
       data: {
         status: "COMPLETED",
         completedAt: new Date(),
-        llmAnalysis: llmAnalysis ? (llmAnalysis as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        llmAnalysis: llmAnalysis
+          ? ({ ...llmAnalysis, ...(aiMaturityScore !== null ? { aiMaturityScore } : {}) } as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         agentData: { codeInsights, deployInsights, browserInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,

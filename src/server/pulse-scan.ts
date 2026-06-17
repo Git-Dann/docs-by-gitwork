@@ -3497,11 +3497,122 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         if (deps["@anthropic-ai/sdk"]) techStack.push("Anthropic Claude");
         if (deps["openai"]) techStack.push("OpenAI");
         if (deps["tailwindcss"]) techStack.push("Tailwind CSS");
+
+        // AI Readiness checks (GitHub / package.json source)
+        const isAiProject = !!(
+          deps["@anthropic-ai/sdk"] ||
+          deps["openai"] ||
+          deps["@google/generative-ai"] ||
+          deps["@mistralai/mistralai"] ||
+          deps["ai"] ||
+          deps["@ai-sdk/core"] ||
+          deps["@ai-sdk/openai"] ||
+          deps["langchain"] ||
+          deps["@langchain/core"] ||
+          deps["llama-index"] ||
+          deps["llamaindex"]
+        );
+
+        if (isAiProject) {
+          const hasAiMonitoring = !!(
+            deps["@helicone/helicone"] ||
+            deps["langsmith"] ||
+            deps["langfuse"] ||
+            deps["portkey-ai"] ||
+            deps["braintrust"] ||
+            deps["traceloop-sdk"] ||
+            deps["@arizeai/openinference-core"]
+          );
+          checks.push({
+            category: "AI Readiness",
+            checkKey: "ai_has_monitoring_dep",
+            label: "AI observability / LLM tracing dependency",
+            status: hasAiMonitoring ? "PASS" : "WARN",
+            detail: hasAiMonitoring
+              ? "AI observability library detected — LLM calls are traced and costs monitored."
+              : "No AI observability library (Helicone, LangSmith, Langfuse) found. Without tracing, debugging model failures and cost spikes is very difficult.",
+          });
+
+          const hasValidation = !!(
+            deps["zod"] ||
+            deps["yup"] ||
+            deps["joi"] ||
+            deps["valibot"] ||
+            deps["@sinclair/typebox"]
+          );
+          checks.push({
+            category: "AI Readiness",
+            checkKey: "ai_has_validation_dep",
+            label: "Output validation library for AI responses",
+            status: hasValidation ? "PASS" : "WARN",
+            detail: hasValidation
+              ? "Schema validation library detected — AI outputs can be validated before use."
+              : "No schema validation library found. Raw AI outputs without validation will cause runtime errors when the model returns unexpected formats.",
+          });
+
+          const hasRetry = !!(
+            deps["p-retry"] ||
+            deps["axios-retry"] ||
+            deps["exponential-backoff"] ||
+            deps["async-retry"] ||
+            deps["retry"] ||
+            deps["cockatiel"]
+          );
+          checks.push({
+            category: "AI Readiness",
+            checkKey: "ai_has_retry_dep",
+            label: "Retry / resilience library for AI API calls",
+            status: hasRetry ? "PASS" : "WARN",
+            detail: hasRetry
+              ? "Retry / resilience library detected — AI API rate-limit errors are handled gracefully."
+              : "No retry library detected. AI API calls without retry logic will surface 429 rate-limit errors directly to users.",
+          });
+
+          const hasEvals = !!(
+            deps["promptfoo"] ||
+            deps["deepeval"] ||
+            deps["evalite"] ||
+            deps["braintrust"] ||
+            deps["vitest"] && (deps["@anthropic-ai/sdk"] || deps["openai"])
+          );
+          checks.push({
+            category: "AI Readiness",
+            checkKey: "ai_has_evals",
+            label: "AI evaluation / testing framework",
+            status: hasEvals ? "PASS" : "WARN",
+            detail: hasEvals
+              ? "AI evaluation framework detected — model outputs are tested for quality and regressions."
+              : "No AI evaluation framework found. Without evals, model version upgrades can cause silent quality regressions.",
+          });
+        }
       } catch {
         // Ignore parse errors
       }
     }
   }
+
+  // Vibe Code Hygiene checks (GitHub root tree source)
+  const envCommitted = names.includes(".env") || names.includes(".env.production") || names.includes(".env.local");
+  checks.push({
+    category: "Vibe Code Hygiene",
+    checkKey: "vibe_env_not_committed",
+    label: ".env file not committed to repo",
+    status: envCommitted ? "FAIL" : "PASS",
+    detail: envCommitted
+      ? "CRITICAL: .env file found in repo root — API keys and secrets are exposed in version control. Rotate all secrets immediately."
+      : "No .env file found in repo root.",
+  });
+
+  const nodeModulesCommitted = names.includes("node_modules");
+  checks.push({
+    category: "Vibe Code Hygiene",
+    checkKey: "vibe_node_modules_not_committed",
+    label: "node_modules/ not committed to repo",
+    status: nodeModulesCommitted ? "FAIL" : "PASS",
+    detail: nodeModulesCommitted
+      ? "node_modules/ directory is committed to the repo — this is auto-generated code that must never be in version control."
+      : "node_modules/ is not committed.",
+  });
 
   if (hasTs) techStack.push("TypeScript");
 
@@ -3993,6 +4104,33 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["API Quality", "api_sla_documented", "API SLA / uptime guarantee"],
     ["API Quality", "graphql_depth_limiting", "GraphQL depth / complexity limiting"],
     ["API Quality", "openapi_spec_served", "OpenAPI 3.x spec at /openapi.json"],
+    // AI Readiness (URL-based)
+    ["AI Readiness", "ai_feedback_ui", "User feedback loop on AI outputs"],
+    ["AI Readiness", "ai_error_fallback_ui", "AI error / fallback state in UI"],
+    ["AI Readiness", "ai_streaming_ui", "Streaming AI response pattern"],
+    ["AI Readiness", "ai_cost_monitoring_script", "AI cost / usage monitoring tool"],
+    ["AI Readiness", "ai_content_safety_signal", "Content moderation / safety layer"],
+    ["AI Readiness", "ai_human_review_signal", "Human-in-the-loop review signal"],
+    ["AI Readiness", "ai_rate_limit_ui", "Rate limit / quota UI signal"],
+    ["AI Readiness", "ai_ai_act_disclosure", "EU AI Act transparency disclosure"],
+    ["AI Readiness", "ai_provider_detected", "AI provider detected on page"],
+    // AI Readiness (GitHub-based)
+    ["AI Readiness", "ai_has_monitoring_dep", "AI observability / LLM tracing dependency"],
+    ["AI Readiness", "ai_has_validation_dep", "Output validation library for AI responses"],
+    ["AI Readiness", "ai_has_retry_dep", "Retry / resilience library for AI API calls"],
+    ["AI Readiness", "ai_has_evals", "AI evaluation / testing framework"],
+    // Vibe Code Hygiene (URL-based)
+    ["Vibe Code Hygiene", "vibe_placeholder_content", "No placeholder / filler content in production"],
+    ["Vibe Code Hygiene", "vibe_placeholder_images", "No placeholder / stock filler images"],
+    ["Vibe Code Hygiene", "vibe_debug_mode", "No debug or development mode signals"],
+    ["Vibe Code Hygiene", "vibe_default_title", "Meaningful page title (not a framework default)"],
+    ["Vibe Code Hygiene", "vibe_ai_comment_markers", "No AI-generated comment markers in page source"],
+    ["Vibe Code Hygiene", "vibe_hardcoded_creds_html", "No hardcoded test credentials in page HTML"],
+    ["Vibe Code Hygiene", "vibe_no_custom_404", "Custom 404 page for missing routes"],
+    ["Vibe Code Hygiene", "vibe_empty_alt_images", "Images have descriptive alt text"],
+    // Vibe Code Hygiene (GitHub-based)
+    ["Vibe Code Hygiene", "vibe_env_not_committed", ".env file not committed to repo"],
+    ["Vibe Code Hygiene", "vibe_node_modules_not_committed", "node_modules/ not committed to repo"],
   ] as const;
 
   return skippedChecks.map(([category, checkKey, label], i) => ({
