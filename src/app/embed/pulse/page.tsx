@@ -344,7 +344,7 @@ export default function EmbedPulsePage() {
                       : `${issues} thing${issues === 1 ? "" : "s"} to improve before you launch.`}
                   </p>
                   <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
-                    Drop your email to unlock the full breakdown — exactly what's broken, why it matters, and how to fix it.
+                    Drop your email to unlock the full breakdown — exactly what&apos;s broken, why it matters, and how to fix it.
                   </p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input
