@@ -1427,7 +1427,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             <div className="widget-header">
               <span className="widget-header-label">01 // PROJECT HEALTH</span>
               {llm?.projectClassification && (
-                <span className="widget-header-right">
+                <span className="widget-header-right max-w-[40%] truncate" title={`${llm.projectClassification.type}${llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}`}>
                   {llm.projectClassification.type}{llm.projectClassification.subtype ? ` · ${llm.projectClassification.subtype}` : ""}
                 </span>
               )}
@@ -1609,9 +1609,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       </div>
                       <p className="text-xs font-medium leading-4 text-[var(--text-2)]">{category}</p>
                       <div className="flex flex-wrap gap-1">
-                        {failed > 0 && <span className="rounded-[4px] bg-red-100 px-1 text-[10px] font-semibold text-red-700">{failed}F</span>}
-                        {warned > 0 && <span className="rounded-[4px] bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">{warned}W</span>}
-                        {failed === 0 && warned === 0 && <span className="rounded-[4px] bg-emerald-100 px-1 text-[10px] font-semibold text-emerald-700">All pass</span>}
+                        {failed > 0 && <span className="rounded-[4px] bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">{failed} failing</span>}
+                        {warned > 0 && <span className="rounded-[4px] bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">{warned} warn</span>}
+                        {failed === 0 && warned === 0 && <span className="rounded-[4px] bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">All passing</span>}
                       </div>
                     </button>
                   );
