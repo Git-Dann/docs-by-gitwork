@@ -77,6 +77,7 @@ export default function EmbedPulsePage() {
 
   const [email, setEmail] = useState("");
   const [unlocking, setUnlocking] = useState(false);
+  const [displayScore, setDisplayScore] = useState<number | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -121,6 +122,26 @@ export default function EmbedPulsePage() {
     poll();
     return () => { active = false; clearTimeout(timer); };
   }, [scanId]);
+
+  // Animate score count-up when it first arrives.
+  useEffect(() => {
+    if (view?.healthScore == null) { setDisplayScore(null); return; }
+    const target = view.healthScore;
+    if (displayScore === target) return;
+    if (displayScore === null) {
+      let current = 0;
+      const step = Math.ceil(target / 30);
+      const tick = () => {
+        current = Math.min(current + step, target);
+        setDisplayScore(current);
+        if (current < target) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    } else {
+      setDisplayScore(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view?.healthScore]);
 
   const startScan = useCallback(async () => {
     if (!url.trim() || starting) return;
@@ -253,7 +274,7 @@ export default function EmbedPulsePage() {
             <>
               {/* Score + stat strip */}
               <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
-                <ScoreRing score={view.healthScore} />
+                <ScoreRing score={displayScore} />
                 <div style={{ flex: "1 1 200px" }}>
                   <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 8px", wordBreak: "break-all" }}>
                     {view.targetUrl}
@@ -285,15 +306,28 @@ export default function EmbedPulsePage() {
                   {view.categories.map((cat) => {
                     const total = cat.pass + cat.warn + cat.fail;
                     const s = total > 0 ? Math.round(((cat.pass + cat.warn * 0.5) / total) * 100) : 100;
+                    const barColor = s >= 75 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
                     const bg = s >= 75 ? "#f0fdf4" : s >= 50 ? "#fffbeb" : "#fef2f2";
                     const bd = s >= 75 ? "#bbf7d0" : s >= 50 ? "#fde68a" : "#fecaca";
                     return (
                       <div key={cat.category} style={{ border: `1px solid ${bd}`, background: bg, borderRadius: 10, padding: "8px 10px" }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 }}>{cat.category}</div>
-                        <div style={{ display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
-                          {cat.pass > 0 && <span style={{ color: "#16a34a" }}>{cat.pass}P</span>}
-                          {cat.warn > 0 && <span style={{ color: "#d97706" }}>{cat.warn}W</span>}
-                          {cat.fail > 0 && <span style={{ color: "#dc2626" }}>{cat.fail}F</span>}
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{cat.category}</div>
+                        <div style={{ background: "#e5e7eb", borderRadius: 4, height: 4, marginBottom: 6, overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            borderRadius: 4,
+                            background: barColor,
+                            width: `${s}%`,
+                            transition: "width 600ms ease",
+                          }} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, fontSize: 11, fontWeight: 700 }}>
+                            {cat.pass > 0 && <span style={{ color: "#16a34a" }}>{cat.pass}P</span>}
+                            {cat.warn > 0 && <span style={{ color: "#d97706" }}>{cat.warn}W</span>}
+                            {cat.fail > 0 && <span style={{ color: "#dc2626" }}>{cat.fail}F</span>}
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: barColor }}>{s}%</span>
                         </div>
                       </div>
                     );
@@ -305,10 +339,12 @@ export default function EmbedPulsePage() {
               {done && !view.emailCaptured && (
                 <div style={{ marginTop: 22, border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
                   <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
-                    We found {issues} thing{issues === 1 ? "" : "s"} worth fixing.
+                    {view.fail > 0
+                      ? `${view.fail} check${view.fail === 1 ? "" : "s"} failing — here's what to fix.`
+                      : `${issues} thing${issues === 1 ? "" : "s"} to improve before you launch.`}
                   </p>
                   <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
-                    Enter your email to unlock the full breakdown — exactly what failed and why.
+                    Drop your email to unlock the full breakdown — exactly what's broken, why it matters, and how to fix it.
                   </p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input
@@ -344,11 +380,13 @@ export default function EmbedPulsePage() {
               {/* Unlocked findings */}
               {done && view.emailCaptured && findings.length > 0 && (
                 <div style={{ marginTop: 22 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px" }}>What to fix ({findings.length})</p>
+                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px" }}>
+                    {`What to fix (${findings.length})`}
+                  </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {findings.map((f) => (
-                      <div key={f.checkKey} style={{ display: "flex", gap: 10, padding: "10px 12px", border: "1px solid #f3f4f6", borderRadius: 10 }}>
-                        <span style={{ color: f.status === "FAIL" ? "#dc2626" : "#d97706", fontWeight: 800 }}>
+                    {findings.slice(0, 5).map((f) => (
+                      <div key={f.checkKey} style={{ display: "flex", gap: 10, padding: "10px 12px", border: `1px solid ${f.status === "FAIL" ? "#fecaca" : "#fde68a"}`, borderRadius: 10, background: f.status === "FAIL" ? "#fef2f2" : "#fffbeb" }}>
+                        <span style={{ color: f.status === "FAIL" ? "#dc2626" : "#d97706", fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
                           {f.status === "FAIL" ? "✕" : "!"}
                         </span>
                         <div style={{ minWidth: 0 }}>
@@ -357,26 +395,33 @@ export default function EmbedPulsePage() {
                         </div>
                       </div>
                     ))}
+                    {findings.length > 5 && (
+                      <p style={{ fontSize: 12, color: "#6b7280", textAlign: "center", margin: 0 }}>
+                        +{findings.length - 5} more issues — talk to Gitwork to get them all fixed.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* CTA */}
               {done && (
-                <div style={{ marginTop: 22, textAlign: "center", background: "#111827", borderRadius: 12, padding: 18 }}>
+                <div style={{ marginTop: 22, textAlign: "center", background: "#111827", borderRadius: 12, padding: 20 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
-                    Want these fixed — properly?
+                    {view.fail > 0
+                      ? `${view.fail} failing check${view.fail === 1 ? "" : "s"}. We can fix them.`
+                      : "Ready to take this further?"}
                   </p>
-                  <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 12px" }}>
-                    Gitwork takes products from prototype to production.
+                  <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
+                    Gitwork builds and ships products — from fast fixes to full-stack delivery.
                   </p>
                   <a
                     href="https://gitwork.co.uk"
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 20px", borderRadius: 10, textDecoration: "none" }}
+                    style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}
                   >
-                    Talk to Gitwork
+                    Talk to Gitwork →
                   </a>
                 </div>
               )}

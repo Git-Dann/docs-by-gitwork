@@ -21,7 +21,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
@@ -1018,6 +1018,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: runFix, isPending: fixing } = useRunFixAgent();
   const { mutateAsync: addMonitor, isPending: creatingMonitor } = useCreateMonitor();
   const { mutateAsync: reanalyse, isPending: reanalysing } = useReanalysePulseScan();
+  const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
+  const [proposalGenError, setProposalGenError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -1141,6 +1143,16 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     router.push(`/app/pulse/${result.scan.id}`);
   }
 
+  async function handleGenerateProposal() {
+    setProposalGenError(null);
+    try {
+      const result = await generateProposal(scan.id);
+      router.push(`/app/docs/${result.proposalId}`);
+    } catch (err) {
+      setProposalGenError(err instanceof Error ? err.message : "Failed to generate proposal.");
+    }
+  }
+
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
   const missingCount = (llm?.productionBlockers?.length ?? 0) + (llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0);
 
@@ -1232,6 +1244,25 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 Report
               </Button>
             </Link>
+            {scan.status === "COMPLETED" && llm && (
+              scan.generatedProposalId ? (
+                <Link href={`/app/docs/${scan.generatedProposalId}`}>
+                  <Button variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
+                    View proposal
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleGenerateProposal}
+                  loading={generatingProposal}
+                  leadingIcon={<DocumentTextIcon className="h-4 w-4" />}
+                >
+                  Generate proposal
+                </Button>
+              )
+            )}
             {scan.status === "COMPLETED" && (
               isShared ? (
                 <Button
@@ -1272,6 +1303,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
           {shareError && (
             <p className="text-[11px] text-red-600">{shareError}</p>
+          )}
+          {proposalGenError && (
+            <p className="text-[11px] text-red-600">{proposalGenError}</p>
           )}
         </div>
       </div>
