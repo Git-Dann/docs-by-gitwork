@@ -274,7 +274,7 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
           "rounded-[6px] p-1.5 transition",
           open
             ? "bg-red-100 text-red-600"
-            : "text-[var(--text-4)] hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100",
+            : "text-[var(--text-4)] hover:bg-red-50 hover:text-red-500",
         )}
         title="Delete scan"
       >
@@ -418,7 +418,7 @@ function ScanRow({
       <div className="flex items-center justify-end gap-1.5">
         <Link
           href={`/app/pulse/${scan.id}`}
-          className="hidden sm:inline-flex items-center gap-1 rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--text-3)] opacity-0 transition-all group-hover:opacity-100 hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)] hover:text-[var(--brand-600)]"
+          className="hidden sm:inline-flex items-center gap-1 rounded-full border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--text-3)] transition-all hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)] hover:text-[var(--brand-600)]"
         >
           View <ArrowRightIcon className="h-3 w-3" />
         </Link>
