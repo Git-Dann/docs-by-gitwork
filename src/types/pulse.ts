@@ -154,6 +154,7 @@ export interface PulseScanRecord {
   codeInsights: CodeAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
   browserInsights: BrowserAgentInsights | null;
+  visualInsights: VisualAgentInsights | null;
   aiError: string | null;
   competitorUrls: string[] | null;
   competitorData: CompetitorData | null;
@@ -235,6 +236,16 @@ export interface BrowserAgentInsights {
   fcp: number | null;   // ms
   tbt: number | null;   // ms
   cruxCategory: string | null;
+}
+
+// Wave D1 — Visual Quality (vision-AI scan of the above-the-fold screenshot)
+export interface VisualAgentInsights {
+  visualQualityScore: number | null;  // 0–100 overall design polish
+  valuePropClarity: number | null;    // 0–100
+  ctaProminence: number | null;       // 0–100
+  trustSignals: number | null;        // 0–100
+  mobileFriendly: boolean | null;
+  visualNarrative: string | null;     // 1–2 sentence biggest win + biggest gap
 }
 
 // ── Competitor benchmarking ───────────────────────────────────────────────────

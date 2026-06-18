@@ -2131,6 +2131,54 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
+          {/* 15 // VISUAL QUALITY — Wave D1: vision-AI score of the above-the-fold screenshot */}
+          {scan.visualInsights && scan.visualInsights.visualQualityScore !== null && (() => {
+            const v = scan.visualInsights!;
+            const tone = (n: number | null) => n === null ? "text-[var(--text-3)]" : n >= 75 ? "text-emerald-600" : n >= 50 ? "text-amber-600" : "text-red-600";
+            const sub: Array<[string, number | null]> = [
+              ["Value prop", v.valuePropClarity],
+              ["CTA", v.ctaProminence],
+              ["Trust", v.trustSignals],
+            ];
+            return (
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">{"15 // VISUAL QUALITY"}</span>
+                  <span className="widget-header-right">AI vision · above the fold</span>
+                </div>
+                <div className="widget-body">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="widget-data-label mb-1">Visual polish</p>
+                      <p className={cn("font-serif text-4xl font-bold leading-none tabular-nums", tone(v.visualQualityScore))}>
+                        {v.visualQualityScore}<span className="text-lg text-[var(--text-4)]">/100</span>
+                      </p>
+                    </div>
+                    {v.mobileFriendly !== null && (
+                      <span className={cn(
+                        "inline-flex items-center rounded-[6px] px-2.5 py-1 text-xs font-semibold",
+                        v.mobileFriendly ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600",
+                      )}>
+                        {v.mobileFriendly ? "Mobile-ready" : "Mobile issues"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {sub.map(([label, n]) => (
+                      <div key={label} className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                        <p className="widget-data-label mb-1">{label}</p>
+                        <p className={cn("text-sm font-semibold tabular-nums", tone(n))}>{n ?? "—"}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {v.visualNarrative && (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-2)]">{v.visualNarrative}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
         </div>
       )}
 

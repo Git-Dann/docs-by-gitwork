@@ -29,10 +29,12 @@ import type {
   CodeAgentInsights,
   DeployAgentInsights,
   BrowserAgentInsights,
+  VisualAgentInsights,
   CompetitorData,
   CompetitorScanSummary,
   IndustryBenchmark,
 } from "@/types/pulse";
+import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 
 export const pulseInclude = {
   client: {
@@ -77,6 +79,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
     browserInsights: ((record.agentData as { browserInsights?: BrowserAgentInsights | null } | null)?.browserInsights) ?? null,
+    visualInsights: ((record.agentData as { visualInsights?: VisualAgentInsights | null } | null)?.visualInsights) ?? null,
     aiError: ((record.agentData as { aiError?: string | null } | null)?.aiError) ?? null,
     competitorUrls: asJson<string[] | null>(record.competitorUrls, null),
     competitorData: asJson<CompetitorData | null>(record.competitorData, null),
@@ -639,6 +642,7 @@ export async function runAnalysis(
     let codeInsights: CodeAgentInsights | null = null;
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
+    let visualInsights: VisualAgentInsights | null = null;
 
     if (input.inputType === "FREE_TEXT") {
       allChecks = skipAllChecks("FREE_TEXT");
@@ -693,6 +697,14 @@ export async function runAnalysis(
         agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Wave D1 — Visual Quality scan (best-effort). Kick off now so its screenshot +
+    // vision call run concurrently with the AI synthesis below; awaited before the
+    // final persist. URL scans only; gated to the Anthropic provider inside the agent.
+    const visualPromise: Promise<VisualAgentInsights | null> =
+      input.inputType === "URL" && input.inputUrl
+        ? runVisualAgent(input.inputUrl, aiConfig).catch(() => null)
+        : Promise.resolve(null);
 
     // ─── ANALYSING phase ──────────────────────────────────────────────────────
     // Competitor scans (deterministic) run in parallel with AI synthesis below.
@@ -833,6 +845,9 @@ export async function runAnalysis(
         ? { scans: competitorScans, comparison: competitorComparison }
         : null;
 
+    // Visual scan resolves alongside the AI synthesis — collect it (best-effort).
+    visualInsights = await visualPromise;
+
     // Phase 2: persist AI analysis and mark COMPLETED. Deterministic checks +
     // browser/PSI checks were already persisted incrementally in the CHECKS phase.
     const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
@@ -848,7 +863,7 @@ export async function runAnalysis(
           : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights, browserInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
 
