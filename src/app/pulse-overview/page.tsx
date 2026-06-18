@@ -254,20 +254,20 @@ export default function PulseOverviewPage() {
         </div>
       </section>
 
-      {/* 150+ checks */}
+      {/* 450+ checks */}
       <section style={{ padding: "80px 24px", background: "white" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 56, alignItems: "center" }}>
             <div style={{ flex: "1 1 340px" }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>Automated checks</p>
               <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 16px" }}>
-                150+ checks.<br />10 categories.<br />Under 30 seconds.
+                450+ checks.<br />22 categories.<br />Built for AI products.
               </h2>
               <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.8, margin: "0 0 24px" }}>
-                Pulse doesn&apos;t run generic checks. It detects the project type first — SaaS, mobile app, marketing site, API — then runs only the checks that matter. No noise, no irrelevant warnings.
+                Pulse doesn&apos;t run generic checks. It detects the project type first — AI app, SaaS, mobile app, marketing site, API — then runs only the checks that matter. Purpose-built for 2026: it knows what an LLM product needs in production, and what AI code generators leave behind.
               </p>
               <div style={{ display: "flex", gap: 16 }}>
-                {[["150+", "automated checks"], ["10", "check categories"], ["&lt;30s", "scan time"]].map(([n, label]) => (
+                {[["450+", "automated checks"], ["22", "check categories"], ["&lt;30s", "scan time"]].map(([n, label]) => (
                   <div key={label}>
                     <div style={{ fontSize: 28, fontWeight: 900, color: "#4f46e5" }} dangerouslySetInnerHTML={{ __html: n }} />
                     <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{label}</div>
@@ -277,16 +277,16 @@ export default function PulseOverviewPage() {
             </div>
             <div style={{ flex: "1 1 420px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {[
-                ["Infrastructure", "8", "SSL, CDN, response time, custom domain, robots.txt"],
-                ["Security", "5", "CSP, HSTS, clickjacking, exposed .env and .git"],
-                ["SEO", "7", "Title, meta, OG tags, canonical, structured data"],
-                ["Authentication", "6", "Login UI, OAuth, MFA, email verification, SSO"],
-                ["Payments", "5", "Stripe signals, webhook, pricing page, trust badges"],
-                ["Observability", "7", "Error monitoring, analytics, uptime, APM, RUM"],
-                ["Performance", "3", "Compression, caching, image optimisation"],
-                ["App Store", "11", "Listing, screenshots, privacy label, ratings, IAP"],
-                ["SaaS Readiness", "6", "Demo booking, free trial, API, affiliate, trust page"],
-                ["Code Quality", "9", "Tests, CI/CD, TypeScript, linter, .env.example"],
+                ["AI Readiness", "13", "Cost monitoring, content safety, rate limits, streaming, EU AI Act, evals"],
+                ["Vibe Code Hygiene", "10", "Placeholder content, debug mode, default titles, AI markers, test creds"],
+                ["Secrets & Keys", "3", "Exposed API keys, committed .env, prompt-injection vectors"],
+                ["Security", "30", "CSP, HSTS, DNSSEC, CAA, exposed endpoints, secret scanning"],
+                ["Legal & Compliance", "45", "GDPR, CCPA, LGPD, AI Act, DPA, cookie consent"],
+                ["Performance", "23", "Core Web Vitals, WebP/AVIF, HTTP/3, lazy loading, critical CSS"],
+                ["Authentication", "15", "MFA, passkeys, breach detection, SSO, token hygiene"],
+                ["Accessibility (WCAG)", "20", "Labels, contrast, ARIA, captions, reduced-motion"],
+                ["API Quality", "15", "Versioning, RFC 7807, rate limits, OpenAPI, sandbox"],
+                ["Code Intelligence", "10", "Vulnerabilities, branch protection, PR reviews, commit velocity"],
               ].map(([cat, count, desc]) => (
                 <div key={cat} style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
@@ -315,7 +315,7 @@ export default function PulseOverviewPage() {
                 Switch AI providers in Settings. No code changes needed.
               </p>
               <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>
-                If no key is configured, Pulse still runs all 150+ automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
+                If no key is configured, Pulse still runs all 450+ automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
               </p>
             </div>
             <div style={{ flex: "1 1 480px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

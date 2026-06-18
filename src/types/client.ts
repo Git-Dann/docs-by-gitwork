@@ -46,6 +46,10 @@ export interface ClientListItem extends ClientRecord {
   retainerDays?: number | null;
   /** Retainer days used this month (manual). Present only when the viewer may see financials. */
   retainerDaysUsed?: number | null;
+  /** Latest completed Pulse scan health score (0–100), if this client has a linked scan. */
+  pulseHealthScore?: number | null;
+  /** Id of that latest Pulse scan (deep-link target). */
+  pulseScanId?: string | null;
 }
 
 export interface ClientBankSummary {
@@ -119,31 +123,11 @@ export interface ClientPlatformRecord {
   url: string | null;
   stagingUrl: string | null;
   repoUrl: string | null;
-  /** Legacy single-credential flags (pre-logins). True when a platform still has creds on the
-   *  platform row that haven't been migrated into `logins` yet. */
-  hasUsername: boolean;
-  hasPassword: boolean;
-  /** Credential sets ("logins"). Plaintext is never sent — only label + whether each field is
-   *  set; fetch the values on demand via the per-login reveal endpoint. */
-  logins: ClientPlatformLoginSummary[];
+  credentials: string | null;
   notes: string | null;
   previewImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-/** A login on a platform, sans plaintext (list/summary shape). */
-export interface ClientPlatformLoginSummary {
-  id: string;
-  label: string | null;
-  hasUsername: boolean;
-  hasPassword: boolean;
-}
-
-/** Decrypted platform credentials — returned only by the reveal endpoint, never the list. */
-export interface ClientPlatformReveal {
-  username: string | null;
-  password: string | null;
 }
 
 export interface ClientDesignRecord {

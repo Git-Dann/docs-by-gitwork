@@ -35,6 +35,36 @@ export async function computeClientDevCounts(
   return new Map([...byClient].map(([id, set]) => [id, set.size]));
 }
 
+export interface ClientPulseHealth {
+  scanId: string;
+  healthScore: number | null;
+  scannedAt: string | null;
+}
+
+/** Latest COMPLETED Pulse scan per client — batched, keyed by clientId. Powers the
+ *  small health dot on Portal client cards. Always safe to show (not financial). */
+export async function computeClientPulseHealth(
+  workspaceId: string,
+  clientIds: string[],
+): Promise<Map<string, ClientPulseHealth>> {
+  if (clientIds.length === 0) return new Map();
+  const scans = await prisma.pulseScan.findMany({
+    where: { workspaceId, clientId: { in: clientIds }, status: "COMPLETED" },
+    select: { id: true, clientId: true, healthScore: true, completedAt: true },
+    orderBy: { completedAt: "desc" },
+  });
+  const byClient = new Map<string, ClientPulseHealth>();
+  for (const s of scans) {
+    if (!s.clientId || byClient.has(s.clientId)) continue; // first = latest (desc order)
+    byClient.set(s.clientId, {
+      scanId: s.id,
+      healthScore: s.healthScore,
+      scannedAt: s.completedAt ? s.completedAt.toISOString() : null,
+    });
+  }
+  return byClient;
+}
+
 export interface ClientFinancials {
   monthlyCost: ClientMonthlyCost | null;
   /** Business days since the Gantt timeline started, or null when the client has no
