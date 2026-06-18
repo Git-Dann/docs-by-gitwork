@@ -143,6 +143,20 @@ const pulseDetailOutputSchema = z.object({
       }),
     )
     .catch([]),
+  engagementEstimate: z
+    .object({
+      summary: z.string().catch(""),
+      weeksLow: z.number().catch(0),
+      weeksHigh: z.number().catch(0),
+      priceLow: z.number().catch(0),
+      priceHigh: z.number().catch(0),
+      confidence: z.enum(["LOW", "MEDIUM", "HIGH"]).catch("LOW"),
+      phases: z
+        .array(z.object({ name: z.string().catch(""), weeks: z.number().catch(0), outcome: z.string().catch("") }))
+        .catch([]),
+    })
+    .nullable()
+    .catch(null),
 });
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
@@ -459,6 +473,7 @@ const PULSE_DETAIL_TOOL = {
       productionReadinessChecklist: { type: "array" as const },
       techStackAnalysis: { type: "object" as const },
       competitorSuggestions: { type: "array" as const },
+      engagementEstimate: { type: "object" as const },
     },
     required: ["criticalGaps", "buildOpportunities", "scalingRoadmap", "techDebt", "productionBlockers", "productionReadinessChecklist", "techStackAnalysis"],
   },
@@ -645,10 +660,23 @@ Return ONLY these 7 fields:
       "name": "string or null — the competitor's product/company name if you can name it, else null",
       "reason": "string — one specific sentence on why they're a relevant benchmark for THIS product (shared vertical / target user / feature overlap)"
     }
-  ]
+  ],
+  "engagementEstimate": {
+    "summary": "string — one sentence: what it would take for Gitwork to get THIS product from its current state to production-ready",
+    "weeksLow": "number — low end of the elapsed-time estimate in weeks",
+    "weeksHigh": "number — high end in weeks",
+    "priceLow": "number — INDICATIVE low end in GBP (£), whole number",
+    "priceHigh": "number — INDICATIVE high end in GBP",
+    "confidence": "LOW | MEDIUM | HIGH — how confident given what the scan can see",
+    "phases": [
+      { "name": "string — phase name e.g. 'Harden & secure', 'Auth & billing', 'Launch'", "weeks": "number", "outcome": "string — what's true at the end of this phase" }
+    ]
+  }
 }
 
 For competitorSuggestions: based on the project classification and detected stack, suggest 2–3 well-known, real direct competitors in the SAME vertical that the client should benchmark against. Use only real companies you are confident exist, with plausible https URLs (their main marketing domain). If the vertical is too niche or unclear to name real competitors confidently, return an empty array rather than guessing. Never invent URLs.
+
+For engagementEstimate: size the Gitwork engagement to take THIS product from its CURRENT state (as evidenced by the production blockers, critical gaps, and missing infrastructure above) to production-ready. Base it on the real work implied by the findings — more blockers/gaps = more weeks. Break it into 2–4 sequential phases with concrete outcomes. weeks are elapsed calendar weeks for a small senior team. priceLow/priceHigh are INDICATIVE GBP ranges for a UK digital agency (Gitwork) — a typical "vibe-coded prototype → production" engagement lands roughly £8k–£60k depending on scope; a near-complete product needing only hardening is at the low end, a prototype needing auth/billing/infra/security from scratch is at the high end. Set confidence to LOW when the scan can't see the codebase (URL-only) or the product is login-gated. Keep it realistic and defensible — this seeds a proposal a human will refine, not a binding quote.
 
 For productionBlockers: list 3–8 items that are genuine launch blockers for THIS platform type. Be ruthlessly specific — name the exact consequence of going live without each item. Always include a recommendedService from the Gitwork vendor list where one applies. Do NOT list nice-to-haves here — only things where launching without them will cause a broken user experience, legal liability, or security incident. Skip categories that are irrelevant to the declared platform.
 

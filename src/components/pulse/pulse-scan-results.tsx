@@ -2179,6 +2179,54 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             );
           })()}
 
+          {/* 16 // ENGAGEMENT ESTIMATE — F3: indicative effort/cost/timeline to production */}
+          {llm?.engagementEstimate && (llm.engagementEstimate.weeksHigh > 0 || llm.engagementEstimate.priceHigh > 0) && (() => {
+            const e = llm.engagementEstimate!;
+            const gbp = (n: number) => `£${Math.round(n).toLocaleString("en-GB")}`;
+            const weeks = e.weeksLow && e.weeksHigh && e.weeksLow !== e.weeksHigh ? `${e.weeksLow}–${e.weeksHigh}` : `${e.weeksHigh || e.weeksLow}`;
+            return (
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">{"16 // ENGAGEMENT ESTIMATE"}</span>
+                  <span className="widget-header-right">{e.confidence} confidence · indicative</span>
+                </div>
+                <div className="widget-body">
+                  {e.summary && <p className="mb-4 text-sm leading-6 text-[var(--text-2)]">{e.summary}</p>}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[8px] bg-[var(--surface-1)] p-3">
+                      <p className="widget-data-label mb-1">Timeline</p>
+                      <p className="font-serif text-3xl font-bold leading-none tabular-nums text-[var(--text-1)]">
+                        {weeks}<span className="text-base font-normal text-[var(--text-3)]"> wks</span>
+                      </p>
+                    </div>
+                    <div className="rounded-[8px] bg-[var(--surface-1)] p-3">
+                      <p className="widget-data-label mb-1">Indicative cost</p>
+                      <p className="font-serif text-3xl font-bold leading-none tabular-nums text-[var(--text-1)]">
+                        {e.priceHigh > 0 ? `${gbp(e.priceLow)}–${gbp(e.priceHigh)}` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {e.phases.length > 0 && (
+                    <div className="mt-4 space-y-1.5">
+                      {e.phases.map((p, i) => (
+                        <div key={i} className="flex items-start gap-2.5 rounded-[8px] border border-[var(--border-2)] px-3 py-2">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand-soft)] text-[10px] font-bold text-[var(--brand-600)]">{i + 1}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-[var(--text-1)]">{p.name}{p.weeks > 0 ? ` · ${p.weeks} wk${p.weeks !== 1 ? "s" : ""}` : ""}</p>
+                            {p.outcome && <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-3)]">{p.outcome}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-3 text-[11px] leading-4 text-[var(--text-4)]">
+                    Indicative only — generate a proposal to refine scope, rates and a fixed quote.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
         </div>
       )}
 

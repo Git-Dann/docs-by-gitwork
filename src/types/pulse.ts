@@ -126,6 +126,23 @@ export interface PulseAnalysisOutput {
   techStackAnalysis: PulseTechStackAnalysis;
   aiMaturityScore?: number; // 0–4: Prototype / Functional / Production / Robust / Mature
   competitorSuggestions?: { url: string; name: string | null; reason: string }[]; // AI-suggested benchmarks (Wave D3)
+  engagementEstimate?: EngagementEstimate | null; // F3 — effort/cost/timeline to production
+}
+
+// F3 — indicative effort/cost/timeline to take the product to production (seeds a proposal)
+export interface EngagementPhase {
+  name: string;
+  weeks: number;
+  outcome: string;
+}
+export interface EngagementEstimate {
+  summary: string;
+  weeksLow: number;
+  weeksHigh: number;
+  priceLow: number;   // indicative GBP
+  priceHigh: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  phases: EngagementPhase[];
 }
 
 export const AI_MATURITY_LABELS: readonly string[] = ["Prototype", "Functional", "Production", "Robust", "Mature"];
