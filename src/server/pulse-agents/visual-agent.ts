@@ -44,8 +44,15 @@ function clampScore(n: unknown): number | null {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-async function captureScreenshot(url: string): Promise<string | null> {
+interface CaptureResult {
+  base64: string | null;
+  a11yViolations: number | null;
+  a11ySerious: number | null;
+}
+
+async function captureScreenshot(url: string): Promise<CaptureResult> {
   let browser: import("puppeteer-core").Browser | null = null;
+  const out: CaptureResult = { base64: null, a11yViolations: null, a11ySerious: null };
   try {
     const chromium = (await import("@sparticuz/chromium")).default;
     const puppeteer = await import("puppeteer-core");
@@ -60,9 +67,25 @@ async function captureScreenshot(url: string): Promise<string | null> {
     // viewport (above-the-fold) screenshot — the first impression, and keeps the
     // image small for the vision call.
     const buf = await page.screenshot({ type: "png" });
-    return Buffer.from(buf).toString("base64");
+    out.base64 = Buffer.from(buf).toString("base64");
+
+    // Real axe-core accessibility pass in the same session (F4). Best-effort — a
+    // failure here never blocks the screenshot/vision result.
+    try {
+      await page.addScriptTag({ url: "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js" });
+      const result = (await page.evaluate(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        () => (window as any).axe?.run?.(document, { resultTypes: ["violations"] }),
+      )) as { violations?: { impact?: string }[] } | undefined;
+      if (result?.violations) {
+        out.a11yViolations = result.violations.length;
+        out.a11ySerious = result.violations.filter((v) => v.impact === "serious" || v.impact === "critical").length;
+      }
+    } catch { /* axe best-effort */ }
+
+    return out;
   } catch {
-    return null;
+    return out;
   } finally {
     await browser?.close().catch(() => {});
   }
@@ -100,17 +123,19 @@ export async function runVisualAgent(url: string, aiConfig: AiConfig): Promise<V
   if (aiConfig.provider !== "ANTHROPIC" || !aiConfig.apiKey) return null;
 
   const run = (async (): Promise<VisualAgentInsights | null> => {
-    const shot = await captureScreenshot(url);
-    if (!shot) return null;
-    const r = await analyseScreenshot(shot, aiConfig);
-    if (!r) return null;
+    const cap = await captureScreenshot(url);
+    const r = cap.base64 ? await analyseScreenshot(cap.base64, aiConfig) : null;
+    // Return insights if we got EITHER vision scores OR an axe a11y result.
+    if (!r && cap.a11yViolations === null) return null;
     return {
-      visualQualityScore: clampScore(r.visualQuality),
-      valuePropClarity: clampScore(r.valuePropClarity),
-      ctaProminence: clampScore(r.ctaProminence),
-      trustSignals: clampScore(r.trustSignals),
-      mobileFriendly: typeof r.mobileFriendly === "boolean" ? r.mobileFriendly : null,
-      visualNarrative: typeof r.narrative === "string" && r.narrative.trim() ? r.narrative.trim() : null,
+      visualQualityScore: r ? clampScore(r.visualQuality) : null,
+      valuePropClarity: r ? clampScore(r.valuePropClarity) : null,
+      ctaProminence: r ? clampScore(r.ctaProminence) : null,
+      trustSignals: r ? clampScore(r.trustSignals) : null,
+      mobileFriendly: r && typeof r.mobileFriendly === "boolean" ? r.mobileFriendly : null,
+      visualNarrative: r && typeof r.narrative === "string" && r.narrative.trim() ? r.narrative.trim() : null,
+      a11yViolations: cap.a11yViolations,
+      a11ySerious: cap.a11ySerious,
     };
   })();
 

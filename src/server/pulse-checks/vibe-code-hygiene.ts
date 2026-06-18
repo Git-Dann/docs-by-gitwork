@@ -30,7 +30,7 @@ const PROTOTYPE_HOSTS = ["Lovable", "Bolt (StackBlitz)", "v0 (Vercel)", "Replit"
 export async function runVibeCodeHygieneChecks(
   ctx: ExtendedCheckContext,
 ): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, httpsUrl, hostname } = ctx;
+  const { htmlLower, httpsUrl, hostname, pageResult } = ctx;
   const checks: PulseScanCheckInput[] = [];
 
   // 0. Builder origin — detect Lovable / Bolt / v0 / Replit etc. Informational, but a
@@ -237,6 +237,39 @@ export async function runVibeCodeHygieneChecks(
         ? "No images detected on the page."
         : `${totalImgs - emptyAltCount} of ${totalImgs} images have alt text.`,
   });
+
+  // 9. Broken internal links (F4) — sample same-site links from the homepage and HEAD-check them.
+  try {
+    const hrefs = [...pageResult.html.matchAll(/href=["']([^"'#?\s]+)["']/gi)].map((m) => m[1]);
+    const internal = new Set<string>();
+    for (const href of hrefs) {
+      try {
+        const u = new URL(href, httpsUrl);
+        if ((u.protocol === "http:" || u.protocol === "https:") && u.hostname === hostname) {
+          const clean = `${u.origin}${u.pathname}`.replace(/\/$/, "");
+          if (clean && clean !== httpsUrl.replace(/\/$/, "")) internal.add(clean);
+        }
+      } catch { /* skip malformed */ }
+    }
+    const sample = [...internal].slice(0, 12);
+    if (sample.length > 0) {
+      const statuses = await Promise.all(sample.map((u) => headRequest(u)));
+      const broken = sample.filter((_, i) => {
+        const s = statuses[i];
+        return s === 0 || (s >= 400 && ![401, 403, 405, 429].includes(s));
+      });
+      checks.push({
+        category: CATEGORY,
+        checkKey: "vibe_broken_links",
+        label: "Internal links resolve (no broken links)",
+        status: broken.length > 0 ? (broken.length > 2 ? "FAIL" : "WARN") : "PASS",
+        detail: broken.length > 0
+          ? `${broken.length} of ${sample.length} sampled internal links are broken (404/error) — dead links signal unfinished navigation.`
+          : `All ${sample.length} sampled internal links resolve.`,
+        evidence: broken.length > 0 ? broken.slice(0, 5).join(", ") : undefined,
+      });
+    }
+  } catch { /* best-effort — never break the category */ }
 
   return checks;
 }

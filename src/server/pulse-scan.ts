@@ -4121,6 +4121,7 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["AI Readiness", "ai_has_evals", "AI evaluation / testing framework"],
     // Vibe Code Hygiene (URL-based)
     ["Vibe Code Hygiene", "vibe_ai_builder", "Builder / platform origin"],
+    ["Vibe Code Hygiene", "vibe_broken_links", "Internal links resolve (no broken links)"],
     ["Vibe Code Hygiene", "vibe_placeholder_content", "No placeholder / filler content in production"],
     ["Vibe Code Hygiene", "vibe_placeholder_images", "No placeholder / stock filler images"],
     ["Vibe Code Hygiene", "vibe_debug_mode", "No debug or development mode signals"],

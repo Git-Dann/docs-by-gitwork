@@ -278,6 +278,8 @@ export interface VisualAgentInsights {
   trustSignals: number | null;        // 0–100
   mobileFriendly: boolean | null;
   visualNarrative: string | null;     // 1–2 sentence biggest win + biggest gap
+  a11yViolations?: number | null;     // F4 — total axe-core violations
+  a11ySerious?: number | null;        // F4 — serious + critical violations
 }
 
 // ── Competitor benchmarking ───────────────────────────────────────────────────
