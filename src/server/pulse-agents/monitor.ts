@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
+import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
 
 export interface MonitorRecord {
   id: string;
@@ -152,14 +153,41 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
 }
 
 async function sendScoreDropAlert(
-  monitor: { inputGithubRepo: string | null; projectName: string },
+  monitor: { workspaceId: string; inputGithubRepo: string | null; projectName: string },
   prevScore: number,
   newScore: number,
   scanId: string,
 ): Promise<void> {
-  // Create a GitHub Issue if this is a GitHub repo scan
-  if (!monitor.inputGithubRepo) return;
+  const drop = prevScore - newScore;
+  const appUrl = process.env.NEXTAUTH_URL ?? process.env.VERCEL_URL ?? "";
+  const scanUrl = appUrl ? `${appUrl}/app/pulse/${scanId}` : null;
 
+  // 1. Email the team (works for every monitor type — URL or GitHub). Best-effort.
+  try {
+    const recipients = await listBackstageApproverEmails(monitor.workspaceId);
+    if (recipients.length > 0) {
+      const safeName = escapeHtml(monitor.projectName);
+      await sendWorkspaceEmail({
+        workspaceId: monitor.workspaceId,
+        to: recipients,
+        subject: `Pulse alert: ${monitor.projectName} health dropped ${drop} points (${prevScore} → ${newScore})`,
+        html: `
+          <div style="font-family:system-ui,sans-serif;max-width:520px">
+            <h2 style="margin:0 0 8px">⚠️ Pulse score drop detected</h2>
+            <p style="margin:0 0 4px"><strong>Project:</strong> ${safeName}</p>
+            <p style="margin:0 0 12px"><strong>Health score:</strong> ${prevScore} → ${newScore} (down ${drop} points)</p>
+            <p style="margin:0 0 16px">Continuous monitoring flagged a regression. Review the latest scan to find what changed before it reaches users.</p>
+            ${scanUrl ? `<p style="margin:0"><a href="${scanUrl}" style="background:#4f46e5;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none">View full report →</a></p>` : ""}
+          </div>`,
+        text: `Pulse alert: ${monitor.projectName} health dropped ${drop} points (${prevScore} → ${newScore}).${scanUrl ? ` View: ${scanUrl}` : ""}`,
+      });
+    }
+  } catch {
+    // email is best-effort — never block the GitHub-issue path or the scan
+  }
+
+  // 2. Open a GitHub Issue for repo monitors (unchanged behaviour).
+  if (!monitor.inputGithubRepo) return;
   const token = process.env.GITHUB_TOKEN?.trim();
   if (!token) return;
 
@@ -168,13 +196,10 @@ async function sendScoreDropAlert(
     : [null, null];
   if (!owner || !repo) return;
 
-  const appUrl = process.env.NEXTAUTH_URL ?? process.env.VERCEL_URL ?? "";
-  const scanUrl = appUrl ? `${appUrl}/app/pulse/${scanId}` : null;
-
   const body = `## ⚠️ Pulse Score Drop Detected
 
 **Project:** ${monitor.projectName}
-**Score changed:** ${prevScore} → ${newScore} (drop of ${prevScore - newScore} points)
+**Score changed:** ${prevScore} → ${newScore} (drop of ${drop} points)
 
 This regression was detected by [Gitwork Pulse](https://gitwork.io) continuous monitoring${scanUrl ? ` — [view full report](${scanUrl})` : ""}.
 
@@ -184,7 +209,7 @@ Review the latest scan to identify what caused this regression and address it be
     method: "POST",
     headers: { ...githubHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({
-      title: `Pulse Alert: Health score dropped ${prevScore - newScore} points (${prevScore} → ${newScore})`,
+      title: `Pulse Alert: Health score dropped ${drop} points (${prevScore} → ${newScore})`,
       body,
       labels: ["pulse-alert"],
     }),
