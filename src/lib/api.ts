@@ -25,7 +25,7 @@ import type {
   OnboardingFormStructure,
   OnboardingFormSummary,
 } from "@/types/onboarding";
-import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanListItem, BrowserAgentInsights, DiscoveryKit, IndustryBenchmark } from "@/types/pulse";
 import type {
   CandidateListParams,
   CandidateListResponse,
@@ -1216,6 +1216,10 @@ export async function createPulseScan(input: {
 
 export async function getPulseScan(scanId: string): Promise<{ scan: PulseScanRecord }> {
   return apiFetch<{ scan: PulseScanRecord }>(`/api/pulse/scans/${scanId}`);
+}
+
+export async function getPulseBenchmarks(scanId: string): Promise<{ benchmarks: IndustryBenchmark | null }> {
+  return apiFetch<{ benchmarks: IndustryBenchmark | null }>(`/api/pulse/scans/${scanId}/benchmarks`);
 }
 
 export async function deletePulseScan(scanId: string): Promise<{ deleted: boolean }> {

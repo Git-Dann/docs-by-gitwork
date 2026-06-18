@@ -183,6 +183,16 @@ export interface PulseScanListItem {
   updatedAt: string;
 }
 
+// ── Industry benchmarks (Wave E3) ─────────────────────────────────────────────
+export interface IndustryBenchmark {
+  projectType: string;   // the classification this scan was benchmarked within
+  peerCount: number;     // other completed scans of the same type in the workspace
+  yourScore: number;     // this scan's health score
+  percentile: number;    // 0–100: % of peers this scan scores at or above
+  median: number;        // median peer health score
+  best: number;          // best peer health score
+}
+
 export interface PulseScanCheckInput {
   category: string;
   checkKey: string;

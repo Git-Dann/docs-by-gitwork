@@ -7,6 +7,7 @@ import {
   listPulseScans,
   createPulseScan,
   getPulseScan,
+  getPulseBenchmarks,
   deletePulseScan,
   cancelPulseScan,
   retryPulseScan,
@@ -60,6 +61,15 @@ export function usePulseScans(params?: { clientId?: string }) {
   return useQuery({
     queryKey: ["pulse-scans", params],
     queryFn: () => listPulseScans(params),
+  });
+}
+
+export function usePulseBenchmarks(scanId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["pulse-benchmarks", scanId],
+    queryFn: () => getPulseBenchmarks(scanId),
+    enabled: enabled && Boolean(scanId),
+    staleTime: 1000 * 60,
   });
 }
 

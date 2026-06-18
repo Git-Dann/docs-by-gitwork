@@ -22,7 +22,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks } from "@/hooks/use-pulse";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
@@ -1084,6 +1084,8 @@ function PriorityActionPlan({
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
   const { canRunFixAgent } = usePermissions();
+  const { data: benchmarkData } = usePulseBenchmarks(scan.id, scan.status === "COMPLETED");
+  const benchmark = benchmarkData?.benchmarks ?? null;
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
@@ -2081,6 +2083,50 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 <Button onClick={handleBenchmarkSuggestions} loading={benchmarking} className="w-full">
                   Benchmark against these →
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 14 // INDUSTRY BENCHMARKS — Wave E3: rank vs same-type scans in this workspace */}
+          {benchmark && (
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">{"14 // INDUSTRY BENCHMARKS"}</span>
+                <span className="widget-header-right">vs {benchmark.peerCount} {benchmark.projectType} scan{benchmark.peerCount !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="widget-body">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <p className="widget-data-label mb-1">Your percentile</p>
+                    <p className={cn(
+                      "font-serif text-4xl font-bold leading-none tabular-nums",
+                      benchmark.percentile >= 75 ? "text-emerald-600" : benchmark.percentile >= 40 ? "text-amber-600" : "text-red-600",
+                    )}>
+                      {benchmark.percentile}<span className="text-lg">th</span>
+                    </p>
+                    <p className="mt-1.5 text-xs text-[var(--text-3)]">
+                      {benchmark.percentile >= 50
+                        ? `Ahead of ${benchmark.percentile}% of ${benchmark.projectType} projects you've scanned`
+                        : `Behind the typical ${benchmark.projectType} project — room to climb`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="widget-data-label mb-1">Score</p>
+                    <p className="text-sm text-[var(--text-2)] tabular-nums">
+                      you <span className="font-semibold text-[var(--text-1)]">{benchmark.yourScore}</span> · median {benchmark.median} · best {benchmark.best}
+                    </p>
+                  </div>
+                </div>
+                {/* Position bar: median marker + your marker on a 0–100 scale */}
+                <div className="relative mt-4 h-2 w-full rounded-full bg-[var(--border-2)]">
+                  <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-[var(--text-4)]" style={{ left: `${benchmark.median}%` }} title={`Median ${benchmark.median}`} />
+                  <div
+                    className="absolute top-1/2 h-3.5 w-1 -translate-y-1/2 rounded-full"
+                    style={{ left: `${benchmark.yourScore}%`, backgroundColor: benchmark.percentile >= 75 ? "#10b981" : benchmark.percentile >= 40 ? "#f59e0b" : "#ef4444" }}
+                    title={`You ${benchmark.yourScore}`}
+                  />
+                </div>
+                <div className="mt-1 flex justify-between text-[10px] text-[var(--text-4)]"><span>0</span><span>median</span><span>100</span></div>
               </div>
             </div>
           )}

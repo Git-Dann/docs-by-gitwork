@@ -31,6 +31,7 @@ import type {
   BrowserAgentInsights,
   CompetitorData,
   CompetitorScanSummary,
+  IndustryBenchmark,
 } from "@/types/pulse";
 
 export const pulseInclude = {
@@ -244,6 +245,58 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     totalCriticalGaps,
     healthTiers,
     recentScans: recentScansRaw.map(serializePulseScanListItem),
+  };
+}
+
+/**
+ * Wave E3 — Industry benchmarks. Ranks this scan's health score against other
+ * COMPLETED scans of the SAME project classification type in the workspace.
+ * Returns null until there are enough peers to be meaningful (≥4 others).
+ */
+const BENCHMARK_MIN_PEERS = 4;
+
+export async function getIndustryBenchmarks(scanId: string): Promise<IndustryBenchmark | null> {
+  const { workspace } = await ensureBaseRecords();
+  const scan = await prisma.pulseScan.findFirst({
+    where: { id: scanId, workspaceId: workspace.id },
+    select: { id: true, status: true, healthScore: true, llmAnalysis: true },
+  });
+  if (!scan || scan.status !== "COMPLETED" || scan.healthScore === null) return null;
+
+  const myType = asJson<PulseAnalysisOutput | null>(scan.llmAnalysis, null)
+    ?.projectClassification?.type?.trim();
+  if (!myType) return null;
+
+  const others = await prisma.pulseScan.findMany({
+    where: {
+      workspaceId: workspace.id,
+      status: "COMPLETED",
+      healthScore: { not: null },
+      id: { not: scanId },
+    },
+    select: { healthScore: true, llmAnalysis: true },
+  });
+
+  const peerScores: number[] = [];
+  for (const o of others) {
+    const t = asJson<PulseAnalysisOutput | null>(o.llmAnalysis, null)
+      ?.projectClassification?.type?.trim();
+    if (t && t.toLowerCase() === myType.toLowerCase() && o.healthScore !== null) {
+      peerScores.push(o.healthScore);
+    }
+  }
+  if (peerScores.length < BENCHMARK_MIN_PEERS) return null;
+
+  peerScores.sort((a, b) => a - b);
+  const your = scan.healthScore;
+  const atOrAbove = peerScores.filter((s) => your >= s).length;
+  return {
+    projectType: myType,
+    peerCount: peerScores.length,
+    yourScore: your,
+    percentile: Math.round((atOrAbove / peerScores.length) * 100),
+    median: peerScores[Math.floor(peerScores.length / 2)],
+    best: peerScores[peerScores.length - 1],
   };
 }
 
