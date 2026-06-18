@@ -134,6 +134,15 @@ const pulseDetailOutputSchema = z.object({
   techStackAnalysis: pulseTechStackAnalysisSchema.catch({
     assessment: "", detectedStack: DEFAULT_DETECTED_STACK, recommendations: [], missingForProduction: [],
   }),
+  competitorSuggestions: z
+    .array(
+      z.object({
+        url: z.string().catch(""),
+        name: z.string().nullable().catch(null),
+        reason: z.string().catch(""),
+      }),
+    )
+    .catch([]),
 });
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
@@ -449,6 +458,7 @@ const PULSE_DETAIL_TOOL = {
       productionBlockers: { type: "array" as const },
       productionReadinessChecklist: { type: "array" as const },
       techStackAnalysis: { type: "object" as const },
+      competitorSuggestions: { type: "array" as const },
     },
     required: ["criticalGaps", "buildOpportunities", "scalingRoadmap", "techDebt", "productionBlockers", "productionReadinessChecklist", "techStackAnalysis"],
   },
@@ -628,8 +638,17 @@ Return ONLY these 7 fields:
       }
     ],
     "missingForProduction": ["string — production-critical infrastructure components not detected"]
-  }
+  },
+  "competitorSuggestions": [
+    {
+      "url": "string — a real, likely competitor's homepage URL (https://…) in the SAME vertical as this product",
+      "name": "string or null — the competitor's product/company name if you can name it, else null",
+      "reason": "string — one specific sentence on why they're a relevant benchmark for THIS product (shared vertical / target user / feature overlap)"
+    }
+  ]
 }
+
+For competitorSuggestions: based on the project classification and detected stack, suggest 2–3 well-known, real direct competitors in the SAME vertical that the client should benchmark against. Use only real companies you are confident exist, with plausible https URLs (their main marketing domain). If the vertical is too niche or unclear to name real competitors confidently, return an empty array rather than guessing. Never invent URLs.
 
 For productionBlockers: list 3–8 items that are genuine launch blockers for THIS platform type. Be ruthlessly specific — name the exact consequence of going live without each item. Always include a recommendedService from the Gitwork vendor list where one applies. Do NOT list nice-to-haves here — only things where launching without them will cause a broken user experience, legal liability, or security incident. Skip categories that are irrelevant to the declared platform.
 

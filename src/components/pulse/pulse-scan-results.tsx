@@ -50,8 +50,14 @@ function groupChecksByCategory(checks: PulseScanCheckRecord[]) {
 function categoryScore(checks: PulseScanCheckRecord[]): number {
   const applicable = checks.filter((c) => c.status !== "SKIPPED");
   if (!applicable.length) return 0;
-  const passing = applicable.filter((c) => c.status === "PASS").length;
-  return Math.round((passing / applicable.length) * 100);
+  // Match calculateHealthScore: a WARN earns half credit (it's "could be better",
+  // not a hard failure) so a category of only warnings reads ~50, never 0.
+  let earned = 0;
+  for (const c of applicable) {
+    if (c.status === "PASS") earned += 1;
+    else if (c.status === "WARN") earned += 0.5;
+  }
+  return Math.round((earned / applicable.length) * 100);
 }
 
 type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors";
@@ -1256,6 +1262,31 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     router.push(`/app/pulse/${result.scan.id}`);
   }
 
+  // D3 — re-scan with the AI's suggested competitor benchmarks (max 3, per validator).
+  const [benchmarking, setBenchmarking] = useState(false);
+  async function handleBenchmarkSuggestions() {
+    const urls = (llm?.competitorSuggestions ?? [])
+      .map((s) => s.url.trim())
+      .filter((u) => /^https?:\/\//i.test(u) || /\./.test(u))
+      .slice(0, 3);
+    if (urls.length === 0) return;
+    setBenchmarking(true);
+    try {
+      const result = await createScan({
+        projectName: scan.projectName,
+        inputType: scan.inputType,
+        inputUrl: scan.inputUrl ?? undefined,
+        inputGithubRepo: scan.inputGithubRepo ?? undefined,
+        inputDescription: scan.inputDescription ?? undefined,
+        clientId: scan.clientId ?? undefined,
+        competitorUrls: urls,
+      });
+      router.push(`/app/pulse/${result.scan.id}`);
+    } finally {
+      setBenchmarking(false);
+    }
+  }
+
   async function handleGenerateProposal() {
     setProposalGenError(null);
     try {
@@ -1727,34 +1758,40 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 {Array.from(checksByCategory.entries()).map(([category, checks]) => {
                   const applicable = checks.filter((c) => c.status !== "SKIPPED");
                   if (!applicable.length) return null;
+                  const total  = applicable.length;
                   const score  = categoryScore(checks);
-                  const failed = checks.filter((c) => c.status === "FAIL").length;
-                  const warned = checks.filter((c) => c.status === "WARN").length;
-                  const scoreColor = score >= 80 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+                  const passed = applicable.filter((c) => c.status === "PASS").length;
+                  const failed = applicable.filter((c) => c.status === "FAIL").length;
+                  const warned = applicable.filter((c) => c.status === "WARN").length;
                   const scoreTextColor = score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600";
+                  const pct = (n: number) => `${(n / total) * 100}%`;
                   return (
                     <button
                       key={category}
                       type="button"
                       onClick={() => { setActiveTab("checks"); toggleCategory(category); }}
-                      className="flex flex-col gap-3 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
+                      className="flex flex-col gap-2.5 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
                     >
-                      <div className="flex items-end justify-between gap-1">
+                      <div className="flex items-baseline justify-between gap-1">
                         <span className={cn("font-serif text-3xl font-bold leading-none tabular-nums", scoreTextColor)}>{score}</span>
-                        <span className="widget-data-label mb-0.5">/100</span>
+                        <span className="widget-data-label">{passed}/{total}</span>
                       </div>
-                      <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
-                        <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: scoreColor }} />
+                      {/* Segmented composition bar: pass (green) · warn (amber) · fail (red) */}
+                      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
+                        {passed > 0 && <div style={{ width: pct(passed), backgroundColor: "#10b981" }} />}
+                        {warned > 0 && <div style={{ width: pct(warned), backgroundColor: "#f59e0b" }} />}
+                        {failed > 0 && <div style={{ width: pct(failed), backgroundColor: "#ef4444" }} />}
                       </div>
                       <div>
                         <p className="text-xs font-semibold leading-4 text-[var(--text-1)]">{category}</p>
-                        <p className="mt-0.5 text-[10px] leading-4 text-[var(--text-3)]">
-                          {failed > 0
-                            ? <span className="text-red-600">{failed} failing{warned > 0 ? ` · ${warned} warn` : ""}</span>
-                            : warned > 0
-                              ? <span className="text-amber-600">{warned} warnings</span>
-                              : <span className="text-emerald-600">All passing</span>}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium leading-4 tabular-nums">
+                          {failed > 0 && <span className="text-red-600">{failed} fail</span>}
+                          {warned > 0 && <span className="text-amber-600">{warned} warn</span>}
+                          {passed > 0 && <span className="text-emerald-600">{passed} pass</span>}
+                          {failed === 0 && warned === 0 && (
+                            <span className="text-emerald-600">All {total} passing</span>
+                          )}
+                        </div>
                       </div>
                     </button>
                   );
@@ -2016,6 +2053,37 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
           {/* 12 // PRIORITY ACTION PLAN */}
           {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} />}
+
+          {/* 13 // SUGGESTED BENCHMARKS — AI-discovered competitors to scan against */}
+          {!scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">{"13 // SUGGESTED BENCHMARKS"}</span>
+                <span className="widget-header-right">AI-discovered</span>
+              </div>
+              <div className="widget-body space-y-3">
+                <p className="text-xs text-[var(--text-3)]">
+                  Likely competitors in this vertical. Re-scan to benchmark this project&apos;s health score against them.
+                </p>
+                <div className="space-y-1.5">
+                  {llm!.competitorSuggestions!.slice(0, 3).map((c, i) => (
+                    <div key={i} className="flex items-start gap-2.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-500)]" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-[var(--text-1)]">
+                          {c.name || c.url.replace(/^https?:\/\//, "")}
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-3)]">{c.reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button onClick={handleBenchmarkSuggestions} loading={benchmarking} className="w-full">
+                  Benchmark against these →
+                </Button>
+              </div>
+            </div>
+          )}
 
         </div>
       )}

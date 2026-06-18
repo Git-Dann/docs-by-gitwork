@@ -125,6 +125,7 @@ export interface PulseAnalysisOutput {
   productionReadinessChecklist: ProductionReadinessItem[];
   techStackAnalysis: PulseTechStackAnalysis;
   aiMaturityScore?: number; // 0–4: Prototype / Functional / Production / Robust / Mature
+  competitorSuggestions?: { url: string; name: string | null; reason: string }[]; // AI-suggested benchmarks (Wave D3)
 }
 
 export const AI_MATURITY_LABELS: readonly string[] = ["Prototype", "Functional", "Production", "Robust", "Mature"];
