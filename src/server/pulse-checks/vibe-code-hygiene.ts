@@ -4,11 +4,53 @@ import { headRequest } from "./_types";
 
 const CATEGORY = "Vibe Code Hygiene";
 
+/** Detect the AI/no-code builder a prototype was made with, from host + HTML signatures. */
+export function detectAiBuilder(hostname: string, htmlLower: string): string | null {
+  const h = hostname.toLowerCase();
+  const sig: Array<[string, boolean]> = [
+    ["Lovable", h.endsWith(".lovable.app") || h.endsWith(".lovable.dev") || htmlLower.includes("lovable-tagger") || htmlLower.includes("gptengineer") || htmlLower.includes("gpteng.co")],
+    ["Bolt (StackBlitz)", h.endsWith(".bolt.new") || h.endsWith(".bolt.host") || h.includes("stackblitz")],
+    ["v0 (Vercel)", h.endsWith(".v0.dev") || htmlLower.includes("built with v0") || htmlLower.includes("data-v0-")],
+    ["Replit", h.endsWith(".repl.co") || h.endsWith(".replit.app") || h.endsWith(".replit.dev")],
+    ["Framer", h.endsWith(".framer.app") || h.endsWith(".framer.website") || htmlLower.includes("framerusercontent.com")],
+    ["Webflow", h.endsWith(".webflow.io") || htmlLower.includes("webflow.com") || htmlLower.includes("data-wf-")],
+    ["Wix", h.endsWith(".wixsite.com") || htmlLower.includes("static.wixstatic.com") || htmlLower.includes("wix.com")],
+    ["Bubble", h.endsWith(".bubbleapps.io") || htmlLower.includes("bubble.io")],
+    ["Softr", h.endsWith(".softr.app") || htmlLower.includes("softr.io")],
+    ["Carrd", h.endsWith(".carrd.co")],
+    ["Glide", h.endsWith(".glide.page") || htmlLower.includes("glideapps.com")],
+    ["Squarespace", htmlLower.includes("squarespace.com") || htmlLower.includes("static1.squarespace")],
+  ];
+  for (const [name, matched] of sig) if (matched) return name;
+  return null;
+}
+
+const PROTOTYPE_HOSTS = ["Lovable", "Bolt (StackBlitz)", "v0 (Vercel)", "Replit", "Bubble", "Softr", "Glide"];
+
 export async function runVibeCodeHygieneChecks(
   ctx: ExtendedCheckContext,
 ): Promise<PulseScanCheckInput[]> {
-  const { htmlLower, httpsUrl } = ctx;
+  const { htmlLower, httpsUrl, hostname } = ctx;
   const checks: PulseScanCheckInput[] = [];
+
+  // 0. Builder origin — detect Lovable / Bolt / v0 / Replit etc. Informational, but a
+  // raw builder-preview host (vs a custom domain) signals a prototype not yet hardened.
+  const builder = detectAiBuilder(hostname, htmlLower);
+  const onBuilderHost = builder !== null && PROTOTYPE_HOSTS.includes(builder) &&
+    (hostname.toLowerCase().includes(builder.split(" ")[0].toLowerCase()) ||
+     /\.(lovable\.app|lovable\.dev|bolt\.new|bolt\.host|v0\.dev|repl\.co|replit\.(app|dev)|bubbleapps\.io|softr\.app|glide\.page)$/i.test(hostname));
+  checks.push({
+    category: CATEGORY,
+    checkKey: "vibe_ai_builder",
+    label: "Builder / platform origin",
+    status: onBuilderHost ? "WARN" : "PASS",
+    detail: builder
+      ? onBuilderHost
+        ? `Built with ${builder} and still served from its preview host — this is a prototype. Production needs a custom domain, real infra, and the hardening checks below.`
+        : `Built with ${builder} (deployed to a custom domain).`
+      : "No AI/no-code builder fingerprint detected — looks like a custom-coded product.",
+    evidence: builder ?? undefined,
+  });
 
   // 1. Placeholder / filler content
   const hasLoremIpsum = htmlLower.includes("lorem ipsum");

@@ -4120,6 +4120,7 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["AI Readiness", "ai_has_retry_dep", "Retry / resilience library for AI API calls"],
     ["AI Readiness", "ai_has_evals", "AI evaluation / testing framework"],
     // Vibe Code Hygiene (URL-based)
+    ["Vibe Code Hygiene", "vibe_ai_builder", "Builder / platform origin"],
     ["Vibe Code Hygiene", "vibe_placeholder_content", "No placeholder / filler content in production"],
     ["Vibe Code Hygiene", "vibe_placeholder_images", "No placeholder / stock filler images"],
     ["Vibe Code Hygiene", "vibe_debug_mode", "No debug or development mode signals"],
