@@ -202,6 +202,7 @@ export interface CodeAgentInsights {
   commitVelocity: number | null;  // commits per week (last 30 days)
   uniqueContributors: number | null;
   homepageUrl: string | null;
+  exposedSecrets?: { file: string; type: string }[]; // Wave B — secrets found in committed source
 }
 
 export interface DeployAgentInsights {

@@ -1,5 +1,6 @@
 import { githubGraphQL, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
+import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -320,6 +321,18 @@ export async function runCodeAgent(repoInput: string): Promise<{
     description: n.securityVulnerability.advisory.summary,
   }));
 
+  // ── Secret scanning + prompt-injection (REST tree walk) ─────────────────────
+  // Best-effort — must never break the code agent. Runs after GraphQL so it only
+  // fires for repos we can actually read.
+  let exposedSecrets: SecretFinding[] = [];
+  try {
+    const secretScan = await scanRepoSecrets(parsed.owner, parsed.repo);
+    checks.push(...secretScan.checks);
+    exposedSecrets = secretScan.secrets;
+  } catch {
+    // ignore — secret scan is additive
+  }
+
   return {
     checks,
     insights: {
@@ -330,6 +343,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
       commitVelocity,
       uniqueContributors,
       homepageUrl: repo.homepageUrl ?? null,
+      exposedSecrets,
     },
   };
 }
@@ -343,5 +357,6 @@ function emptyInsights(): CodeAgentInsights {
     commitVelocity: null,
     uniqueContributors: null,
     homepageUrl: null,
+    exposedSecrets: [],
   };
 }

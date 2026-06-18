@@ -1903,6 +1903,29 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                           </p>
                         </div>
                       )}
+                      {(() => {
+                        const secrets = scan.codeInsights.exposedSecrets ?? [];
+                        return (
+                          <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                            <p className="widget-data-label mb-1">Exposed secrets</p>
+                            {secrets.length === 0 ? (
+                              <p className="text-sm font-semibold text-emerald-600">None</p>
+                            ) : (
+                              <p className="text-sm font-semibold text-red-600" title={secrets.map((s) => `${s.type} in ${s.file}`).join("\n")}>
+                                {secrets.length} found
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {scan.codeInsights.uniqueContributors !== null && (
+                        <div className="rounded-[6px] bg-[var(--surface-1)] p-2.5">
+                          <p className="widget-data-label mb-1">Contributors</p>
+                          <p className="text-sm font-semibold text-[var(--text-1)]">
+                            {scan.codeInsights.uniqueContributors}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="rounded-[6px] border border-dashed border-[var(--border-2)] p-4 text-center">
