@@ -16,6 +16,8 @@ import type {
   ClientDetailRecord,
   ClientListItem,
   ClientPlatformRecord,
+  ClientPlatformReveal,
+  ClientPlatformLoginSummary,
   WorkspaceClientStatus,
 } from "@/types/client";
 import type {
@@ -370,6 +372,12 @@ export interface OnboardingLinkRecord {
   label: string | null;
   status: "IN_PROGRESS" | "SUBMITTED" | "LINKED";
   currentStep: number;
+  /** Label of the furthest screen reached (e.g. "Company & billing"). */
+  currentStepLabel: string;
+  /** Total numbered steps in the flow (the "N" in "Step X of N"). */
+  totalSteps: number;
+  /** First time the public link was opened — null = never opened. */
+  firstViewedAt: string | null;
   fields: Record<string, string | null>;
   bank: { onFile: boolean; currency: string | null; accountNumberLast4: string | null };
   workspaceClientId: string | null;
@@ -574,7 +582,8 @@ export async function createClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
@@ -594,7 +603,8 @@ export async function updateClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
@@ -615,6 +625,65 @@ export async function deleteClientPlatform(
   return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/platforms/${platformId}`, {
     method: "DELETE",
   });
+}
+
+/** Reveal a platform's decrypted credentials (server-side decrypt, gated). */
+export async function revealClientPlatformApi(
+  slug: string,
+  platformId: string,
+): Promise<{ credentials: ClientPlatformReveal }> {
+  return apiFetch<{ credentials: ClientPlatformReveal }>(
+    `/api/clients/${slug}/platforms/${platformId}/reveal`,
+    { method: "POST" },
+  );
+}
+
+// ── Platform logins (multiple credential sets) ──────────────────────────────
+
+export async function createPlatformLogin(
+  slug: string,
+  platformId: string,
+  body: { label?: string; username?: string; password?: string },
+): Promise<{ login: ClientPlatformLoginSummary }> {
+  return apiFetch<{ login: ClientPlatformLoginSummary }>(`/api/clients/${slug}/platforms/${platformId}/logins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updatePlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+  body: { label?: string | null; username?: string; password?: string },
+): Promise<{ login: ClientPlatformLoginSummary }> {
+  return apiFetch<{ login: ClientPlatformLoginSummary }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+}
+
+export async function deletePlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function revealPlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+): Promise<{ credentials: ClientPlatformReveal }> {
+  return apiFetch<{ credentials: ClientPlatformReveal }>(
+    `/api/clients/${slug}/platforms/${platformId}/logins/${loginId}/reveal`,
+    { method: "POST" },
+  );
 }
 
 export async function createClientDesign(

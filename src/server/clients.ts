@@ -2,7 +2,7 @@ import { unstable_cache, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
-import { decryptNullable } from "@/lib/encryption";
+import { encryptNullable, decryptNullable } from "@/lib/encryption";
 import type {
   ClientBankReveal,
   ClientBankSummary,
@@ -13,6 +13,8 @@ import type {
   ClientLifecycleEvent,
   ClientPlacementRecord,
   ClientPlatformRecord,
+  ClientPlatformReveal,
+  ClientPlatformLoginSummary,
   ClientSource,
   WorkspaceClientStatus,
 } from "@/types/client";
@@ -55,6 +57,10 @@ const workspaceClients = (prisma as unknown as {
 const clientPlatforms = (prisma as unknown as {
   clientPlatform: Prisma.ClientPlatformDelegate;
 }).clientPlatform;
+
+const clientPlatformLogins = (prisma as unknown as {
+  clientPlatformLogin: Prisma.ClientPlatformLoginDelegate;
+}).clientPlatformLogin;
 
 const clientDesigns = (prisma as unknown as {
   clientDesign: Prisma.ClientDesignDelegate;
@@ -425,12 +431,25 @@ function serializeClientPlatform(platform: {
   url: string | null;
   stagingUrl: string | null;
   repoUrl: string | null;
-  credentials: string | null;
+  credentials?: string | null; // legacy plaintext (fallback for hasPassword pre-migration)
+  usernameCipher?: string | null;
+  passwordCipher?: string | null;
+  logins?: Array<{ id: string; label: string | null; usernameCipher: string | null; passwordCipher: string | null; orderKey: number; createdAt: Date }> | null;
   notes: string | null;
   previewImageUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
+  const logins = (platform.logins ?? [])
+    .slice()
+    .sort((a, b) => a.orderKey - b.orderKey || a.createdAt.getTime() - b.createdAt.getTime())
+    .map((l) => ({
+      id: l.id,
+      label: l.label,
+      // Never leak plaintext — only whether each field is set. Values come from the reveal route.
+      hasUsername: Boolean(l.usernameCipher),
+      hasPassword: Boolean(l.passwordCipher),
+    }));
   return {
     id: platform.id,
     clientId: platform.clientId,
@@ -439,7 +458,10 @@ function serializeClientPlatform(platform: {
     url: platform.url,
     stagingUrl: platform.stagingUrl,
     repoUrl: platform.repoUrl,
-    credentials: platform.credentials,
+    // Legacy single-credential flags — true only for platforms not yet migrated into `logins`.
+    hasUsername: Boolean(platform.usernameCipher),
+    hasPassword: Boolean(platform.passwordCipher) || Boolean(platform.credentials),
+    logins,
     notes: platform.notes,
     previewImageUrl: platform.previewImageUrl ?? null,
     createdAt: platform.createdAt.toISOString(),
@@ -899,6 +921,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       ? clientPlatforms.findMany({
           where: { clientId: manualRecord.id },
           orderBy: { createdAt: "asc" },
+          include: { logins: true },
         })
       : Promise.resolve([]),
     manualRecord
@@ -1079,7 +1102,8 @@ export async function createClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
   },
 ): Promise<ClientPlatformRecord> {
@@ -1091,7 +1115,8 @@ export async function createClientPlatform(
       url: input.url?.trim() || null,
       stagingUrl: input.stagingUrl?.trim() || null,
       repoUrl: input.repoUrl?.trim() || null,
-      credentials: input.credentials?.trim() || null,
+      usernameCipher: encryptNullable(input.username),
+      passwordCipher: encryptNullable(input.password),
       notes: input.notes?.trim() || null,
     },
   });
@@ -1107,7 +1132,8 @@ export async function updateClientPlatform(
     url?: string;
     stagingUrl?: string;
     repoUrl?: string;
-    credentials?: string;
+    username?: string;
+    password?: string;
     notes?: string;
     previewImageUrl?: string;
   },
@@ -1120,7 +1146,12 @@ export async function updateClientPlatform(
       ...(input.url !== undefined ? { url: input.url.trim() || null } : {}),
       ...(input.stagingUrl !== undefined ? { stagingUrl: input.stagingUrl.trim() || null } : {}),
       ...(input.repoUrl !== undefined ? { repoUrl: input.repoUrl.trim() || null } : {}),
-      ...(input.credentials !== undefined ? { credentials: input.credentials.trim() || null } : {}),
+      // Only re-encrypt when the field is explicitly provided — omitting it leaves the stored
+      // cipher untouched (so editing the name/URL never wipes saved credentials). Setting it to
+      // a cipher of an empty string clears it. When the username/password is set, also drop any
+      // legacy plaintext blob so it stops lingering unencrypted.
+      ...(input.username !== undefined ? { usernameCipher: encryptNullable(input.username), credentials: null } : {}),
+      ...(input.password !== undefined ? { passwordCipher: encryptNullable(input.password), credentials: null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
     },
@@ -1131,6 +1162,240 @@ export async function updateClientPlatform(
 
 export async function deleteClientPlatform(platformId: string): Promise<void> {
   await clientPlatforms.delete({ where: { id: platformId } });
+}
+
+/**
+ * Decrypt and return a platform's stored credentials. Gate at the route on canManageClients +
+ * client access (mirrors revealClientBank). Falls back to the legacy plaintext blob (as the
+ * password) for rows not yet migrated by encryptLegacyPlatformCredentials.
+ */
+export async function revealClientPlatform(
+  slug: string,
+  platformId: string,
+): Promise<ClientPlatformReveal | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  const platform = await clientPlatforms.findFirst({
+    where: { id: platformId, clientId: client.id },
+    select: { usernameCipher: true, passwordCipher: true, credentials: true },
+  });
+  if (!platform) return null;
+  return {
+    username: decryptNullable(platform.usernameCipher),
+    password: decryptNullable(platform.passwordCipher) ?? (platform.credentials?.trim() || null),
+  };
+}
+
+/**
+ * One-time migration: encrypt any platform still holding a plaintext `credentials` blob into
+ * passwordCipher (only when no password is already set), then null the plaintext. Idempotent —
+ * re-running is a no-op once every row is migrated. Returns the count actually encrypted.
+ */
+export async function encryptLegacyPlatformCredentials(): Promise<{ migrated: number }> {
+  const rows = await clientPlatforms.findMany({
+    where: { credentials: { not: null } },
+    select: { id: true, credentials: true, passwordCipher: true },
+  });
+  let migrated = 0;
+  for (const row of rows) {
+    const plain = row.credentials?.trim();
+    const encryptIt = Boolean(plain) && !row.passwordCipher;
+    await clientPlatforms.update({
+      where: { id: row.id },
+      data: {
+        ...(encryptIt ? { passwordCipher: encryptNullable(plain) } : {}),
+        credentials: null,
+      },
+    });
+    if (encryptIt) migrated += 1;
+  }
+  return { migrated };
+}
+
+/**
+ * Heuristic split of a legacy credential blob into username + password. Pulls out an email-like
+ * token as the username; the leftover (after stripping common labels/delimiters) becomes the
+ * password — but ONLY when it's a single token (no internal whitespace), so multi-value notes
+ * blobs are never mangled into a bogus password. Returns null when it can't split safely.
+ */
+function splitCredentialBlob(raw: string): { username: string; password: string } | null {
+  const text = raw.trim();
+  const email = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
+  if (!email) return null;
+  let rest = text.replace(email, " ");
+  rest = rest.replace(/\b(?:e-?mail|username|user|login|password|pass(?:word)?|pwd|pw)\b\s*[:=]?/gi, " ");
+  rest = rest.replace(/\s+/g, " ").trim();
+  rest = rest.replace(/^[\s:=/|,\-–—]+|[\s:=/|,\-–—]+$/g, "").trim();
+  if (!rest) return { username: email, password: "" }; // email-only → a login, no password
+  if (/\s/.test(rest)) return null; // multi-word leftover → too risky, leave merged
+  return { username: email, password: rest };
+}
+
+/**
+ * Split already-migrated merged blobs (email + password that landed together in passwordCipher)
+ * into separate usernameCipher + passwordCipher. Only touches rows with no username yet, and only
+ * when splitCredentialBlob succeeds — password-only or multi-value blobs are left untouched.
+ * Idempotent (split rows gain a usernameCipher and are skipped next run). Returns counts.
+ */
+export async function splitPlatformCredentials(): Promise<{ split: number; unchanged: number }> {
+  const rows = await clientPlatforms.findMany({
+    where: { usernameCipher: null, passwordCipher: { not: null } },
+    select: { id: true, passwordCipher: true },
+  });
+  let split = 0;
+  let unchanged = 0;
+  for (const row of rows) {
+    let blob: string | null = null;
+    try {
+      blob = decryptNullable(row.passwordCipher);
+    } catch {
+      unchanged += 1;
+      continue; // unreadable cipher — leave it
+    }
+    const parts = blob ? splitCredentialBlob(blob) : null;
+    if (!parts) {
+      unchanged += 1;
+      continue;
+    }
+    await clientPlatforms.update({
+      where: { id: row.id },
+      data: {
+        usernameCipher: encryptNullable(parts.username),
+        passwordCipher: encryptNullable(parts.password),
+      },
+    });
+    split += 1;
+  }
+  return { split, unchanged };
+}
+
+// ── Platform logins (multiple credential sets per platform) ──────────────────
+
+function loginSummary(l: {
+  id: string;
+  label: string | null;
+  usernameCipher: string | null;
+  passwordCipher: string | null;
+}): ClientPlatformLoginSummary {
+  return { id: l.id, label: l.label, hasUsername: Boolean(l.usernameCipher), hasPassword: Boolean(l.passwordCipher) };
+}
+
+/** Verify a platform belongs to the slug's client in this workspace. */
+async function platformInClient(slug: string, platformId: string): Promise<boolean> {
+  const { workspace } = await ensureBaseRecords();
+  const p = await clientPlatforms.findFirst({
+    where: { id: platformId, client: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  return Boolean(p);
+}
+
+/** Find a login scoped to its platform + the slug's client (null if it doesn't belong). */
+async function findScopedLogin(slug: string, platformId: string, loginId: string) {
+  const { workspace } = await ensureBaseRecords();
+  return clientPlatformLogins.findFirst({
+    where: { id: loginId, platformId, platform: { client: { workspaceId: workspace.id, slug } } },
+  });
+}
+
+export async function createPlatformLogin(
+  slug: string,
+  platformId: string,
+  input: { label?: string; username?: string; password?: string },
+): Promise<ClientPlatformLoginSummary | null> {
+  if (!(await platformInClient(slug, platformId))) return null;
+  const agg = await clientPlatformLogins.aggregate({ where: { platformId }, _max: { orderKey: true } });
+  const login = await clientPlatformLogins.create({
+    data: {
+      platformId,
+      label: input.label?.trim() || null,
+      usernameCipher: encryptNullable(input.username),
+      passwordCipher: encryptNullable(input.password),
+      orderKey: (agg._max.orderKey ?? -1) + 1,
+    },
+  });
+  return loginSummary(login);
+}
+
+export async function updatePlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+  input: { label?: string | null; username?: string; password?: string },
+): Promise<ClientPlatformLoginSummary | null> {
+  if (!(await findScopedLogin(slug, platformId, loginId))) return null;
+  const login = await clientPlatformLogins.update({
+    where: { id: loginId },
+    data: {
+      ...(input.label !== undefined ? { label: input.label?.trim() || null } : {}),
+      ...(input.username !== undefined ? { usernameCipher: encryptNullable(input.username) } : {}),
+      ...(input.password !== undefined ? { passwordCipher: encryptNullable(input.password) } : {}),
+    },
+  });
+  return loginSummary(login);
+}
+
+export async function deletePlatformLogin(slug: string, platformId: string, loginId: string): Promise<boolean> {
+  if (!(await findScopedLogin(slug, platformId, loginId))) return false;
+  await clientPlatformLogins.delete({ where: { id: loginId } });
+  return true;
+}
+
+export async function revealPlatformLogin(
+  slug: string,
+  platformId: string,
+  loginId: string,
+): Promise<ClientPlatformReveal | null> {
+  const login = await findScopedLogin(slug, platformId, loginId);
+  if (!login) return null;
+  return { username: decryptNullable(login.usernameCipher), password: decryptNullable(login.passwordCipher) };
+}
+
+/**
+ * One-shot migration: move each platform's row-level credentials (usernameCipher/passwordCipher
+ * or the legacy plaintext blob) into a single ClientPlatformLogin, then null the row-level fields.
+ * Only touches platforms with no logins yet. Idempotent. Returns the count migrated.
+ */
+export async function migratePlatformLogins(): Promise<{ migrated: number }> {
+  const rows = await clientPlatforms.findMany({
+    where: {
+      logins: { none: {} },
+      OR: [
+        { usernameCipher: { not: null } },
+        { passwordCipher: { not: null } },
+        { credentials: { not: null } },
+      ],
+    },
+    select: { id: true, usernameCipher: true, passwordCipher: true, credentials: true },
+  });
+  let migrated = 0;
+  for (const p of rows) {
+    let usernameCipher = p.usernameCipher;
+    let passwordCipher = p.passwordCipher;
+    if (!usernameCipher && !passwordCipher && p.credentials) {
+      const blob = p.credentials.trim();
+      const parts = splitCredentialBlob(blob);
+      if (parts) {
+        usernameCipher = encryptNullable(parts.username);
+        passwordCipher = encryptNullable(parts.password);
+      } else {
+        passwordCipher = encryptNullable(blob);
+      }
+    }
+    await clientPlatformLogins.create({
+      data: { platformId: p.id, label: null, usernameCipher, passwordCipher, orderKey: 0 },
+    });
+    await clientPlatforms.update({
+      where: { id: p.id },
+      data: { usernameCipher: null, passwordCipher: null, credentials: null },
+    });
+    migrated += 1;
+  }
+  return { migrated };
 }
 
 export async function createClientDesign(
