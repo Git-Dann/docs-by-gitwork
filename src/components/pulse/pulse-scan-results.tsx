@@ -1568,6 +1568,37 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {activeTab === "overview" && (
         <div className="space-y-3">
 
+          {/* F5 — Launch Readiness verdict: a single go/no-go derived from health + blockers */}
+          {scan.status === "COMPLETED" && scan.healthScore !== null && (() => {
+            const score = scan.healthScore;
+            const criticalBlockers = (llm?.productionBlockers ?? []).filter((b) => b.urgency === "CRITICAL").length;
+            const failing = scan.checks.filter((c) => c.status === "FAIL").length;
+            const ready = score >= 80 && criticalBlockers === 0;
+            const nearly = !ready && score >= 55 && criticalBlockers <= 2;
+            const verdict = ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready";
+            const tone = ready ? "#10b981" : nearly ? "#f59e0b" : "#ef4444";
+            const bg = ready ? "bg-emerald-50" : nearly ? "bg-amber-50" : "bg-red-50";
+            const gate = criticalBlockers > 0
+              ? `${criticalBlockers} critical blocker${criticalBlockers !== 1 ? "s" : ""} to clear`
+              : failing > 0
+                ? `${failing} failing check${failing !== 1 ? "s" : ""} to resolve`
+                : "no hard blockers remaining";
+            return (
+              <div className={cn("flex items-center justify-between gap-4 rounded-[12px] px-5 py-4", bg)}>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: tone }}>
+                    <span className="font-serif text-lg font-bold text-white tabular-nums">{score}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: tone }}>{verdict}</p>
+                    <p className="text-xs text-[var(--text-3)]">Launch readiness · {gate}</p>
+                  </div>
+                </div>
+                <span className="widget-data-label hidden sm:block">{score}% ready</span>
+              </div>
+            );
+          })()}
+
           {/* 01 // PROJECT HEALTH */}
           <div className="widget-card">
             <div className="widget-header">
@@ -2222,6 +2253,60 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   <p className="mt-3 text-[11px] leading-4 text-[var(--text-4)]">
                     Indicative only — generate a proposal to refine scope, rates and a fixed quote.
                   </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 17 // INTAKE & RISK — F2: stage, market, feasibility, regulatory landmines */}
+          {llm?.intakeAssessment && (() => {
+            const a = llm.intakeAssessment!;
+            const stageTone: Record<string, string> = {
+              IDEA: "bg-purple-50 text-purple-700",
+              PROTOTYPE: "bg-amber-50 text-amber-700",
+              MVP: "bg-blue-50 text-blue-700",
+              PRODUCTION: "bg-emerald-50 text-emerald-700",
+            };
+            const sevTone: Record<string, string> = {
+              HIGH: "border-red-200 bg-red-50 text-red-700",
+              MEDIUM: "border-amber-200 bg-amber-50 text-amber-700",
+              LOW: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]",
+            };
+            const rows: Array<[string, string]> = [
+              ["Market signal", a.marketSignal],
+              ["Feasibility", a.feasibility],
+              ["Riskiest assumption", a.riskiestAssumption],
+            ];
+            return (
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">{"17 // INTAKE & RISK"}</span>
+                  {a.stage && (
+                    <span className={cn("inline-flex items-center rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", stageTone[a.stage] ?? "bg-[var(--surface-1)] text-[var(--text-2)]")}>
+                      {a.stage}
+                    </span>
+                  )}
+                </div>
+                <div className="widget-body space-y-3">
+                  {a.regulatoryFlags.length > 0 && (
+                    <div>
+                      <p className="widget-data-label mb-1.5">Regulatory landmines</p>
+                      <div className="space-y-1.5">
+                        {a.regulatoryFlags.map((f, i) => (
+                          <div key={i} className={cn("rounded-[8px] border px-3 py-2", sevTone[f.severity] ?? sevTone.LOW)}>
+                            <p className="text-xs font-semibold">{f.area}</p>
+                            <p className="mt-0.5 text-[11px] leading-4 opacity-90">{f.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {rows.filter(([, v]) => v).map(([label, v]) => (
+                    <div key={label}>
+                      <p className="widget-data-label mb-0.5">{label}</p>
+                      <p className="text-sm leading-6 text-[var(--text-2)]">{v}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             );

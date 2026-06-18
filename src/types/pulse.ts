@@ -127,6 +127,21 @@ export interface PulseAnalysisOutput {
   aiMaturityScore?: number; // 0–4: Prototype / Functional / Production / Robust / Mature
   competitorSuggestions?: { url: string; name: string | null; reason: string }[]; // AI-suggested benchmarks (Wave D3)
   engagementEstimate?: EngagementEstimate | null; // F3 — effort/cost/timeline to production
+  intakeAssessment?: IntakeAssessment | null; // F2 — stage / market / regulatory / feasibility
+}
+
+// F2 — idea/prototype intake assessment
+export interface IntakeRegulatoryFlag {
+  area: string;
+  note: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+}
+export interface IntakeAssessment {
+  stage: "IDEA" | "PROTOTYPE" | "MVP" | "PRODUCTION";
+  marketSignal: string;
+  feasibility: string;
+  riskiestAssumption: string;
+  regulatoryFlags: IntakeRegulatoryFlag[];
 }
 
 // F3 — indicative effort/cost/timeline to take the product to production (seeds a proposal)

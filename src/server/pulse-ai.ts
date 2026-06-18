@@ -157,6 +157,18 @@ const pulseDetailOutputSchema = z.object({
     })
     .nullable()
     .catch(null),
+  intakeAssessment: z
+    .object({
+      stage: z.enum(["IDEA", "PROTOTYPE", "MVP", "PRODUCTION"]).catch("PROTOTYPE"),
+      marketSignal: z.string().catch(""),
+      feasibility: z.string().catch(""),
+      riskiestAssumption: z.string().catch(""),
+      regulatoryFlags: z
+        .array(z.object({ area: z.string().catch(""), note: z.string().catch(""), severity: z.enum(["HIGH", "MEDIUM", "LOW"]).catch("MEDIUM") }))
+        .catch([]),
+    })
+    .nullable()
+    .catch(null),
 });
 
 const SYSTEM_PROMPT = `You are a senior software architect and SaaS product advisor at Gitwork, a digital consultancy that specialises in taking AI-generated apps from "vibe-coded prototype" to production-ready product.
@@ -474,6 +486,7 @@ const PULSE_DETAIL_TOOL = {
       techStackAnalysis: { type: "object" as const },
       competitorSuggestions: { type: "array" as const },
       engagementEstimate: { type: "object" as const },
+      intakeAssessment: { type: "object" as const },
     },
     required: ["criticalGaps", "buildOpportunities", "scalingRoadmap", "techDebt", "productionBlockers", "productionReadinessChecklist", "techStackAnalysis"],
   },
@@ -671,8 +684,19 @@ Return ONLY these 7 fields:
     "phases": [
       { "name": "string — phase name e.g. 'Harden & secure', 'Auth & billing', 'Launch'", "weeks": "number", "outcome": "string — what's true at the end of this phase" }
     ]
+  },
+  "intakeAssessment": {
+    "stage": "IDEA | PROTOTYPE | MVP | PRODUCTION — how far along this product actually is",
+    "marketSignal": "string — one sentence on the market: is there real demand / is it crowded or differentiated, based on the vertical",
+    "feasibility": "string — one sentence on how hard this is to build well and where the technical risk sits",
+    "riskiestAssumption": "string — the single assumption that most needs validating for this to succeed",
+    "regulatoryFlags": [
+      { "area": "string — e.g. 'Health data (HIPAA)', 'Payments (PCI/FCA)', 'Children (COPPA)', 'EU AI Act', 'GDPR'", "note": "string — what specifically applies and why", "severity": "HIGH | MEDIUM | LOW" }
+    ]
   }
 }
+
+For intakeAssessment: judge the product's true stage from the evidence (an idea/landing page with no real app = IDEA/PROTOTYPE; working auth+data = MVP/PRODUCTION). Surface regulatory landmines EARLY and specifically for this vertical (health→HIPAA/clinical, fintech→FCA/PCI/KYC, children→COPPA/age-gating, AI→EU AI Act, any EU users→GDPR) — only flag ones that genuinely apply, [] if none. marketSignal/feasibility/riskiestAssumption must be specific to THIS product, not generic startup advice.
 
 For competitorSuggestions: based on the project classification and detected stack, suggest 2–3 well-known, real direct competitors in the SAME vertical that the client should benchmark against. Use only real companies you are confident exist, with plausible https URLs (their main marketing domain). If the vertical is too niche or unclear to name real competitors confidently, return an empty array rather than guessing. Never invent URLs.
 
