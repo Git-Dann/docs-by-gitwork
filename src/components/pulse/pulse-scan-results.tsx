@@ -17,11 +17,13 @@ import {
   LinkIcon,
   LightBulbIcon,
   MinusCircleIcon,
+  PlusIcon,
   QuestionMarkCircleIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal } from "@/hooks/use-pulse";
+import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
 import { cn } from "@/lib/format";
@@ -920,10 +922,48 @@ type PriorityActionItem = {
 function PriorityActionPlan({
   llm,
   onTabChange,
+  clientId,
+  scanId,
 }: {
   llm: NonNullable<PulseScanRecord["llmAnalysis"]>;
   onTabChange: (tab: Tab) => void;
+  clientId: string | null;
+  scanId: string;
 }) {
+  const { mutateAsync: batchCreate, isPending: pushing } = useBatchCreateTasks();
+  const [pushedTiers, setPushedTiers] = useState<Record<string, string>>({});
+  const [pushingTier, setPushingTier] = useState<string | null>(null);
+
+  async function pushTier(
+    tierKey: string,
+    items: PriorityActionItem[],
+    priority: "HIGH" | "MEDIUM" | "LOW",
+  ) {
+    if (!clientId || !items.length) return;
+    setPushingTier(tierKey);
+    try {
+      const res = await batchCreate({
+        clientId,
+        tasks: items.map((item) => ({
+          title: item.title,
+          priority,
+          metadata: { source: "pulse_scan", pulseScanId: scanId, pulsePlanTier: tierKey },
+        })),
+      });
+      setPushedTiers((s) => ({
+        ...s,
+        [tierKey]:
+          res.created > 0
+            ? `Added ${res.created}${res.skipped ? ` · ${res.skipped} already on board` : ""}`
+            : "Already on board",
+      }));
+    } catch {
+      setPushedTiers((s) => ({ ...s, [tierKey]: "Failed — retry" }));
+    } finally {
+      setPushingTier(null);
+    }
+  }
+
   const blockers = (llm.productionBlockers as ProductionBlocker[]) ?? [];
 
   const fixNow: PriorityActionItem[] = [
@@ -964,9 +1004,9 @@ function PriorityActionPlan({
   if (totalActions === 0) return null;
 
   const tiers = [
-    { key: "fix-now",     label: "Fix now",     items: fixNow.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
-    { key: "this-sprint", label: "This sprint", items: thisSprint.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
-    { key: "next-sprint", label: "Next sprint", items: nextSprint.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
+    { key: "fix-now",     label: "Fix now",     priority: "HIGH" as const,   items: fixNow.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
+    { key: "this-sprint", label: "This sprint", priority: "MEDIUM" as const, items: thisSprint.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
+    { key: "next-sprint", label: "Next sprint", priority: "LOW" as const,    items: nextSprint.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
   ].filter(({ items }) => items.length > 0);
 
   return (
@@ -977,9 +1017,34 @@ function PriorityActionPlan({
       </div>
       <div className="widget-body">
         <div className="grid gap-5 sm:grid-cols-3">
-          {tiers.map(({ key, label, items, dotColor, borderCls, textCls, tagCls }) => (
+          {tiers.map(({ key, label, priority, items, dotColor, borderCls, textCls, tagCls }) => (
             <div key={key}>
-              <p className="widget-data-label mb-2.5">{label} · {items.length}</p>
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <p className="widget-data-label">{label} · {items.length}</p>
+                {clientId && (
+                  pushedTiers[key] ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+                      <CheckCircleIcon className="h-3 w-3" />
+                      {pushedTiers[key]}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={pushing}
+                      onClick={() => pushTier(key, items, priority)}
+                      className="inline-flex items-center gap-1 rounded-[5px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+                      title="Create a task on this client's board for every item in this tier"
+                    >
+                      {pushingTier === key ? (
+                        <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      ) : (
+                        <PlusIcon className="h-2.5 w-2.5" />
+                      )}
+                      Push to board
+                    </button>
+                  )
+                )}
+              </div>
               <div className="space-y-1.5">
                 {items.map((item, i) => (
                   <button
@@ -1036,6 +1101,53 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [discoveryExpanded, setDiscoveryExpanded] = useState(false);
   const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "PASS">("ALL");
   const [checksSortBySeverity, setChecksSortBySeverity] = useState(false);
+
+  // Scan → Action: "+ Task" on failing checks creates a Portal task on the linked
+  // client's board. We read the client's tasks to show "Added" for checks that
+  // already have a task (idempotent across reloads).
+  const { mutateAsync: createCheckTasks } = useBatchCreateTasks();
+  const { data: clientTasks } = useTasks(
+    scan.clientId ? { clientId: scan.clientId } : {},
+    { enabled: Boolean(scan.clientId) },
+  );
+  const [addedCheckKeys, setAddedCheckKeys] = useState<Set<string>>(new Set());
+  const [pendingCheckKey, setPendingCheckKey] = useState<string | null>(null);
+
+  const existingPulseCheckKeys = new Set<string>();
+  for (const t of clientTasks ?? []) {
+    const meta = t.metadata as Record<string, unknown> | null;
+    if (meta?.["source"] === "pulse_scan" && typeof meta["pulseCheckKey"] === "string") {
+      existingPulseCheckKeys.add(meta["pulseCheckKey"] as string);
+    }
+  }
+
+  async function addCheckTask(check: PulseScanCheckRecord) {
+    if (!scan.clientId) return;
+    setPendingCheckKey(check.checkKey);
+    try {
+      await createCheckTasks({
+        clientId: scan.clientId,
+        tasks: [
+          {
+            title: `[Pulse] ${check.label}`,
+            description: [check.detail, check.evidence].filter(Boolean).join("\n\n") || undefined,
+            priority: check.status === "FAIL" ? "HIGH" : "MEDIUM",
+            metadata: {
+              source: "pulse_scan",
+              pulseScanId: scan.id,
+              pulseCheckKey: check.checkKey,
+              pulseCategory: check.category,
+            },
+          },
+        ],
+      });
+      setAddedCheckKeys((s) => new Set(s).add(check.checkKey));
+    } catch {
+      /* swallow — button stays actionable */
+    } finally {
+      setPendingCheckKey(null);
+    }
+  }
 
   // Keep local share state in sync when the scan is re-fetched externally
   useEffect(() => {
@@ -1880,7 +1992,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 12 // PRIORITY ACTION PLAN */}
-          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} />}
+          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} />}
 
         </div>
       )}
@@ -2000,6 +2112,33 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                                 <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
                               )}
                             </div>
+                            {scan.clientId && (check.status === "FAIL" || check.status === "WARN") && (() => {
+                              const added = addedCheckKeys.has(check.checkKey) || existingPulseCheckKeys.has(check.checkKey);
+                              const pending = pendingCheckKey === check.checkKey;
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={added || pending}
+                                  onClick={() => addCheckTask(check)}
+                                  className={cn(
+                                    "mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-[5px] border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default",
+                                    added
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
+                                  )}
+                                  title={added ? "On this client's task board" : "Add to this client's task board"}
+                                >
+                                  {pending ? (
+                                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                  ) : added ? (
+                                    <CheckCircleIcon className="h-3 w-3" />
+                                  ) : (
+                                    <PlusIcon className="h-3 w-3" />
+                                  )}
+                                  {added ? "Added" : "Task"}
+                                </button>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>

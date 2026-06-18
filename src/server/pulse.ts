@@ -15,6 +15,7 @@ import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison }
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
+import { reconcilePulseTasksAfterScan } from "@/server/tasks";
 import {
   sendPulseScanCompletedPush,
   sendPulseScanFailedPush,
@@ -797,6 +798,24 @@ export async function runAnalysis(
         agentData: { codeInsights, deployInsights, browserInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Scan → Action reconciliation: if this scan is linked to a client, any
+    // open task created from a check that now PASSes is auto-closed. Best-effort
+    // — never let it fail the scan write. Matched by metadata.pulseCheckKey.
+    if (input.clientId) {
+      try {
+        const scanMeta = await prisma.pulseScan.findUnique({
+          where: { id: scanId },
+          select: { workspaceId: true },
+        });
+        if (scanMeta) {
+          const passingKeys = allChecks.filter((c) => c.status === "PASS").map((c) => c.checkKey);
+          await reconcilePulseTasksAfterScan(scanMeta.workspaceId, input.clientId, passingKeys);
+        }
+      } catch {
+        // best-effort
+      }
+    }
 
     // Push notification — best-effort, must not throw or the scan write looks
     // failed to the caller. Audience is the triggering user (manual scan) or

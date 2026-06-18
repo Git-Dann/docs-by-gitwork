@@ -222,9 +222,7 @@ export const clientPlatformCreateSchema = z.object({
   url: z.string().trim().optional(),
   stagingUrl: z.string().trim().optional(),
   repoUrl: z.string().trim().optional(),
-  // Encrypted at rest (AES-256-GCM). Omit on update to leave existing creds untouched.
-  username: z.string().optional(),
-  password: z.string().optional(),
+  credentials: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
 });
@@ -233,23 +231,6 @@ export const clientPlatformUpdateSchema = clientPlatformCreateSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one platform field is required.",
-  });
-
-// A platform "login" (credential set). username/password encrypted at rest.
-export const platformLoginCreateSchema = z.object({
-  label: z.string().trim().optional(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-});
-
-export const platformLoginUpdateSchema = z
-  .object({
-    label: z.string().trim().nullable().optional(),
-    username: z.string().optional(),
-    password: z.string().optional(),
-  })
-  .refine((value) => Object.keys(value).length > 0, {
-    message: "At least one field is required.",
   });
 
 export const clientDesignCreateSchema = z.object({
@@ -950,6 +931,27 @@ export const taskBatchUpdateSchema = z.object({
 
 export const taskBatchDeleteSchema = z.object({
   ids: z.array(z.string().cuid()).min(1).max(1000),
+});
+
+/**
+ * Bulk-create tasks for one client from a single source (e.g. a Pulse scan's
+ * priority action plan, or "+ Task" on a failing check). Title-deduped server-side
+ * against existing tasks from the same `metadata.source` so re-pushing is idempotent.
+ */
+export const taskBatchCreateSchema = z.object({
+  clientId: z.string().cuid(),
+  tasks: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        description: z.string().max(10000).nullable().optional(),
+        status: taskStatusSchema.optional(),
+        priority: taskPrioritySchema.optional(),
+        metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 
 /** CSV import — bulk-create tasks for one client. Names are resolved to ids client-side. */

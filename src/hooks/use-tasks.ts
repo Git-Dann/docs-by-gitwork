@@ -16,6 +16,7 @@ import {
   deleteTask,
   batchUpdateTasks,
   batchDeleteTasks,
+  batchCreateTasks,
   importTasks,
   addTaskComment,
   getClientTaskSummary,
@@ -80,10 +81,11 @@ function restoreTaskLists(qc: QueryClient, snapshot: TaskListSnapshot) {
 
 // ─── Board / list ────────────────────────────────────────────────────────────
 
-export function useTasks(filter: TaskFilter = {}) {
+export function useTasks(filter: TaskFilter = {}, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: QK.tasks(filter),
     queryFn: () => listTasks(filter),
+    enabled: opts.enabled ?? true,
     staleTime: 15_000,
   });
 }
@@ -193,6 +195,15 @@ export function useBatchDeleteTasks() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => batchDeleteTasks(ids),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useBatchCreateTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, tasks }: { clientId: string; tasks: Parameters<typeof batchCreateTasks>[1] }) =>
+      batchCreateTasks(clientId, tasks),
     onSuccess: () => invalidateAll(qc),
   });
 }

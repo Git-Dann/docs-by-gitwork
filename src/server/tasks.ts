@@ -747,6 +747,106 @@ export async function batchDeleteTasks(user: EffectiveUser, ids: string[]): Prom
   return { deleted: res.count };
 }
 
+/**
+ * Bulk-create tasks for one client from a single source (Pulse scan, etc.).
+ * Title-deduped against existing tasks that share the same `metadata.source` so
+ * re-pushing a scan's action plan never double-creates. Returns created + skipped counts.
+ */
+export async function batchCreateTasks(
+  user: EffectiveUser,
+  clientId: string,
+  tasks: Array<{
+    title: string;
+    description?: string | null;
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    metadata?: Record<string, unknown> | null;
+  }>,
+): Promise<{ created: number; skipped: number; tasks: TaskDTO[] }> {
+  await ensureBaseRecords();
+  await assertClientInScope(user, clientId);
+  if (!tasks.length) return { created: 0, skipped: 0, tasks: [] };
+
+  // The source key these tasks come from (all in one batch share it). Used for
+  // dedup so re-pushing the same scan plan is idempotent.
+  const source = (tasks[0]?.metadata?.["source"] as string | undefined) ?? null;
+
+  // Existing task titles for this client from the same source — for idempotent re-push.
+  const existing = await prisma.task.findMany({
+    where: { workspaceId: user.workspaceId, clientId },
+    select: { title: true, metadata: true },
+  });
+  const existingTitles = new Set(
+    existing
+      .filter((t) => !source || metadataString(t.metadata as Record<string, unknown> | null, "source") === source)
+      .map((t) => t.title.trim().toLowerCase()),
+  );
+
+  const created: TaskDTO[] = [];
+  let skipped = 0;
+  for (const input of tasks) {
+    const titleKey = input.title.trim().toLowerCase();
+    if (existingTitles.has(titleKey)) {
+      skipped++;
+      continue;
+    }
+    existingTitles.add(titleKey);
+    const status = input.status ?? "BACKLOG";
+    const ts = statusTimestamps(null, status, { startedAt: null });
+    const row = await prisma.task.create({
+      data: {
+        workspaceId: user.workspaceId,
+        clientId,
+        createdById: user.id,
+        title: input.title,
+        description: input.description ?? null,
+        status,
+        priority: input.priority ?? "MEDIUM",
+        orderKey: await nextOrderKey(user.workspaceId, clientId, status),
+        startedAt: ts.startedAt ?? null,
+        completedAt: ts.completedAt ?? null,
+        ...(input.metadata != null ? { metadata: input.metadata as Prisma.InputJsonValue } : {}),
+      },
+      include: taskInclude,
+    });
+    created.push(taskRowToDTO(row));
+  }
+  return { created: created.length, skipped, tasks: created };
+}
+
+/**
+ * After a Pulse re-scan: any non-DONE task created from a failing check whose
+ * check now PASSes is auto-closed. Matched by `metadata.pulseCheckKey` within the
+ * client (scan-id-agnostic, so a later scan closes tasks from an earlier one).
+ * System-level (no EffectiveUser) — runs in the background scan pipeline.
+ */
+export async function reconcilePulseTasksAfterScan(
+  workspaceId: string,
+  clientId: string,
+  passingCheckKeys: string[],
+): Promise<{ closed: number }> {
+  if (!passingCheckKeys.length) return { closed: 0 };
+  const passing = new Set(passingCheckKeys);
+  const open = await prisma.task.findMany({
+    where: { workspaceId, clientId, status: { not: "DONE" } },
+    select: { id: true, metadata: true },
+  });
+  const toClose = open
+    .filter((t) => {
+      const meta = t.metadata as Record<string, unknown> | null;
+      if (metadataString(meta, "source") !== "pulse_scan") return false;
+      const key = metadataString(meta, "pulseCheckKey");
+      return key != null && passing.has(key);
+    })
+    .map((t) => t.id);
+  if (!toClose.length) return { closed: 0 };
+  const res = await prisma.task.updateMany({
+    where: { id: { in: toClose } },
+    data: { status: "DONE", completedAt: new Date() },
+  });
+  return { closed: res.count };
+}
+
 // ─── Notes ─────────────────────────────────────────────────────────────────
 
 export async function listTaskComments(user: EffectiveUser, taskId: string): Promise<TaskCommentDTO[]> {
