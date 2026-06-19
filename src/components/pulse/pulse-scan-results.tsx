@@ -1018,13 +1018,27 @@ function PriorityActionPlan({
       .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
   ];
 
-  const totalActions = fixNow.length + thisSprint.length + nextSprint.length;
+  // Dedupe across tiers — the same issue often appears as both a production blocker
+  // AND a critical gap; keep the highest-priority occurrence only (Fix now > This sprint > Next).
+  const seenActions = new Set<string>();
+  const dedupeTier = (items: PriorityActionItem[]) =>
+    items.filter((it) => {
+      const k = it.title.trim().toLowerCase();
+      if (seenActions.has(k)) return false;
+      seenActions.add(k);
+      return true;
+    });
+  const fixNowD = dedupeTier(fixNow);
+  const thisSprintD = dedupeTier(thisSprint);
+  const nextSprintD = dedupeTier(nextSprint);
+
+  const totalActions = fixNowD.length + thisSprintD.length + nextSprintD.length;
   if (totalActions === 0) return null;
 
   const tiers = [
-    { key: "fix-now",     label: "Fix now",     priority: "HIGH" as const,   items: fixNow.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
-    { key: "this-sprint", label: "This sprint", priority: "MEDIUM" as const, items: thisSprint.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
-    { key: "next-sprint", label: "Next sprint", priority: "LOW" as const,    items: nextSprint.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
+    { key: "fix-now",     label: "Fix now",     priority: "HIGH" as const,   items: fixNowD.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
+    { key: "this-sprint", label: "This sprint", priority: "MEDIUM" as const, items: thisSprintD.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
+    { key: "next-sprint", label: "Next sprint", priority: "LOW" as const,    items: nextSprintD.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
   ].filter(({ items }) => items.length > 0);
 
   return (
@@ -1198,7 +1212,18 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const showTechStack = !!(scan.techStack && scan.techStack.length > 0); // 06
   const showWebVitals = !!scan.browserInsights || isUrlScan;             // 07 (data, or an actionable prompt on URL scans)
   const showCodeIntel = !!scan.codeInsights;                            // 09
-  const showDeployIntel = !!scan.deployInsights;                        // 10
+  // 10 — only when there's REAL deploy data; "platform detected, no metrics" is an
+  // empty card (that signal already lives in the Scan-agents panel).
+  const showDeployIntel = !!(
+    scan.deployInsights &&
+    (scan.deployInsights.recentDeployments !== null ||
+      scan.deployInsights.avgBuildMs !== null ||
+      (scan.deployInsights.buildWarnings?.length ?? 0) > 0)
+  );
+  // Paired rows go single-column when only one card shows, so a lone card never
+  // leaves a half-width gap on the right.
+  const techVitalsBoth = showTechStack && showWebVitals;
+  const codeDeployBoth = showCodeIntel && showDeployIntel;
 
   // Detect incomplete AI analysis — key fields empty despite no hard error
   const isAnalysisIncomplete =
@@ -1877,7 +1902,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
           {/* Row: Tech Stack · Web Vitals */}
           {(showTechStack || showWebVitals) && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className={cn("grid grid-cols-1 gap-3", techVitalsBoth && "sm:grid-cols-2")}>
 
             {/* 06 // TECH STACK */}
             {showTechStack && (
@@ -1981,8 +2006,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* Row: Code Intelligence · Deploy Intelligence */}
-          {(scan.codeInsights || scan.deployInsights) && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(showCodeIntel || showDeployIntel) && (
+            <div className={cn("grid grid-cols-1 gap-3", codeDeployBoth && "sm:grid-cols-2")}>
 
               {/* 09 // CODE INTELLIGENCE */}
               {showCodeIntel && (

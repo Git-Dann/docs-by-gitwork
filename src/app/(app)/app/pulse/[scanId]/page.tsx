@@ -218,7 +218,7 @@ export default function PulseScanDetailPage({
     <AppShell
       title={scan?.projectName ?? "Pulse scan"}
       subtitle={scan ? undefined : "Loading…"}
-      hideContentHeader={false}
+      hideContentHeader={true}
     >
       <div className="space-y-6">
         <div className="flex items-center gap-3">
