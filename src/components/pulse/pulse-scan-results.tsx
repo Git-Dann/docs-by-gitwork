@@ -704,6 +704,7 @@ function AgentPanel({
   const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   const checksTotal = scan.checks.filter((c) => c.status !== "SKIPPED").length;
   const checksFail = scan.checks.filter((c) => c.status === "FAIL").length;
@@ -868,20 +869,31 @@ function AgentPanel({
   const visibleSlots = slots.filter((slot) => slot.id !== "fix" || canRunFixAgent);
 
   return (
-    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Scan agents</p>
-        <span className="text-xs text-[var(--text-4)]">
-          {visibleSlots.filter((s) => s.status === "completed").length}/
-          {visibleSlots.filter((s) => s.status !== "na").length} completed
+    <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-4">
+      <button
+        type="button"
+        onClick={() => setAgentsOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="flex items-center gap-2">
+          {agentsOpen ? <ChevronDownIcon className="h-4 w-4 text-[var(--text-4)]" /> : <ChevronRightIcon className="h-4 w-4 text-[var(--text-4)]" />}
+          <span className="text-sm font-semibold text-[var(--text-1)]">Scan agents</span>
+          <span className="text-xs text-[var(--text-4)]">
+            · {visibleSlots.filter((s) => s.status === "completed").length}/{visibleSlots.filter((s) => s.status !== "na").length} run
+          </span>
         </span>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {!agentsOpen && (
+          <span className="text-xs font-medium text-[var(--brand-600)]">Run more checks →</span>
+        )}
+      </button>
+      {agentsOpen && (
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visibleSlots.map((slot) => (
           <AgentCard key={slot.id} slot={slot} />
         ))}
       </div>
-      {monitorWebhookUrl && (
+      )}
+      {agentsOpen && monitorWebhookUrl && (
         <div className="mt-4 flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-3">
           <span className="text-xs text-[var(--text-3)]">Webhook URL:</span>
           <code className="flex-1 truncate rounded bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-2)]">
@@ -1174,6 +1186,19 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
   const llm = scan.llmAnalysis;
   const checksByCategory = groupChecksByCategory(scan.checks);
+
+  // ── Adaptive visibility ──────────────────────────────────────────────────────
+  // Only surface widgets relevant to THIS product: a described idea has no checks
+  // or live-site signals; a GitHub-only scan has no web vitals / screenshot; a URL
+  // scan can prompt to add a repo. Server-side platform filtering already trims
+  // irrelevant check categories — this trims the overview widgets to match.
+  const isUrlScan = scan.inputType === "URL";
+  const hasRunChecks = scan.checks.some((c) => c.status !== "SKIPPED");
+  const showChecksGrid = hasRunChecks;                                  // 05
+  const showTechStack = !!(scan.techStack && scan.techStack.length > 0); // 06
+  const showWebVitals = !!scan.browserInsights || isUrlScan;             // 07 (data, or an actionable prompt on URL scans)
+  const showCodeIntel = !!scan.codeInsights;                            // 09
+  const showDeployIntel = !!scan.deployInsights;                        // 10
 
   // Detect incomplete AI analysis — key fields empty despite no hard error
   const isAnalysisIncomplete =
@@ -1706,12 +1731,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                         </span>
                         <span className="widget-data-label">Blockers</span>
                       </div>
-                      {(llm.productionBlockers as ProductionBlocker[]).slice(0, 3).map((blocker, i) => (
+                      {(llm.productionBlockers as ProductionBlocker[]).slice(0, 4).map((blocker, i) => (
                         <div key={i} className="flex items-start gap-2">
                           <XCircleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400")} />
                           <p className="text-xs leading-5 text-[var(--text-2)]">{blocker.blocker}</p>
                         </div>
                       ))}
+                      {(llm.productionBlockers as ProductionBlocker[]).length > 4 && (
+                        <button type="button" onClick={() => setActiveTab("readiness")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
+                          +{(llm.productionBlockers as ProductionBlocker[]).length - 4} more →
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -1739,12 +1769,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                         </span>
                         <span className="widget-data-label">High priority</span>
                       </div>
-                      {llm.criticalGaps.slice(0, 3).map((gap, i) => (
+                      {llm.criticalGaps.slice(0, 4).map((gap, i) => (
                         <div key={i} className="flex items-start gap-2">
                           <ExclamationTriangleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", gap.urgency === "CRITICAL" ? "text-red-500" : gap.urgency === "HIGH" ? "text-orange-500" : "text-amber-500")} />
                           <p className="text-xs leading-5 text-[var(--text-2)]">{gap.gap}</p>
                         </div>
                       ))}
+                      {llm.criticalGaps.length > 4 && (
+                        <button type="button" onClick={() => setActiveTab("gaps")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
+                          +{llm.criticalGaps.length - 4} more →
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -1766,12 +1801,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                           <span className="widget-stat-sm text-emerald-600">{list.length}</span>
                           <span className="widget-data-label">{wins.length > 0 ? "High value · low effort" : "Opportunities"}</span>
                         </div>
-                        {list.slice(0, 3).map((opp, i) => (
+                        {list.slice(0, 4).map((opp, i) => (
                           <div key={i} className="flex items-start gap-2">
                             <LightBulbIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-500)]" />
                             <p className="text-xs leading-5 text-[var(--text-2)]">{opp.title}</p>
                           </div>
                         ))}
+                        {list.length > 4 && (
+                          <button type="button" onClick={() => setActiveTab("opportunities")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
+                            +{list.length - 4} more →
+                          </button>
+                        )}
                       </>
                     );
                   })()}
@@ -1781,6 +1821,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 05 // AUTOMATED CHECKS */}
+          {showChecksGrid && (
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header-label">05 // AUTOMATED CHECKS</span>
@@ -1832,11 +1873,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               </div>
             </div>
           </div>
+          )}
 
           {/* Row: Tech Stack · Web Vitals */}
+          {(showTechStack || showWebVitals) && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
             {/* 06 // TECH STACK */}
+            {showTechStack && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">06 // TECH STACK</span>
@@ -1861,8 +1905,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 )}
               </div>
             </div>
+            )}
 
             {/* 07 // WEB VITALS */}
+            {showWebVitals && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">07 // WEB VITALS</span>
@@ -1887,11 +1933,17 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                     )}
                   </div>
                 ) : (
-                  <p className="py-1 text-sm text-[var(--text-3)]">No web vitals for this scan type. Run a URL scan to capture Lighthouse scores.</p>
+                  <p className="py-1 text-sm text-[var(--text-3)]">
+                    {scan.inputType === "URL"
+                      ? "Run the Browser & Performance agent (above) to capture Lighthouse scores + Core Web Vitals."
+                      : "Web vitals need a live URL — they're not available for this scan type."}
+                  </p>
                 )}
               </div>
             </div>
+            )}
           </div>
+          )}
 
           {/* 08 // BUILD ROADMAP */}
           {llm && llm.scalingRoadmap.length > 0 && (
@@ -1933,6 +1985,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
               {/* 09 // CODE INTELLIGENCE */}
+              {showCodeIntel && (
               <div className="widget-card">
                 <div className="widget-header">
                   <span className="widget-header-label">09 // CODE INTELLIGENCE</span>
@@ -2005,8 +2058,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   )}
                 </div>
               </div>
+              )}
 
               {/* 10 // DEPLOY INTELLIGENCE */}
+              {showDeployIntel && (
               <div className="widget-card">
                 <div className="widget-header">
                   <span className="widget-header-label">10 // DEPLOY INTELLIGENCE</span>
@@ -2054,6 +2109,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   )}
                 </div>
               </div>
+              )}
             </div>
           )}
 
