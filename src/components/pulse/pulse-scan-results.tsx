@@ -60,6 +60,26 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
   return Math.round((earned / applicable.length) * 100);
 }
 
+// Best-effort tech stack: prefer the deterministically-detected stack; when none
+// (idea/URL-only/no-repo), fall back to what we CAN infer — the builder platform
+// (Lovable/Bolt/v0/Replit/Vercel…) and the AI's inferred infrastructure layers.
+function effectiveTechStack(scan: PulseScanRecord): { stack: string[]; inferred: boolean } {
+  if (scan.techStack && scan.techStack.length > 0) return { stack: scan.techStack, inferred: false };
+  const out: string[] = [];
+  const builderEvidence = scan.checks.find((c) => c.checkKey === "vibe_ai_builder")?.evidence;
+  if (builderEvidence) out.push(builderEvidence);
+  const plat = scan.deployInsights?.platform;
+  if (plat && plat !== "other") out.push(plat.charAt(0).toUpperCase() + plat.slice(1));
+  const ds = scan.llmAnalysis?.techStackAnalysis?.detectedStack;
+  if (ds) {
+    for (const k of ["frontend", "backend", "database", "hosting", "auth", "payments"] as const) {
+      const v = ds[k];
+      if (v && v.trim() && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v.trim());
+    }
+  }
+  return { stack: [...new Set(out)], inferred: true };
+}
+
 type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors";
 
 function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: number }) {
@@ -1209,7 +1229,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const isUrlScan = scan.inputType === "URL";
   const hasRunChecks = scan.checks.some((c) => c.status !== "SKIPPED");
   const showChecksGrid = hasRunChecks;                                  // 05
-  const showTechStack = !!(scan.techStack && scan.techStack.length > 0); // 06
+  const techStackInfo = effectiveTechStack(scan);                        // 06 (with builder/AI fallback)
+  const showTechStack = techStackInfo.stack.length > 0;
   const showWebVitals = !!scan.browserInsights || isUrlScan;             // 07 (data, or an actionable prompt on URL scans)
   const showCodeIntel = !!scan.codeInsights;                            // 09
   // 10 — only when there's REAL deploy data; "platform detected, no metrics" is an
@@ -1616,7 +1637,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {/* ═══ OVERVIEW TAB — BENTO DASHBOARD ═══════════════════════════════ */}
       {activeTab === "overview" && (
-        <div className="space-y-3">
+        <div className="space-y-4">
 
           {/* F5 — Launch Readiness verdict: a single go/no-go derived from health + blockers */}
           {scan.status === "COMPLETED" && scan.healthScore !== null && (() => {
@@ -1909,21 +1930,31 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">06 // TECH STACK</span>
-                {scan.techStack && scan.techStack.length > 0 && (
-                  <span className="widget-header-right">{scan.techStack.length} detected</span>
-                )}
+                <span className="widget-header-right">{techStackInfo.inferred ? "inferred" : `${techStackInfo.stack.length} detected`}</span>
               </div>
               <div className="widget-body-compact">
-                {scan.techStack && scan.techStack.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {scan.techStack.map((t) => (
-                      <span key={t} className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]">
-                        {t}
-                      </span>
-                    ))}
+                <div className="flex flex-wrap gap-1.5">
+                  {techStackInfo.stack.map((t) => (
+                    <span key={t} className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+                {techStackInfo.inferred && (
+                  <p className="mt-2 text-[11px] leading-4 text-[var(--text-4)]">Inferred from the builder/host and page signals — add a GitHub repo URL for exact detection.</p>
+                )}
+                {/* Recommended stack — the AI's top infrastructure recommendations */}
+                {(llm?.techStackAnalysis?.recommendations?.length ?? 0) > 0 && (
+                  <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+                    <p className="widget-data-label mb-1.5">Recommended</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {llm!.techStackAnalysis.recommendations.slice(0, 5).map((r, i) => (
+                        <span key={i} className="inline-flex items-center rounded-[6px] border border-[var(--brand-300)] bg-[var(--surface-brand-soft)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]" title={r.reason}>
+                          {r.recommended}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  <p className="py-1 text-sm text-[var(--text-3)]">No tech stack detected. Add a GitHub repo URL for code-level detection.</p>
                 )}
                 {llm?.techStackAnalysis?.assessment && (
                   <p className="mt-3 border-t border-[var(--border-2)] pt-3 text-xs leading-5 text-[var(--text-3)]">{llm.techStackAnalysis.assessment}</p>
@@ -2715,7 +2746,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {activeTab === "stack" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
       {activeTab === "stack" && llm?.techStackAnalysis && (
-        <StackTab analysis={llm.techStackAnalysis} detectedStack={scan.techStack ?? []} />
+        <StackTab analysis={llm.techStackAnalysis} detectedStack={techStackInfo.stack} />
       )}
 
       {activeTab === "competitors" && scan.competitorData && scan.healthScore !== null && (
