@@ -40,11 +40,11 @@ import {
 } from "@/lib/api";
 import type { TaskStatus, TaskDTO } from "@/types/tasks";
 
-type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string };
+type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean };
 
 const QK = {
   tasks: (f: TaskFilter) =>
-    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null] as const,
+    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null, f.archived ?? false] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   summary: (clientId: string) => ["tasks", "summary", clientId] as const,
   myDay: (date?: string) => ["tasks", "myday", date ?? "today"] as const,
@@ -134,6 +134,12 @@ export function useUpdateTask() {
     mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateTask>[1] }) =>
       updateTask(id, input),
     onMutate: async ({ id, input }) => {
+      // Archive/unarchive moves the task between the active and archived list caches — drop it
+      // from whichever it's in now; the destination list reconciles on settle.
+      if (input.archived !== undefined) {
+        await qc.cancelQueries(TASK_LIST_FILTER);
+        return { prev: patchTaskLists(qc, (tasks) => tasks.filter((t) => t.id !== id)) };
+      }
       // Only the fields that map 1:1 onto TaskDTO patch optimistically (covers the
       // list's instant "toggle done" + priority/title edits). Everything else
       // (assignees, block, dates…) reconciles on settle via invalidateAll.

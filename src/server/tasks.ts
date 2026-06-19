@@ -79,6 +79,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     dueDate: row.dueDate ? row.dueDate.toISOString() : null,
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     commentCount: row._count.comments,
     subtaskCount: row._count.subtasks,
     subtaskDoneCount: 0,
@@ -259,10 +260,12 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
+  // Active views exclude archived; the Archived tab passes archived:true for only-archived.
+  where.archivedAt = opts.archived ? { not: null } : null;
   if (opts.clientId) {
     // Intersect the requested client with the scope — a restricted user asking
     // for a client they aren't assigned to gets nothing.
@@ -340,7 +343,7 @@ export async function getClientTaskSummary(
   await assertClientInScope(user, clientId);
   const grouped = await prisma.task.groupBy({
     by: ["status"],
-    where: { workspaceId: user.workspaceId, clientId, parentId: null },
+    where: { workspaceId: user.workspaceId, clientId, parentId: null, archivedAt: null },
     _count: { _all: true },
   });
   const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
@@ -373,12 +376,14 @@ export async function getTaskAttention(
   const open: Prisma.TaskWhereInput = {
     ...scope,
     parentId: null,
+    archivedAt: null,
     status: { not: "DONE" },
     ...(mineFilter ?? {}),
   };
   const doingWhere: Prisma.TaskWhereInput = {
     ...scope,
     parentId: null,
+    archivedAt: null,
     status: { in: ["DOING", "IN_REVIEW"] },
     ...(mineFilter ?? {}),
   };
@@ -590,6 +595,7 @@ export async function updateTask(
     featureBlockId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
+    archived?: boolean;
   },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
@@ -622,6 +628,7 @@ export async function updateTask(
     }
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  if (input.archived !== undefined) data.archivedAt = input.archived ? new Date() : null;
   if (input.status !== undefined && input.status !== existing.status) {
     data.status = input.status;
     Object.assign(data, statusTimestamps(existing.status as TaskStatus, input.status, existing));
@@ -675,6 +682,7 @@ export interface TaskBatchPatch {
   assigneeIds?: string[];
   featureBlockId?: string | null;
   dueDate?: string | null;
+  archived?: boolean;
 }
 
 /** Load the requested tasks that exist in this workspace; throw if any is out of scope. */
@@ -719,6 +727,7 @@ export async function batchUpdateTasks(
     const data: Prisma.TaskUpdateInput = {};
     if (patch.priority !== undefined) data.priority = patch.priority;
     if (patch.dueDate !== undefined) data.dueDate = patch.dueDate ? new Date(patch.dueDate) : null;
+    if (patch.archived !== undefined) data.archivedAt = patch.archived ? new Date() : null;
     if (patch.assigneeIds !== undefined) {
       data.assignees = { set: patch.assigneeIds.map((id) => ({ id })) };
       data.assignee = { disconnect: true };
@@ -745,6 +754,20 @@ export async function batchDeleteTasks(user: EffectiveUser, ids: string[]): Prom
   if (!rows.length) return { deleted: 0 };
   const res = await prisma.task.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
   return { deleted: res.count };
+}
+
+/**
+ * Auto-archive tasks that have been DONE for longer than `olderThanDays` (default 30) and aren't
+ * already archived. Keeps the active board self-cleaning. Workspace-wide (the cron runs system-side);
+ * never deletes. Returns the count archived.
+ */
+export async function autoArchiveDoneTasks(olderThanDays = 30): Promise<{ archived: number }> {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const res = await prisma.task.updateMany({
+    where: { status: "DONE", archivedAt: null, completedAt: { not: null, lt: cutoff } },
+    data: { archivedAt: new Date() },
+  });
+  return { archived: res.count };
 }
 
 /**

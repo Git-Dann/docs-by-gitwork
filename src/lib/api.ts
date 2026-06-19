@@ -2296,12 +2296,14 @@ export function listTasks(opts: {
   status?: TaskStatus;
   assigneeId?: string;
   sourceMeetingId?: string;
+  archived?: boolean;
 } = {}): Promise<TaskDTO[]> {
   const q = new URLSearchParams();
   if (opts.clientId) q.set("clientId", opts.clientId);
   if (opts.status) q.set("status", opts.status);
   if (opts.assigneeId) q.set("assigneeId", opts.assigneeId);
   if (opts.sourceMeetingId) q.set("sourceMeetingId", opts.sourceMeetingId);
+  if (opts.archived) q.set("archived", "true");
   const qs = q.toString();
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }
@@ -2342,6 +2344,7 @@ export function updateTask(
     featureBlockId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
+    archived?: boolean;
   },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}`, {
@@ -2372,6 +2375,7 @@ export interface TaskBatchPatch {
   assigneeIds?: string[];
   featureBlockId?: string | null;
   dueDate?: string | null;
+  archived?: boolean;
 }
 
 export function batchUpdateTasks(ids: string[], patch: TaskBatchPatch): Promise<{ updated: number }> {

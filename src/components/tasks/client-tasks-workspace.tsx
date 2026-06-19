@@ -13,6 +13,7 @@ import {
   Squares2X2Icon,
   ListBulletIcon,
   CalendarDaysIcon,
+  ArchiveBoxIcon,
   ShareIcon,
   CheckIcon,
   ClipboardDocumentIcon,
@@ -60,7 +61,7 @@ const GanttChart = dynamic(
   },
 );
 
-type View = "board" | "list" | "gantt";
+type View = "board" | "list" | "gantt" | "archived";
 
 export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const { data, isPending: clientLoading } = useClientDetail(slug);
@@ -115,6 +116,11 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
   const { data: meetingsData } = useClientMeetings(slug, Boolean(clientId));
+  // Archived tab: only-archived tasks, fetched lazily when the tab is open.
+  const { data: archivedTasks = [], isPending: archivedLoading } = useTasks(
+    { clientId: clientId ?? undefined, archived: true },
+    { enabled: view === "archived" && Boolean(clientId) },
+  );
 
   // Board + List honour the search/filter bar; Gantt always shows everything.
   const filtered = useMemo(() => {
@@ -206,6 +212,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           <ViewTab active={view === "gantt"} onClick={() => switchView("gantt")} icon={<CalendarDaysIcon className="h-4 w-4" />} borderLeft>
             Gantt
           </ViewTab>
+          <ViewTab active={view === "archived"} onClick={() => switchView("archived")} icon={<ArchiveBoxIcon className="h-4 w-4" />} borderLeft>
+            Archived
+          </ViewTab>
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -249,8 +258,8 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* Search + filters (board + list) */}
-      {view !== "gantt" ? (
+      {/* Search + filters (board + list only) */}
+      {view !== "gantt" && view !== "archived" ? (
         <TaskFilterBar
           tasks={tasks}
           categories={blocks}
@@ -261,7 +270,25 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : null}
 
       {/* Content */}
-      {tasksLoading && view !== "gantt" ? (
+      {view === "archived" ? (
+        archivedLoading ? (
+          <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+        ) : archivedTasks.length === 0 ? (
+          <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center text-sm text-[var(--text-4)]">
+            No archived tasks yet. Done tasks auto-archive after 30 days, or archive them manually.
+          </div>
+        ) : (
+          <TaskList
+            tasks={archivedTasks}
+            showClient={false}
+            onRowClick={setOpenTaskId}
+            selectable
+            selectedIds={selected}
+            onToggleSelect={toggleSelect}
+            onToggleAll={(checked) => setSelected(checked ? new Set(archivedTasks.map((t) => t.id)) : new Set())}
+          />
+        )
+      ) : tasksLoading && view !== "gantt" ? (
         <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
       ) : view === "board" ? (
         <TaskBoard
@@ -300,8 +327,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       )}
 
       {/* Floating batch bar — fixed overlay, never shifts the list */}
-      {view === "list" && selected.size > 0 ? (
-        <TaskBatchBar selectedIds={[...selected]} blocks={blocks} onClear={() => setSelected(new Set())} />
+      {(view === "list" || view === "archived") && selected.size > 0 ? (
+        <TaskBatchBar
+          selectedIds={[...selected]}
+          blocks={blocks}
+          mode={view === "archived" ? "archived" : "active"}
+          onClear={() => setSelected(new Set())}
+        />
       ) : null}
 
       {creatingTask ? (

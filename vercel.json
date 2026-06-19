@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/embed-conversations",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/auto-archive-tasks",
+      "schedule": "0 3 * * *"
     }
   ]
 }

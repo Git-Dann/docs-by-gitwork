@@ -9,6 +9,8 @@ import {
   XMarkIcon,
   CheckIcon,
   ChevronDownIcon,
+  ArchiveBoxArrowDownIcon,
+  ArchiveBoxXMarkIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { useBatchUpdateTasks, useBatchDeleteTasks } from "@/hooks/use-tasks";
@@ -85,10 +87,13 @@ export function TaskBatchBar({
   selectedIds,
   blocks,
   onClear,
+  mode = "active",
 }: {
   selectedIds: string[];
   blocks: FeatureBlockDTO[];
   onClear: () => void;
+  /** "archived" flips the Archive action to Unarchive (used by the Archived tab). */
+  mode?: "active" | "archived";
 }) {
   const batchUpdate = useBatchUpdateTasks();
   const batchDelete = useBatchDeleteTasks();
@@ -255,6 +260,20 @@ export function TaskBatchBar({
             </div>
           )}
         </Pop>
+
+        {/* Archive / Unarchive */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void apply({ archived: mode !== "archived" })}
+          className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+        >
+          {mode === "archived" ? (
+            <><ArchiveBoxXMarkIcon className="h-3.5 w-3.5" />Unarchive</>
+          ) : (
+            <><ArchiveBoxArrowDownIcon className="h-3.5 w-3.5" />Archive</>
+          )}
+        </button>
 
         {/* Delete */}
         {confirmDelete ? (

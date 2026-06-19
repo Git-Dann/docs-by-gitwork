@@ -63,6 +63,8 @@ export type TaskDTO = {
   dueDate: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  /** Set when soft-archived (hidden from active views). Null = active. */
+  archivedAt: string | null;
   commentCount: number;
   subtaskCount: number;
   subtaskDoneCount: number;

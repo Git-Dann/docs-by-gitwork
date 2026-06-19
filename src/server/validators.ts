@@ -910,6 +910,8 @@ export const taskUpdateSchema = z.object({
   featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  // Soft-archive toggle: true archives (stamps archivedAt), false unarchives (clears it).
+  archived: z.boolean().optional(),
 });
 
 /**
@@ -932,6 +934,8 @@ export const taskListQuerySchema = z.object({
   // "me" resolves to the caller server-side; a cuid filters to that assignee.
   assigneeId: z.string().optional(),
   sourceMeetingId: z.string().cuid().optional(),
+  // "true" → only archived tasks (the Archived tab); default/absent → active only.
+  archived: z.enum(["true", "false"]).optional(),
 });
 
 /** Bulk edit — apply one patch (any subset of fields) to many tasks at once. */
@@ -944,6 +948,7 @@ export const taskBatchUpdateSchema = z.object({
       assigneeIds: z.array(z.string().cuid()).optional(),
       featureBlockId: z.string().cuid().nullable().optional(),
       dueDate: isoDateString.nullable().optional(),
+      archived: z.boolean().optional(),
     })
     .refine((p) => Object.keys(p).length > 0, { message: "Patch must set at least one field" }),
 });

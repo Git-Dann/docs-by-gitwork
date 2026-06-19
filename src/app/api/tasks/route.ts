@@ -15,12 +15,14 @@ export async function GET(req: Request) {
       status: url.searchParams.get("status") ?? undefined,
       assigneeId: url.searchParams.get("assigneeId") ?? undefined,
       sourceMeetingId: url.searchParams.get("sourceMeetingId") ?? undefined,
+      archived: url.searchParams.get("archived") ?? undefined,
     });
     const tasks = await listTasks(user, {
       clientId: q.clientId,
       status: q.status as TaskStatus | undefined,
       assigneeId: q.assigneeId,
       sourceMeetingId: q.sourceMeetingId,
+      archived: q.archived === "true",
     });
     return apiOk(tasks);
   } catch (e) {

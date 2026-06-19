@@ -2608,6 +2608,9 @@ model Task {
   clickupId          String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
+  /// Soft-archive: hidden from board/list/Gantt + dashboard scans, but never deleted (the
+  /// Archived tab reads these). Set manually or by the daily auto-archive cron (DONE > 30d).
+  archivedAt         DateTime?
 
   workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   client           WorkspaceClient   @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -2634,6 +2637,8 @@ model Task {
   // the HQ status rollups directly — important now that the board holds 1k+ tasks.
   @@index([workspaceId, status])
   @@index([workspaceId, dueDate])
+  // Default board/list/Gantt reads filter archivedAt IS NULL; the cron scans archivedAt + status.
+  @@index([workspaceId, archivedAt])
 }
 
 /// Message↔task linkage for Slack interactivity. Persisted when Foundry posts a

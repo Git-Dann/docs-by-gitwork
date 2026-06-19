@@ -16,6 +16,8 @@ import {
   CheckIcon,
   VideoCameraIcon,
   ChevronDownIcon,
+  ArchiveBoxArrowDownIcon,
+  ArchiveBoxXMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -218,6 +220,12 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
     onClose();
   }
 
+  async function toggleArchive() {
+    if (!task) return;
+    await update.mutateAsync({ id: task.id, input: { archived: !task.archivedAt } });
+    onClose(); // archiving/unarchiving moves it between the active board and the Archived tab
+  }
+
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
       <button type="button" className="app-dialog-backdrop absolute inset-0" aria-label="Close" onClick={onClose} />
@@ -412,14 +420,25 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
             {/* Footer actions */}
             <div className="flex items-center justify-between gap-3 border-t border-[var(--border-2)] px-6 py-4">
               {!confirmDelete ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-4)] transition hover:text-[var(--danger-500)]"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                  Delete
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-4)] transition hover:text-[var(--danger-500)]"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void toggleArchive()}
+                    disabled={update.isPending}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)] disabled:opacity-50"
+                  >
+                    {task.archivedAt ? <ArchiveBoxXMarkIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
+                    {task.archivedAt ? "Unarchive" : "Archive"}
+                  </button>
+                </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[var(--text-3)]">Delete this task?</span>
