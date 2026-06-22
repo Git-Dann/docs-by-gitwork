@@ -3,12 +3,9 @@ import { zipSync, strToU8 } from "fflate";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/** Collect distinct font-family names from the token set. */
 function collectFamilies(tokens: DesignTokens): string[] {
   const seen = new Set<string>();
-  const push = (f: string | undefined) => {
-    if (f && f.trim()) seen.add(f.trim());
-  };
+  const push = (f: string | undefined) => { if (f?.trim()) seen.add(f.trim()); };
   push(tokens.typography.displayFont);
   push(tokens.typography.bodyFont);
   push(tokens.typography.monoFont);
@@ -16,7 +13,6 @@ function collectFamilies(tokens: DesignTokens): string[] {
   return [...seen];
 }
 
-/** Collect all weights used for a given family in the scale. */
 function weightsForFamily(tokens: DesignTokens, family: string): number[] {
   const seen = new Set<number>();
   for (const t of tokens.typography.scale) {
@@ -26,7 +22,6 @@ function weightsForFamily(tokens: DesignTokens, family: string): number[] {
   return [...seen].sort((a, b) => a - b);
 }
 
-/** Build a Google Fonts v2 URL for all non-system families in the token set. */
 export function googleFontsUrl(tokens: DesignTokens): string {
   const systemFamilies = new Set(
     (tokens.typography.systemFallback || "")
@@ -41,7 +36,6 @@ export function googleFontsUrl(tokens: DesignTokens): string {
   const params = families.map((family) => {
     const weights = weightsForFamily(tokens, family);
     const encoded = family.replace(/ /g, "+");
-    // Include regular + italic axis if the family name hints at a serif/display
     const hasItalic = /serif|display|script|italic/i.test(family);
     if (hasItalic) {
       const axisStr = weights.map((w) => `0,${w};1,${w}`).join(";");
@@ -53,17 +47,97 @@ export function googleFontsUrl(tokens: DesignTokens): string {
   return `https://fonts.googleapis.com/css2?${params.join("&")}&display=swap`;
 }
 
+// ── font file fetching ────────────────────────────────────────────────────────
+
+interface FontFace {
+  family: string;
+  weight: number;
+  style: string;
+  unicodeRange: string;
+  url: string;
+  index: number; // position within family+weight+style group
+}
+
+/** Fetch the Google Fonts CSS and parse every @font-face block. */
+async function parseFontFaces(gfUrl: string): Promise<FontFace[]> {
+  const css = await fetch(gfUrl).then((r) => r.text());
+
+  const blockRe = /@font-face\s*\{([^}]+)\}/g;
+  const urlRe = /src:[^;]*url\(([^)]+)\)[^;]*format\(['"]woff2['"]\)/;
+  const familyRe = /font-family:\s*['"]([^'"]+)['"]/;
+  const weightRe = /font-weight:\s*(\d+)/;
+  const styleRe = /font-style:\s*(\w+)/;
+  const unicodeRe = /unicode-range:\s*([^;]+)/;
+
+  const faces: FontFace[] = [];
+  const groupCount: Record<string, number> = {};
+
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(css)) !== null) {
+    const block = m[1];
+    const urlMatch = urlRe.exec(block);
+    const familyMatch = familyRe.exec(block);
+    if (!urlMatch || !familyMatch) continue;
+
+    const family = familyMatch[1];
+    const weight = parseInt(weightRe.exec(block)?.[1] ?? "400");
+    const style = styleRe.exec(block)?.[1] ?? "normal";
+    const unicodeRange = unicodeRe.exec(block)?.[1]?.trim() ?? "";
+    const key = `${family}-${weight}-${style}`;
+    const index = groupCount[key] ?? 0;
+    groupCount[key] = index + 1;
+
+    faces.push({ family, weight, style, unicodeRange, url: urlMatch[1], index });
+  }
+
+  return faces;
+}
+
+function fontFilename(face: FontFace): string {
+  const familySlug = face.family.toLowerCase().replace(/\s+/g, "-");
+  const styleSuffix = face.style !== "normal" ? `-${face.style}` : "";
+  return `fonts/${familySlug}-${face.weight}${styleSuffix}-${face.index}.woff2`;
+}
+
 // ── font pack ─────────────────────────────────────────────────────────────────
 
-/** Builds a ZIP containing fonts.css, tailwind.js snippet, and README.md. */
-export function buildFontPack(tokens: DesignTokens): Uint8Array {
+/** Fetches and bundles actual woff2 font files from Google Fonts. */
+export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
   const gfUrl = googleFontsUrl(tokens);
-
   const families = collectFamilies(tokens);
 
-  const fontsCss = [
-    gfUrl ? `@import url("${gfUrl}");` : "/* Add your font @import here */",
-    "",
+  const files: Record<string, Uint8Array> = {};
+  const fontFaceDeclarations: string[] = [];
+
+  if (gfUrl) {
+    const faces = await parseFontFaces(gfUrl);
+
+    await Promise.all(
+      faces.map(async (face) => {
+        try {
+          const buf = await fetch(face.url).then((r) => r.arrayBuffer());
+          const filename = fontFilename(face);
+          files[filename] = new Uint8Array(buf);
+
+          const lines = [
+            "@font-face {",
+            `  font-family: '${face.family}';`,
+            `  font-style: ${face.style};`,
+            `  font-weight: ${face.weight};`,
+            `  font-display: swap;`,
+            `  src: url('./${filename}') format('woff2');`,
+          ];
+          if (face.unicodeRange) lines.push(`  unicode-range: ${face.unicodeRange};`);
+          lines.push("}");
+          fontFaceDeclarations.push(lines.join("\n"));
+        } catch {
+          // Skip unreachable font file silently
+        }
+      }),
+    );
+  }
+
+  const cssRoot = [
     "/* ── CSS custom properties ───────────────────────────────── */",
     ":root {",
     tokens.typography.displayFont
@@ -80,6 +154,14 @@ export function buildFontPack(tokens: DesignTokens): Uint8Array {
     .filter((l) => l !== null)
     .join("\n");
 
+  const fontsCss = [
+    fontFaceDeclarations.join("\n\n"),
+    "",
+    cssRoot,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const tailwindLines = [
     "// tailwind.config.js → theme.extend.fontFamily",
     "fontFamily: {",
@@ -89,7 +171,9 @@ export function buildFontPack(tokens: DesignTokens): Uint8Array {
     tokens.typography.bodyFont
       ? `  sans: ['${tokens.typography.bodyFont}', '${tokens.typography.systemFallback}'],`
       : null,
-    tokens.typography.monoFont ? `  mono: ['${tokens.typography.monoFont}', 'monospace'],` : null,
+    tokens.typography.monoFont
+      ? `  mono: ['${tokens.typography.monoFont}', 'monospace'],`
+      : null,
     "},",
   ]
     .filter((l) => l !== null)
@@ -108,54 +192,80 @@ export function buildFontPack(tokens: DesignTokens): Uint8Array {
     "## Families",
     families.map((f) => `- ${f}`).join("\n"),
     "",
-    "## Google Fonts import",
-    gfUrl ? `\`\`\`\n${gfUrl}\n\`\`\`` : "_No Google Fonts URL generated — all fonts are system or custom._",
-    "",
     "## Type scale",
     "| Role               | Family                 | Weight | Size    | LH   |",
     "|:-------------------|:-----------------------|:-------|:--------|:-----|",
     scaleRows,
     "",
     "## Files",
-    "- `fonts.css` — `@import` + `:root` CSS custom properties",
+    "- `fonts/` — self-hosted woff2 files (one per unicode range per weight)",
+    "- `fonts.css` — `@font-face` declarations + `:root` CSS custom properties",
     "- `tailwind.js` — `fontFamily` snippet for `tailwind.config.js`",
     "- `README.md` — this file",
+    "",
+    "## Usage",
+    "1. Copy the `fonts/` directory and `fonts.css` into your project.",
+    "2. Add `@import './fonts.css';` at the top of your global stylesheet.",
+    "3. Use the CSS variables (`var(--font-body)` etc.) or the Tailwind snippet.",
   ].join("\n");
 
-  return zipSync({
-    "fonts.css": strToU8(fontsCss),
-    "tailwind.js": strToU8(tailwindLines),
-    "README.md": strToU8(readme),
-  });
+  files["fonts.css"] = strToU8(fontsCss);
+  files["tailwind.js"] = strToU8(tailwindLines);
+  files["README.md"] = strToU8(readme);
+
+  return zipSync(files);
 }
 
 // ── logo pack ─────────────────────────────────────────────────────────────────
 
-/** Fetches each logo asset's downloadUrl and bundles them into a ZIP with a README. */
-export async function buildLogoPack(tokens: DesignTokens): Promise<Uint8Array> {
-  const assets = tokens.logoRules?.assets ?? [];
-  const downloadable = assets.filter((a) => a.downloadUrl);
+function extFromUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    return path.split(".").pop()?.split("?")[0] ?? "png";
+  } catch {
+    return "png";
+  }
+}
 
+/**
+ * Fetches the client's uploaded logo and any logoRules assets with a downloadUrl,
+ * then bundles them into a ZIP with usage rules in README.md.
+ */
+export async function buildLogoPack(
+  tokens: DesignTokens,
+  clientLogoUrl?: string | null,
+): Promise<Uint8Array> {
   const files: Record<string, Uint8Array> = {};
 
+  // Client's uploaded logo
+  if (clientLogoUrl) {
+    try {
+      const buf = await fetch(clientLogoUrl).then((r) => r.arrayBuffer());
+      const ext = extFromUrl(clientLogoUrl);
+      files[`logos/logo.${ext}`] = new Uint8Array(buf);
+    } catch {
+      // Skip silently if unreachable
+    }
+  }
+
+  // Skill-generated lockups with explicit downloadUrl
+  const assets = tokens.logoRules?.assets ?? [];
   await Promise.all(
-    downloadable.map(async (asset) => {
-      try {
-        const resp = await fetch(asset.downloadUrl!);
-        if (!resp.ok) return;
-        const buf = await resp.arrayBuffer();
-        // Derive filename from URL or label
-        const urlPath = new URL(asset.downloadUrl!).pathname;
-        const ext = urlPath.split(".").pop() ?? "svg";
-        const safeName = asset.label
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
-        files[`logos/${safeName}.${ext}`] = new Uint8Array(buf);
-      } catch {
-        // Skip unreachable assets silently
-      }
-    }),
+    assets
+      .filter((a) => a.downloadUrl)
+      .map(async (asset) => {
+        try {
+          const buf = await fetch(asset.downloadUrl!).then((r) => r.arrayBuffer());
+          const ext = extFromUrl(asset.downloadUrl!);
+          const safeName = asset.label
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+          files[`logos/${safeName}.${ext}`] = new Uint8Array(buf);
+        } catch {
+          // Skip silently
+        }
+      }),
   );
 
   const lr = tokens.logoRules;
@@ -163,43 +273,34 @@ export async function buildLogoPack(tokens: DesignTokens): Promise<Uint8Array> {
 
   if (lr?.brandStrapline) readmeParts.push(`> ${lr.brandStrapline}`, "");
 
-  if (assets.length) {
-    readmeParts.push("## Assets");
-    assets.forEach((a) => {
-      readmeParts.push(`- **${a.label}** (${a.background ?? "light/dark"})`);
-    });
-    readmeParts.push("");
-  }
+  readmeParts.push("## Files");
+  if (clientLogoUrl) readmeParts.push("- `logos/logo.*` — uploaded client logo");
+  assets
+    .filter((a) => a.downloadUrl)
+    .forEach((a) => readmeParts.push(`- **${a.label}**`));
+  readmeParts.push("");
 
-  if (lr?.colourRules && lr.colourRules.length) {
+  if (lr?.colourRules?.length) {
     readmeParts.push("## Colour on surface");
-    lr.colourRules.forEach((r) => {
-      readmeParts.push(`- ${r.surface}: use the ${r.logoVersion}`);
-    });
+    lr.colourRules.forEach((r) => readmeParts.push(`- ${r.surface}: use the ${r.logoVersion}`));
     readmeParts.push("");
   }
 
   if (lr?.minSizes && Object.keys(lr.minSizes).length) {
     readmeParts.push("## Minimum sizes");
-    Object.entries(lr.minSizes).forEach(([k, v]) => {
-      readmeParts.push(`- ${k}: ${v}`);
-    });
+    Object.entries(lr.minSizes).forEach(([k, v]) => readmeParts.push(`- ${k}: ${v}`));
     readmeParts.push("");
   }
 
-  if (lr?.clearSpace) {
-    readmeParts.push(`**Clear space:** ${lr.clearSpace}`, "");
-  }
+  if (lr?.clearSpace) readmeParts.push(`**Clear space:** ${lr.clearSpace}`, "");
 
-  if (lr?.rules && lr.rules.length) {
+  if (lr?.rules?.length) {
     readmeParts.push("## Usage rules");
     lr.rules.forEach((r) => readmeParts.push(`- ${r}`));
     readmeParts.push("");
   }
 
-  if (lr?.notes) {
-    readmeParts.push(`## Notes\n${lr.notes}`, "");
-  }
+  if (lr?.notes) readmeParts.push(`## Notes\n${lr.notes}`, "");
 
   files["README.md"] = strToU8(readmeParts.join("\n"));
 

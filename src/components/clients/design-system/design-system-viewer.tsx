@@ -1119,7 +1119,7 @@ export function DesignSystemViewer({
     setFontDownloading(true);
     try {
       const { buildFontPack, triggerDownload } = await import("@/lib/design-system-zip");
-      const zip = buildFontPack(tokens);
+      const zip = await buildFontPack(tokens);
       const slug = tokens.clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       triggerDownload(zip, `${slug}-font-pack.zip`);
     } catch {
@@ -1129,13 +1129,14 @@ export function DesignSystemViewer({
     }
   };
 
-  const hasLogoDownloads = (tokens.logoRules?.assets ?? []).some((a) => a.downloadUrl);
+  const hasLogoDownloads =
+    !!clientLogoUrl || (tokens.logoRules?.assets ?? []).some((a) => a.downloadUrl);
 
   const handleLogoDownload = async () => {
     setLogoDownloading(true);
     try {
       const { buildLogoPack, triggerDownload } = await import("@/lib/design-system-zip");
-      const zip = await buildLogoPack(tokens);
+      const zip = await buildLogoPack(tokens, clientLogoUrl);
       const slug = tokens.clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       triggerDownload(zip, `${slug}-logo-pack.zip`);
     } catch {
