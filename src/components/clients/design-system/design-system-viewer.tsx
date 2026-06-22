@@ -375,38 +375,45 @@ function TypographySection({ tokens }: { tokens: DesignTokens }) {
         ))}
       </div>
       <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
-        {tokens.typography.scale.map((t, i) => (
-          <div
-            key={`${t.role}-${i}`}
-            className="grid items-center gap-5 border-b border-[rgba(0,0,0,0.06)] px-5 py-4 last:border-0"
-            style={{ gridTemplateColumns: "210px 1fr" }}
-          >
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-2)]">
-                {t.role}
-              </p>
-              <p className="mt-1 text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
-                {t.fontFamily} {t.fontWeight} · {t.fontSize}
-                {t.lineHeight ? ` · lh ${t.lineHeight}` : ""}
-                {t.letterSpacing ? ` · ls ${t.letterSpacing}` : ""}
+        {tokens.typography.scale.map((t, i) => {
+          const sizePx = parseFloat(t.fontSize) || 14;
+          const isLarge = sizePx >= 32;
+          return (
+            <div
+              key={`${t.role}-${i}`}
+              className="grid items-baseline gap-5 border-b border-[rgba(0,0,0,0.06)] px-5 last:border-0"
+              style={{ gridTemplateColumns: "210px 1fr", paddingTop: isLarge ? 20 : 14, paddingBottom: isLarge ? 20 : 14 }}
+            >
+              <div className="self-start pt-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-2)]">
+                  {t.role}
+                </p>
+                <p className="mt-1 text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
+                  {t.fontFamily} {t.fontWeight} · {t.fontSize}
+                  {t.lineHeight ? ` · lh ${t.lineHeight}` : ""}
+                  {t.letterSpacing ? ` · ls ${t.letterSpacing}` : ""}
+                </p>
+              </div>
+              <p
+                className="min-w-0 overflow-hidden text-[var(--text-1)]"
+                style={{
+                  fontFamily: `${t.fontFamily}, ${systemFallback}`,
+                  fontSize: t.fontSize,
+                  fontWeight: t.fontWeight,
+                  lineHeight: Math.max(Number(t.lineHeight) || 1.2, 1.15),
+                  letterSpacing: t.letterSpacing || undefined,
+                  textTransform: (t.textTransform as CSSProperties["textTransform"]) || undefined,
+                  margin: 0,
+                  whiteSpace: "nowrap",
+                  textOverflow: "ellipsis",
+                  display: "block",
+                }}
+              >
+                {sampleFor(t)}
               </p>
             </div>
-            <p
-              className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--text-1)]"
-              style={{
-                fontFamily: `${t.fontFamily}, ${systemFallback}`,
-                fontSize: t.fontSize,
-                fontWeight: t.fontWeight,
-                lineHeight: t.lineHeight || 1.2,
-                letterSpacing: t.letterSpacing || undefined,
-                textTransform: (t.textTransform as CSSProperties["textTransform"]) || undefined,
-                margin: 0,
-              }}
-            >
-              {sampleFor(t)}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -513,10 +520,10 @@ function ButtonsSection({
           const btns = onSurface(s.key);
           if (!btns.length) return null;
           return (
-            <div key={s.key} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+            <div key={s.key} className="flex h-full flex-col overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
               <div
                 style={{ background: s.bg, border: s.border, padding: 24, minHeight: 116 }}
-                className="flex flex-wrap content-center items-center gap-2.5"
+                className="flex flex-1 flex-wrap content-start items-start gap-2.5"
               >
                 {btns.map((b, i) => renderBtn(b, `${s.key}-${i}`))}
               </div>
