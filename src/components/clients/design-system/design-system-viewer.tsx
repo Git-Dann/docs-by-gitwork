@@ -948,18 +948,73 @@ function generateTailwindConfig(tokens: DesignTokens): string {
 
 // ── CSS tokens ──────────────────────────────────────────────────────────────
 
-function CssTokensSection({ tokens, lang }: { tokens: DesignTokens; lang: "css" | "tailwind" }) {
-  const cssCode = tokens.cssVariables || "/* No CSS variables provided */";
-  const tailwindCode = generateTailwindConfig(tokens);
-  const activeCode = lang === "tailwind" ? tailwindCode : cssCode;
+function CssTokensBlock({ tokens }: { tokens: DesignTokens }) {
+  const [lang, setLang] = useState<"css" | "tailwind">("css");
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const code =
+    lang === "css"
+      ? tokens.cssVariables || "/* No CSS variables provided */"
+      : generateTailwindConfig(tokens);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   return (
-    <pre
-      className="overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
-      style={{ background: "#0F172A", fontFamily: mono }}
-    >
-      {activeCode}
-    </pre>
+    <div>
+      {/* Unified control bar — one connected pill */}
+      <div
+        className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]"
+        style={{ fontFamily: mono }}
+      >
+        {(["css", "tailwind"] as const).map((l) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => setLang(l)}
+            className={[
+              "px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition border-r border-[var(--border-2)]",
+              lang === l
+                ? "bg-[var(--text-1)] text-white"
+                : "bg-white text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+            ].join(" ")}
+          >
+            {l === "css" ? "CSS" : "Tailwind"}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] bg-white text-[var(--brand-700)] hover:bg-[var(--surface-1)] transition"
+        >
+          {copied ? "Copied ✓" : "Copy"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="border-l border-[var(--border-2)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] bg-white text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] transition"
+        >
+          {open ? "Hide ↑" : "Show ↓"}
+        </button>
+      </div>
+
+      {open && (
+        <pre
+          className="mt-4 overflow-x-auto rounded-[10px] p-5 text-[12px] leading-relaxed text-[#E2E8F0]"
+          style={{ background: "#0F172A", fontFamily: mono }}
+        >
+          {code}
+        </pre>
+      )}
+    </div>
   );
 }
 
@@ -1040,8 +1095,6 @@ export function DesignSystemViewer({
   tokens: DesignTokens;
   clientLogoUrl?: string | null;
 }) {
-  const [codeLang, setCodeLang] = useState<"css" | "tailwind">("css");
-  const [copiedTokens, setCopiedTokens] = useState(false);
   const [fontDownloading, setFontDownloading] = useState(false);
   const [logoDownloading, setLogoDownloading] = useState(false);
   const allColours = [
@@ -1061,51 +1114,6 @@ export function DesignSystemViewer({
   const fontList = [tokens.typography.displayFont, tokens.typography.bodyFont]
     .filter(Boolean)
     .join(" · ");
-
-  // For the CSS TOKENS section header controls
-  const tokensCssCode = tokens.cssVariables || "/* No CSS variables provided */";
-  const tokensTailwindCode = generateTailwindConfig(tokens);
-  const tokensActiveCode = codeLang === "tailwind" ? tokensTailwindCode : tokensCssCode;
-  const copyTokens = async () => {
-    try {
-      await navigator.clipboard.writeText(tokensActiveCode);
-      setCopiedTokens(true);
-      window.setTimeout(() => setCopiedTokens(false), 1600);
-    } catch {
-      /* clipboard unavailable */
-    }
-  };
-  const cssTokensStatus = (
-    <div className="flex items-center gap-2">
-      {/* CSS / Tailwind toggle */}
-      <div className="flex rounded-[6px] border border-[var(--border-2)] p-0.5">
-        {(["css", "tailwind"] as const).map((l) => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => setCodeLang(l)}
-            className={[
-              "rounded-[4px] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-              codeLang === l
-                ? "bg-[var(--text-1)] text-white"
-                : "text-[var(--text-4)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-            style={{ fontFamily: mono }}
-          >
-            {l === "css" ? "CSS" : "Tailwind"}
-          </button>
-        ))}
-      </div>
-      {/* Copy */}
-      <button
-        type="button"
-        onClick={() => void copyTokens()}
-        className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-      >
-        {copiedTokens ? "Copied ✓" : codeLang === "tailwind" ? "Copy Tailwind" : "Copy CSS"}
-      </button>
-    </div>
-  );
 
   const handleFontDownload = async () => {
     setFontDownloading(true);
@@ -1221,11 +1229,8 @@ export function DesignSystemViewer({
     });
   sections.push({
     title: "CSS TOKENS",
-    intro: codeLang === "css"
-      ? "The complete :root {} custom-property block — paste-ready for the build."
-      : "Generated tailwind.config.js theme.extend — paste into your Tailwind config.",
-    status: cssTokensStatus,
-    node: <CssTokensSection tokens={tokens} lang={codeLang} />,
+    intro: "The complete :root {} block and a Tailwind config snippet — select a format and copy.",
+    node: <CssTokensBlock tokens={tokens} />,
   });
 
   const sectionId = (title: string) =>
