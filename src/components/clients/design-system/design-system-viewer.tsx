@@ -1042,6 +1042,8 @@ export function DesignSystemViewer({
 }) {
   const [codeLang, setCodeLang] = useState<"css" | "tailwind">("css");
   const [copiedTokens, setCopiedTokens] = useState(false);
+  const [fontDownloading, setFontDownloading] = useState(false);
+  const [logoDownloading, setLogoDownloading] = useState(false);
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -1105,6 +1107,58 @@ export function DesignSystemViewer({
     </div>
   );
 
+  const handleFontDownload = async () => {
+    setFontDownloading(true);
+    try {
+      const { buildFontPack, triggerDownload } = await import("@/lib/design-system-zip");
+      const zip = buildFontPack(tokens);
+      const slug = tokens.clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      triggerDownload(zip, `${slug}-font-pack.zip`);
+    } catch {
+      /* silently fail */
+    } finally {
+      setFontDownloading(false);
+    }
+  };
+
+  const hasLogoDownloads = (tokens.logoRules?.assets ?? []).some((a) => a.downloadUrl);
+
+  const handleLogoDownload = async () => {
+    setLogoDownloading(true);
+    try {
+      const { buildLogoPack, triggerDownload } = await import("@/lib/design-system-zip");
+      const zip = await buildLogoPack(tokens);
+      const slug = tokens.clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      triggerDownload(zip, `${slug}-logo-pack.zip`);
+    } catch {
+      /* silently fail */
+    } finally {
+      setLogoDownloading(false);
+    }
+  };
+
+  const fontPackStatus = (
+    <button
+      type="button"
+      onClick={() => void handleFontDownload()}
+      disabled={fontDownloading}
+      className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+    >
+      {fontDownloading ? "Preparing…" : "↓ Font Pack"}
+    </button>
+  );
+
+  const logoPackStatus = hasLogoDownloads ? (
+    <button
+      type="button"
+      onClick={() => void handleLogoDownload()}
+      disabled={logoDownloading}
+      className="rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+    >
+      {logoDownloading ? "Preparing…" : "↓ Logo Pack"}
+    </button>
+  ) : undefined;
+
   // Build numbered sections in order; only include ones with data.
   const sections: Array<{ title: string; intro?: string; status?: ReactNode; node: ReactNode }> = [];
   sections.push({
@@ -1121,6 +1175,7 @@ export function DesignSystemViewer({
   sections.push({
     title: "TYPOGRAPHY",
     intro: `Type system — ${fontList}. Each role with its spec and a live specimen.`,
+    status: fontPackStatus,
     node: <TypographySection tokens={tokens} />,
   });
   sections.push({
@@ -1161,6 +1216,7 @@ export function DesignSystemViewer({
     sections.push({
       title: "LOGO",
       intro: "Logo lockups on light and dark surfaces, plus sizing and usage rules.",
+      status: logoPackStatus,
       node: <LogoSection tokens={tokens} clientLogoUrl={clientLogoUrl} darkSurface={darkSurface} />,
     });
   sections.push({

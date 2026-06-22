@@ -94,6 +94,8 @@ export interface LogoAsset {
   label: string; // e.g. "Primary full logo", "White logo", "Logomark"
   src: string; // image URL (or data URI) of the lockup
   background?: "light" | "dark"; // which surface to preview it on
+  /** Direct CORS-open URL to the downloadable asset file (SVG, PNG, etc.). */
+  downloadUrl?: string;
 }
 
 export interface LogoRules {
