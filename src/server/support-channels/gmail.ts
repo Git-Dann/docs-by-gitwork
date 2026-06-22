@@ -34,7 +34,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
     const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
     const auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
       clientOptions: { subject: impersonateEmail },
     });
     const gmailAuth = (await auth.getClient()) as Parameters<typeof google.gmail>[0]["auth"];
@@ -93,6 +93,11 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
         });
         const threadMessages = threadRes.data.messages ?? [];
         if (threadMessages.length === 0) { filtered++; continue; }
+
+        // Remember whether ANY message in this thread was unread before we touched it.
+        // Fetching via the API can mark threads as read (service-account impersonation
+        // side-effect), so we restore the UNREAD label after processing.
+        const wasUnread = threadMessages.some((m: { labelIds?: string[] | null }) => m.labelIds?.includes("UNREAD"));
 
         const firstMsg = threadMessages[0];
         const hdrs = firstMsg.payload?.headers ?? [];
@@ -163,6 +168,14 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
           } catch {
             // skip individual message errors
           }
+        }
+        // Restore UNREAD so the inbox looks untouched after the sync.
+        if (wasUnread) {
+          await gmail.users.threads.modify({
+            userId: "me",
+            id: item.threadId,
+            requestBody: { addLabelIds: ["UNREAD"] },
+          }).catch(() => undefined); // non-fatal — don't fail the sync over a label restore
         }
       } catch (err) {
         errors.push(`Thread ${item.threadId}: ${err instanceof Error ? err.message : String(err)}`);
