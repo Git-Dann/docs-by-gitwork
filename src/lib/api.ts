@@ -39,6 +39,7 @@ import type {
   PipelineStatus,
   CodeClearTier,
 } from "@/types/codeclear";
+import type { NotificationDTO } from "@/types/notifications";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -2869,4 +2870,31 @@ export async function setWikiCourseIngest(
       body: JSON.stringify(input),
     },
   );
+}
+
+// ─── Notifications (in-app feed) ────────────────────────────────────────────
+
+export async function listNotifications(params?: {
+  limit?: number;
+  unreadOnly?: boolean;
+}): Promise<NotificationDTO[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.unreadOnly) query.set("unreadOnly", "true");
+  const qs = query.toString();
+  return apiFetch<NotificationDTO[]>(`/api/notifications${qs ? `?${qs}` : ""}`);
+}
+
+export async function getUnreadNotificationCount(): Promise<{ unread: number }> {
+  return apiFetch<{ unread: number }>("/api/notifications/unread-count");
+}
+
+export async function markNotificationsRead(
+  input: { ids: string[] } | { all: true },
+): Promise<{ updated: number; unread: number }> {
+  return apiFetch<{ updated: number; unread: number }>("/api/notifications/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }

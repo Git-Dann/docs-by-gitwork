@@ -186,6 +186,7 @@ model User {
   deviceTokens              DeviceToken[]
   triggeredPulseScans       PulseScan[]             @relation("PulseScanTriggeredBy")
   notificationPreference    NotificationPreference?
+  notifications             Notification[]
   auditLogEntries           AuditLog[]
   meetingSummariesGenerated MeetingSummary[]        @relation("MeetingSummaryGenerator")
   meetingsOwned             Meeting[]               @relation("MeetingOwner")
@@ -2344,6 +2345,35 @@ model NotificationPreference {
   timezone        String? // IANA tz, e.g. "Europe/London"
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Persisted in-app notification feed. One row per (recipient, grouped event) — grouping
+// collapses many same-kind events for one user into a single row whose `count` increments
+// (see dispatchNotification in src/server/notifications.ts). `workspaceId`/`clientId` are
+// plain string columns (no FK relation) so a row survives a client being archived or a dev
+// losing their ClientAssignment — scope is re-checked on read instead of cascading/nulling.
+model Notification {
+  id          String    @id @default(cuid())
+  workspaceId String // forward-compat; single workspace today
+  userId      String // RECIPIENT (never the actor)
+  event       String // a NOTIFICATION_EVENTS id, e.g. "tasks.assigned"
+  title       String // "You were assigned 15 tasks"
+  body        String?   @db.Text
+  groupKey    String // collapse key incl. recipient, e.g. "tasks.assigned:<userId>"
+  count       Int       @default(1) // grouped item count → drives "15 tasks"
+  read        Boolean   @default(false)
+  readAt      DateTime?
+  actionUrl   String? // deep link
+  clientId    String? // soft ref; re-checked against client scope on read
+  metadata    Json? // { actorId?, taskIds?, entityId? }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt(sort: Desc)]) // badge count + unread-first feed
+  @@index([userId, updatedAt(sort: Desc)]) // feed ordered by group-bump
+  @@index([userId, groupKey, read]) // grouping upsert lookup
+  @@index([workspaceId])
 }
 
 // Workspace-scoped audit trail. Recorded by `recordAuditEntry()` for critical actions
