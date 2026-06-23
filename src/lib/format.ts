@@ -87,3 +87,23 @@ export function parseNumber(value: string, fallback = 0): number {
 export function taskRef(id: string): string {
   return "#" + id.slice(-6).toUpperCase();
 }
+
+const relativeDayFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/** "just now" / "5m ago" / "3h ago" / "2d ago", then an absolute date past a week. */
+export function formatRelative(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMin = Math.round((Date.now() - date.getTime()) / 60000);
+  if (Math.abs(diffMin) < 1) return "just now";
+  if (Math.abs(diffMin) < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (Math.abs(diffHr) < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (Math.abs(diffDay) < 7) return `${diffDay}d ago`;
+  return relativeDayFormatter.format(date);
+}

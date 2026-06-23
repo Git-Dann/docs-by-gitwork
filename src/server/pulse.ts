@@ -20,6 +20,7 @@ import {
   sendPulseScanCompletedPush,
   sendPulseScanFailedPush,
 } from "@/server/push/notifications";
+import { dispatchNotification } from "@/server/notifications";
 import type {
   PulseScanRecord,
   PulseScanListItem,
@@ -962,6 +963,18 @@ export async function runAnalysis(
           triggeredByUserId: failedScan.triggeredByUserId,
           projectName: failedScan.projectName,
           errorMessage: failedScan.errorMessage,
+        });
+        // In-app bell: the user who triggered it (if any), else Pulse managers.
+        dispatchNotification({
+          event: "pulse.scan_failed",
+          workspaceId: failedScan.workspaceId,
+          target: failedScan.triggeredByUserId
+            ? { kind: "users", userIds: [failedScan.triggeredByUserId] }
+            : { kind: "permission", permission: "pulse.manage" },
+          title: `${failedScan.projectName} — scan failed`,
+          body: failedScan.errorMessage?.slice(0, 140) ?? null,
+          actionUrl: `/app/pulse/${failedScan.id}/report`,
+          groupKey: `pulse.scan_failed:${failedScan.id}`,
         });
       }
     } catch (pushError) {

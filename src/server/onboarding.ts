@@ -10,6 +10,7 @@ import {
   isSystemTextColumn,
   isSystemBooleanColumn,
 } from "@/lib/onboarding/system-fields";
+import { dispatchNotification } from "@/server/notifications";
 import { fieldIdSet, fieldsById, isFieldVisible, isFormStructure } from "@/lib/onboarding/structure";
 import { collectsAnswer, validateAnswer } from "@/lib/onboarding/field-types";
 import type { OnboardingAnswers, OnboardingFormStructure } from "@/types/onboarding";
@@ -787,6 +788,19 @@ export async function submitOnboarding(
       submittedAt: new Date(),
       workspaceClientId: client.id,
     },
+  });
+
+  const clientName =
+    row.companyName?.trim() ||
+    [row.contactFirstName, row.contactLastName].map((p) => p?.trim()).filter(Boolean).join(" ") ||
+    "New client";
+  dispatchNotification({
+    event: "clients.onboarded",
+    workspaceId: workspace.id,
+    target: { kind: "permission", permission: "clients.manage" },
+    title: `New client onboarded: ${clientName}`,
+    actionUrl: `/app/portal/${client.slug}`,
+    groupKey: "clients.onboarded",
   });
   return getOnboardingByTokenPublic(token);
 }

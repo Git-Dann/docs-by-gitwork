@@ -77,6 +77,7 @@ import type {
   ProjectPlanRequest,
   SeedProjectPlanResult,
 } from "@/types/foundry-automation";
+import type { NotificationDTO } from "@/types/notifications";
 
 export interface ProposalListResponse {
   proposals: ProposalListItem[];
@@ -2869,4 +2870,30 @@ export async function setWikiCourseIngest(
       body: JSON.stringify(input),
     },
   );
+}
+
+// ─── Notifications (in-app feed) ─────────────────────────────────────────────
+
+export function listNotifications(
+  opts: { limit?: number; unreadOnly?: boolean } = {},
+): Promise<NotificationDTO[]> {
+  const q = new URLSearchParams();
+  if (opts.limit) q.set("limit", String(opts.limit));
+  if (opts.unreadOnly) q.set("unreadOnly", "true");
+  const qs = q.toString();
+  return apiFetch(`/api/notifications${qs ? `?${qs}` : ""}`);
+}
+
+export function getUnreadNotificationCount(): Promise<{ unread: number }> {
+  return apiFetch("/api/notifications/unread-count");
+}
+
+export function markNotificationsRead(
+  body: { ids: string[] } | { all: true },
+): Promise<{ updated: number; unread: number }> {
+  return apiFetch("/api/notifications/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }

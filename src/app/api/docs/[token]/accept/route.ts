@@ -16,6 +16,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { dispatchNotification } from "@/server/notifications";
 
 const acceptSchema = z.object({
   action: z.enum(["accept", "decline"]),
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       select: {
         id: true,
         workspaceId: true,
+        ownerId: true,
+        clientId: true,
         title: true,
         documentType: true,
         status: true,
@@ -81,6 +84,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       documentType: doc.documentType,
       kind: isAccept ? "DOC_ACCEPTED" : "DOC_DECLINED",
       detail: `${who} ${isAccept ? "accepted" : "declined"}${payload.note ? ` — “${payload.note.slice(0, 120)}”` : ""}`,
+    });
+
+    // In-app bell for the document owner (the person who cares about this conversion).
+    dispatchNotification({
+      event: isAccept ? "docs.accepted" : "docs.declined",
+      workspaceId: doc.workspaceId,
+      target: { kind: "users", userIds: [doc.ownerId] },
+      clientId: doc.clientId,
+      title: `${who} ${isAccept ? "accepted" : "declined"} "${doc.title}"`,
+      actionUrl: `/app/docs/${doc.id}`,
+      groupKey: `docs.${isAccept ? "accepted" : "declined"}:${doc.id}`,
     });
 
     return apiOk({ ok: true, status: isAccept ? "ACCEPTED" : "DECLINED" });

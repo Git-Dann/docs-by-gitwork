@@ -12,6 +12,7 @@ import {
   ForbiddenError,
   canSeeAllClients,
 } from "@/server/auth/effective-user";
+import { dispatchNotification } from "@/server/notifications";
 import type {
   TaskDTO,
   TaskDetailDTO,
@@ -24,6 +25,44 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES } from "@/types/tasks";
+
+const clientTasksUrl = (slug: string) => `/app/portal/${slug}/tasks`;
+
+async function clientSlug(workspaceId: string, clientId: string): Promise<string | null> {
+  const c = await prisma.workspaceClient.findFirst({
+    where: { id: clientId, workspaceId },
+    select: { slug: true },
+  });
+  return c?.slug ?? null;
+}
+
+/** "You were assigned a task" / "You were assigned N tasks". */
+const assignedTitle = (n: number) =>
+  n === 1 ? "You were assigned a task" : `You were assigned ${n} tasks`;
+
+/** Statuses worth notifying the team about (an item reaching review/done). */
+const NOTIFY_STATUSES: TaskStatus[] = ["IN_REVIEW", "DONE"];
+const statusWord = (s: TaskStatus) => (s === "IN_REVIEW" ? "In Review" : "Done");
+
+/** Notify a task's assignees + creator that it moved to In Review / Done (actor excluded). */
+function notifyTaskStatusChanged(user: EffectiveUser, row: TaskRow, status: TaskStatus): void {
+  const recipients = [
+    ...row.assignees.map((a) => a.id),
+    ...(row.createdById ? [row.createdById] : []),
+  ];
+  if (recipients.length === 0) return;
+  dispatchNotification({
+    event: "tasks.status_changed",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "users", userIds: recipients },
+    clientId: row.clientId,
+    title: `"${row.title}" → ${statusWord(status)}`,
+    actionUrl: clientTasksUrl(row.client.slug),
+    groupKey: `tasks.status_changed:${row.id}`,
+    metadata: { taskId: row.id, status },
+  });
+}
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -498,6 +537,23 @@ export async function createTask(
     include: taskInclude,
   });
   const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
+
+  if (input.assigneeIds && input.assigneeIds.length > 0) {
+    dispatchNotification({
+      event: "tasks.assigned",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: input.assigneeIds },
+      clientId: input.clientId,
+      title: assignedTitle(1),
+      titleForCount: assignedTitle,
+      body: row.title,
+      actionUrl: clientTasksUrl(row.client.slug),
+      groupKey: "tasks.assigned",
+      metadata: { taskIds: [row.id] },
+    });
+  }
+
   return task;
 }
 
@@ -600,10 +656,21 @@ export async function updateTask(
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },
-    select: { clientId: true, status: true, startedAt: true },
+    select: {
+      clientId: true,
+      status: true,
+      startedAt: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+    },
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
+
+  const prevAssigneeIds = new Set<string>([
+    ...existing.assignees.map((a) => a.id),
+    ...(existing.assigneeId ? [existing.assigneeId] : []),
+  ]);
 
   const data: Prisma.TaskUpdateInput = {};
   if (input.title !== undefined) data.title = input.title;
@@ -636,6 +703,35 @@ export async function updateTask(
 
   const row = await prisma.task.update({ where: { id }, data, include: taskInclude });
   const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
+
+  // Notify newly-added assignees only (re-saving an unchanged list emits nothing).
+  if (input.assigneeIds !== undefined) {
+    const added = input.assigneeIds.filter((aid) => !prevAssigneeIds.has(aid));
+    if (added.length > 0) {
+      dispatchNotification({
+        event: "tasks.assigned",
+        workspaceId: user.workspaceId,
+        actorId: user.id,
+        target: { kind: "users", userIds: added },
+        clientId: row.clientId,
+        title: assignedTitle(1),
+        titleForCount: assignedTitle,
+        body: row.title,
+        actionUrl: clientTasksUrl(row.client.slug),
+        groupKey: "tasks.assigned",
+        metadata: { taskIds: [row.id] },
+      });
+    }
+  }
+
+  if (
+    input.status !== undefined &&
+    input.status !== existing.status &&
+    NOTIFY_STATUSES.includes(input.status)
+  ) {
+    notifyTaskStatusChanged(user, row, input.status);
+  }
+
   return task;
 }
 
@@ -661,6 +757,11 @@ export async function moveTask(
     },
     include: taskInclude,
   });
+
+  if (input.status !== existing.status && NOTIFY_STATUSES.includes(input.status)) {
+    notifyTaskStatusChanged(user, row, input.status);
+  }
+
   return taskRowToDTO(row);
 }
 
@@ -689,10 +790,24 @@ export interface TaskBatchPatch {
 async function loadTasksInScope(
   user: EffectiveUser,
   ids: string[],
-): Promise<{ id: string; clientId: string; status: string; startedAt: Date | null }[]> {
+): Promise<
+  {
+    id: string;
+    clientId: string;
+    status: string;
+    startedAt: Date | null;
+    assignees: { id: string }[];
+  }[]
+> {
   const rows = await prisma.task.findMany({
     where: { id: { in: ids }, workspaceId: user.workspaceId },
-    select: { id: true, clientId: true, status: true, startedAt: true },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      startedAt: true,
+      assignees: { select: { id: true } },
+    },
   });
   if (!canSeeAllClients(user)) {
     const allowed = new Set(await assignedClientIds(user));
@@ -722,6 +837,10 @@ export async function batchUpdateTasks(
     await assertBlockInClient(user.workspaceId, rows[0].clientId, patch.featureBlockId);
   }
 
+  // Tally newly-assigned tasks per recipient so a bulk assign of 15 tasks to one dev fires a
+  // SINGLE grouped dispatch (count = 15) after the loop — never 15 notifications.
+  const assignedCounts = new Map<string, number>();
+
   let updated = 0;
   for (const r of rows) {
     const data: Prisma.TaskUpdateInput = {};
@@ -731,6 +850,10 @@ export async function batchUpdateTasks(
     if (patch.assigneeIds !== undefined) {
       data.assignees = { set: patch.assigneeIds.map((id) => ({ id })) };
       data.assignee = { disconnect: true };
+      const prev = new Set(r.assignees.map((a) => a.id));
+      for (const aid of patch.assigneeIds) {
+        if (!prev.has(aid)) assignedCounts.set(aid, (assignedCounts.get(aid) ?? 0) + 1);
+      }
     }
     if (patch.featureBlockId !== undefined) {
       data.featureBlock = patch.featureBlockId
@@ -745,6 +868,29 @@ export async function batchUpdateTasks(
     await prisma.task.update({ where: { id: r.id }, data });
     updated++;
   }
+
+  // Single-client selections deep-link to that board; mixed selections go to the dashboard
+  // ("My Day" lists the dev's tasks across clients).
+  const onlyClient = new Set(rows.map((r) => r.clientId)).size === 1 ? rows[0].clientId : null;
+  const actionUrl = onlyClient
+    ? clientTasksUrl((await clientSlug(user.workspaceId, onlyClient)) ?? "")
+    : "/app";
+  for (const [userId, count] of assignedCounts) {
+    if (userId === user.id) continue; // self-assign — no notification
+    dispatchNotification({
+      event: "tasks.assigned",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: [userId] },
+      clientId: onlyClient,
+      title: assignedTitle(count),
+      titleForCount: assignedTitle,
+      actionUrl: actionUrl || "/app",
+      groupKey: "tasks.assigned",
+      count,
+    });
+  }
+
   return { updated };
 }
 
@@ -894,7 +1040,13 @@ export async function addTaskComment(
 ): Promise<TaskCommentDTO> {
   const task = await prisma.task.findFirst({
     where: { id: taskId, workspaceId: user.workspaceId },
-    select: { clientId: true },
+    select: {
+      clientId: true,
+      title: true,
+      createdById: true,
+      assignees: { select: { id: true } },
+      client: { select: { slug: true } },
+    },
   });
   if (!task) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, task.clientId);
@@ -902,5 +1054,26 @@ export async function addTaskComment(
     data: { taskId, authorId: user.id, body },
     include: { author: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
+
+  const recipients = [
+    ...task.assignees.map((a) => a.id),
+    ...(task.createdById ? [task.createdById] : []),
+  ];
+  if (recipients.length > 0) {
+    dispatchNotification({
+      event: "tasks.commented",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: recipients },
+      clientId: task.clientId,
+      title: `New comment on "${task.title}"`,
+      titleForCount: (n) =>
+        n === 1 ? `New comment on "${task.title}"` : `${n} new comments on "${task.title}"`,
+      body: body.slice(0, 140),
+      actionUrl: clientTasksUrl(task.client.slug),
+      groupKey: `tasks.commented:${taskId}`,
+    });
+  }
+
   return commentRowToDTO(row);
 }

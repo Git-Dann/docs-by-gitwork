@@ -73,6 +73,81 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Signed",
         description: "A document reached SIGNED status.",
       },
+      {
+        id: "docs.accepted",
+        label: "Accepted",
+        description: "A client accepted a shared document.",
+      },
+      {
+        id: "docs.declined",
+        label: "Declined",
+        description: "A client declined a shared document.",
+      },
+    ],
+  },
+  {
+    module: "Tasks",
+    events: [
+      {
+        id: "tasks.assigned",
+        label: "Assigned to you",
+        description: "You were assigned one or more tasks.",
+      },
+      {
+        id: "tasks.status_changed",
+        label: "Status changed",
+        description: "A task you're on moved to In Review or Done.",
+      },
+      {
+        id: "tasks.commented",
+        label: "New comment",
+        description: "Someone commented on a task you're on.",
+      },
+    ],
+  },
+  {
+    module: "Backstage",
+    events: [
+      {
+        id: "backstage.leave_submitted",
+        label: "Leave to approve",
+        description: "A teammate requested leave (approvers only).",
+      },
+      {
+        id: "backstage.leave_decided",
+        label: "Leave decision",
+        description: "Your leave request was approved or rejected.",
+      },
+      {
+        id: "backstage.expense_submitted",
+        label: "Expense to approve",
+        description: "A teammate submitted an expense (approvers only).",
+      },
+      {
+        id: "backstage.expense_decided",
+        label: "Expense decision",
+        description: "Your expense was approved or rejected.",
+      },
+    ],
+  },
+  {
+    module: "Scribe",
+    events: [
+      {
+        id: "meetings.notes_ready",
+        label: "Meeting notes ready",
+        description: "AI notes for a client meeting were summarised.",
+      },
+    ],
+  },
+  {
+    module: "Portal",
+    events: [
+      {
+        id: "clients.onboarded",
+        label: "Client onboarded",
+        description: "A client completed the onboarding flow.",
+      },
     ],
   },
   {
@@ -120,9 +195,10 @@ export function NotificationsSection() {
     <div className="proposal-form-theme space-y-6">
       <div className="rounded-[10px] border border-[var(--brand-300)] bg-[var(--brand-200)]/40 px-4 py-3 text-sm text-[var(--text-2)]">
         <p>
-          <strong>Preview.</strong> Channel preferences save to your account immediately. The
-          dispatcher that actually sends events down these channels ships next — until then
-          Foundry still pings you the way it always has.
+          <strong>In-app is live.</strong> The bell in the top bar now shows these events,
+          grouped so a burst (e.g. 15 task assignments) lands as one line. Email, Push and Slack
+          routing through this dispatcher ships next — until then those channels still work the
+          way they always have.
         </p>
       </div>
 

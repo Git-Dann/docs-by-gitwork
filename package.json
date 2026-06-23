@@ -10,6 +10,7 @@
     "build": "prisma generate && (prisma db push || echo 'DB push skipped — set DATABASE_URL + DIRECT_URL in Vercel') && next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "proof:setup": "node scripts/proof-setup.mjs",
     "proof:run": "node scripts/proof-run.mjs",
     "db:generate": "prisma generate",

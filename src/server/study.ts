@@ -6,6 +6,7 @@ import { conductInterview } from "@/server/study-agents/persona";
 import { synthesizeTurn, synthesizeSession, generateReport } from "@/server/study-agents/synthesizer";
 import type { StudyTurn, SessionTranscript, SessionSynthesis, ResearchPlanOutput } from "@/server/study-agents/types";
 import type { AiConfig } from "@/server/pulse-ai";
+import { dispatchNotification } from "@/server/notifications";
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
@@ -525,4 +526,13 @@ export async function runStudy(studyId: string): Promise<void> {
   }
 
   await prisma.study.update({ where: { id: studyId }, data: { status: "COMPLETED" } });
+
+  dispatchNotification({
+    event: "study.report_ready",
+    workspaceId: study.workspaceId,
+    target: { kind: "permission", permission: "study.manage" },
+    title: `"${study.title}" report is ready`,
+    actionUrl: `/app/study/${studyId}`,
+    groupKey: `study.report_ready:${studyId}`,
+  });
 }

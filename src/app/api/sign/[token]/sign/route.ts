@@ -18,6 +18,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { findSignerByToken, submitSignature } from "@/server/signatures";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { dispatchNotification } from "@/server/notifications";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -91,6 +92,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         documentType: doc.documentType,
         kind: "DOC_COMPLETED",
         detail: `All ${updated.signers.length} signer${updated.signers.length === 1 ? "" : "s"} signed`,
+      });
+      // In-app bell for the team's doc managers — one notification at the fully-signed moment.
+      dispatchNotification({
+        event: "docs.signed",
+        workspaceId: doc.workspaceId,
+        target: { kind: "permission", permission: "docs.manage" },
+        title: `"${doc.title}" was fully signed`,
+        actionUrl: `/app/docs/${doc.id}`,
+        groupKey: `docs.signed:${doc.id}`,
       });
     }
 

@@ -4,6 +4,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
 import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
+import { dispatchNotification } from "@/server/notifications";
 
 export interface MonitorRecord {
   id: string;
@@ -161,6 +162,16 @@ async function sendScoreDropAlert(
   const drop = prevScore - newScore;
   const appUrl = process.env.NEXTAUTH_URL ?? process.env.VERCEL_URL ?? "";
   const scanUrl = appUrl ? `${appUrl}/app/pulse/${scanId}` : null;
+
+  // In-app bell for Pulse managers (alongside the email below — different channel).
+  dispatchNotification({
+    event: "pulse.monitor_drift",
+    workspaceId: monitor.workspaceId,
+    target: { kind: "permission", permission: "pulse.manage" },
+    title: `${monitor.projectName} health dropped ${drop} pts (${prevScore} → ${newScore})`,
+    actionUrl: `/app/pulse/${scanId}`,
+    groupKey: `pulse.monitor_drift:${scanId}`,
+  });
 
   // 1. Email the team (works for every monitor type — URL or GitHub). Best-effort.
   try {

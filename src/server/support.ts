@@ -19,6 +19,7 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { encrypt, decrypt } from "@/lib/encryption";
+import { dispatchNotification } from "@/server/notifications";
 import type {
   SupportClientStatus,
   SupportSource as PrismaSupportSource,
@@ -738,6 +739,25 @@ export async function createTicket(
       conversationId: data.conversationId ?? null,
     },
   });
+
+  // In-app bell for Care managers, scoped to who can see this client. Coarse group key so a
+  // burst of inbound tickets reads as "N new tickets" rather than flooding the panel.
+  const client = await prisma.workspaceClient.findUnique({
+    where: { id: clientId },
+    select: { workspaceId: true },
+  });
+  if (client) {
+    dispatchNotification({
+      event: "care.ticket_created",
+      workspaceId: client.workspaceId,
+      target: { kind: "permission", permission: "support.manage" },
+      clientId,
+      title: `New ticket: ${data.title}`,
+      titleForCount: (n) => (n === 1 ? `New ticket: ${data.title}` : `${n} new tickets`),
+      actionUrl: "/app/care",
+      groupKey: "care.ticket_created",
+    });
+  }
   return serializeTicket(row);
 }
 

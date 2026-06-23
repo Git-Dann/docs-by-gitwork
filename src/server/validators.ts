@@ -1235,3 +1235,20 @@ export const designSystemShareSchema = z.object({
 export const designSystemEnabledSchema = z.object({
   enabled: z.boolean(),
 });
+
+// ─── Notifications (in-app feed) ─────────────────────────────────────────────
+
+export const notificationListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+  unreadOnly: z.enum(["true", "false"]).optional(),
+});
+
+/** Mark read: either a specific id set OR a blanket all:true (not both/neither). */
+export const notificationReadSchema = z
+  .object({
+    ids: z.array(z.string().min(1)).max(200).optional(),
+    all: z.literal(true).optional(),
+  })
+  .refine((v) => v.all === true || (v.ids != null && v.ids.length > 0), {
+    message: "Provide either { all: true } or a non-empty ids array",
+  });

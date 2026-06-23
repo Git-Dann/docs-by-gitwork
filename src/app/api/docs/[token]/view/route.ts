@@ -15,6 +15,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { dispatchNotification } from "@/server/notifications";
 import { recordDocumentView } from "@/server/document-analytics";
 import { clientIpFromRequest, geoFromRequest, parseUserAgent } from "@/server/visitor-context";
 
@@ -29,7 +30,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const doc = await prisma.document.findFirst({
       where: { shareToken: token, isShared: true, archivedAt: null },
-      select: { id: true, workspaceId: true, title: true, documentType: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        ownerId: true,
+        clientId: true,
+        title: true,
+        documentType: true,
+      },
     });
     if (!doc) return apiError("Not shared", 404);
 
@@ -69,6 +77,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         documentType: doc.documentType,
         kind: "DOC_FIRST_VIEWED",
         detail: where ? `Opened from ${where}` : undefined,
+      });
+      // In-app bell for the owner — only on the first open (not every view → no flood).
+      dispatchNotification({
+        event: "docs.viewed_by_client",
+        workspaceId: doc.workspaceId,
+        target: { kind: "users", userIds: [doc.ownerId] },
+        clientId: doc.clientId,
+        title: `"${doc.title}" was opened${where ? ` from ${where}` : ""}`,
+        actionUrl: `/app/docs/${doc.id}`,
+        groupKey: `docs.viewed_by_client:${doc.id}`,
       });
     }
     void notifyDocumentEvent({

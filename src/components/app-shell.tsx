@@ -27,6 +27,7 @@ import { listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { MacAppCard } from "@/components/mac-app-card";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 type NavItem = {
   href?: string;
@@ -152,14 +153,17 @@ export function AppShell({
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-white px-4 py-3 lg:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto" />
-        <button
-          type="button"
-          aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
-          onClick={() => setMobileOpen((v) => !v)}
-          className="rounded-[6px] p-2 text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-        >
-          {mobileOpen ? <XMarkIcon className="h-6 w-6" /> : <Bars3Icon className="h-6 w-6" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button
+            type="button"
+            aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+            onClick={() => setMobileOpen((v) => !v)}
+            className="rounded-[6px] p-2 text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+          >
+            {mobileOpen ? <XMarkIcon className="h-6 w-6" /> : <Bars3Icon className="h-6 w-6" />}
+          </button>
+        </div>
       </div>
 
       {/* ── Mobile nav dropdown (drops below header, overlays content) ── */}
@@ -231,15 +235,25 @@ export function AppShell({
           )}
           {!hideContentHeader && (
             <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
-              <div className="max-w-4xl">
-                <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
-                  {title}
-                </h1>
-                {subtitle ? (
-                  <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
-                ) : null}
+              <div className="flex items-start justify-between gap-4">
+                <div className="max-w-4xl">
+                  <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
+                    {title}
+                  </h1>
+                  {subtitle ? (
+                    <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
+                  ) : null}
+                </div>
+                <NotificationBell className="mt-2 shrink-0" />
               </div>
             </header>
+          )}
+          {/* When the page hides the content header, keep the bell in a consistent top-right
+              spot via a thin strip above the main content (desktop only). */}
+          {hideContentHeader && (
+            <div className="hidden shrink-0 justify-end border-b border-[var(--border-2)] bg-white px-6 py-2 sm:px-8 lg:flex">
+              <NotificationBell />
+            </div>
           )}
           <main
             className={

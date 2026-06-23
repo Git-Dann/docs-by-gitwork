@@ -7,6 +7,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { isAtLeast } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
+import { dispatchNotification } from "@/server/notifications";
 
 const CreateMemberSchema = z.object({
   name: z.string().min(1),
@@ -84,6 +85,16 @@ export async function POST(req: NextRequest) {
     // Resolve the cached effective permissions from the role matrix (new member →
     // empty overrides → role defaults). Keeps `permissions` consistent with the model.
     await recomputeMember(member.id);
+
+    dispatchNotification({
+      event: "team.member_added",
+      workspaceId: workspace.id,
+      actorId: session.user?.id ?? null,
+      target: { kind: "admins" },
+      title: `${user.name ?? user.email} joined the workspace`,
+      actionUrl: "/app/settings/team",
+      groupKey: "team.member_added",
+    });
 
     return apiOk({
       userId: user.id,
