@@ -153,6 +153,34 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
+/* Dark-mode remap of hardcoded light literals.
+ *
+ * Many cards/inputs/buttons across the app hardcode `bg-white` (a Tailwind
+ * literal, NOT a token) while their text uses `--text-*` tokens that DO flip
+ * in dark mode. Result: light text on a white card → invisible. Rather than
+ * touch dozens of components, remap the literal here. These selectors are
+ * UNLAYERED so they beat Tailwind's `@layer utilities` (layer order trumps
+ * specificity in Tailwind v4), and attribute+class specificity (0,2,0) covers
+ * the hover variants too.
+ *
+ * `bg-white` → `--surface-0` (#161617): the standard elevated card surface,
+ * which is exactly #FFFFFF in light mode, so this is a no-op outside dark. */
+[data-theme="dark"] .bg-white {
+  background-color: var(--surface-0);
+}
+[data-theme="dark"] .hover\:bg-white:hover {
+  background-color: var(--surface-0);
+}
+/* Black hairline borders/divides used on those white cards vanish on dark —
+ * lift them to the token so card edges stay defined. Substring matchers cover
+ * every opacity variant (rgba(0,0,0,0.04 … 0.25)) in one rule. */
+[data-theme="dark"] [class*="border-[rgba(0,0,0,"] {
+  border-color: var(--border-2);
+}
+[data-theme="dark"] [class*="divide-[rgba(0,0,0,"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border-3);
+}
+
 @theme {
   --color-background: #ffffff;
   --color-foreground: #0F172A;

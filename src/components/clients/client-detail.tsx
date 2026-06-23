@@ -2333,7 +2333,7 @@ function SlackActivityBody({
         <div
           aria-hidden="true"
           className="pointer-events-none absolute bottom-0 left-0 right-0 h-10"
-          style={{ background: "linear-gradient(to bottom, transparent, white)" }}
+          style={{ background: "linear-gradient(to bottom, transparent, var(--surface-0))" }}
         />
       </div>
 
