@@ -219,11 +219,44 @@ export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
 // ── logo pack ─────────────────────────────────────────────────────────────────
 
 function extFromUrl(url: string): string {
+  if (url.startsWith("data:")) {
+    // data:image/jpeg;base64,... → "jpeg"
+    const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? "image/png";
+    return mime.split("/")[1] ?? "png";
+  }
   try {
     const path = new URL(url).pathname;
     return path.split(".").pop()?.split("?")[0] ?? "png";
   } catch {
     return "png";
+  }
+}
+
+/** Fetch any URL — handles both regular http(s) URLs and data URIs. */
+async function fetchAsBytes(url: string): Promise<Uint8Array | null> {
+  if (url.startsWith("data:")) {
+    try {
+      const commaIdx = url.indexOf(",");
+      if (commaIdx === -1) return null;
+      const meta = url.slice(5, commaIdx);
+      const payload = url.slice(commaIdx + 1);
+      if (meta.includes("base64")) {
+        const binary = atob(payload);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+      }
+      return strToU8(decodeURIComponent(payload));
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return new Uint8Array(await resp.arrayBuffer());
+  } catch {
+    return null;
   }
 }
 
@@ -239,12 +272,10 @@ export async function buildLogoPack(
 
   // Client's uploaded logo
   if (clientLogoUrl) {
-    try {
-      const buf = await fetch(clientLogoUrl).then((r) => r.arrayBuffer());
+    const bytes = await fetchAsBytes(clientLogoUrl);
+    if (bytes) {
       const ext = extFromUrl(clientLogoUrl);
-      files[`logos/logo.${ext}`] = new Uint8Array(buf);
-    } catch {
-      // Skip silently if unreachable
+      files[`logos/logo.${ext}`] = bytes;
     }
   }
 
@@ -254,16 +285,14 @@ export async function buildLogoPack(
     assets
       .filter((a) => a.downloadUrl)
       .map(async (asset) => {
-        try {
-          const buf = await fetch(asset.downloadUrl!).then((r) => r.arrayBuffer());
+        const bytes = await fetchAsBytes(asset.downloadUrl!);
+        if (bytes) {
           const ext = extFromUrl(asset.downloadUrl!);
           const safeName = asset.label
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "");
-          files[`logos/${safeName}.${ext}`] = new Uint8Array(buf);
-        } catch {
-          // Skip silently
+          files[`logos/${safeName}.${ext}`] = bytes;
         }
       }),
   );
