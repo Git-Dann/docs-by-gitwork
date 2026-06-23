@@ -26,7 +26,6 @@ import { useViewAs, type ViewAsRole } from "@/lib/view-as";
 import { listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
-import { MacAppCard } from "@/components/mac-app-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
@@ -178,7 +177,6 @@ export function AppShell({
             </nav>
           </div>
           <div className="mt-auto border-t border-[var(--border-2)] px-3 py-3">
-            <MacAppCard />
             <AiSpendCard />
             <SidebarNavItem
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
@@ -306,7 +304,6 @@ function ExpandedRail({
         </div>
 
         <div className="mt-4">
-          <MacAppCard />
           <AiSpendCard />
           <div className="space-y-2">
             <SidebarNavItem
@@ -571,7 +568,7 @@ function ProfileMenu({
             >
               Theme
             </span>
-            <ThemeToggle />
+            <ThemeToggle iconOnly />
           </div>
 
           <button

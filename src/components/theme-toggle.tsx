@@ -16,7 +16,15 @@ const OPTIONS: { value: ThemeMode; label: string; icon: typeof SunIcon }[] = [
  * with roving tabindex + arrow-key navigation. Shared by the Settings →
  * Appearance tab and the sidebar ProfileMenu.
  */
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({
+  className,
+  iconOnly = false,
+}: {
+  className?: string;
+  /** Hide the text labels — icons only. Used in the compact sidebar menu where
+   *  the full labelled control overflowed the menu width. */
+  iconOnly?: boolean;
+}) {
   const { mode, setMode } = useTheme();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -58,8 +66,10 @@ export function ThemeToggle({ className }: { className?: string }) {
             tabIndex={selected ? 0 : -1}
             onClick={() => setMode(option.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
+            title={iconOnly ? `${option.label} theme` : undefined}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-xs font-medium transition",
+              "inline-flex items-center gap-1.5 rounded-[6px] text-xs font-medium transition",
+              iconOnly ? "px-2 py-1" : "px-2.5 py-1",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-focus-ring)]",
               selected
                 ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-[var(--shadow-xs)]"
@@ -67,7 +77,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             )}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-            {option.label}
+            {!iconOnly && option.label}
           </button>
         );
       })}
