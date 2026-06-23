@@ -12,9 +12,10 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import type {
-  NotificationChannel,
-  NotificationEvent,
+import {
+  DEFAULT_EVENT_ROUTING,
+  type NotificationChannel,
+  type NotificationEvent,
 } from "@/server/notification-events";
 
 export const dynamic = "force-dynamic";
@@ -36,16 +37,8 @@ const DEFAULTS: NotificationPreferences = {
   pushEnabled: true,
   slackEnabled: false,
   inAppEnabled: true,
-  events: {
-    "pulse.scan_failed": ["email", "push"],
-    "pulse.monitor_drift": ["email"],
-    "study.report_ready": ["email", "inApp"],
-    "care.ticket_created": ["inApp"],
-    "care.ticket_escalated": ["email", "push"],
-    "docs.viewed_by_client": ["inApp"],
-    "docs.signed": ["email", "inApp"],
-    "team.member_added": ["inApp"],
-  },
+  // Shared with the dispatcher (src/server/notifications.ts) so routing defaults never drift.
+  events: DEFAULT_EVENT_ROUTING,
   digestCadence: "OFF",
   quietHoursStart: null,
   quietHoursEnd: null,

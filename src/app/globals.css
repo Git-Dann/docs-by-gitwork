@@ -7,7 +7,21 @@
  * which override the @theme fallbacks below via cascade specificity.
  */
 
-:root {
+/*
+ * Dark mode is driven by a `data-theme="dark"` attribute on <html> (set by the
+ * anti-flash script in layout.tsx + the ThemeProvider). This custom-variant lets
+ * component files use `dark:` utilities that resolve against that attribute.
+ */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/*
+ * Design tokens. Light values live on :root AND [data-theme="light"] so any
+ * subtree can be forced back to light with a data-theme="light" wrapper (used to
+ * keep guest-facing client deliverables + the print/PDF path light regardless of
+ * the visitor's OS preference). The dark overrides follow further below.
+ */
+:root,
+[data-theme="light"] {
   /* Surfaces */
   --surface-canvas: #FAFAF9;
   --surface-0: #FFFFFF;
@@ -74,6 +88,71 @@
     inset 0 0 0 1px rgba(10, 13, 18, 0.12);
 }
 
+/*
+ * Dark mode — true neutral blacks/greys (NOT navy). Surfaces step up in luminance
+ * to express elevation; borders flip to light rgba so they stay visible; brand and
+ * semantic colours are lightened to clear WCAG AA on the dark surfaces.
+ */
+[data-theme="dark"] {
+  /* Surfaces — neutral greys, sequential elevation */
+  --surface-canvas: #0B0B0C;
+  --surface-0: #161617;
+  --surface-1: #1E1E20;
+  --surface-2: #28282B;
+  --surface-brand: #16213A;
+  --surface-brand-soft: #16213A;
+  --surface-brand-strong: #1E2C4A;
+
+  /* Text — on dark surfaces */
+  --text-1: #F5F5F6;
+  --text-2: #E3E3E5;
+  --text-3: #B4B4B8;
+  --text-4: #909096;
+
+  /* Borders — light rgba so they don't vanish on dark */
+  --border-1: rgba(255, 255, 255, 0.18);
+  --border-2: rgba(255, 255, 255, 0.11);
+  --border-3: rgba(255, 255, 255, 0.07);
+
+  /* Brand — Gitwork Blue lightened for contrast on dark (links/accents) */
+  --brand-50: #0E1A30;
+  --brand-100: #14233F;
+  --brand-200: #1E2C4A;
+  --brand-300: #3B5FA8;
+  --brand-400: #5B8DEF;
+  --brand-500: #6BA0FF;
+  --brand-600: #6BA0FF;
+  --brand-700: #82B1FF;
+  --brand-800: #A8C8FF;
+  --brand-900: #CFE0FF;
+  --brand-focus-ring: rgba(107, 160, 255, 0.40);
+
+  /* Semantic — brightened 500s for legibility; soft backgrounds become dark tints */
+  --success-500: #3DD68C;
+  --success-50: rgba(61, 214, 140, 0.14);
+  --warning-500: #F0B429;
+  --warning-50: rgba(240, 180, 41, 0.15);
+  --info-500: #5BA8F5;
+  --info-50: rgba(91, 168, 245, 0.14);
+  --danger-500: #F87171;
+  --danger-50: rgba(248, 113, 113, 0.15);
+  --danger-100: rgba(248, 113, 113, 0.18);
+  --danger-200: rgba(248, 113, 113, 0.24);
+  --danger-300: rgba(248, 113, 113, 0.34);
+  --danger-700: #FCA5A5;
+
+  /* Shadows — deepen + a hairline top highlight for elevation on dark */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-lg:
+    0 12px 24px -6px rgba(0, 0, 0, 0.7),
+    0 4px 8px -4px rgba(0, 0, 0, 0.5);
+  --shadow-skeuomorphic:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
 @theme {
   --color-background: #ffffff;
   --color-foreground: #0F172A;
@@ -93,11 +172,11 @@ body {
 }
 
 html {
-  background: #FAFAF9;
+  background: var(--surface-canvas);
 }
 
 body {
-  background: #FAFAF9;
+  background: var(--surface-canvas);
   color: var(--text-1);
   font-family: var(--font-sans), "Segoe UI", sans-serif;
   line-height: 1.45;
@@ -124,19 +203,19 @@ h2, h3, h4, h5 {
 
 @layer components {
   .app-surface {
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-0);
   }
 
   .app-card {
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-0);
   }
 
   .app-muted-card {
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-1);
   }
@@ -282,7 +361,7 @@ h2, h3, h4, h5 {
   }
 
   .app-subtle-panel {
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-0);
   }
@@ -325,7 +404,7 @@ h2, h3, h4, h5 {
 
   .app-table-shell {
     overflow: hidden;
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-0);
   }
@@ -370,7 +449,7 @@ h2, h3, h4, h5 {
   }
 
   .app-dialog-panel {
-    border: 1px solid rgba(0,0,0,0.08);
+    border: 1px solid var(--border-2);
     border-radius: 10px;
     background: var(--surface-0);
     box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12);
@@ -454,7 +533,7 @@ h2, h3, h4, h5 {
   }
 
   .app-button-secondary:disabled {
-    background: #fcfcfd;
+    background: var(--surface-1);
     border-color: var(--border-2);
     color: #a4a7ae;
     box-shadow: none;
@@ -520,7 +599,7 @@ h2, h3, h4, h5 {
   }
 
   .app-button-danger:disabled {
-    background: #fcfcfd;
+    background: var(--surface-1);
     border-color: var(--border-2);
     color: #fda29b;
     box-shadow: none;
@@ -539,7 +618,7 @@ h2, h3, h4, h5 {
   }
 
   .app-button-utility:disabled {
-    background: #fcfcfd;
+    background: var(--surface-1);
     border-color: var(--border-2);
     color: #a4a7ae;
     box-shadow: none;
@@ -697,7 +776,7 @@ h2, h3, h4, h5 {
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):disabled,
   .proposal-form-theme select:disabled,
   .proposal-form-theme textarea:disabled {
-    background: #fcfcfd;
+    background: var(--surface-1);
     border-color: var(--border-2);
     color: var(--text-4);
     box-shadow: none;
@@ -759,9 +838,9 @@ h2, h3, h4, h5 {
   }
 
   .widget-card-dark {
-    background: #0F172A;
+    background: #161617;
     border-color: rgba(255, 255, 255, 0.08);
-    color: #F8FAFC;
+    color: #F5F5F6;
   }
 
   .widget-header {
@@ -885,6 +964,66 @@ h2, h3, h4, h5 {
     letter-spacing: 1.2px;
     text-transform: uppercase;
     color: var(--text-4);
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     Dark-mode component overrides
+     Most surfaces recolour automatically because they read CSS tokens. These
+     handle the cases where a hardcoded light value (or a brand token that
+     serves double-duty as both accent-text and button-fill) needs a dark
+     correction. Higher specificity than the base rules, so order-independent.
+     ─────────────────────────────────────────────────────────────────────── */
+
+  /* Primary button: the brand ramp is lightened in dark for legible accent TEXT,
+     so the primary FILL becomes a light blue — pair it with dark text. */
+  [data-theme="dark"] .app-button-primary,
+  [data-theme="dark"] a.app-button-primary,
+  [data-theme="dark"] a.app-button-primary:visited,
+  [data-theme="dark"] button.app-button-primary {
+    background: var(--brand-500);
+    border-color: rgba(0, 0, 0, 0.16);
+    color: #0B0B0C !important;
+  }
+
+  [data-theme="dark"] .app-button-primary:hover:not(:disabled) {
+    background: var(--brand-400);
+    border-color: rgba(0, 0, 0, 0.16);
+  }
+
+  [data-theme="dark"] .app-button-primary:disabled {
+    background: var(--brand-200);
+    border-color: var(--border-2);
+    color: var(--text-4) !important;
+    box-shadow: none;
+  }
+
+  /* Danger button: dark-red text/border are illegible on a dark surface. */
+  [data-theme="dark"] .app-button-danger {
+    border-color: var(--danger-300);
+    color: var(--danger-500);
+  }
+
+  [data-theme="dark"] .app-button-danger:disabled {
+    color: var(--danger-700);
+  }
+
+  /* Dialogs: deepen the shadow + backdrop so panels read as elevated on dark. */
+  [data-theme="dark"] .app-dialog-panel {
+    border-color: var(--border-2);
+    box-shadow: var(--shadow-lg);
+  }
+
+  [data-theme="dark"] .app-dialog-backdrop {
+    background: rgba(0, 0, 0, 0.62);
+  }
+
+  /* Select chevron: the baked-in SVG stroke (#717680) is too dark on a dark
+     field — swap to a lighter neutral stroke. */
+  [data-theme="dark"] .app-select,
+  [data-theme="dark"] select.app-input,
+  [data-theme="dark"] .app-select-compact,
+  [data-theme="dark"] .proposal-form-theme select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23A0A0A6' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
   }
 }
 

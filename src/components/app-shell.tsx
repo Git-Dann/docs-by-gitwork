@@ -27,6 +27,7 @@ import { listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { MacAppCard } from "@/components/mac-app-card";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
   href?: string;
@@ -147,11 +148,11 @@ export function AppShell({
   );
 
   return (
-    <div className="relative flex h-[100dvh] flex-col bg-[#FAFAF9] text-[var(--text-1)]">
+    <div className="relative flex h-[100dvh] flex-col bg-[var(--surface-canvas)] text-[var(--text-1)]">
       {/* ── Mobile top bar (hidden on lg+) ── */}
-      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-white px-4 py-3 lg:hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto" />
+        <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto dark:brightness-0 dark:invert" />
         <button
           type="button"
           aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
@@ -164,7 +165,7 @@ export function AppShell({
 
       {/* ── Mobile nav dropdown (drops below header, overlays content) ── */}
       {mobileOpen && (
-        <div className="absolute inset-x-0 top-[56px] z-40 flex max-h-[calc(100dvh-56px)] flex-col overflow-y-auto border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_60%)] shadow-xl lg:hidden">
+        <div className="absolute inset-x-0 top-[56px] z-40 flex max-h-[calc(100dvh-56px)] flex-col overflow-y-auto border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_60%)] shadow-xl lg:hidden">
           <div className="px-3 py-4">
             <nav className="space-y-1">
               {primaryNav.map((item) => (
@@ -189,7 +190,7 @@ export function AppShell({
 
       {/* ── Mobile page title (hidden on lg+) ── */}
       {!hideContentHeader && (
-        <div className="shrink-0 border-b border-[var(--border-2)] bg-white px-4 py-4 lg:hidden">
+        <div className="shrink-0 border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-4 lg:hidden">
           <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
             {title}
           </h1>
@@ -201,7 +202,7 @@ export function AppShell({
 
       <div className="min-h-0 flex-1 w-full lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
         {/* ── Desktop sidebar (full height, always visible) ── */}
-        <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_38%)] lg:flex lg:min-h-0">
+        <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
             pathname={pathname}
             primaryNav={primaryNav}
@@ -214,7 +215,7 @@ export function AppShell({
         </aside>
 
         {/* ── Content column ── */}
-        <div className="flex min-h-0 flex-col bg-[#FAFAF9]">
+        <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)]">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
@@ -230,7 +231,7 @@ export function AppShell({
             </div>
           )}
           {!hideContentHeader && (
-            <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,#ffffff_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
+            <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
               <div className="max-w-4xl">
                 <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
                   {title}
@@ -279,7 +280,7 @@ function ExpandedRail({
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto" />
+        <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto dark:brightness-0 dark:invert" />
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
@@ -466,7 +467,7 @@ function ProfileMenu({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
+        className="flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
       >
         <Avatar name={displayName} url={displayAvatar} />
         <div className="min-w-0 flex-1">
@@ -477,12 +478,12 @@ function ProfileMenu({
       </button>
 
       {open ? (
-        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-2 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 shadow-[var(--shadow-lg)]">
 
           {/* View as — Super Admin only, tucked away */}
           {isAdmin && (
-            <div className="mb-1 border-b border-[rgba(0,0,0,0.06)] pb-1">
-              <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+            <div className="mb-1 border-b border-[var(--border-3)] pb-1">
+              <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                 View platform as
               </p>
 
@@ -491,20 +492,20 @@ function ProfileMenu({
                 type="button"
                 onClick={() => { setViewAs(null); setOpen(false); }}
                 className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
-                  viewAs === null ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                  viewAs === null ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                 }`}
               >
                 <div>
                   <p className={`text-sm ${viewAs === null ? "font-semibold" : "font-medium"}`}>Super Admin (you)</p>
-                  <p className={`text-[11px] ${viewAs === null ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>Full platform access</p>
+                  <p className={`text-[11px] ${viewAs === null ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>Full platform access</p>
                 </div>
-                {viewAs === null && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+                {viewAs === null && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
               </button>
 
               {/* Real admin users — each with their actual stored permissions */}
               {adminMembers.length > 0 && (
-                <div className="my-1 border-t border-[rgba(0,0,0,0.05)] pt-1">
-                  <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[#CBD5E1]" style={{ fontFamily: "var(--font-mono)" }}>
+                <div className="my-1 border-t border-[var(--border-3)] pt-1">
+                  <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                     Admins
                   </p>
                   {adminMembers.map((m) => {
@@ -516,16 +517,16 @@ function ProfileMenu({
                         type="button"
                         onClick={() => { setViewAsUser(m.name ?? m.email, perms); setOpen(false); }}
                         className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
-                          active ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                          active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                         }`}
                       >
                         <div>
                           <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{m.name}</p>
-                          <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>
+                          <p className={`text-[11px] ${active ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>
                             {perms.length === 0 ? "Full access" : `${perms.length} module${perms.length !== 1 ? "s" : ""} enabled`}
                           </p>
                         </div>
-                        {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+                        {active && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
                       </button>
                     );
                   })}
@@ -533,8 +534,8 @@ function ProfileMenu({
               )}
 
               {/* Preset role previews */}
-              <div className="my-1 border-t border-[rgba(0,0,0,0.05)] pt-1">
-                <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[#CBD5E1]" style={{ fontFamily: "var(--font-mono)" }}>
+              <div className="my-1 border-t border-[var(--border-3)] pt-1">
+                <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                   Preset roles
                 </p>
                 {(["STAFF", "DEVELOPER"] as const).map((role) => {
@@ -547,20 +548,31 @@ function ProfileMenu({
                       type="button"
                       onClick={() => { setViewAs(role); setOpen(false); }}
                       className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
-                        active ? "bg-[#EFF6FF] text-[#1D4ED8]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                       }`}
                     >
                       <div>
                         <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
-                        <p className={`text-[11px] ${active ? "text-[#3B82F6]" : "text-[#94A3B8]"}`}>{desc}</p>
+                        <p className={`text-[11px] ${active ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>{desc}</p>
                       </div>
-                      {active && <span className="mt-1 shrink-0 text-[10px] text-[#1D4ED8]">●</span>}
+                      {active && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
                     </button>
                   );
                 })}
               </div>
             </div>
           )}
+
+          {/* Appearance — quick Light / Dark / System toggle */}
+          <div className="mb-1 flex items-center justify-between gap-2 border-b border-[var(--border-3)] px-3 py-2">
+            <span
+              className="text-[10px] font-medium uppercase tracking-[1px] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Theme
+            </span>
+            <ThemeToggle />
+          </div>
 
           <button
             type="button"
