@@ -111,6 +111,10 @@ export function CodeClearOverview() {
     () => new Map(allClients.map((c) => [c.id, c.logoUrl ?? null])),
     [allClients],
   );
+  const clientSlugById = useMemo(
+    () => new Map(allClients.map((c) => [c.id, c.slug])),
+    [allClients],
+  );
 
   return (
     <div className="space-y-6">
@@ -245,11 +249,9 @@ export function CodeClearOverview() {
             <ul className="grid gap-2 sm:grid-cols-2">
               {clientCoverage.slice(0, 8).map((entry) => {
                 const logo = entry.id ? clientLogoById.get(entry.id) ?? null : null;
-                return (
-                  <li
-                    key={entry.id ?? entry.name}
-                    className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2"
-                  >
+                const slug = entry.id ? clientSlugById.get(entry.id) ?? null : null;
+                const inner = (
+                  <>
                     <ClientAvatar name={entry.name} logoUrl={logo} size="md" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-[var(--text-1)]">
@@ -262,6 +264,22 @@ export function CodeClearOverview() {
                     <span className="font-display text-[22px] font-normal leading-none tracking-[-0.02em] text-[var(--text-1)]">
                       {entry.count}
                     </span>
+                  </>
+                );
+                return (
+                  <li key={entry.id ?? entry.name}>
+                    {slug ? (
+                      <Link
+                        href={`/app/portal/${slug}`}
+                        className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-2)]"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                        {inner}
+                      </div>
+                    )}
                   </li>
                 );
               })}

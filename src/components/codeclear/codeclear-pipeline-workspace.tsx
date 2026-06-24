@@ -25,7 +25,6 @@ import {
   CodeClearTabs,
   EmptyState,
   RosterScoreChip,
-  RosterTierBadge,
 } from "@/components/codeclear/codeclear-shared";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 import { ScheduleEditor } from "@/components/codeclear/schedule-editor";
@@ -483,13 +482,6 @@ function PipelineCard({
         </button>
 
         <div className="flex shrink-0 items-center gap-1">
-          <RosterTierBadge
-            effectiveTier={candidate.effectiveTier}
-            isOverridden={
-              candidate.tierManualOverride !== null &&
-              candidate.tierManualOverride !== candidate.tier
-            }
-          />
           <RosterScoreChip value={score} />
         </div>
       </div>
