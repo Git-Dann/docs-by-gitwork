@@ -177,6 +177,29 @@ export async function deletePulseScan(id: string): Promise<void> {
   await prisma.pulseScan.delete({ where: { id } });
 }
 
+/** Health-score history for the same target (URL / repo) in the workspace — powers
+ *  the score-over-time trend. Read-only over existing scans; chronological. */
+export async function getScanHistory(scanId: string): Promise<{ id: string; completedAt: string | null; healthScore: number | null }[]> {
+  const scan = await prisma.pulseScan.findUnique({
+    where: { id: scanId },
+    select: { workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true },
+  });
+  if (!scan) return [];
+  const target =
+    scan.inputType === "URL" && scan.inputUrl ? { inputUrl: scan.inputUrl } :
+    scan.inputType === "GITHUB_REPO" && scan.inputGithubRepo ? { inputGithubRepo: scan.inputGithubRepo } :
+    null;
+  if (!target) return [];
+
+  const rows = await prisma.pulseScan.findMany({
+    where: { workspaceId: scan.workspaceId, status: "COMPLETED", healthScore: { not: null }, ...target },
+    orderBy: { completedAt: "asc" },
+    take: 20,
+    select: { id: true, completedAt: true, healthScore: true },
+  });
+  return rows.slice(-12).map((r) => ({ id: r.id, completedAt: r.completedAt?.toISOString() ?? null, healthScore: r.healthScore }));
+}
+
 export interface PulseStatsResponse {
   totalScans: number;
   completedScans: number;
@@ -1048,8 +1071,9 @@ export async function generateProposalFromScan(scanId: string): Promise<string> 
 
   const llm = asJson<PulseAnalysisOutput | null>(scan.llmAnalysis, null);
 
+  const pricingBands = asJson<PricingBand[] | null>(scan.pricingBands, null);
   const sectionPayload = buildSectionPayload(scan, llm);
-  const costPayload = buildCostPayload(llm);
+  const costPayload = buildCostPayload(llm, pricingBands);
   const timelinePayload = buildTimelinePayload(llm);
 
   const document = await prisma.document.create({
@@ -1144,24 +1168,51 @@ function buildSectionPayload(
   return sections.map((s, i) => ({ ...s, sortOrder: i }));
 }
 
-function buildCostPayload(llm: PulseAnalysisOutput | null): Prisma.CostLineItemCreateWithoutDocumentInput[] {
-  if (!llm?.buildOpportunities?.length) return [];
+function buildCostPayload(
+  llm: PulseAnalysisOutput | null,
+  pricingBands?: PricingBand[] | null,
+): Prisma.CostLineItemCreateWithoutDocumentInput[] {
+  const items: Prisma.CostLineItemCreateWithoutDocumentInput[] = [];
 
-  const sorted = [...llm.buildOpportunities].sort((a, b) => {
-    const bv = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-    return (bv[b.businessValue] ?? 0) - (bv[a.businessValue] ?? 0);
-  });
+  // Seed a real engagement line from the deterministic pricing band (default 2 devs)
+  // — days @ blended day rate — so the proposal opens with a defensible number
+  // instead of £0. The opportunity lines below become £0 scope/inclusions.
+  const band = pricingBands?.find((b) => b.devs === 2) ?? pricingBands?.[0];
+  if (band && band.blendedDayRateGbp > 0) {
+    const midPrice = Math.round((band.priceLowGbp + band.priceHighGbp) / 2);
+    const days = Math.max(1, Math.round(midPrice / band.blendedDayRateGbp));
+    items.push({
+      category: "Engagement",
+      itemName: `Pulse engagement — ${band.devs} dev${band.devs > 1 ? "s" : ""} · ~${band.weeksLow}–${band.weeksHigh} wks`,
+      description: `Indicative from the Pulse scan: ${band.devs}-developer team to take this product to production. ${days} dev-days @ £${band.blendedDayRateGbp}/day (blended). Refine scope before sending.`,
+      quantity: new Prisma.Decimal(days),
+      unitCost: new Prisma.Decimal(band.blendedDayRateGbp),
+      subtotal: new Prisma.Decimal(days * band.blendedDayRateGbp),
+      costKind: "ONE_OFF" as const,
+      sortOrder: 0,
+    });
+  }
 
-  return sorted.slice(0, 8).map((opp, i) => ({
-    category: opp.category,
-    itemName: opp.title,
-    description: opp.description,
-    quantity: new Prisma.Decimal(1),
-    unitCost: new Prisma.Decimal(0),
-    subtotal: new Prisma.Decimal(0),
-    costKind: "ONE_OFF" as const,
-    sortOrder: i,
-  }));
+  if (llm?.buildOpportunities?.length) {
+    const sorted = [...llm.buildOpportunities].sort((a, b) => {
+      const bv = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+      return (bv[b.businessValue] ?? 0) - (bv[a.businessValue] ?? 0);
+    });
+    sorted.slice(0, 8).forEach((opp, i) => {
+      items.push({
+        category: opp.category,
+        itemName: opp.title,
+        description: opp.description,
+        quantity: new Prisma.Decimal(1),
+        unitCost: new Prisma.Decimal(0),
+        subtotal: new Prisma.Decimal(0),
+        costKind: "ONE_OFF" as const,
+        sortOrder: items.length + i,
+      });
+    });
+  }
+
+  return items;
 }
 
 function buildTimelinePayload(llm: PulseAnalysisOutput | null): Prisma.TimelinePhaseCreateWithoutDocumentInput[] {

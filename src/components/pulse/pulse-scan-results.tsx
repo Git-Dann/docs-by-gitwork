@@ -22,7 +22,8 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory } from "@/hooks/use-pulse";
+import { computeGrades } from "@/server/pulse-checks/grades";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
@@ -1209,6 +1210,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { canRunFixAgent } = usePermissions();
   const { data: benchmarkData } = usePulseBenchmarks(scan.id, scan.status === "COMPLETED");
   const benchmark = benchmarkData?.benchmarks ?? null;
+  const { data: historyData } = usePulseScanHistory(scan.id, scan.status === "COMPLETED");
+  const scoreHistory = (historyData?.history ?? []).filter((h) => typeof h.healthScore === "number");
+  const grades = computeGrades(scan.checks);
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
@@ -1860,6 +1864,43 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       </div>
                     );
                   })()}
+                  {/* Third-party-style letter grades + score-over-time trend */}
+                  {(grades.length > 0 || scoreHistory.length >= 2) && (
+                    <div className="mb-3 flex flex-wrap items-center gap-3">
+                      {grades.map((g) => {
+                        const tone = g.grade === "A+" || g.grade === "A" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : g.grade === "B" || g.grade === "C" ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-red-200 bg-red-50 text-red-700";
+                        return (
+                          <span key={g.key} title={g.basis} className={cn("inline-flex items-center gap-1.5 rounded-[6px] border px-2 py-1", tone)}>
+                            <span className="text-sm font-bold tabular-nums">{g.grade}</span>
+                            <span className="text-[10px] font-medium uppercase tracking-wide">{g.label}</span>
+                          </span>
+                        );
+                      })}
+                      {scoreHistory.length >= 2 && (() => {
+                        const vals = scoreHistory.map((h) => h.healthScore as number);
+                        const w = 96, h = 24, max = 100, min = Math.min(...vals, 0);
+                        const pts = vals.map((v, i) => {
+                          const x = (i / (vals.length - 1)) * w;
+                          const y = h - ((v - min) / (max - min || 1)) * h;
+                          return `${x.toFixed(1)},${y.toFixed(1)}`;
+                        }).join(" ");
+                        const last = vals[vals.length - 1], first = vals[0];
+                        const up = last >= first;
+                        return (
+                          <span className="inline-flex items-center gap-2" title={`Health score across ${vals.length} scans`}>
+                            <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+                              <polyline points={pts} fill="none" stroke={up ? "#10b981" : "#ef4444"} strokeWidth="1.5" />
+                            </svg>
+                            <span className={cn("text-xs font-medium tabular-nums", up ? "text-emerald-600" : "text-red-600")}>
+                              {up ? "▲" : "▼"} {Math.abs(last - first)} over {vals.length}
+                            </span>
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {(llm?.projectClassification || llm?.aiMaturityScore != null) && (
                     <div className="mb-3 flex flex-wrap gap-1.5">
                       {llm?.projectClassification && (

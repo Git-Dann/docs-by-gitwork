@@ -530,6 +530,36 @@ export default async function PulseReportPage({
             </div>
           )}
 
+          {/* ── Engagement pricing (INTERNAL only — never on the shared report) ─── */}
+          {scan.pricingBands && scan.pricingBands.length > 0 && (
+            <div style={{ marginBottom: 48 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">ENGAGEMENT PRICING (INTERNAL)</span>
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 14, fontSize: 12 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "#6b7280" }}>
+                    <th style={{ padding: "4px 8px" }}>Team</th>
+                    <th style={{ padding: "4px 8px" }}>Timeline</th>
+                    <th style={{ padding: "4px 8px" }}>Indicative cost</th>
+                    <th style={{ padding: "4px 8px" }}>Day rate (blended)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scan.pricingBands.map((b) => (
+                    <tr key={b.devs} className="kb" style={{ borderTop: "1px solid #e5e7eb" }}>
+                      <td style={{ padding: "6px 8px", fontWeight: 600, color: "#111827" }}>{b.devs} dev{b.devs > 1 ? "s" : ""}</td>
+                      <td style={{ padding: "6px 8px", color: "#374151" }}>{b.weeksLow}–{b.weeksHigh} wks</td>
+                      <td style={{ padding: "6px 8px", color: "#374151", fontVariantNumeric: "tabular-nums" }}>£{Math.round(b.priceLowGbp).toLocaleString("en-GB")}–£{Math.round(b.priceHighGbp).toLocaleString("en-GB")}</td>
+                      <td style={{ padding: "6px 8px", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>£{Math.round(b.blendedDayRateGbp).toLocaleString("en-GB")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "#9ca3af" }}>Internal estimate only — not shown on shared client reports.</p>
+            </div>
+          )}
+
           {/* ── Footer ───────────────────────────────────────── */}
           <div className="rp-footer">
             <span>Confidential · Prepared by Gitwork · foundry.gitwork.co.uk</span>

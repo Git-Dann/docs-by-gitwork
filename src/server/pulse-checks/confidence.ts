@@ -35,6 +35,8 @@ const HIGH_CONFIDENCE_KEYS = new Set<string>([
   "session_cookie_httponly", "session_cookie_samesite", "secure_cookie_attributes",
   "caa_dns_record", "dnssec_enabled", "certificate_expiry_30d", "sql_error_exposure",
   "no_api_keys_in_html", "no_exposed_source_maps",
+  // Vibe-coded live security probes — directly observed (live read-only query / bundle scan).
+  "supabase_rls_enforced", "no_service_role_key_exposed", "firebase_rules_locked", "no_public_secret_env",
   // Email deliverability — DNS records
   "spf_record", "spf_hardfail", "dkim_record_present", "dmarc_record",
   "dmarc_quarantine_reject", "bimi_record_present", "mta_sts_policy", "tls_rpt_record",

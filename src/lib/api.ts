@@ -1220,6 +1220,11 @@ export async function getPulseScan(scanId: string): Promise<{ scan: PulseScanRec
   return apiFetch<{ scan: PulseScanRecord }>(`/api/pulse/scans/${scanId}`);
 }
 
+export interface PulseScanHistoryPoint { id: string; completedAt: string | null; healthScore: number | null }
+export async function getPulseScanHistory(scanId: string): Promise<{ history: PulseScanHistoryPoint[] }> {
+  return apiFetch<{ history: PulseScanHistoryPoint[] }>(`/api/pulse/scans/${scanId}/history`);
+}
+
 export async function getPulseBenchmarks(scanId: string): Promise<{ benchmarks: IndustryBenchmark | null }> {
   return apiFetch<{ benchmarks: IndustryBenchmark | null }>(`/api/pulse/scans/${scanId}/benchmarks`);
 }

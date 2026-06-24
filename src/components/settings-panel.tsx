@@ -47,6 +47,7 @@ type TabId =
   | "people"
   | "integrations"
   | "agents"
+  | "pulse-pricing"
   | "developer";
 
 interface RateCardDraft {
@@ -65,6 +66,7 @@ const TABS: { id: TabId; label: string; adminOnly?: boolean }[] = [
   { id: "people", label: "People & Rates" },
   { id: "integrations", label: "Integrations" },
   { id: "agents", label: "Agents & Checks" },
+  { id: "pulse-pricing", label: "Pulse Pricing", adminOnly: true },
   { id: "developer", label: "Developer", adminOnly: true },
 ];
 
@@ -157,6 +159,7 @@ export function SettingsPanel({
       {activeTab === "people" && <RateCardTab />}
       {activeTab === "integrations" && <IntegrationsTab />}
       {activeTab === "agents" && <AgentsAndChecksTab />}
+      {activeTab === "pulse-pricing" && isAdmin && <PulsePricingTab />}
       {activeTab === "developer" && isAdmin && <DeveloperTab apiKeyConfigured={apiKeyConfigured} />}
     </div>
   );
@@ -2868,6 +2871,80 @@ function EmailOutboundSection({
         </button>
       </div>
     </SettingsCard>
+  );
+}
+
+interface PulsePricingConfigState { fxFromUsd: number; dayRateOverrideGbp?: number; seniority?: "mid" | "senior" }
+
+export function PulsePricingTab() {
+  const [config, setConfig] = useState<PulsePricingConfigState | null>(null);
+  const [fx, setFx] = useState("");
+  const [dayRate, setDayRate] = useState("");
+  const [seniority, setSeniority] = useState<"mid" | "senior">("senior");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    let live = true;
+    apiFetch<{ config: PulsePricingConfigState }>("/api/workspace/pulse-pricing")
+      .then((res) => {
+        if (!live) return;
+        setConfig(res.config);
+        setFx(String(res.config.fxFromUsd ?? 0.79));
+        setDayRate(res.config.dayRateOverrideGbp ? String(res.config.dayRateOverrideGbp) : "");
+        setSeniority(res.config.seniority ?? "senior");
+      })
+      .catch(() => { if (live) setStatus("error"); });
+    return () => { live = false; };
+  }, []);
+
+  async function save() {
+    setStatus("saving");
+    try {
+      const res = await apiFetch<{ config: PulsePricingConfigState }>("/api/workspace/pulse-pricing", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fxFromUsd: Number(fx) || 0.79,
+          dayRateOverrideGbp: dayRate.trim() ? Number(dayRate) : null,
+          seniority,
+        }),
+      });
+      setConfig(res.config);
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="proposal-form-theme space-y-6">
+      <SettingsCard
+        number="01"
+        title="Pulse engagement pricing"
+        right={<span className="text-xs text-[var(--text-4)]">{status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Error" : ""}</span>}
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          Controls the deterministic engagement price bands Pulse shows on scans (1/2/3-dev tiers).
+          The day rate is blended from your rate card by default — converted to GBP with the FX rate
+          below — or you can pin a fixed day rate. These figures are internal and never appear on
+          client-shared reports.
+        </p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <FieldInput label="USD → GBP rate" value={fx} onChange={setFx} type="number" placeholder="0.79" />
+          <FieldInput label="Day-rate override (£, optional)" value={dayRate} onChange={setDayRate} type="number" placeholder="leave blank to blend from rate card" />
+          <label className="block space-y-1.5">
+            <FieldLabel>Seniority band</FieldLabel>
+            <select className="app-select" value={seniority} onChange={(e) => setSeniority(e.target.value as "mid" | "senior")}>
+              <option value="senior">Senior / lead</option>
+              <option value="mid">All / mid</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-5">
+          <Button onClick={save} disabled={status === "saving" || !config}>Save pricing</Button>
+        </div>
+      </SettingsCard>
+    </div>
   );
 }
 

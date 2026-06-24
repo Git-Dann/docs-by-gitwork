@@ -18,6 +18,7 @@ export type AuditAction =
   | "settings.external_key.rotated"
   | "settings.branding.updated"
   | "settings.defaults.updated"
+  | "settings.pulse_pricing.updated"
   // Team
   | "team.member.invited"
   | "team.member.role_changed"

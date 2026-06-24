@@ -29,6 +29,7 @@ import { runApiQualityChecks } from "./pulse-checks/api-quality";
 import { runAiReadinessChecks } from "./pulse-checks/ai-readiness";
 import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
 import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
+import { runVibeSecurityChecks } from "./pulse-checks/vibe-security";
 
 export type { ExtendedCheckContext };
 
@@ -67,6 +68,7 @@ export async function runExtendedChecks(
     runAiReadinessChecks,
     runVibeCodeHygieneChecks,
     runUsPrivacyExtended,
+    runVibeSecurityChecks,
   ];
 
   const results = await Promise.allSettled(

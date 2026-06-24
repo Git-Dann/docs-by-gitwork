@@ -366,6 +366,28 @@ export default async function PublicReportPage({
           </div>
         )}
 
+        {/* Recommended architecture (no pricing on shared reports) */}
+        {scan.llmAnalysis?.techStackAnalysis?.targetArchitecture && scan.llmAnalysis.techStackAnalysis.targetArchitecture.length > 0 && (
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">RECOMMENDED ARCHITECTURE</span>
+            </div>
+            <div className="widget-body space-y-2.5">
+              {scan.llmAnalysis.techStackAnalysis.targetArchitecture.map((t) => {
+                const riskColor = t.risk.level === "LOW" ? "text-emerald-600" : t.risk.level === "MEDIUM" ? "text-amber-600" : "text-red-600";
+                return (
+                  <div key={t.layer} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">{t.layer}</span>
+                    {t.current && <span className="text-xs text-[var(--text-4)]">{t.current} →</span>}
+                    <span className="text-sm font-semibold text-[var(--text-1)]">{t.recommended}</span>
+                    <span className={cn("text-[11px] font-medium", riskColor)}>· {t.risk.level} risk · {t.migration.effort}/~{t.migration.weeks}w</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Core Web Vitals */}
         {scan.browserInsights && <VitalsGrid insights={scan.browserInsights} />}
 
