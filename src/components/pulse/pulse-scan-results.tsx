@@ -1866,60 +1866,89 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
-          {/* 05 // AUTOMATED CHECKS */}
-          {showChecksGrid && (
-          <div className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header-label">05 // AUTOMATED CHECKS</span>
-              <span className="widget-header-right">{scan.checks.filter((c) => c.status !== "SKIPPED").length} checks run</span>
-            </div>
-            <div className="widget-body">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {Array.from(checksByCategory.entries()).map(([category, checks]) => {
-                  const applicable = checks.filter((c) => c.status !== "SKIPPED");
-                  if (!applicable.length) return null;
-                  const total  = applicable.length;
-                  const score  = categoryScore(checks);
-                  const passed = applicable.filter((c) => c.status === "PASS").length;
-                  const failed = applicable.filter((c) => c.status === "FAIL").length;
-                  const warned = applicable.filter((c) => c.status === "WARN").length;
-                  const scoreTextColor = score >= 80 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600";
-                  const pct = (n: number) => `${(n / total) * 100}%`;
-                  return (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => { setActiveTab("checks"); toggleCategory(category); }}
-                      className="flex flex-col gap-2.5 rounded-[10px] border border-[var(--border-2)] p-3 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
-                    >
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className={cn("font-serif text-3xl font-bold leading-none tabular-nums", scoreTextColor)}>{score}</span>
-                        <span className="widget-data-label">{passed}/{total}</span>
-                      </div>
-                      {/* Segmented composition bar: pass (green) · warn (amber) · fail (red) */}
-                      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-2)]">
-                        {passed > 0 && <div style={{ width: pct(passed), backgroundColor: "#10b981" }} />}
-                        {warned > 0 && <div style={{ width: pct(warned), backgroundColor: "#f59e0b" }} />}
-                        {failed > 0 && <div style={{ width: pct(failed), backgroundColor: "#ef4444" }} />}
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold leading-4 text-[var(--text-1)]">{category}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-medium leading-4 tabular-nums">
-                          {failed > 0 && <span className="text-red-600">{failed} fail</span>}
-                          {warned > 0 && <span className="text-amber-600">{warned} warn</span>}
-                          {passed > 0 && <span className="text-emerald-600">{passed} pass</span>}
-                          {failed === 0 && warned === 0 && (
-                            <span className="text-emerald-600">All {total} passing</span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+          {/* 05 // AUTOMATED CHECKS — glanceable summary; full per-category detail lives in the Checks tab */}
+          {showChecksGrid && (() => {
+            const applicableAll = scan.checks.filter((c) => c.status !== "SKIPPED");
+            const totalAll = applicableAll.length;
+            const passAll  = applicableAll.filter((c) => c.status === "PASS").length;
+            const warnAll  = applicableAll.filter((c) => c.status === "WARN").length;
+            const failAll  = applicableAll.filter((c) => c.status === "FAIL").length;
+            const pctAll = (n: number) => `${(n / Math.max(totalAll, 1)) * 100}%`;
+
+            // Only the categories that actually need attention, worst-first.
+            const attention = Array.from(checksByCategory.entries())
+              .map(([category, checks]) => {
+                const applicable = checks.filter((c) => c.status !== "SKIPPED");
+                return {
+                  category,
+                  failed: applicable.filter((c) => c.status === "FAIL").length,
+                  warned: applicable.filter((c) => c.status === "WARN").length,
+                };
+              })
+              .filter((c) => c.failed > 0 || c.warned > 0)
+              .sort((a, b) => (b.failed - a.failed) || (b.warned - a.warned));
+
+            const openCategory = (category: string) => {
+              setActiveTab("checks");
+              setCheckStatusFilter("ALL");
+              setExpandedCategories((prev: Set<string>) => new Set(prev).add(category));
+            };
+
+            return (
+              <div className="widget-card">
+                <div className="widget-header">
+                  <span className="widget-header-label">05 // AUTOMATED CHECKS</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("checks")}
+                    className="widget-header-right transition-colors hover:text-[var(--brand-600)]"
+                  >
+                    {totalAll} run · view all →
+                  </button>
+                </div>
+                <div className="widget-body space-y-3">
+                  {/* Overall composition: one bar + counts */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-[var(--border-2)]">
+                      {passAll > 0 && <div style={{ width: pctAll(passAll), backgroundColor: "#10b981" }} />}
+                      {warnAll > 0 && <div style={{ width: pctAll(warnAll), backgroundColor: "#f59e0b" }} />}
+                      {failAll > 0 && <div style={{ width: pctAll(failAll), backgroundColor: "#ef4444" }} />}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs font-medium tabular-nums">
+                      <span className="text-emerald-600">{passAll} pass</span>
+                      {warnAll > 0 && <span className="text-amber-600">{warnAll} warn</span>}
+                      {failAll > 0 && <span className="text-red-600">{failAll} fail</span>}
+                    </div>
+                  </div>
+
+                  {/* Needs attention — or an all-clear line */}
+                  {attention.length > 0 ? (
+                    <div className="space-y-1">
+                      <p className="widget-data-label">Needs attention</p>
+                      {attention.map((c) => (
+                        <button
+                          key={c.category}
+                          type="button"
+                          onClick={() => openCategory(c.category)}
+                          className="flex w-full items-center gap-2 rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
+                        >
+                          <span className="flex-1 truncate text-sm font-medium text-[var(--text-1)]">{c.category}</span>
+                          {c.failed > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">{c.failed} fail</span>}
+                          {c.warned > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">{c.warned} warn</span>}
+                          <ChevronRightIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-700">
+                      <CheckCircleIcon className="h-5 w-5 shrink-0" />
+                      All {totalAll} checks passed
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-          )}
+            );
+          })()}
 
           {/* Row: Tech Stack · Web Vitals */}
           {(showTechStack || showWebVitals) && (
