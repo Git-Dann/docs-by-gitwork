@@ -117,7 +117,7 @@ function ScanRunningState({
           </div>
 
           {isLong && (
-            <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
               {checksDone
                 ? "AI synthesis can take up to a couple of minutes — your checks and score below are final."
                 : "Taking longer than usual — complex sites or large repos can take a little longer."}
@@ -145,14 +145,14 @@ function ScanRunningState({
             {categories.map(([category, s]) => {
               const total = s.pass + s.warn + s.fail;
               const score = Math.round(((s.pass + s.warn * 0.5) / total) * 100);
-              const tone = score >= 75 ? "border-emerald-200 bg-emerald-50" : score >= 50 ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50";
+              const tone = score >= 75 ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/30" : score >= 50 ? "border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30" : "border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/30";
               return (
                 <div key={category} className={`flex items-center justify-between rounded-[10px] border px-3 py-2 ${tone}`}>
                   <span className="text-xs font-medium text-[var(--text-2)]">{category}</span>
                   <div className="flex items-center gap-2 text-[10px] font-semibold">
-                    {s.pass > 0 && <span className="text-emerald-700">{s.pass}P</span>}
-                    {s.warn > 0 && <span className="text-amber-700">{s.warn}W</span>}
-                    {s.fail > 0 && <span className="text-red-700">{s.fail}F</span>}
+                    {s.pass > 0 && <span className="text-emerald-700 dark:text-emerald-400">{s.pass}P</span>}
+                    {s.warn > 0 && <span className="text-amber-700 dark:text-amber-400">{s.warn}W</span>}
+                    {s.fail > 0 && <span className="text-red-700 dark:text-red-400">{s.fail}F</span>}
                   </div>
                 </div>
               );
@@ -177,11 +177,11 @@ function ScanFailedState({
   const { mutate: retry, isPending: retrying } = useRetryPulseScan();
 
   return (
-    <div className={`rounded-[10px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50"}`}>
-      <p className={`text-sm font-medium ${cancelled ? "text-[var(--text-1)]" : "text-red-800"}`}>
+    <div className={`rounded-[10px] border p-6 ${cancelled ? "border-[var(--border-2)] bg-[var(--surface-1)]" : "border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/30"}`}>
+      <p className={`text-sm font-medium ${cancelled ? "text-[var(--text-1)]" : "text-red-800 dark:text-red-300"}`}>
         {cancelled ? "Scan cancelled" : "Scan failed"}
       </p>
-      <p className={`mt-2 text-sm ${cancelled ? "text-[var(--text-3)]" : "text-red-700"}`}>
+      <p className={`mt-2 text-sm ${cancelled ? "text-[var(--text-3)]" : "text-red-700 dark:text-red-400"}`}>
         {cancelled ? "You cancelled this scan." : (errorMessage ?? "An unexpected error occurred.")}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
