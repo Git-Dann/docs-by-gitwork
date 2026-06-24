@@ -1,4 +1,4 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, platformIs, skip } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, verifyFileExposure, platformIs, skip } from "./_types";
 
 export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { httpsUrl } = ctx;
@@ -51,20 +51,27 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   const hasLocalBizSchema = schemaContent.includes('"localbusiness"') || schemaContent.includes('"store"') || schemaContent.includes('"restaurant"');
   checks.push({ category: "SEO", checkKey: "local_business_schema", label: "LocalBusiness schema", status: hasLocalBizSchema ? "PASS" : "WARN", detail: hasLocalBizSchema ? "LocalBusiness schema detected." : "No LocalBusiness schema — if you have a physical location, LocalBusiness markup improves Google Maps and local search visibility." });
 
+  // Sitemap files are content-verifiable: a real one is XML (<?xml / <urlset /
+  // <sitemapindex), so verifyFileExposure rejects a catch-all HTML shell and these
+  // checks stay correct on Vercel/SPA hosts.
+  const isSitemapXml = (body: string, ct: string) =>
+    ct.includes("xml") || /<\?xml|<urlset|<sitemapindex|<urlset|<sitemap/i.test(body);
+
   // Sitemap index
-  const sitemapIndexStatus = await headRequest(`${httpsUrl}/sitemap_index.xml`);
-  const sitemapIndexStatus2 = await headRequest(`${httpsUrl}/sitemap-index.xml`);
-  const hasSitemapIndex = sitemapIndexStatus === 200 || sitemapIndexStatus2 === 200;
+  const [sitemapIndexA, sitemapIndexB] = await Promise.all([
+    verifyFileExposure(`${httpsUrl}/sitemap_index.xml`, isSitemapXml),
+    verifyFileExposure(`${httpsUrl}/sitemap-index.xml`, isSitemapXml),
+  ]);
+  const hasSitemapIndex = sitemapIndexA || sitemapIndexB;
   checks.push({ category: "SEO", checkKey: "sitemap_index", label: "XML sitemap index", status: hasSitemapIndex ? "PASS" : "WARN", detail: hasSitemapIndex ? "Sitemap index file found." : "No sitemap index file — for large sites with multiple sitemaps, a sitemap index file is required by Google Webmaster guidelines." });
 
   // Image sitemap
-  const imageSitemapStatus = await headRequest(`${httpsUrl}/image-sitemap.xml`);
-  const hasSitemapWithImages = html.includes("image:") || imageSitemapStatus === 200;
+  const imageSitemapServed = await verifyFileExposure(`${httpsUrl}/image-sitemap.xml`, isSitemapXml);
+  const hasSitemapWithImages = html.includes("image:") || imageSitemapServed;
   checks.push({ category: "SEO", checkKey: "image_sitemap_present", label: "Image sitemap", status: hasSitemapWithImages ? "PASS" : "WARN", detail: hasSitemapWithImages ? "Image sitemap signals detected." : "No image sitemap — an image sitemap helps Google discover and index product photos, blog images, and other visual content." });
 
   // News sitemap
-  const newsSitemapStatus = await headRequest(`${httpsUrl}/news-sitemap.xml`);
-  const hasNewsSitemap = newsSitemapStatus === 200;
+  const hasNewsSitemap = await verifyFileExposure(`${httpsUrl}/news-sitemap.xml`, isSitemapXml);
   const isNewsSite = /news|blog|article|press/i.test(ctx.httpsUrl) || hasArticleSchema;
   checks.push({ category: "SEO", checkKey: "news_sitemap_present", label: "Google News sitemap", status: isNewsSite ? (hasNewsSitemap ? "PASS" : "WARN") : "PASS", detail: isNewsSite ? (hasNewsSitemap ? "News sitemap found." : "News/blog content detected but no news sitemap — submit a news sitemap to appear in Google News and Top Stories.") : "Not applicable — no news/blog content signals detected." });
 

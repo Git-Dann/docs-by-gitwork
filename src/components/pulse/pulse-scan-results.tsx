@@ -1064,7 +1064,7 @@ function PriorityActionPlan({
   return (
     <div className="widget-card">
       <div className="widget-header">
-        <span className="widget-header-label">{"12 // PRIORITY ACTION PLAN"}</span>
+        <span className="widget-header-label">{"11 // PRIORITY ACTION PLAN"}</span>
         <span className="widget-header-right">{totalActions} action{totalActions !== 1 ? "s" : ""}</span>
       </div>
       <div className="widget-body">
@@ -1227,9 +1227,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   // scan can prompt to add a repo. Server-side platform filtering already trims
   // irrelevant check categories — this trims the overview widgets to match.
   const isUrlScan = scan.inputType === "URL";
-  const hasRunChecks = scan.checks.some((c) => c.status !== "SKIPPED");
-  const showChecksGrid = hasRunChecks;                                  // 05
-  const techStackInfo = effectiveTechStack(scan);                        // 06 (with builder/AI fallback)
+  const techStackInfo = effectiveTechStack(scan);                        // 05 (with builder/AI fallback)
   const showTechStack = techStackInfo.stack.length > 0;
   const showWebVitals = !!scan.browserInsights || isUrlScan;             // 07 (data, or an actionable prompt on URL scans)
   const showCodeIntel = !!scan.codeInsights;                            // 09
@@ -1866,89 +1864,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
-          {/* 05 // AUTOMATED CHECKS — glanceable summary; full per-category detail lives in the Checks tab */}
-          {showChecksGrid && (() => {
-            const applicableAll = scan.checks.filter((c) => c.status !== "SKIPPED");
-            const totalAll = applicableAll.length;
-            const passAll  = applicableAll.filter((c) => c.status === "PASS").length;
-            const warnAll  = applicableAll.filter((c) => c.status === "WARN").length;
-            const failAll  = applicableAll.filter((c) => c.status === "FAIL").length;
-            const pctAll = (n: number) => `${(n / Math.max(totalAll, 1)) * 100}%`;
-
-            // Only the categories that actually need attention, worst-first.
-            const attention = Array.from(checksByCategory.entries())
-              .map(([category, checks]) => {
-                const applicable = checks.filter((c) => c.status !== "SKIPPED");
-                return {
-                  category,
-                  failed: applicable.filter((c) => c.status === "FAIL").length,
-                  warned: applicable.filter((c) => c.status === "WARN").length,
-                };
-              })
-              .filter((c) => c.failed > 0 || c.warned > 0)
-              .sort((a, b) => (b.failed - a.failed) || (b.warned - a.warned));
-
-            const openCategory = (category: string) => {
-              setActiveTab("checks");
-              setCheckStatusFilter("ALL");
-              setExpandedCategories((prev: Set<string>) => new Set(prev).add(category));
-            };
-
-            return (
-              <div className="widget-card">
-                <div className="widget-header">
-                  <span className="widget-header-label">05 // AUTOMATED CHECKS</span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("checks")}
-                    className="widget-header-right transition-colors hover:text-[var(--brand-600)]"
-                  >
-                    {totalAll} run · view all →
-                  </button>
-                </div>
-                <div className="widget-body space-y-3">
-                  {/* Overall composition: one bar + counts */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-[var(--border-2)]">
-                      {passAll > 0 && <div style={{ width: pctAll(passAll), backgroundColor: "#10b981" }} />}
-                      {warnAll > 0 && <div style={{ width: pctAll(warnAll), backgroundColor: "#f59e0b" }} />}
-                      {failAll > 0 && <div style={{ width: pctAll(failAll), backgroundColor: "#ef4444" }} />}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs font-medium tabular-nums">
-                      <span className="text-emerald-600">{passAll} pass</span>
-                      {warnAll > 0 && <span className="text-amber-600">{warnAll} warn</span>}
-                      {failAll > 0 && <span className="text-red-600">{failAll} fail</span>}
-                    </div>
-                  </div>
-
-                  {/* Needs attention — or an all-clear line */}
-                  {attention.length > 0 ? (
-                    <div className="space-y-1">
-                      <p className="widget-data-label">Needs attention</p>
-                      {attention.map((c) => (
-                        <button
-                          key={c.category}
-                          type="button"
-                          onClick={() => openCategory(c.category)}
-                          className="flex w-full items-center gap-2 rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-left transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
-                        >
-                          <span className="flex-1 truncate text-sm font-medium text-[var(--text-1)]">{c.category}</span>
-                          {c.failed > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">{c.failed} fail</span>}
-                          {c.warned > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">{c.warned} warn</span>}
-                          <ChevronRightIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-700">
-                      <CheckCircleIcon className="h-5 w-5 shrink-0" />
-                      All {totalAll} checks passed
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+          {/* Checks summary intentionally omitted here — Project Health (01) already
+              shows pass/warn/fail counts + score, the readiness banner shows the
+              failing-check gate, and the Checks tab holds the full per-category detail. */}
 
           {/* Row: Tech Stack · Web Vitals */}
           {(showTechStack || showWebVitals) && (
@@ -1958,7 +1876,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {showTechStack && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">06 // TECH STACK</span>
+                <span className="widget-header-label">05 // TECH STACK</span>
                 <span className="widget-header-right">{techStackInfo.inferred ? "inferred" : `${techStackInfo.stack.length} detected`}</span>
               </div>
               <div className="widget-body-compact">
@@ -1996,7 +1914,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {showWebVitals && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">07 // WEB VITALS</span>
+                <span className="widget-header-label">06 // WEB VITALS</span>
                 {scan.browserInsights && <span className="widget-header-right">Lighthouse · mobile</span>}
               </div>
               <div className="widget-body-compact">
@@ -2034,7 +1952,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {llm && llm.scalingRoadmap.length > 0 && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">08 // BUILD ROADMAP</span>
+                <span className="widget-header-label">07 // BUILD ROADMAP</span>
                 <span className="widget-header-right">{llm.scalingRoadmap.length} phases</span>
               </div>
               <div className="widget-body">
@@ -2073,7 +1991,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {showCodeIntel && (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">09 // CODE INTELLIGENCE</span>
+                  <span className="widget-header-label">08 // CODE INTELLIGENCE</span>
                   {scan.codeInsights && <span className="widget-header-right">GitHub GraphQL</span>}
                 </div>
                 <div className="widget-body-compact">
@@ -2149,7 +2067,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {showDeployIntel && (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">10 // DEPLOY INTELLIGENCE</span>
+                  <span className="widget-header-label">09 // DEPLOY INTELLIGENCE</span>
                   {scan.deployInsights?.platform && (
                     <span className="widget-header-right capitalize">{scan.deployInsights.platform}</span>
                   )}
@@ -2206,7 +2124,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 className="widget-header w-full text-left"
                 onClick={() => setDiscoveryExpanded((v) => !v)}
               >
-                <span className="widget-header-label">{"11 // DISCOVERY KIT"}</span>
+                <span className="widget-header-label">{"10 // DISCOVERY KIT"}</span>
                 <span className="widget-header-right flex items-center gap-1.5">
                   {scan.discoveryKit.questions.length} questions · £{scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£{scan.discoveryKit.pricingAnchor.high.toLocaleString()}
                   <ChevronDownIcon className={cn("h-3 w-3 transition-transform", discoveryExpanded && "rotate-180")} />
@@ -2232,7 +2150,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {!scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">{"13 // SUGGESTED BENCHMARKS"}</span>
+                <span className="widget-header-label">{"12 // SUGGESTED BENCHMARKS"}</span>
                 <span className="widget-header-right">AI-discovered</span>
               </div>
               <div className="widget-body space-y-3">
@@ -2263,7 +2181,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {benchmark && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">{"14 // INDUSTRY BENCHMARKS"}</span>
+                <span className="widget-header-label">{"13 // INDUSTRY BENCHMARKS"}</span>
                 <span className="widget-header-right">vs {benchmark.peerCount} {benchmark.projectType} scan{benchmark.peerCount !== 1 ? "s" : ""}</span>
               </div>
               <div className="widget-body">
@@ -2317,7 +2235,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"15 // VISUAL QUALITY"}</span>
+                  <span className="widget-header-label">{"14 // VISUAL QUALITY"}</span>
                   <span className="widget-header-right">AI vision · above the fold</span>
                 </div>
                 <div className="widget-body">
@@ -2373,7 +2291,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"16 // ENGAGEMENT ESTIMATE"}</span>
+                  <span className="widget-header-label">{"15 // ENGAGEMENT ESTIMATE"}</span>
                   <span className="widget-header-right">{e.confidence} confidence · indicative</span>
                 </div>
                 <div className="widget-body">
@@ -2435,7 +2353,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"17 // INTAKE & RISK"}</span>
+                  <span className="widget-header-label">{"16 // INTAKE & RISK"}</span>
                   {a.stage && (
                     <span className={cn("inline-flex items-center rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", stageTone[a.stage] ?? "bg-[var(--surface-1)] text-[var(--text-2)]")}>
                       {a.stage}

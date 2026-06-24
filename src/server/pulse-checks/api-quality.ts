@@ -1,4 +1,4 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, verifyFileExposure, platformIs, skip } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, verifyFileExposure, platformIs, skip } from "./_types";
 
 const CATEGORY = "API Quality";
 
@@ -78,14 +78,16 @@ export async function runApiQualityChecks(ctx: ExtendedCheckContext): Promise<Pu
   const hasApiChangelog = /api.*changelog|breaking.*change|deprecat.*api|changelog.*api|api.*version.*history/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "api_versioned_changelog", label: "Versioned API changelog", status: hasApiChangelog ? "PASS" : "WARN", detail: hasApiChangelog ? "API versioned changelog signals detected." : "No API changelog — publish a versioned API changelog so developers can track breaking changes and plan upgrades." });
 
-  // Health endpoint
-  const [healthStatus, statusStatus, apiHealthStatus] = await Promise.all([
-    headRequest(`${httpsUrl}/health`),
-    headRequest(`${httpsUrl}/status`),
-    headRequest(`${httpsUrl}/api/health`),
+  // Health endpoint — a real one returns JSON/text for LBs & k8s probes, not the
+  // app shell, so content-verify (verifyFileExposure rejects the HTML shell). This
+  // keeps the check honest on catch-all hosts that 200 every path.
+  const [healthServed, statusServed, apiHealthServed] = await Promise.all([
+    verifyFileExposure(`${httpsUrl}/health`),
+    verifyFileExposure(`${httpsUrl}/status`),
+    verifyFileExposure(`${httpsUrl}/api/health`),
   ]);
-  const hasHealthEndpoint = healthStatus === 200 || statusStatus === 200 || apiHealthStatus === 200;
-  checks.push({ category: CATEGORY, checkKey: "api_health_status_endpoint", label: "/api/health or /status endpoint", status: hasHealthEndpoint ? "PASS" : "WARN", detail: hasHealthEndpoint ? `Health endpoint found (${healthStatus === 200 ? "/health" : statusStatus === 200 ? "/status" : "/api/health"}).` : "No health endpoint found at /health, /status, or /api/health — a health endpoint is required for load balancers, monitoring, and Kubernetes liveness probes." });
+  const hasHealthEndpoint = healthServed || statusServed || apiHealthServed;
+  checks.push({ category: CATEGORY, checkKey: "api_health_status_endpoint", label: "/api/health or /status endpoint", status: hasHealthEndpoint ? "PASS" : "WARN", detail: hasHealthEndpoint ? `Health endpoint found (${healthServed ? "/health" : statusServed ? "/status" : "/api/health"}).` : "No health endpoint found at /health, /status, or /api/health — a health endpoint is required for load balancers, monitoring, and Kubernetes liveness probes." });
 
   // Deprecation policy
   const hasDeprecationPolicy = /deprecation.*policy|sunset.*header|api.*deprecat|deprecated.*api|end.*of.*life.*api/i.test(html);

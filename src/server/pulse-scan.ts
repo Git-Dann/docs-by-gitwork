@@ -131,6 +131,21 @@ function isHtmlShell(contentType: string, body: string): boolean {
   );
 }
 
+// Content-verified existence probe: a 200 only counts if the body is the actual
+// resource (not the SPA/catch-all HTML shell), optionally matching an expected
+// shape (e.g. XML for a sitemap, JSON for a manifest). This makes "does file X
+// exist?" checks CORRECT on catch-all hosts (Vercel/Lovable/Replit/Bolt) rather
+// than merely suppressed — a real robots.txt/sitemap/manifest still passes.
+async function fileServed(
+  url: string,
+  looksRight?: (body: string, contentType: string) => boolean,
+): Promise<boolean> {
+  const r = await probePath(url);
+  if (r.status !== 200) return false;
+  if (isHtmlShell(r.contentType, r.body)) return false;
+  return looksRight ? looksRight(r.body, r.contentType) : true;
+}
+
 function detectTechStack(headers: Record<string, string>, html: string): string[] {
   const stack: string[] = [];
 
@@ -570,6 +585,34 @@ export async function runUrlChecks(
     const baselineProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/__pulse_probe_${Math.random().toString(36).slice(2, 10)}`);
     const catchAll200 = baselineProbe.status === 200;
 
+    // Build a "does this HTML route exist?" check honestly. A real page and a
+    // catch-all soft-200 are both HTML, so on a catch-all host presence can't be
+    // determined — report SKIPPED rather than a false PASS (or a false WARN).
+    const routePageCheck = (
+      category: string,
+      checkKey: string,
+      label: string,
+      present: boolean,
+      presentDetail: string,
+      absentDetail: string,
+    ): PulseScanCheckInput =>
+      catchAll200
+        ? {
+            category,
+            checkKey,
+            label,
+            status: "SKIPPED",
+            detail: "Host returns 200 for unknown paths (catch-all routing), so this page's presence can't be probed reliably.",
+          }
+        : {
+            category,
+            checkKey,
+            label,
+            status: present ? "PASS" : "WARN",
+            detail: present ? presentDetail : absentDetail,
+            evidence: present ? "Status: 200" : "Not found",
+          };
+
     const redir = await inspectRedirect(httpUrl);
     const is3xx = redir.status >= 300 && redir.status < 400;
     // A redirect counts as HTTPS-enforcing when it 3xx's to an https:// target.
@@ -694,24 +737,32 @@ export async function runUrlChecks(
       detail: hasH1 ? "H1 heading found." : "No H1 heading found.",
     });
 
-    const robotsStatus = await headRequest(`${httpsUrl.replace(/\/$/, "")}/robots.txt`);
+    // robots.txt / sitemap.xml are content-verifiable, so they stay correct on
+    // catch-all hosts: a real robots.txt is text (not HTML), a sitemap is XML.
+    const robotsFound = await fileServed(
+      `${httpsUrl.replace(/\/$/, "")}/robots.txt`,
+      (body, ct) => ct.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(body),
+    );
     checks.push({
       category: "SEO",
       checkKey: "has_robots_txt",
       label: "robots.txt",
-      status: robotsStatus === 200 ? "PASS" : "WARN",
-      detail: robotsStatus === 200 ? "robots.txt found." : "No robots.txt detected.",
-      evidence: `Status: ${robotsStatus || "no response"}`,
+      status: robotsFound ? "PASS" : "WARN",
+      detail: robotsFound ? "robots.txt found." : "No robots.txt detected.",
+      evidence: robotsFound ? "Served valid robots.txt" : "Not found (or catch-all shell)",
     });
 
-    const sitemapStatus = await headRequest(`${httpsUrl.replace(/\/$/, "")}/sitemap.xml`);
+    const sitemapFound = await fileServed(
+      `${httpsUrl.replace(/\/$/, "")}/sitemap.xml`,
+      (body, ct) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body),
+    );
     checks.push({
       category: "SEO",
       checkKey: "has_sitemap",
       label: "sitemap.xml",
-      status: sitemapStatus === 200 ? "PASS" : "WARN",
-      detail: sitemapStatus === 200 ? "sitemap.xml found." : "No sitemap detected.",
-      evidence: `Status: ${sitemapStatus || "no response"}`,
+      status: sitemapFound ? "PASS" : "WARN",
+      detail: sitemapFound ? "sitemap.xml found." : "No sitemap detected.",
+      evidence: sitemapFound ? "Served valid sitemap.xml" : "Not found (or catch-all shell)",
     });
 
     // Security
@@ -866,19 +917,19 @@ export async function runUrlChecks(
       detail: hasAnalytics ? "Analytics tool detected." : "No analytics detected (GA4, Plausible, PostHog, etc.).",
     });
 
-    const healthEndpointStatus = await headRequest(`${httpsUrl.replace(/\/$/, "")}/api/health`);
-    const healthAltStatus = healthEndpointStatus !== 200
-      ? await headRequest(`${httpsUrl.replace(/\/$/, "")}/health`)
-      : 200;
+    // Health endpoint returns JSON/text for monitors, not the app shell — so
+    // content-verify (fileServed rejects the HTML shell) to stay right on catch-all.
+    const base = httpsUrl.replace(/\/$/, "");
+    const healthFound =
+      (await fileServed(`${base}/api/health`)) || (await fileServed(`${base}/health`));
     checks.push({
       category: "Observability",
       checkKey: "health_endpoint",
       label: "/health endpoint",
-      status: healthEndpointStatus === 200 || healthAltStatus === 200 ? "PASS" : "WARN",
-      detail:
-        healthEndpointStatus === 200 || healthAltStatus === 200
-          ? "Health check endpoint found."
-          : "No /health or /api/health endpoint detected.",
+      status: healthFound ? "PASS" : "WARN",
+      detail: healthFound
+        ? "Health check endpoint found."
+        : "No /health or /api/health endpoint detected.",
     });
 
     // Legal & Compliance
@@ -950,61 +1001,48 @@ export async function runUrlChecks(
       headRequest(`${baseUrl}/changelog`),
     ]);
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "about_page",
-      label: "About / Team page",
-      status: aboutStatus === 200 ? "PASS" : "WARN",
-      detail: aboutStatus === 200
-        ? "/about page found."
-        : "No /about page — builds team credibility and brand trust with prospects.",
-      evidence: `Status: ${aboutStatus || "no response"}`,
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "about_page", "About / Team page",
+      aboutStatus === 200,
+      "/about page found.",
+      "No /about page — builds team credibility and brand trust with prospects.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "contact_page",
-      label: "Contact page",
-      status: contactStatus === 200 ? "PASS" : "WARN",
-      detail: contactStatus === 200
-        ? "/contact page found."
-        : "No /contact page — users need a way to reach you for support and sales inquiries.",
-      evidence: `Status: ${contactStatus || "no response"}`,
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "contact_page", "Contact page",
+      contactStatus === 200,
+      "/contact page found.",
+      "No /contact page — users need a way to reach you for support and sales inquiries.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "faq_page",
-      label: "FAQ / Help page",
-      status: faqStatus === 200 ? "PASS" : "WARN",
-      detail: faqStatus === 200
-        ? "/faq page found."
-        : "No /faq page — reduces support burden and improves onboarding.",
-      evidence: `Status: ${faqStatus || "no response"}`,
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "faq_page", "FAQ / Help page",
+      faqStatus === 200,
+      "/faq page found.",
+      "No /faq page — reduces support burden and improves onboarding.",
+    ));
 
+    // Status page is usually detected by an embedded statuspage/uptime script (a
+    // reliable in-page signal); the route probe only counts off catch-all.
     const hasStatusSignals = htmlLower.includes("statuspage") || htmlLower.includes("status.io") ||
       htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
+    const hasStatusPage = hasStatusSignals || (!catchAll200 && statusPageStatus === 200);
     checks.push({
       category: "Missing Pages",
       checkKey: "status_page",
       label: "Status / uptime page",
-      status: statusPageStatus === 200 || hasStatusSignals ? "PASS" : "WARN",
-      detail: statusPageStatus === 200 || hasStatusSignals
+      status: hasStatusPage ? "PASS" : "WARN",
+      detail: hasStatusPage
         ? "Status page or uptime monitoring tool detected."
         : "No status page — needed to communicate incidents and build operational trust.",
     });
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "changelog",
-      label: "Changelog / What's new",
-      status: changelogStatus === 200 ? "PASS" : "WARN",
-      detail: changelogStatus === 200
-        ? "/changelog page found."
-        : "No changelog — users want to know what's shipping; important for retention and credibility.",
-      evidence: `Status: ${changelogStatus || "no response"}`,
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "changelog", "Changelog / What's new",
+      changelogStatus === 200,
+      "/changelog page found.",
+      "No changelog — users want to know what's shipping; important for retention and credibility.",
+    ));
 
     // SaaS Readiness
     const hasBillingPortal = ["/billing", "/billing-portal", "/subscription", "/manage-subscription"].some((p) =>
@@ -1220,40 +1258,42 @@ export async function runUrlChecks(
     });
 
     // Parallel batch: favicon, PWA manifest
-    const [faviconStatus, manifestStatus] = await Promise.all([
-      headRequest(`${baseUrl}/favicon.ico`),
-      headRequest(`${baseUrl}/manifest.json`),
+    // Favicon (an image) and manifest.json (JSON) are content-verifiable, so they
+    // stay correct on catch-all hosts — a soft-200 HTML shell is not an icon/JSON.
+    const [faviconFound, manifestFound] = await Promise.all([
+      fileServed(`${baseUrl}/favicon.ico`),
+      fileServed(`${baseUrl}/manifest.json`, (body, ct) => ct.includes("json") || /"(name|icons|start_url|display)"/.test(body)),
     ]);
-    // Stripe webhook — only fetch if payment signals detected, saves a network round-trip for non-commerce sites
-    const stripeWebhookStatus = ctx.isPaymentEnabled
-      ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
-      : 0;
 
     const hasFaviconLink = /rel=["'](shortcut icon|icon)["']/i.test(pageResult.html);
+    const hasFavicon = hasFaviconLink || faviconFound;
     checks.push({
       category: "Mobile & Accessibility",
       checkKey: "favicon",
       label: "Favicon / app icon",
-      status: hasFaviconLink || faviconStatus === 200 ? "PASS" : "WARN",
-      detail: hasFaviconLink || faviconStatus === 200
+      status: hasFavicon ? "PASS" : "WARN",
+      detail: hasFavicon
         ? "Favicon found."
         : "No favicon detected — vibe-coded apps often retain the AI platform's default icon after launch.",
-      evidence: !hasFaviconLink ? `Status: ${faviconStatus || "no response"}` : undefined,
     });
 
     const hasManifestLink = /rel=["']manifest["']/i.test(pageResult.html);
+    const hasManifest = hasManifestLink || manifestFound;
     checks.push({
       category: "Mobile & Accessibility",
       checkKey: "pwa_manifest",
       label: "Web App Manifest (PWA)",
-      status: hasManifestLink || manifestStatus === 200 ? "PASS" : "WARN",
-      detail: hasManifestLink || manifestStatus === 200
+      status: hasManifest ? "PASS" : "WARN",
+      detail: hasManifest
         ? "Web app manifest found — app supports home screen installation."
         : "No manifest.json — app cannot be installed as a PWA or trigger Chrome's install prompt.",
-      evidence: !hasManifestLink ? `Status: ${manifestStatus || "no response"}` : undefined,
     });
 
-    if (ctx.isPaymentEnabled) {
+    if (ctx.isPaymentEnabled && catchAll200) {
+      // Can't probe a webhook route on a catch-all host (every path 200s).
+      checks.push({ category: "Payments", checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Host serves catch-all 200s — webhook route presence can't be probed reliably." });
+    } else if (ctx.isPaymentEnabled) {
+      const stripeWebhookStatus = await headRequest(`${baseUrl}/api/webhooks/stripe`);
       const stripeWebhookExists = stripeWebhookStatus > 0 && stripeWebhookStatus < 500;
       checks.push({
         category: "Payments",
@@ -1270,10 +1310,13 @@ export async function runUrlChecks(
     }
 
     // App Store & Mobile Distribution — skip entirely (including the .well-known/ HEAD requests) if no mobile signals
-    const [aasaStatus, assetLinksStatus] = ctx.isMobileApp ? await Promise.all([
-      headRequest(`${baseUrl}/.well-known/apple-app-site-association`),
-      headRequest(`${baseUrl}/.well-known/assetlinks.json`),
-    ]) : [0, 0];
+    // AASA + assetlinks.json are JSON, so content-verify (a catch-all HTML shell
+    // is not JSON) — keeps deep-link detection correct on Vercel/SPA hosts.
+    const isJsonFile = (body: string, ct: string) => ct.includes("json") || /^\s*[[{]/.test(body);
+    const [aasaFound, assetLinksFound] = ctx.isMobileApp ? await Promise.all([
+      fileServed(`${baseUrl}/.well-known/apple-app-site-association`, isJsonFile),
+      fileServed(`${baseUrl}/.well-known/assetlinks.json`, isJsonFile),
+    ]) : [false, false];
     const hasAppleSmartBanner = /name=["']apple-itunes-app["']/i.test(pageResult.html);
     if (!ctx.isMobileApp) {
       skipChecks(checks, "App Store & Mobile", [
@@ -1323,22 +1366,20 @@ export async function runUrlChecks(
       category: "App Store & Mobile",
       checkKey: "universal_links",
       label: "Universal Links (iOS deep linking)",
-      status: aasaStatus === 200 ? "PASS" : "WARN",
-      detail: aasaStatus === 200
+      status: aasaFound ? "PASS" : "WARN",
+      detail: aasaFound
         ? "apple-app-site-association file found — iOS Universal Links configured for app/web handoff."
         : "No apple-app-site-association — Universal Links not set up (required for App Clips and native app ↔ web routing).",
-      evidence: `Status: ${aasaStatus || "no response"}`,
     });
 
     checks.push({
       category: "App Store & Mobile",
       checkKey: "android_asset_links",
       label: "Android App Links (deep linking)",
-      status: assetLinksStatus === 200 ? "PASS" : "WARN",
-      detail: assetLinksStatus === 200
+      status: assetLinksFound ? "PASS" : "WARN",
+      detail: assetLinksFound
         ? "assetlinks.json found — Android App Links configured."
         : "No assetlinks.json — Android deep linking not set up (required for Play Store TWA submission).",
-      evidence: `Status: ${assetLinksStatus || "no response"}`,
     });
 
     const hasApplePaySignals = htmlLower.includes("applepaysession") || htmlLower.includes("apple-pay-sdk") || htmlLower.includes("apple_pay");
@@ -1551,13 +1592,18 @@ export async function runUrlChecks(
           : "No CORS header — verify cross-origin policy is correctly configured for API routes.",
     });
 
-    const securityTxtStatus = await headRequest(`${baseUrl}/.well-known/security.txt`);
+    // security.txt is plain text with Contact:/Expires: fields — content-verify so
+    // a catch-all HTML shell isn't mistaken for a disclosure file.
+    const securityTxtFound = await fileServed(
+      `${baseUrl}/.well-known/security.txt`,
+      (body, ct) => ct.includes("text/plain") || /contact:|expires:|encryption:/i.test(body),
+    );
     checks.push({
       category: "Security",
       checkKey: "security_txt",
       label: "security.txt (responsible disclosure)",
-      status: securityTxtStatus === 200 ? "PASS" : "WARN",
-      detail: securityTxtStatus === 200
+      status: securityTxtFound ? "PASS" : "WARN",
+      detail: securityTxtFound
         ? "security.txt found — responsible disclosure channel available for security researchers."
         : "No security.txt — security researchers have no official path to report vulnerabilities (RFC 9116).",
     });
@@ -1716,15 +1762,12 @@ export async function runUrlChecks(
     const dpaAltStatus = dpaStatus !== 200 ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
     const cookiePolicyAltStatus = cookiePolicyStatus !== 200 ? await headRequest(`${baseUrl}/cookies`) : 200;
 
-    checks.push({
-      category: "Legal & Compliance",
-      checkKey: "accessibility_statement",
-      label: "Accessibility statement",
-      status: accessibilityStatus === 200 || accessibilityAltStatus === 200 ? "PASS" : "WARN",
-      detail: accessibilityStatus === 200 || accessibilityAltStatus === 200
-        ? "Accessibility statement page found — EU Web Accessibility Directive compliance documented."
-        : "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
-    });
+    checks.push(routePageCheck(
+      "Legal & Compliance", "accessibility_statement", "Accessibility statement",
+      accessibilityStatus === 200 || accessibilityAltStatus === 200,
+      "Accessibility statement page found — EU Web Accessibility Directive compliance documented.",
+      "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
+    ));
 
     const hasCoppaSignals = ["under 13", "13 years", "children's privacy", "coppa", "child-directed", "parental consent", "age gate", "age verification"].some((s) => htmlLower.includes(s));
     checks.push({
@@ -1737,15 +1780,12 @@ export async function runUrlChecks(
         : "No COPPA signals — if any users could be under 13 (US) or 16 (EU), additional parental consent is legally required.",
     });
 
-    checks.push({
-      category: "Legal & Compliance",
-      checkKey: "dpa_available",
-      label: "Data Processing Agreement (GDPR Art. 28)",
-      status: dpaStatus === 200 || dpaAltStatus === 200 ? "PASS" : "WARN",
-      detail: dpaStatus === 200 || dpaAltStatus === 200
-        ? "DPA page found — GDPR Art. 28 processor obligations documented."
-        : "No DPA available — required for B2B enterprise customers under GDPR; absence blocks EU procurement.",
-    });
+    checks.push(routePageCheck(
+      "Legal & Compliance", "dpa_available", "Data Processing Agreement (GDPR Art. 28)",
+      dpaStatus === 200 || dpaAltStatus === 200,
+      "DPA page found — GDPR Art. 28 processor obligations documented.",
+      "No DPA available — required for B2B enterprise customers under GDPR; absence blocks EU procurement.",
+    ));
 
     const hasIcpLicense = htmlLower.includes("icp备") || htmlLower.includes("备案号") || htmlLower.includes("icp证") || /[京沪粤]icp/i.test(pageResult.html);
     checks.push({
@@ -1769,15 +1809,12 @@ export async function runUrlChecks(
         : "No 'last updated' date in policy — regulators and users expect visible evidence of ongoing policy maintenance.",
     });
 
-    checks.push({
-      category: "Legal & Compliance",
-      checkKey: "cookie_policy_page",
-      label: "Dedicated cookie policy page",
-      status: cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200 ? "PASS" : "WARN",
-      detail: cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200
-        ? "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met."
-        : "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
-    });
+    checks.push(routePageCheck(
+      "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
+      cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
+      "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met.",
+      "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
+    ));
 
     const hasDpoContact = htmlLower.includes("dpo@") || htmlLower.includes("privacy@") || htmlLower.includes("data protection officer") || htmlLower.includes("data-protection@");
     checks.push({
@@ -1806,68 +1843,58 @@ export async function runUrlChecks(
     const integrationsAltStatus = integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
     const brandKitStatus = mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "blog_resources",
-      label: "Blog / resources hub",
-      status: blogStatus === 200 || blogAltStatus === 200 ? "PASS" : "WARN",
-      detail: blogStatus === 200 || blogAltStatus === 200
-        ? "Blog or resources page found — content marketing enabled."
-        : "No blog or resources section — content marketing drives 3× more leads than outbound for SaaS.",
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "blog_resources", "Blog / resources hub",
+      blogStatus === 200 || blogAltStatus === 200,
+      "Blog or resources page found — content marketing enabled.",
+      "No blog or resources section — content marketing drives 3× more leads than outbound for SaaS.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "careers_page",
-      label: "Careers / jobs page",
-      status: careersStatus === 200 || careersAltStatus === 200 ? "PASS" : "WARN",
-      detail: careersStatus === 200 || careersAltStatus === 200
-        ? "Careers page found."
-        : "No careers page — even a simple 'we're hiring' page signals momentum and attracts talent.",
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "careers_page", "Careers / jobs page",
+      careersStatus === 200 || careersAltStatus === 200,
+      "Careers page found.",
+      "No careers page — even a simple 'we're hiring' page signals momentum and attracts talent.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "press_media",
-      label: "Press / media page",
-      status: pressStatus === 200 || pressAltStatus === 200 ? "PASS" : "WARN",
-      detail: pressStatus === 200 || pressAltStatus === 200
-        ? "Press or media page found."
-        : "No press page — journalists need a media kit (logo, screenshots, founder bio) to write about you.",
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "press_media", "Press / media page",
+      pressStatus === 200 || pressAltStatus === 200,
+      "Press or media page found.",
+      "No press page — journalists need a media kit (logo, screenshots, founder bio) to write about you.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "documentation",
-      label: "Documentation / developer docs",
-      status: docsStatus === 200 || docsAltStatus === 200 ? "PASS" : "WARN",
-      detail: docsStatus === 200 || docsAltStatus === 200
-        ? "Documentation page found."
-        : "No docs page — users and developers need documentation to onboard and integrate successfully.",
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "documentation", "Documentation / developer docs",
+      docsStatus === 200 || docsAltStatus === 200,
+      "Documentation page found.",
+      "No docs page — users and developers need documentation to onboard and integrate successfully.",
+    ));
 
-    checks.push({
-      category: "Missing Pages",
-      checkKey: "integrations_page",
-      label: "Integrations / partners page",
-      status: integrationsStatus === 200 || integrationsAltStatus === 200 ? "PASS" : "WARN",
-      detail: integrationsStatus === 200 || integrationsAltStatus === 200
-        ? "Integrations or partners page found."
-        : "No integrations page — listing integrations (Zapier, Slack, Make.com) is a top buying signal for SaaS.",
-    });
+    checks.push(routePageCheck(
+      "Missing Pages", "integrations_page", "Integrations / partners page",
+      integrationsStatus === 200 || integrationsAltStatus === 200,
+      "Integrations or partners page found.",
+      "No integrations page — listing integrations (Zapier, Slack, Make.com) is a top buying signal for SaaS.",
+    ));
 
+    // A catch-all host (200 for every unknown path) by definition has no real 404,
+    // so don't follow redirects (redirect:"manual") — we want the true status of
+    // the missing path, not wherever it might forward to.
     let has404Page = false;
-    try {
-      const notFoundResponse = await fetchWithTimeout(`${baseUrl}/this-page-does-not-exist-pulse-check`, {
-        headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-        redirect: "follow",
-      });
-      if (notFoundResponse.status === 404) {
-        const notFoundHtml = await notFoundResponse.text().catch(() => "");
-        has404Page = notFoundHtml.length > 200 && !notFoundHtml.toLowerCase().includes("cannot get");
+    if (!catchAll200) {
+      try {
+        const notFoundResponse = await fetchWithTimeout(`${baseUrl}/this-page-does-not-exist-pulse-check`, {
+          headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+          redirect: "manual",
+        });
+        if (notFoundResponse.status === 404) {
+          const notFoundHtml = await notFoundResponse.text().catch(() => "");
+          has404Page = notFoundHtml.length > 200 && !notFoundHtml.toLowerCase().includes("cannot get");
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
     checks.push({
       category: "Missing Pages",
@@ -1876,7 +1903,9 @@ export async function runUrlChecks(
       status: has404Page ? "PASS" : "WARN",
       detail: has404Page
         ? "Custom 404 page detected — broken links lead to a branded error experience."
-        : "No custom 404 page — broken links dump users on a raw error; a custom 404 with navigation retains them.",
+        : catchAll200
+          ? "Unknown paths return 200 (catch-all routing) instead of a 404 — broken links won't surface a proper error page; ensure your SPA renders a branded not-found state for unmatched routes."
+          : "No custom 404 page — broken links dump users on a raw error; a custom 404 with navigation retains them.",
     });
 
     // ─── Additional SaaS Readiness ─────────────────────────────────────────────
@@ -1921,35 +1950,26 @@ export async function runUrlChecks(
     const affiliateAltStatus = affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
     const trustPageStatus = securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
 
-    checks.push({
-      category: "SaaS Readiness",
-      checkKey: "api_availability",
-      label: "Public API / developer access",
-      status: apiStatus === 200 || apiAltStatus === 200 ? "PASS" : "WARN",
-      detail: apiStatus === 200 || apiAltStatus === 200
-        ? "API endpoint or documentation found."
-        : "No public API detected — an API unlocks integrations, Zapier/Make.com workflows, and developer-led growth.",
-    });
+    checks.push(routePageCheck(
+      "SaaS Readiness", "api_availability", "Public API / developer access",
+      apiStatus === 200 || apiAltStatus === 200,
+      "API endpoint or documentation found.",
+      "No public API detected — an API unlocks integrations, Zapier/Make.com workflows, and developer-led growth.",
+    ));
 
-    checks.push({
-      category: "SaaS Readiness",
-      checkKey: "affiliate_program",
-      label: "Affiliate / referral program",
-      status: affiliateStatus === 200 || affiliateAltStatus === 200 ? "PASS" : "WARN",
-      detail: affiliateStatus === 200 || affiliateAltStatus === 200
-        ? "Affiliate or referral program page found — word-of-mouth growth enabled."
-        : "No affiliate or referral program — referral programs can generate 15–30% of SaaS revenue.",
-    });
+    checks.push(routePageCheck(
+      "SaaS Readiness", "affiliate_program", "Affiliate / referral program",
+      affiliateStatus === 200 || affiliateAltStatus === 200,
+      "Affiliate or referral program page found — word-of-mouth growth enabled.",
+      "No affiliate or referral program — referral programs can generate 15–30% of SaaS revenue.",
+    ));
 
-    checks.push({
-      category: "SaaS Readiness",
-      checkKey: "security_trust_page",
-      label: "Security / trust page",
-      status: securityPageStatus === 200 || trustPageStatus === 200 ? "PASS" : "WARN",
-      detail: securityPageStatus === 200 || trustPageStatus === 200
-        ? "Security or trust page found — enterprise procurement friction reduced."
-        : "No security page — enterprise buyers complete security questionnaires; a /security page pre-empts them.",
-    });
+    checks.push(routePageCheck(
+      "SaaS Readiness", "security_trust_page", "Security / trust page",
+      securityPageStatus === 200 || trustPageStatus === 200,
+      "Security or trust page found — enterprise procurement friction reduced.",
+      "No security page — enterprise buyers complete security questionnaires; a /security page pre-empts them.",
+    ));
 
     const hasNotificationSignals = ["notification-center", "notification bell", "unread messages", "inbox notifications"].some((s) => htmlLower.includes(s)) ||
       /class=["'][^"']*notif[^"']*["']/i.test(pageResult.html);
@@ -2229,15 +2249,12 @@ export async function runUrlChecks(
         : "No Product Hunt presence — a PH launch generates early adopters, press, and social proof.",
     });
 
-    checks.push({
-      category: "Trust & Brand",
-      checkKey: "media_kit",
-      label: "Media kit / brand assets",
-      status: mediaKitStatus === 200 || brandKitStatus === 200 ? "PASS" : "WARN",
-      detail: mediaKitStatus === 200 || brandKitStatus === 200
-        ? "Media kit or brand assets page found — journalists and partners have correct branding."
-        : "No media kit — journalists and partners need logo files and brand guidelines at /media-kit.",
-    });
+    checks.push(routePageCheck(
+      "Trust & Brand", "media_kit", "Media kit / brand assets",
+      mediaKitStatus === 200 || brandKitStatus === 200,
+      "Media kit or brand assets page found — journalists and partners have correct branding.",
+      "No media kit — journalists and partners need logo files and brand guidelines at /media-kit.",
+    ));
 
     // ─── Code Quality (URL-detectable) ─────────────────────────────────────────
     const hasPlaceholderText = pageResult.html.toLowerCase().includes("lorem ipsum") || pageResult.html.toLowerCase().includes("placeholder text here");

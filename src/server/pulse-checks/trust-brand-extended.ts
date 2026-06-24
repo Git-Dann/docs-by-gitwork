@@ -1,7 +1,7 @@
 import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest } from "./_types";
 
 export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { httpsUrl } = ctx;
+  const { httpsUrl, catchAll200 } = ctx;
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
@@ -15,8 +15,11 @@ export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<
   checks.push({ category: "Trust & Brand", checkKey: "awards_recognition", label: "Industry awards / recognition badges", status: hasAwards ? "PASS" : "WARN", detail: hasAwards ? "Awards / recognition signals detected." : "No awards or recognition signals — industry awards (Gartner Cool Vendor, G2 Leader) are powerful third-party validation." });
 
   const hasSecurityWhitepaper = /security.*whitepaper|whitepaper.*security|security.*documentation|security.*overview.*pdf|download.*security/i.test(html);
-  const securityDocStatus = await headRequest(`${httpsUrl}/security-whitepaper`);
-  checks.push({ category: "Trust & Brand", checkKey: "security_whitepaper", label: "Security whitepaper / documentation", status: hasSecurityWhitepaper || securityDocStatus === 200 ? "PASS" : "WARN", detail: hasSecurityWhitepaper || securityDocStatus === 200 ? "Security documentation signals detected." : "No security whitepaper — a downloadable security whitepaper is requested in almost every enterprise procurement process." });
+  // Catch-all hosts 200 every path, so the route probe only counts off catch-all;
+  // the in-page signal carries it otherwise.
+  const securityDocServed = !catchAll200 && (await headRequest(`${httpsUrl}/security-whitepaper`)) === 200;
+  const hasSecurityDoc = hasSecurityWhitepaper || securityDocServed;
+  checks.push({ category: "Trust & Brand", checkKey: "security_whitepaper", label: "Security whitepaper / documentation", status: hasSecurityDoc ? "PASS" : "WARN", detail: hasSecurityDoc ? "Security documentation signals detected." : "No security whitepaper — a downloadable security whitepaper is requested in almost every enterprise procurement process." });
 
   const hasGithubOrg = /github\.com\/[a-z0-9-]+\/|open.*source|github.*org|our.*github/i.test(html);
   checks.push({ category: "Trust & Brand", checkKey: "github_org_public", label: "Public GitHub organisation", status: hasGithubOrg ? "PASS" : "WARN", detail: hasGithubOrg ? "Public GitHub organisation signals detected." : "No public GitHub presence — a public GitHub org with active repos demonstrates engineering quality and commitment to open source." });
