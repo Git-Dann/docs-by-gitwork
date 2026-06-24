@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -50,6 +50,35 @@ export function TaskBoard({
   onScribeSourceClick?: (task: TaskDTO) => void;
 }) {
   const move = useMoveTask();
+
+  // Edge fade: mask out partial columns at whichever side still has scroll room,
+  // so they fade rather than getting bluntly clipped by the container edge.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const syncEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setEdges({ start: el.scrollLeft > 1, end: el.scrollLeft < max - 1 });
+  }, []);
+  useEffect(() => {
+    syncEdges();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(syncEdges);
+    ro.observe(el);
+    window.addEventListener("resize", syncEdges);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", syncEdges);
+    };
+  }, [syncEdges]);
+
+  const FADE = "24px";
+  const left = edges.start ? `transparent 0, black ${FADE}` : "black 0";
+  const right = edges.end ? `black calc(100% - ${FADE}), transparent 100%` : "black 100%";
+  const maskImage = `linear-gradient(to right, ${left}, ${right})`;
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor),
@@ -102,6 +131,11 @@ export function TaskBoard({
     for (const t of merged) m.set(t.id, t.status);
     return m;
   }, [merged]);
+
+  // Adding/removing cards changes content width without resizing the container.
+  useEffect(() => {
+    syncEdges();
+  }, [merged, syncEdges]);
 
   const activeTask = activeId ? merged.find((t) => t.id === activeId) ?? null : null;
 
@@ -176,7 +210,12 @@ export function TaskBoard({
         setOverId(null);
       }}
     >
-      <div className="grid auto-cols-[82vw] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3 sm:auto-cols-[300px]">
+      <div
+        ref={scrollRef}
+        onScroll={syncEdges}
+        style={{ maskImage, WebkitMaskImage: maskImage }}
+        className="grid auto-cols-[82vw] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3 sm:auto-cols-[300px]"
+      >
         {TASK_STATUSES.map((status, i) => (
           <BoardColumn
             key={status}
