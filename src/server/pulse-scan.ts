@@ -66,6 +66,45 @@ async function headRequest(url: string): Promise<number> {
   }
 }
 
+// GET a path and return enough to distinguish a real exposed file from a
+// soft-200. SPA / Vercel / Next.js hosts commonly serve the app-shell HTML with
+// status 200 for ANY unknown path, so a status-only probe would false-positive
+// on every "exposed file" check. The body + content-type let us tell them apart.
+async function probePath(url: string): Promise<{ status: number; contentType: string; body: string }> {
+  try {
+    const response = await fetchWithTimeout(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+    });
+    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+    let body = "";
+    try {
+      body = (await response.text()).slice(0, 2000);
+    } catch {
+      /* body unreadable — treat as empty */
+    }
+    return { status: response.status, contentType, body };
+  } catch {
+    return { status: 0, contentType: "", body: "" };
+  }
+}
+
+// True when a 200 response is actually the site's HTML shell (an SPA / catch-all
+// soft-200) rather than the raw file we asked for.
+function isHtmlShell(contentType: string, body: string): boolean {
+  if (contentType.includes("text/html")) return true;
+  const head = body.trimStart().slice(0, 300).toLowerCase();
+  return (
+    head.startsWith("<!doctype html") ||
+    head.startsWith("<html") ||
+    head.includes("<head") ||
+    head.includes("__next_data__") ||
+    head.includes('id="root"') ||
+    head.includes('id="__next"')
+  );
+}
+
 function detectTechStack(headers: Record<string, string>, html: string): string[] {
   const stack: string[] = [];
 
@@ -497,6 +536,14 @@ export async function runUrlChecks(
 
   if (pageResult) {
     const ctx = detectProjectContext(pageResult.html, pageResult.headers);
+
+    // Catch-all baseline — probe a random nonexistent path. If the host returns
+    // 200 (the app shell) for a URL that cannot exist, it serves catch-all 200s
+    // (typical of SPAs / Vercel / Next.js frontends). The exposed-file checks
+    // below use this so a soft-200 isn't mistaken for a real exposure.
+    const baselineProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/__pulse_probe_${Math.random().toString(36).slice(2, 10)}`);
+    const catchAll200 = baselineProbe.status === 200;
+
     const redir = await headRequest(httpUrl);
     checks.push({
       category: "Infrastructure",
@@ -657,24 +704,38 @@ export async function runUrlChecks(
       evidence: xfo ?? undefined,
     });
 
-    const envStatus = await headRequest(`${httpsUrl.replace(/\/$/, "")}/.env`);
+    // .env — a real exposure serves the raw file (KEY=VALUE, not HTML). A 200
+    // that's the app shell (catch-all routing) is not an exposure.
+    const envProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/.env`);
+    const envIsShell = isHtmlShell(envProbe.contentType, envProbe.body);
+    const envRealExposure = envProbe.status === 200 && !envIsShell && /^\s*(export\s+)?[A-Z0-9_]+\s*=/m.test(envProbe.body);
     checks.push({
       category: "Security",
       checkKey: "no_exposed_env",
       label: ".env not public",
-      status: envStatus !== 200 ? "PASS" : "FAIL",
-      detail: envStatus !== 200 ? ".env file is not publicly accessible." : ".env file appears to be publicly accessible.",
-      evidence: `Status: ${envStatus || "no response"}`,
+      status: envRealExposure ? "FAIL" : "PASS",
+      detail: envRealExposure
+        ? ".env file is publicly accessible and exposes environment variables — block it immediately."
+        : envProbe.status === 200
+          ? ".env path returns 200 but serves the app shell (catch-all routing), not a real file — no exposure."
+          : ".env file is not publicly accessible.",
+      evidence: `Status: ${envProbe.status || "no response"}${envProbe.contentType ? ` · ${envProbe.contentType}` : ""}`,
     });
 
-    const gitStatus = await headRequest(`${httpsUrl.replace(/\/$/, "")}/.git/HEAD`);
+    // .git — a real exposure serves a git ref ("ref: …" or a 40-char SHA), not HTML.
+    const gitProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/.git/HEAD`);
+    const gitRealExposure = gitProbe.status === 200 && !isHtmlShell(gitProbe.contentType, gitProbe.body) && /^(ref:\s|[0-9a-f]{40})/m.test(gitProbe.body.trim());
     checks.push({
       category: "Security",
       checkKey: "no_exposed_git",
       label: ".git directory not public",
-      status: gitStatus !== 200 ? "PASS" : "FAIL",
-      detail: gitStatus !== 200 ? ".git directory is not publicly accessible." : ".git directory appears exposed.",
-      evidence: `Status: ${gitStatus || "no response"}`,
+      status: gitRealExposure ? "FAIL" : "PASS",
+      detail: gitRealExposure
+        ? ".git directory is exposed — source history and secrets are downloadable. Block access immediately."
+        : gitProbe.status === 200
+          ? ".git path returns 200 but serves the app shell (catch-all routing), not a real repository — no exposure."
+          : ".git directory is not publicly accessible.",
+      evidence: `Status: ${gitProbe.status || "no response"}${gitProbe.contentType ? ` · ${gitProbe.contentType}` : ""}`,
     });
 
     // Performance
@@ -2246,7 +2307,14 @@ export async function runUrlChecks(
       checkPaths(httpsUrl, ["/backup.sql", "/dump.sql", "/.env.bak", "/db.sql"]),
     ]);
 
-    const adminExposed = adminStatuses.some((s) => s === 200);
+    // These are path-existence probes (HEAD → status). On a catch-all host every
+    // path returns 200, so a 200 here proves nothing — gate the "exposed" verdict
+    // on the baseline and say so, rather than flagging phantom files on an SPA.
+    const catchAllNote = catchAll200
+      ? " (Host returns 200 for any path — catch-all routing — so path-based probes are inconclusive; nothing actually exposed by status.)"
+      : "";
+
+    const adminExposed = !catchAll200 && adminStatuses.some((s) => s === 200);
     checks.push({
       category: "Security",
       checkKey: "no_exposed_admin",
@@ -2254,10 +2322,10 @@ export async function runUrlChecks(
       status: adminExposed ? "WARN" : "PASS",
       detail: adminExposed
         ? "An admin path (/admin or /wp-admin) returned HTTP 200 — verify it requires authentication. Exposed admin panels are prime targets for credential stuffing attacks."
-        : "Admin paths not freely accessible.",
+        : "Admin paths not freely accessible." + catchAllNote,
     });
 
-    const phpInfoExposed = phpInfoStatuses.some((s) => s === 200);
+    const phpInfoExposed = !catchAll200 && phpInfoStatuses.some((s) => s === 200);
     checks.push({
       category: "Security",
       checkKey: "no_exposed_phpinfo",
@@ -2265,20 +2333,21 @@ export async function runUrlChecks(
       status: phpInfoExposed ? "FAIL" : "PASS",
       detail: phpInfoExposed
         ? "phpinfo.php or info.php returned HTTP 200 — this file exposes PHP version, server paths, loaded extensions, and environment variables to attackers."
-        : "No exposed PHP info pages detected.",
+        : "No exposed PHP info pages detected." + catchAllNote,
     });
 
+    const gitConfigExposed = !catchAll200 && gitConfigStatus === 200;
     checks.push({
       category: "Security",
       checkKey: "no_exposed_git_config",
       label: "Git config not publicly accessible",
-      status: gitConfigStatus === 200 ? "FAIL" : "PASS",
-      detail: gitConfigStatus === 200
+      status: gitConfigExposed ? "FAIL" : "PASS",
+      detail: gitConfigExposed
         ? "/.git/config is publicly accessible — this reveals repository URLs, credentials, and project structure. Remove or block access immediately."
-        : "Git config not publicly accessible.",
+        : "Git config not publicly accessible." + catchAllNote,
     });
 
-    const debugExposed = debugStatuses.some((s) => s === 200);
+    const debugExposed = !catchAll200 && debugStatuses.some((s) => s === 200);
     checks.push({
       category: "Security",
       checkKey: "no_debug_endpoints",
@@ -2286,10 +2355,10 @@ export async function runUrlChecks(
       status: debugExposed ? "WARN" : "PASS",
       detail: debugExposed
         ? "A debug endpoint (/telescope, /__clockwork, /horizon, or /_debug) returned HTTP 200 — these expose internal request logs, jobs, and performance data."
-        : "Debug and monitoring endpoints are not publicly accessible.",
+        : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
     });
 
-    const backupExposed = backupStatuses.some((s) => s === 200);
+    const backupExposed = !catchAll200 && backupStatuses.some((s) => s === 200);
     checks.push({
       category: "Security",
       checkKey: "no_exposed_backup",
@@ -2297,7 +2366,7 @@ export async function runUrlChecks(
       status: backupExposed ? "FAIL" : "PASS",
       detail: backupExposed
         ? "A database backup file (backup.sql, dump.sql, .env.bak, or db.sql) is publicly downloadable — this is a critical data breach risk."
-        : "No exposed database backup files detected.",
+        : "No exposed database backup files detected." + catchAllNote,
     });
 
     // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
