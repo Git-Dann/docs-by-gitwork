@@ -176,7 +176,7 @@ export function TaskBoard({
         setOverId(null);
       }}
     >
-      <div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-3">
+      <div className="grid auto-cols-[82vw] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3 sm:auto-cols-[300px]">
         {TASK_STATUSES.map((status, i) => (
           <BoardColumn
             key={status}
