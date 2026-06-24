@@ -12,6 +12,7 @@ import {
   ForbiddenError,
   canSeeAllClients,
 } from "@/server/auth/effective-user";
+import { placementClientIds } from "@/server/client-assignments";
 import type {
   TaskDTO,
   TaskDetailDTO,
@@ -199,13 +200,21 @@ function commentRowToDTO(row: CommentRow): TaskCommentDTO {
 
 // ─── Scoping ───────────────────────────────────────────────────────────────
 
-/** The client IDs a restricted user is assigned to (empty array = none). */
+/**
+ * The client IDs a restricted user may see (empty array = none). Union of two sources:
+ *  1. Explicit ClientAssignment rows (Settings → Team).
+ *  2. Open Code placements on a Candidate matching their email (placementClientIds) —
+ *     so a dev placed on a client in Code sees it in Portal/tasks without a manual assign.
+ */
 export async function assignedClientIds(user: EffectiveUser): Promise<string[]> {
-  const rows = await prisma.clientAssignment.findMany({
-    where: { workspaceId: user.workspaceId, userId: user.id },
-    select: { clientId: true },
-  });
-  return rows.map((r) => r.clientId);
+  const [rows, placementIds] = await Promise.all([
+    prisma.clientAssignment.findMany({
+      where: { workspaceId: user.workspaceId, userId: user.id },
+      select: { clientId: true },
+    }),
+    placementClientIds(user),
+  ]);
+  return [...new Set([...rows.map((r) => r.clientId), ...placementIds])];
 }
 
 /**
