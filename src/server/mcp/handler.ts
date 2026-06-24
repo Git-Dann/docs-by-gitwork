@@ -20,10 +20,13 @@ import {
   assertCan,
   canManageClients,
   canManageDocs,
+  canManagePulse,
   canSeeAllClients,
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
+import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
+import { getPulseScan } from "@/server/pulse";
 import { listDerivedClients, createClientRecord } from "@/server/clients";
 import { assignedClientIds, listTasks, createTask, updateTask } from "@/server/tasks";
 import { listMembers } from "@/server/team";
@@ -205,6 +208,12 @@ const createDocumentSchema = z.object({
   documentType: DOCUMENT_TYPE.optional(),
   productName: z.string().optional(),
 });
+
+const pulseScanToolSchema = z.object({
+  url: z.string().url(),
+  targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
+});
+const pulseResultToolSchema = z.object({ scanId: z.string().min(1) });
 
 const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"];
 const TASK_PRIORITY_VALUES = ["LOW", "MEDIUM", "HIGH"];
@@ -590,6 +599,55 @@ const TOOLS: ToolDef[] = [
           clientName ? ` for ${clientName}` : ""
         }. Open it in Foundry to edit.`,
       );
+    },
+  },
+  {
+    name: "pulse_scan",
+    description:
+      "Run a Pulse production-readiness + security scan on a URL and return a compact verdict: " +
+      "health score, confirmed issues, live Supabase RLS check, security/TLS/accessibility grades, " +
+      "compliance gaps for target markets, and top fixes. Ideal to validate an AI-built app before shipping. " +
+      "Synchronous (~15–30s). Requires the 'Manage Pulse' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The https:// URL to scan." },
+        targetMarkets: { type: "array", items: { type: "string" }, description: "Optional jurisdiction codes the product serves (e.g. EU, UK, US, US-CA)." },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManagePulse, "run Pulse scans");
+      const parsed = pulseScanToolSchema.parse(args);
+      const verdict = await runAgentScan({ url: parsed.url, targetMarkets: parsed.targetMarkets });
+      return textResult(verdict, verdict.summary);
+    },
+  },
+  {
+    name: "pulse_scan_result",
+    description: "Fetch the compact verdict for an existing Pulse scan by its scanId (e.g. a full in-app scan).",
+    inputSchema: {
+      type: "object",
+      properties: { scanId: { type: "string", description: "The Pulse scan id." } },
+      required: ["scanId"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManagePulse, "read Pulse scans");
+      const parsed = pulseResultToolSchema.parse(args);
+      const scan = await getPulseScan(parsed.scanId);
+      if (!scan) return textResult({ error: "Scan not found." }, "Scan not found.");
+      const verdict = buildAgentVerdict({
+        url: scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName,
+        status: scan.status === "COMPLETED" ? "COMPLETED" : "FAILED",
+        healthScore: scan.healthScore ?? 0,
+        techStack: scan.techStack ?? [],
+        checks: scan.checks.map((c) => ({ ...c, detail: c.detail ?? undefined, evidence: c.evidence ?? undefined, confidence: c.confidence ?? undefined, confidenceReason: c.confidenceReason ?? undefined, trustBucket: c.trustBucket ?? undefined })),
+        targetMarkets: scan.targetMarkets ?? undefined,
+        detectedMarkets: (scan.detectedMarkets ?? undefined) as undefined | import("@/server/pulse-checks/jurisdictions").JurisdictionCode[],
+      });
+      return textResult(verdict, verdict.summary);
     },
   },
 ];

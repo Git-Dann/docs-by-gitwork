@@ -23,6 +23,7 @@ import {
   loadDemoScan,
   listMonitors,
   createMonitor,
+  updateMonitor,
   deleteMonitor,
   listPulseLeads,
   importPulseLead,
@@ -311,6 +312,17 @@ export function useImportPulseLead() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
+    },
+  });
+}
+
+export function useUpdateMonitor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ monitorId, ...input }: { monitorId: string; frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }) =>
+      updateMonitor(monitorId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });
     },
   });
 }

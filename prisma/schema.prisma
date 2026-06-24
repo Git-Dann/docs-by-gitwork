@@ -1822,6 +1822,10 @@ model PulseMonitor {
   lastHealthScore Int?
   alertThreshold  Int                @default(10) // score drop that triggers alert
   isActive        Boolean            @default(true)
+  // Continuous monitoring (additive): scheduled re-scans + new-critical alerting.
+  frequency       String             @default("DAILY") // "DAILY" | "WEEKLY" | "OFF"
+  lastRunAt       DateTime? // last scheduled run (cron stamps this)
+  lastCriticalKeys Json? // string[] — CONFIRMED-critical checkKeys at last run, to diff for "new issue appeared"
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 

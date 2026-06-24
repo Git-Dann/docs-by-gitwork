@@ -1299,6 +1299,7 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
 export interface FixAgentResult {
   proposedFixes: Array<{ checkKey: string; filePath: string; newContent: string; explanation: string }>;
   prUrl: string | null;
+  manualActions: Array<{ checkKey: string; label: string; why: string }>;
   summary: string;
 }
 
@@ -1338,6 +1339,8 @@ export interface MonitorRecord {
   lastHealthScore: number | null;
   alertThreshold: number;
   isActive: boolean;
+  frequency: "DAILY" | "WEEKLY" | "OFF";
+  lastRunAt: string | null;
   createdAt: string;
   webhookUrl: string;
 }
@@ -1353,9 +1356,18 @@ export async function createMonitor(input: {
   inputGithubRepo?: string;
   clientId?: string;
   alertThreshold?: number;
+  frequency?: "DAILY" | "WEEKLY" | "OFF";
 }): Promise<{ monitor: MonitorRecord }> {
   return apiFetch<{ monitor: MonitorRecord }>("/api/pulse/monitors", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateMonitor(monitorId: string, input: { frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }): Promise<{ monitor: MonitorRecord }> {
+  return apiFetch<{ monitor: MonitorRecord }>(`/api/pulse/monitors/${monitorId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });

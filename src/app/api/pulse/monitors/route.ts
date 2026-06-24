@@ -12,6 +12,7 @@ const createMonitorSchema = z.object({
   inputGithubRepo: z.string().optional(),
   clientId:        z.string().cuid().optional(),
   alertThreshold:  z.number().int().min(1).max(50).optional(),
+  frequency:       z.enum(["DAILY", "WEEKLY", "OFF"]).optional(),
 });
 
 function appUrl(request: NextRequest): string {

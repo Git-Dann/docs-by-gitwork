@@ -30,6 +30,10 @@
     {
       "path": "/api/cron/auto-archive-tasks",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/pulse-run-monitors",
+      "schedule": "0 5 * * *"
     }
   ]
 }
