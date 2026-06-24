@@ -1,4 +1,4 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, checkDnsRecord, skip, platformIs } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, verifyFileExposure, checkDnsRecord, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
 
 const CHECKS: Array<[string, string]> = [
   ["cross_origin_opener_policy", "Cross-Origin-Opener-Policy (COOP)"],
@@ -34,7 +34,7 @@ const CHECKS: Array<[string, string]> = [
 ];
 
 export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { pageResult, httpsUrl, hostname, htmlLower } = ctx;
+  const { pageResult, httpsUrl, hostname, htmlLower, catchAll200 } = ctx;
   const h = pageResult.headers;
 
   if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP")) {
@@ -81,29 +81,46 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const certExpirySoon = maxAge > 0 && maxAge < 30 * 24 * 3600;
   checks.push({ category: "Security", checkKey: "certificate_expiry_30d", label: "SSL cert not expiring within 30 days", status: certExpirySoon ? "WARN" : "PASS", detail: certExpirySoon ? "HSTS max-age is very short — may indicate certificate expiring soon. Verify renewal is automated (Let's Encrypt / certbot)." : "Certificate appears valid with adequate HSTS max-age." });
 
-  // Parallel path checks
-  const [dsStoreStatus, composerStatus, packageJsonStatus, swaggerStatus, actuatorStatus, prometheusStatus, graphqlStatus, envProdStatus, envDockerStatus] = await Promise.all([
-    headRequest(`${httpsUrl}/.DS_Store`),
-    headRequest(`${httpsUrl}/composer.json`),
-    headRequest(`${httpsUrl}/package.json`),
+  // ── Exposed-file / endpoint probes ───────────────────────────────────────────
+  // Two failure modes to avoid on SPA / Vercel / Next.js hosts that serve their
+  // app shell (200) for ANY path:
+  //   • Direct files (.env.prod, .DS_Store, composer.json, package.json) are
+  //     content-verified — a real exposure serves its own bytes, not the HTML
+  //     shell — so verifyFileExposure() rejects a soft-200.
+  //   • Endpoints (/swagger-ui, /actuator, /metrics, /graphql) can legitimately
+  //     return HTML/JSON, so content alone can't disambiguate; when the host is a
+  //     catch-all (catchAll200) these probes are inconclusive → PASS with a note.
+  const isJsonBody = (body: string, ct: string) =>
+    ct.includes("json") || /^\s*[[{]/.test(body);
+  const [dsStoreExposed, composerExposed, packageJsonExposed, swaggerStatus, actuatorStatus, prometheusStatus, graphqlStatus, envProdExposed, envDockerExposed] = await Promise.all([
+    verifyFileExposure(`${httpsUrl}/.DS_Store`),
+    verifyFileExposure(`${httpsUrl}/composer.json`, isJsonBody),
+    verifyFileExposure(`${httpsUrl}/package.json`, isJsonBody),
     headRequest(`${httpsUrl}/swagger-ui`),
     headRequest(`${httpsUrl}/actuator`),
     headRequest(`${httpsUrl}/metrics`),
     headRequest(`${httpsUrl}/graphql`),
-    headRequest(`${httpsUrl}/.env.prod`),
-    headRequest(`${httpsUrl}/.env.docker`),
+    verifyFileExposure(`${httpsUrl}/.env.prod`),
+    verifyFileExposure(`${httpsUrl}/.env.docker`),
   ]);
 
-  checks.push({ category: "Security", checkKey: "no_exposed_ds_store", label: ".DS_Store not publicly accessible", status: dsStoreStatus === 200 ? "FAIL" : "PASS", detail: dsStoreStatus === 200 ? "CRITICAL: .DS_Store file accessible — exposes directory structure and filenames to attackers." : ".DS_Store not accessible." });
-  checks.push({ category: "Security", checkKey: "no_exposed_composer_json", label: "composer.json not at web root", status: composerStatus === 200 ? "WARN" : "PASS", detail: composerStatus === 200 ? "composer.json accessible at web root — exposes PHP dependency list and potential vulnerable package versions." : "composer.json not accessible at web root." });
-  checks.push({ category: "Security", checkKey: "no_exposed_package_json_root", label: "package.json not served at root", status: packageJsonStatus === 200 ? "WARN" : "PASS", detail: packageJsonStatus === 200 ? "package.json accessible — exposes dependency list, scripts, and potentially internal tooling details." : "package.json not served at web root." });
-  checks.push({ category: "Security", checkKey: "no_exposed_swagger_open", label: "Swagger UI not open in production", status: swaggerStatus === 200 ? "WARN" : "PASS", detail: swaggerStatus === 200 ? "Swagger UI appears publicly accessible — ensure API documentation requires authentication in production." : "Swagger UI not found at /swagger-ui." });
-  checks.push({ category: "Security", checkKey: "no_exposed_actuator", label: "/actuator endpoints not public", status: actuatorStatus === 200 ? "FAIL" : "PASS", detail: actuatorStatus === 200 ? "CRITICAL: Spring Boot Actuator endpoint publicly accessible — exposes heap dumps, env vars, and internal metrics." : "/actuator not publicly accessible." });
-  checks.push({ category: "Security", checkKey: "no_exposed_prometheus_metrics", label: "/metrics endpoint not public", status: prometheusStatus === 200 ? "WARN" : "PASS", detail: prometheusStatus === 200 ? "/metrics endpoint is publicly accessible — may expose internal infrastructure details and business metrics." : "/metrics endpoint not publicly accessible." });
+  // Endpoint exposure only counts when the host is NOT a catch-all 200 host.
+  const swaggerExposed   = !catchAll200 && swaggerStatus === 200;
+  const actuatorExposed  = !catchAll200 && actuatorStatus === 200;
+  const metricsExposed   = !catchAll200 && prometheusStatus === 200;
+  const graphqlPresent   = !catchAll200 && graphqlStatus === 200;
+  const endpointNote = catchAll200 ? CATCH_ALL_NOTE : "";
+
+  checks.push({ category: "Security", checkKey: "no_exposed_ds_store", label: ".DS_Store not publicly accessible", status: dsStoreExposed ? "FAIL" : "PASS", detail: dsStoreExposed ? "CRITICAL: .DS_Store file accessible — exposes directory structure and filenames to attackers." : ".DS_Store not accessible." });
+  checks.push({ category: "Security", checkKey: "no_exposed_composer_json", label: "composer.json not at web root", status: composerExposed ? "WARN" : "PASS", detail: composerExposed ? "composer.json accessible at web root — exposes PHP dependency list and potential vulnerable package versions." : "composer.json not accessible at web root." });
+  checks.push({ category: "Security", checkKey: "no_exposed_package_json_root", label: "package.json not served at root", status: packageJsonExposed ? "WARN" : "PASS", detail: packageJsonExposed ? "package.json accessible — exposes dependency list, scripts, and potentially internal tooling details." : "package.json not served at web root." });
+  checks.push({ category: "Security", checkKey: "no_exposed_swagger_open", label: "Swagger UI not open in production", status: swaggerExposed ? "WARN" : "PASS", detail: swaggerExposed ? "Swagger UI appears publicly accessible — ensure API documentation requires authentication in production." : "Swagger UI not found at /swagger-ui." + endpointNote });
+  checks.push({ category: "Security", checkKey: "no_exposed_actuator", label: "/actuator endpoints not public", status: actuatorExposed ? "FAIL" : "PASS", detail: actuatorExposed ? "CRITICAL: Spring Boot Actuator endpoint publicly accessible — exposes heap dumps, env vars, and internal metrics." : "/actuator not publicly accessible." + endpointNote });
+  checks.push({ category: "Security", checkKey: "no_exposed_prometheus_metrics", label: "/metrics endpoint not public", status: metricsExposed ? "WARN" : "PASS", detail: metricsExposed ? "/metrics endpoint is publicly accessible — may expose internal infrastructure details and business metrics." : "/metrics endpoint not publicly accessible." + endpointNote });
 
   // GraphQL introspection
   let gqlIntrospectionOff = true;
-  if (graphqlStatus === 200) {
+  if (graphqlPresent) {
     try {
       const gqlRes = await fetch(`${httpsUrl}/graphql`, {
         method: "POST",
@@ -117,7 +134,7 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
       gqlIntrospectionOff = true;
     }
   }
-  checks.push({ category: "Security", checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: graphqlStatus === 200 && !gqlIntrospectionOff ? "WARN" : "PASS", detail: graphqlStatus === 200 && !gqlIntrospectionOff ? "GraphQL introspection is enabled — attackers can enumerate your entire API schema. Disable introspection in production." : "GraphQL introspection appears disabled or endpoint not present." });
+  checks.push({ category: "Security", checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: graphqlPresent && !gqlIntrospectionOff ? "WARN" : "PASS", detail: graphqlPresent && !gqlIntrospectionOff ? "GraphQL introspection is enabled — attackers can enumerate your entire API schema. Disable introspection in production." : "GraphQL introspection appears disabled or endpoint not present." });
 
   // Source maps
   const hasSourceMaps = /\.js\.map["']/i.test(pageResult.html) || /sourceMappingURL=/i.test(pageResult.html);
@@ -159,7 +176,7 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: "Security", checkKey: "csp_frame_ancestors", label: "frame-ancestors in CSP policy", status: hasCspFrameAncestors ? "PASS" : hasXfo ? "WARN" : "WARN", detail: hasCspFrameAncestors ? "CSP frame-ancestors directive present — clickjacking protection via CSP (supersedes X-Frame-Options)." : "No frame-ancestors in CSP — use CSP frame-ancestors instead of X-Frame-Options for modern clickjacking protection." });
 
   // .env variants
-  checks.push({ category: "Security", checkKey: "no_exposed_env_variants", label: ".env.prod / .env.docker not accessible", status: (envProdStatus === 200 || envDockerStatus === 200) ? "FAIL" : "PASS", detail: (envProdStatus === 200 || envDockerStatus === 200) ? "CRITICAL: .env.prod or .env.docker accessible — environment secrets are exposed." : ".env variant files not publicly accessible." });
+  checks.push({ category: "Security", checkKey: "no_exposed_env_variants", label: ".env.prod / .env.docker not accessible", status: (envProdExposed || envDockerExposed) ? "FAIL" : "PASS", detail: (envProdExposed || envDockerExposed) ? "CRITICAL: .env.prod or .env.docker accessible — environment secrets are exposed." : ".env variant files not publicly accessible." });
 
   // Secrets / keys in HTML (broader check)
   const hasSecretPatterns = /password\s*=\s*["'][^"']{8,}["']|secret\s*=\s*["'][^"']{8,}["']/i.test(pageResult.html);

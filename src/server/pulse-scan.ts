@@ -66,6 +66,32 @@ async function headRequest(url: string): Promise<number> {
   }
 }
 
+// Inspect how an HTTP URL responds WITHOUT following redirects, so we can see the
+// redirect itself (301/302/307/308 + Location) instead of its final destination.
+// With redirect:"follow", an http→https redirect resolves to the final 200 and a
+// naive "is it 3xx?" test wrongly concludes the site doesn't redirect. Server-side
+// (undici) returns the real 3xx status + headers under redirect:"manual". Falls
+// back to GET when HEAD is rejected (405/501).
+async function inspectRedirect(url: string): Promise<{ status: number; location: string }> {
+  const probe = async (method: "HEAD" | "GET") => {
+    const response = await fetchWithTimeout(url, {
+      method,
+      redirect: "manual",
+      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+    });
+    return { status: response.status, location: response.headers.get("location") ?? "" };
+  };
+  try {
+    let res = await probe("HEAD");
+    if (res.status === 405 || res.status === 501 || res.status === 0) {
+      res = await probe("GET");
+    }
+    return res;
+  } catch {
+    return { status: 0, location: "" };
+  }
+}
+
 // GET a path and return enough to distinguish a real exposed file from a
 // soft-200. SPA / Vercel / Next.js hosts commonly serve the app-shell HTML with
 // status 200 for ANY unknown path, so a status-only probe would false-positive
@@ -544,16 +570,30 @@ export async function runUrlChecks(
     const baselineProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/__pulse_probe_${Math.random().toString(36).slice(2, 10)}`);
     const catchAll200 = baselineProbe.status === 200;
 
-    const redir = await headRequest(httpUrl);
+    const redir = await inspectRedirect(httpUrl);
+    const is3xx = redir.status >= 300 && redir.status < 400;
+    // A redirect counts as HTTPS-enforcing when it 3xx's to an https:// target.
+    // Treat a missing/relative Location on a 3xx as a pass too (host upgraded the
+    // scheme but didn't echo an absolute URL); only a genuine non-redirect WARNs.
+    const redirectsToHttps =
+      is3xx && (redir.location === "" || redir.location.toLowerCase().startsWith("https://"));
+    // Some hosts refuse plain HTTP entirely (connection error → status 0) while
+    // HTTPS works — that's HTTPS-only, which is fine, not a warning.
+    const httpRefused = redir.status === 0;
+    const enforcesHttps = redirectsToHttps || httpRefused;
     checks.push({
       category: "Infrastructure",
       checkKey: "http_redirect",
       label: "HTTP → HTTPS redirect",
-      status: redir >= 300 && redir < 400 ? "PASS" : "WARN",
-      detail: redir >= 300 && redir < 400
+      status: enforcesHttps ? "PASS" : "WARN",
+      detail: redirectsToHttps
         ? "HTTP redirects to HTTPS."
+        : httpRefused
+        ? "Plain HTTP is not served (HTTPS-only)."
+        : is3xx
+        ? `HTTP redirects, but not to HTTPS (→ ${redir.location || "unknown"}).`
         : "HTTP does not redirect to HTTPS.",
-      evidence: `HTTP status: ${redir || "no response"}`,
+      evidence: `HTTP status: ${redir.status || "no response"}${redir.location ? ` → ${redir.location}` : ""}`,
     });
 
     const rt = pageResult.responseTimeMs;
@@ -2727,6 +2767,7 @@ export async function runUrlChecks(
         platform: platform ?? "",
         ctx,
         htmlLower,
+        catchAll200,
       }, emit);
       checks.push(...extended);
     } catch {

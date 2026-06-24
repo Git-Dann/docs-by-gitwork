@@ -1,4 +1,4 @@
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, platformIs, skip } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, verifyFileExposure, platformIs, skip } from "./_types";
 
 const CATEGORY = "API Quality";
 
@@ -100,13 +100,16 @@ export async function runApiQualityChecks(ctx: ExtendedCheckContext): Promise<Pu
   const hasGraphql = html.toLowerCase().includes("graphql");
   checks.push({ category: CATEGORY, checkKey: "graphql_depth_limiting", label: "GraphQL depth / complexity limiting", status: hasGraphql ? (hasGraphqlDepth ? "PASS" : "WARN") : "PASS", detail: hasGraphql ? (hasGraphqlDepth ? "GraphQL depth / complexity limiting signals detected." : "GraphQL detected but no depth/complexity limiting signals — without depth limiting, malicious clients can craft deeply nested queries that cause exponential database load.") : "Not applicable — no GraphQL detected." });
 
-  // OpenAPI spec
-  const [openapiStatus, swaggerStatus] = await Promise.all([
-    headRequest(`${httpsUrl}/openapi.json`),
-    headRequest(`${httpsUrl}/swagger.json`),
+  // OpenAPI spec — content-verify so a catch-all 200 (app shell) isn't mistaken
+  // for a served spec; require an actual JSON body mentioning the OpenAPI/Swagger key.
+  const isOpenapiJson = (body: string, ct: string) =>
+    (ct.includes("json") || /^\s*\{/.test(body)) && /"(openapi|swagger)"\s*:/.test(body);
+  const [openapiServed, swaggerServed] = await Promise.all([
+    verifyFileExposure(`${httpsUrl}/openapi.json`, isOpenapiJson),
+    verifyFileExposure(`${httpsUrl}/swagger.json`, isOpenapiJson),
   ]);
-  const hasOpenapiSpec = openapiStatus === 200 || swaggerStatus === 200;
-  checks.push({ category: CATEGORY, checkKey: "openapi_spec_served", label: "OpenAPI 3.x spec at /openapi.json", status: hasOpenapiSpec ? "PASS" : "WARN", detail: hasOpenapiSpec ? `OpenAPI spec found at ${openapiStatus === 200 ? "/openapi.json" : "/swagger.json"}.` : "No OpenAPI spec at /openapi.json or /swagger.json — serving a machine-readable OpenAPI spec enables auto-generated SDKs, Postman collections, and API gateways." });
+  const hasOpenapiSpec = openapiServed || swaggerServed;
+  checks.push({ category: CATEGORY, checkKey: "openapi_spec_served", label: "OpenAPI 3.x spec at /openapi.json", status: hasOpenapiSpec ? "PASS" : "WARN", detail: hasOpenapiSpec ? `OpenAPI spec found at ${openapiServed ? "/openapi.json" : "/swagger.json"}.` : "No OpenAPI spec at /openapi.json or /swagger.json — serving a machine-readable OpenAPI spec enables auto-generated SDKs, Postman collections, and API gateways." });
 
   return checks;
 }
