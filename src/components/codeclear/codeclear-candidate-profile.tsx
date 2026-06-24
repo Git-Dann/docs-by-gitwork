@@ -167,7 +167,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
 
       {/* Hero */}
       <section className="app-card overflow-hidden">
-        <div className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,#ffffff_100%)] px-6 py-5">
+        <div className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_100%)] px-6 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
               {candidate.avatarUrl ? (

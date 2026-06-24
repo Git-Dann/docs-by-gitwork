@@ -17,7 +17,7 @@ export function FoundryHqOverview() {
 
   return (
     <div className="space-y-6">
-      <section className="app-card border-[var(--brand-300)] bg-[linear-gradient(135deg,var(--surface-brand-soft)_0%,#ffffff_48%,var(--surface-brand)_100%)] p-6">
+      <section className="app-card border-[var(--brand-300)] bg-[linear-gradient(135deg,var(--surface-brand-soft)_0%,var(--surface-0)_48%,var(--surface-brand)_100%)] p-6">
         <SectionHeading
           eyebrow="Foundry HQ"
           title="Active delivery, one operating view."
