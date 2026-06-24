@@ -1,7 +1,57 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/format";
+import { PULSE_FRAMEWORK, PULSE_CHECK_TOTAL, PULSE_CATEGORY_TOTAL } from "@/config/pulse-framework";
 import type { PulseCheckStatus, PulseScanStatus, PulseUrgency, PulseBusinessValue, PulseEffort } from "@/types/pulse";
+
+// What Pulse checks — the framework category grid. Reference material, shown on the
+// empty state (first-time context) and behind a disclosure on the dashboard.
+export function PulseFrameworkCoverage() {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? PULSE_FRAMEWORK : PULSE_FRAMEWORK.slice(0, 9);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--text-3)]">Framework coverage</p>
+        <p className="text-xs text-[var(--text-4)]">
+          {PULSE_CHECK_TOTAL}+ checks · {PULSE_CATEGORY_TOTAL} categories
+        </p>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((cat) => (
+          <div
+            key={cat.name}
+            className={cn(
+              "rounded-[8px] border px-3 py-2 text-left",
+              cat.aiEra
+                ? "border-[var(--brand-300)] bg-[var(--surface-brand-soft)]"
+                : "border-[var(--border-2)] bg-[var(--surface-1)]",
+            )}
+            title={cat.blurb}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs font-semibold text-[var(--text-1)]">{cat.name}</span>
+              <span className="shrink-0 text-[11px] font-medium tabular-nums text-[var(--text-3)]">{cat.count}</span>
+            </div>
+            {cat.aiEra && (
+              <span className="mt-0.5 inline-block text-[9px] font-bold uppercase tracking-wide text-[var(--brand-600)]">
+                New · AI-era
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="mt-3 text-xs font-medium text-[var(--brand-600)] hover:underline"
+      >
+        {expanded ? "Show less" : `Show all ${PULSE_CATEGORY_TOTAL} categories`}
+      </button>
+    </div>
+  );
+}
 
 export function PulseScanStatusBadge({ status }: { status: PulseScanStatus }) {
   const styles: Record<PulseScanStatus, string> = {

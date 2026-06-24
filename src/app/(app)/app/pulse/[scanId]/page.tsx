@@ -305,7 +305,7 @@ export default function PulseScanDetailPage({
             scanId={scanId}
             liveChecks={scan.checks}
             checksCompletedAt={scan.checksCompletedAt}
-            inputType={scan.inputType}
+            healthScore={scan.healthScore}
           />
         )}
 

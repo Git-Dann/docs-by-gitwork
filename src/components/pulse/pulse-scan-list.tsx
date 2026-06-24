@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { usePulseScans, useDeletePulseScan, useLoadDemoScan } from "@/hooks/use-pulse";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
-import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
+import { PulseScanStatusBadge, PulseFrameworkCoverage } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -713,6 +713,9 @@ export function PulseScanListView() {
             >
               Load demo scan
             </Button>
+          </div>
+          <div className="mx-auto mt-10 max-w-3xl border-t border-[var(--border-2)] pt-8 text-left">
+            <PulseFrameworkCoverage />
           </div>
         </div>
       ) : filtered.length === 0 ? (
