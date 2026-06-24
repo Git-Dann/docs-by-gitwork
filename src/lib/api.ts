@@ -2089,6 +2089,7 @@ import type {
   BackstageMember,
   CalendarConnectionMember,
   CalendarMonth,
+  CalendarTimeline,
   ExpenseDTO,
   LeaveAllowanceDTO,
   LeaveRequestDTO,
@@ -2272,6 +2273,13 @@ export function getBackstageTeamCalendarEvents(
   const qs = new URLSearchParams({ year: String(year), month: String(month) });
   if (userIds.length) qs.set("userIds", userIds.join(","));
   return apiFetch(`/api/backstage/calendar/team-events?${qs.toString()}`);
+}
+
+export function getBackstageCalendarTimeline(
+  year: number,
+  month: number,
+): Promise<CalendarTimeline> {
+  return apiFetch(`/api/backstage/calendar/timeline?year=${year}&month=${month}`);
 }
 
 // ─── Tasks (Portal task tracker + standups) ────────────────────────────────

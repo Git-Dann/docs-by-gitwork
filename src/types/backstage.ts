@@ -179,3 +179,43 @@ export type TeamCalendarEvent = {
   end: string;
   allDay: boolean;
 };
+
+// ─── Portal Gantt overlay (admin-only) ────────────────────────────────────
+// Top-level timeline info pulled from each client's feature blocks + milestones
+// so the team calendar can show, at a glance, what deliverable each client is on
+// in a given week. Admin / super-admin only (gated server-side + in the UI).
+
+/** A dated feature block (one Gantt bar) spanning part of the calendar month. */
+export type CalendarTimelineBlock = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientSlug: string;
+  /** Feature-block name — the "deliverable category" shown on the marker. */
+  name: string;
+  /** Palette key (blue/violet/emerald/amber/rose/slate); null → blue. */
+  color: string | null;
+  /** ISO date. */
+  startDate: string;
+  /** ISO date. */
+  endDate: string;
+  /** 0–100, from task completion. */
+  progress: number;
+};
+
+/** A single-date milestone within the calendar month. */
+export type CalendarTimelineMilestone = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientSlug: string;
+  name: string;
+  /** ISO date. */
+  date: string;
+  color: string | null;
+};
+
+export type CalendarTimeline = {
+  blocks: CalendarTimelineBlock[];
+  milestones: CalendarTimelineMilestone[];
+};

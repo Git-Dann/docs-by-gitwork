@@ -9,6 +9,7 @@ import {
   updateBackstageLeave,
   listBackstageCalendarConnections,
   getBackstageTeamCalendarEvents,
+  getBackstageCalendarTimeline,
   getBackstageAlerts,
   getBackstageAllowance,
   getBackstageCalendar,
@@ -220,6 +221,17 @@ export function useTeamCalendarEvents(year: number, month: number, userIds: stri
     queryKey: ["backstage", "teamCalendar", year, month, key] as const,
     queryFn: () => getBackstageTeamCalendarEvents(year, month, userIds),
     enabled: userIds.length > 0,
+    staleTime: 60_000,
+  });
+}
+
+// Portal Gantt overlay (admin-only). `enabled` gates the fetch so non-admins
+// (or when the overlay is toggled off) never hit the admin-gated route.
+export function useBackstageCalendarTimeline(year: number, month: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["backstage", "calendarTimeline", year, month] as const,
+    queryFn: () => getBackstageCalendarTimeline(year, month),
+    enabled,
     staleTime: 60_000,
   });
 }
