@@ -122,6 +122,8 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
               receivedAt,
               unread: true,
               tags: gmailTags,
+              // "Open in Gmail" → the thread in the impersonated mailbox's web UI.
+              externalUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`,
             },
           });
           newConversationIds.push(conv.id);

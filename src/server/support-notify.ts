@@ -40,14 +40,15 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
 
     const clientIds = clients.map((c) => c.id);
 
+    // Conversations needing a human (NEW or OPEN) are the unit of triage now.
     const [openRows, urgentCount] = await Promise.all([
-      prisma.supportTicket.groupBy({
+      prisma.supportConversation.groupBy({
         by: ["clientId"],
-        where: { clientId: { in: clientIds }, status: { not: "RESOLVED" } },
+        where: { clientId: { in: clientIds }, status: { in: ["NEW", "OPEN"] } },
         _count: { _all: true },
       }),
-      prisma.supportTicket.count({
-        where: { clientId: { in: clientIds }, status: { not: "RESOLVED" }, priority: "URGENT" },
+      prisma.supportConversation.count({
+        where: { clientId: { in: clientIds }, status: { in: ["NEW", "OPEN"] }, priority: "URGENT" },
       }),
     ]);
 
@@ -56,7 +57,7 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
 
     const clientCount = openRows.length;
     const lines: string[] = [];
-    lines.push(`📬  *Care update* · ${totalOpen} open ticket${totalOpen !== 1 ? "s" : ""} across ${clientCount} client${clientCount !== 1 ? "s" : ""}`);
+    lines.push(`📬  *Care update* · ${totalOpen} conversation${totalOpen !== 1 ? "s" : ""} needing action across ${clientCount} client${clientCount !== 1 ? "s" : ""}`);
 
     const clientMap = new Map(clients.map((c) => [c.id, c.name]));
     for (const row of openRows.sort((a, b) => b._count._all - a._count._all)) {

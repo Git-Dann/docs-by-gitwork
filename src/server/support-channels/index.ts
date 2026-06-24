@@ -68,12 +68,23 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
           receivedAt: item.receivedAt,
           unread: true,
           tags: item.tags,
+          externalUrl: item.externalUrl ?? null,
+          externalGuildId: item.externalGuildId ?? null,
         },
       });
       newConversationIds.push(conv.id);
-    } else if (item.refreshTags) {
-      // Keep keyword tags in sync with the current connector config on every run.
-      await prisma.supportConversation.update({ where: { id: conv.id }, data: { tags: item.tags } });
+    } else if (item.refreshTags || (item.externalUrl && !conv.externalUrl)) {
+      // Keep keyword tags in sync with the connector config, and backfill the deep-link
+      // URL onto older rows that predate it (never overwrite an existing URL).
+      await prisma.supportConversation.update({
+        where: { id: conv.id },
+        data: {
+          ...(item.refreshTags ? { tags: item.tags } : {}),
+          ...(item.externalUrl && !conv.externalUrl
+            ? { externalUrl: item.externalUrl, externalGuildId: item.externalGuildId ?? conv.externalGuildId }
+            : {}),
+        },
+      });
     }
 
     let createdHere = 0;

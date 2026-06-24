@@ -71,6 +71,10 @@ export interface RawConversationItem {
   tags: string[];
   /** Refresh tags on an existing conversation (e.g. keyword-config sync). */
   refreshTags?: boolean;
+  /** Canonical native-thread URL — powers the "Open in {channel}" deep-link. */
+  externalUrl?: string;
+  /** Discord guild id, persisted so the channel deep-link can be rebuilt. */
+  externalGuildId?: string;
   messages: RawMessageItem[];
 }
 

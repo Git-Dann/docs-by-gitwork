@@ -39,9 +39,19 @@ import {
   batchUpdateSupportTickets,
   searchConversationsSemantic,
   generateReportNarrative,
+  triageConversation,
+  snoozeConversation,
+  closeConversation,
+  batchTriageConversations,
+  listConversationNotes,
+  addConversationNote,
+  syncSupportClient,
+  type TriageData,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
+
+type ConversationsCache = { conversations: Conversation[]; nextCursor: string | null };
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +118,137 @@ export function useUpdateConversation(clientId: string | null) {
       updateSupportConversation(clientId as string, convId, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+// ─── Triage (the conversation is the unit of triage; optimistic for Front-like feel) ──
+//
+// The cockpit fetches all conversations for a client into ONE cache key and filters
+// client-side (saved views are predicates), so optimistic patches target that key.
+
+function patchConversationInCache(
+  qc: ReturnType<typeof useQueryClient>,
+  clientId: string | null,
+  convId: string,
+  patch: Partial<Conversation>,
+): ConversationsCache | undefined {
+  const key = ["support", "conversations", clientId];
+  const prev = qc.getQueryData<ConversationsCache>(key);
+  if (prev) {
+    qc.setQueryData<ConversationsCache>(key, {
+      ...prev,
+      conversations: prev.conversations.map((c) => (c.id === convId ? { ...c, ...patch } : c)),
+    });
+  }
+  return prev;
+}
+
+/** Optimistically set status/priority/issueType/assignee on a conversation. */
+export function useTriageConversation(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ convId, data }: { convId: string; data: TriageData }) =>
+      triageConversation(clientId as string, convId, data),
+    onMutate: async ({ convId, data }) => {
+      await qc.cancelQueries({ queryKey: ["support", "conversations", clientId] });
+      // null (unassign / clear) → undefined for the optimistic cache patch.
+      const prev = patchConversationInCache(qc, clientId, convId, {
+        ...data,
+        assigneeId: data.assigneeId ?? undefined,
+        issueType: data.issueType ?? undefined,
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+export function useSnoozeConversation(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ convId, until }: { convId: string; until: string }) =>
+      snoozeConversation(clientId as string, convId, until),
+    onMutate: async ({ convId, until }) => {
+      await qc.cancelQueries({ queryKey: ["support", "conversations", clientId] });
+      const prev = patchConversationInCache(qc, clientId, convId, { status: "snoozed", snoozeUntil: until });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+export function useCloseConversation(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ convId, ignored, reopen }: { convId: string; ignored?: boolean; reopen?: boolean }) =>
+      closeConversation(clientId as string, convId, { ignored, reopen }),
+    onMutate: async ({ convId, ignored, reopen }) => {
+      await qc.cancelQueries({ queryKey: ["support", "conversations", clientId] });
+      const status: Conversation["status"] = reopen ? "open" : ignored ? "ignored" : "closed";
+      const prev = patchConversationInCache(qc, clientId, convId, { status });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+export function useBatchTriageConversations(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationIds, data }: {
+      conversationIds: string[];
+      data: Partial<{ status: string; priority: string; assigneeId: string | null }>;
+    }) => batchTriageConversations(clientId as string, conversationIds, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+export function useConversationNotes(clientId: string | null, convId: string | null) {
+  return useQuery({
+    queryKey: ["support", "notes", convId],
+    queryFn: () => listConversationNotes(clientId as string, convId as string),
+    enabled: Boolean(clientId) && Boolean(convId),
+    staleTime: 1000 * 15,
+  });
+}
+
+export function useAddConversationNote(clientId: string | null, convId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => addConversationNote(clientId as string, convId as string, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "notes", convId] });
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+    },
+  });
+}
+
+/** Client-level "Sync now" — pulls every connected channel, then refreshes the inbox. */
+export function useSyncSupportClient(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => syncSupportClient(clientId as string),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      void qc.invalidateQueries({ queryKey: ["support", "clients"] });
     },
   });
 }

@@ -1599,10 +1599,126 @@ export async function getSupportReport(reportId: string): Promise<{ report: Supp
   return apiFetch(`/api/support/reports/${reportId}`);
 }
 
+export interface ConversationListParams {
+  status?: string | string[];
+  assigneeId?: string;
+  priority?: string;
+  issueType?: string;
+  source?: string;
+  includeSnoozedDue?: boolean;
+  limit?: number;
+  cursor?: string;
+}
+
 export async function listSupportConversations(
   clientId: string,
+  params?: ConversationListParams,
 ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
-  return apiFetch(`/api/support/clients/${clientId}/conversations`);
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", Array.isArray(params.status) ? params.status.join(",") : params.status);
+  if (params?.assigneeId) qs.set("assigneeId", params.assigneeId);
+  if (params?.priority) qs.set("priority", params.priority);
+  if (params?.issueType) qs.set("issueType", params.issueType);
+  if (params?.source) qs.set("source", params.source);
+  if (params?.includeSnoozedDue) qs.set("includeSnoozedDue", "1");
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return apiFetch(`/api/support/clients/${clientId}/conversations${suffix}`);
+}
+
+// ── Conversation triage (monitor + route; never reply in-app) ──
+
+export type TriageData = Partial<{
+  status: Conversation["status"];
+  priority: Conversation["priority"];
+  issueType: string | null;
+  assigneeId: string | null;
+}>;
+
+export async function triageConversation(
+  clientId: string,
+  convId: string,
+  data: TriageData,
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/triage`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function assignConversation(
+  clientId: string,
+  convId: string,
+  assigneeId: string | null,
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/assign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assigneeId }),
+  });
+}
+
+export async function snoozeConversation(
+  clientId: string,
+  convId: string,
+  until: string,
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/snooze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ until }),
+  });
+}
+
+export async function closeConversation(
+  clientId: string,
+  convId: string,
+  opts: { ignored?: boolean; reopen?: boolean } = {},
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/close`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+}
+
+export async function batchTriageConversations(
+  clientId: string,
+  conversationIds: string[],
+  data: Partial<{ status: string; priority: string; assigneeId: string | null }>,
+): Promise<{ updated: number }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/batch`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversationIds, data }),
+  });
+}
+
+export async function listConversationNotes(
+  clientId: string,
+  convId: string,
+): Promise<{ notes: import("@/types/support").ConversationNote[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/notes`);
+}
+
+export async function addConversationNote(
+  clientId: string,
+  convId: string,
+  body: string,
+): Promise<{ note: import("@/types/support").ConversationNote }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function syncSupportClient(
+  clientId: string,
+): Promise<{ total: number; ingested: number; filtered: number; errors: string[] }> {
+  return apiFetch(`/api/support/clients/${clientId}/sync`, { method: "POST" });
 }
 
 export async function searchConversationsSemantic(

@@ -12,6 +12,9 @@ export type SupportSource =
 
 export type ConnectionHealth = "connected" | "needs_setup" | "error";
 export type ConversationSentiment = "positive" | "neutral" | "negative";
+/** Triage state machine for the shared-inbox cockpit (the conversation is the unit of triage). */
+export type ConversationStatus = "new" | "open" | "snoozed" | "closed" | "ignored";
+export type ConversationPriority = "urgent" | "high" | "normal" | "low";
 export type TicketStatus = "open" | "in_progress" | "dev_review" | "awaiting_customer" | "resolved";
 export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type DraftType = "reply" | "stripe_cancel" | "stripe_refund";
@@ -127,7 +130,34 @@ export interface Conversation {
   unread: boolean;
   tags: string[];
   sentiment: ConversationSentiment;
+  // ── triage state machine ──
+  status: ConversationStatus;
+  priority: ConversationPriority;
+  issueType?: string;
+  /** Workspace User id of the assignee, or undefined when unassigned. */
+  assigneeId?: string;
+  /** ISO timestamp the conversation is snoozed until (status === "snoozed"). */
+  snoozeUntil?: string;
+  /** ISO timestamp of the first transition out of "new" (time-to-triage anchor). */
+  firstTriagedAt?: string;
+  /** ISO timestamp the conversation was closed/ignored. */
+  closedAt?: string;
+  /** Canonical native-thread URL — the "Open in {channel}" deep-link. */
+  externalUrl?: string;
+  /** Count of internal staff notes on this conversation. */
+  noteCount?: number;
+  /** @deprecated retained only during the ticket→conversation cutover. */
   ticketId?: string;
+}
+
+/** An internal, staff-only note on a conversation (never shown to the customer). */
+export interface ConversationNote {
+  id: string;
+  conversationId: string;
+  /** Workspace User id of the author, or null for agent-authored notes. */
+  authorId: string | null;
+  body: string;
+  createdAt: string;
 }
 
 export interface Message {

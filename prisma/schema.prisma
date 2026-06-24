@@ -1942,6 +1942,27 @@ enum ConversationSentiment {
   NEGATIVE
 }
 
+// Triage state machine for the shared-inbox cockpit. NEW = untouched by a human;
+// first transition out of NEW stamps firstTriagedAt. CLOSED/IGNORED stamp closedAt.
+enum ConversationStatus {
+  NEW
+  OPEN
+  SNOOZED
+  CLOSED
+  IGNORED
+}
+
+enum ConversationPriority {
+  URGENT
+  HIGH
+  NORMAL
+  LOW
+}
+
+// NOTE: SupportTicketStatus/SupportTicketPriority/DraftAction* enums below are
+// retained for the now-dormant SupportTicket/DraftSupportAction tables. The Care
+// cockpit no longer writes them, but they MUST stay (dropping an enum value would
+// make `prisma db push` skip the whole sync — see CLAUDE.md PR #189).
 enum SupportTicketStatus {
   OPEN
   IN_PROGRESS
@@ -2081,11 +2102,40 @@ model SupportConversation {
   sentiment     ConversationSentiment @default(NEUTRAL)
   receivedAt    DateTime
   createdAt     DateTime              @default(now())
+  // ── triage state machine (the conversation is the unit of triage) ──
+  status         ConversationStatus   @default(NEW)
+  priority       ConversationPriority @default(NORMAL)
+  issueType      String?
+  assigneeId     String? // workspace User id
+  snoozeUntil    DateTime?
+  firstTriagedAt DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
+  closedAt       DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
+  // ── deep-link out to the native channel ──
+  externalUrl     String? // canonical native-thread URL ("Open in {channel}")
+  externalGuildId String? // Discord guild id, used to build the channel deep-link
   messages      SupportMessage[]
   tickets       SupportTicket[]
+  notes         SupportConversationNote[]
 
   @@index([clientId, receivedAt])
   @@index([clientId, unread])
+  @@index([clientId, status])
+  @@index([clientId, assigneeId])
+  @@index([clientId, snoozeUntil])
+}
+
+// Internal staff-only notes on a conversation. Kept separate from SupportMessage so
+// the customer thread fed to the triage agent stays pristine (no internal text leaks
+// into classification, no direction/dedup confusion).
+model SupportConversationNote {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String? // workspace User id; null = agent-authored
+  body           String
+  createdAt      DateTime            @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 model SupportMessage {

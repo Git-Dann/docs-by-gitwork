@@ -105,6 +105,9 @@ export const discordAdapter: ChannelAdapter = {
           receivedAt: new Date(messages[0].timestamp),
           tags: convTags,
           refreshTags: true,
+          // "Open in Discord" → the channel, scoped to the latest message when known.
+          externalUrl: `https://discord.com/channels/${config.guildId}/${ch.id}${lastMessageId ? `/${lastMessageId}` : ""}`,
+          externalGuildId: config.guildId,
           messages: msgs,
         });
 

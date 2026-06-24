@@ -1,6 +1,8 @@
 import type {
   ConnectionHealth,
   SupportSource,
+  ConversationStatus,
+  ConversationPriority,
   TicketStatus,
   TicketPriority,
   DraftType,
@@ -8,6 +10,7 @@ import type {
   SupportClient,
   Connection,
   Conversation,
+  ConversationNote,
   Message,
   Ticket,
   DraftAction,
@@ -25,11 +28,14 @@ import type {
   ConnectionHealth as PrismaConnectionHealth,
   ConnectionAuthMode,
   ConversationSentiment as PrismaConversationSentiment,
+  ConversationStatus as PrismaConversationStatus,
+  ConversationPriority as PrismaConversationPriority,
   SupportTicketStatus,
   SupportTicketPriority,
   DraftActionType,
   DraftActionStatus,
   DraftActionRisk,
+  Prisma,
 } from "@prisma/client";
 
 // ─── Enum mappers: Prisma → frontend ─────────────────────────────────────────
@@ -92,6 +98,22 @@ function mapDraftRisk(v: DraftActionRisk): DraftRisk {
 
 function mapSentiment(v: PrismaConversationSentiment): Conversation["sentiment"] {
   return v.toLowerCase() as Conversation["sentiment"];
+}
+
+function mapConversationStatus(v: PrismaConversationStatus): ConversationStatus {
+  return v.toLowerCase() as ConversationStatus;
+}
+
+function mapConversationPriority(v: PrismaConversationPriority): ConversationPriority {
+  return v.toLowerCase() as ConversationPriority;
+}
+
+function toDbConversationStatus(v: ConversationStatus): PrismaConversationStatus {
+  return v.toUpperCase() as PrismaConversationStatus;
+}
+
+function toDbConversationPriority(v: ConversationPriority): PrismaConversationPriority {
+  return v.toUpperCase() as PrismaConversationPriority;
 }
 
 function mapClientStatus(v: SupportClientStatus): SupportClient["status"] {
@@ -283,7 +305,16 @@ export function serializeConversation(row: {
   unread: boolean;
   tags: string[];
   sentiment: PrismaConversationSentiment;
+  status: PrismaConversationStatus;
+  priority: PrismaConversationPriority;
+  issueType: string | null;
+  assigneeId: string | null;
+  snoozeUntil: Date | null;
+  firstTriagedAt: Date | null;
+  closedAt: Date | null;
+  externalUrl: string | null;
   tickets?: Array<{ id: string }>;
+  _count?: { notes?: number };
 }): Conversation {
   return {
     id: row.id,
@@ -296,7 +327,32 @@ export function serializeConversation(row: {
     unread: row.unread,
     tags: row.tags,
     sentiment: mapSentiment(row.sentiment),
+    status: mapConversationStatus(row.status),
+    priority: mapConversationPriority(row.priority),
+    issueType: row.issueType ?? undefined,
+    assigneeId: row.assigneeId ?? undefined,
+    snoozeUntil: row.snoozeUntil?.toISOString(),
+    firstTriagedAt: row.firstTriagedAt?.toISOString(),
+    closedAt: row.closedAt?.toISOString(),
+    externalUrl: row.externalUrl ?? undefined,
+    noteCount: row._count?.notes,
     ticketId: row.tickets?.[0]?.id,
+  };
+}
+
+export function serializeConversationNote(row: {
+  id: string;
+  conversationId: string;
+  authorId: string | null;
+  body: string;
+  createdAt: Date;
+}): ConversationNote {
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    authorId: row.authorId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -451,8 +507,10 @@ export async function getSupportDashboardSummary(options?: {
 
   const [clientCount, openTicketCount, conversationRows] = await Promise.all([
     prisma.supportClient.count({ where: { workspaceId } }),
-    prisma.supportTicket.count({
-      where: { status: "OPEN", client: { workspaceId } },
+    // "Open" now means conversations needing a human (NEW or OPEN) — the conversation
+    // is the unit of triage. Field name kept for back-compat with the HQ widget/iOS.
+    prisma.supportConversation.count({
+      where: { status: { in: ["NEW", "OPEN"] }, client: { workspaceId } },
     }),
     prisma.supportConversation.findMany({
       where: { client: { workspaceId } },
@@ -556,12 +614,45 @@ export async function deleteSupportClient(clientId: string): Promise<void> {
 
 export async function listConversations(
   clientId: string,
-  opts: { limit?: number; cursor?: string } = {},
+  opts: {
+    limit?: number;
+    cursor?: string;
+    status?: ConversationStatus | ConversationStatus[];
+    assigneeId?: string;
+    priority?: ConversationPriority;
+    issueType?: string;
+    source?: SupportSource;
+    /** When true, snoozed conversations whose snoozeUntil has passed are surfaced. */
+    includeSnoozedDue?: boolean;
+  } = {},
 ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
   const limit = Math.min(opts.limit ?? 100, 200);
+
+  const statusList = opts.status
+    ? (Array.isArray(opts.status) ? opts.status : [opts.status]).map(toDbConversationStatus)
+    : undefined;
+
+  const where: Prisma.SupportConversationWhereInput = { clientId };
+  if (statusList) where.status = { in: statusList };
+  if (opts.assigneeId) where.assigneeId = opts.assigneeId;
+  if (opts.priority) where.priority = toDbConversationPriority(opts.priority);
+  if (opts.issueType) where.issueType = opts.issueType;
+  if (opts.source) where.source = toDbSource(opts.source);
+  if (opts.includeSnoozedDue) {
+    // Surface snoozed items whose timer has elapsed alongside the requested status set.
+    where.OR = [
+      ...(statusList ? [{ status: { in: statusList } }] : []),
+      { status: "SNOOZED", snoozeUntil: { lte: new Date() } },
+    ];
+    delete where.status;
+  }
+
   const rows = await prisma.supportConversation.findMany({
-    where: { clientId },
-    include: { tickets: { select: { id: true }, take: 1 } },
+    where,
+    include: {
+      tickets: { select: { id: true }, take: 1 },
+      _count: { select: { notes: true } },
+    },
     orderBy: { receivedAt: "desc" },
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
@@ -577,7 +668,10 @@ export async function listConversations(
 export async function getConversation(convId: string): Promise<Conversation> {
   const row = await prisma.supportConversation.findUniqueOrThrow({
     where: { id: convId },
-    include: { tickets: { select: { id: true }, take: 1 } },
+    include: {
+      tickets: { select: { id: true }, take: 1 },
+      _count: { select: { notes: true } },
+    },
   });
   return serializeConversation(row);
 }
@@ -635,9 +729,216 @@ export async function updateConversation(
       ...(data.subject !== undefined ? { subject: data.subject } : {}),
       ...(data.preview !== undefined ? { preview: data.preview } : {}),
     },
-    include: { tickets: { select: { id: true }, take: 1 } },
+    include: {
+      tickets: { select: { id: true }, take: 1 },
+      _count: { select: { notes: true } },
+    },
   });
   return serializeConversation(row);
+}
+
+// ─── Conversation triage (the conversation is the unit of triage) ─────────────
+//
+// Operators monitor + triage + route; they never reply in-app. These functions
+// drive the status machine, stamp the lifecycle timestamps used by metrics, and
+// write an audit-log entry for every change. `firstTriagedAt` is stamped the first
+// time a conversation leaves NEW (the shared-inbox analogue of "first reply");
+// `closedAt` is stamped on CLOSED/IGNORED.
+
+const CONVERSATION_INCLUDE = {
+  tickets: { select: { id: true }, take: 1 },
+  _count: { select: { notes: true } },
+} as const;
+
+/** Compute the lifecycle-timestamp side-effects of a status transition. */
+function statusTransitionData(
+  current: PrismaConversationStatus | undefined,
+  next: PrismaConversationStatus,
+  alreadyTriaged: boolean,
+): Prisma.SupportConversationUpdateInput {
+  const data: Prisma.SupportConversationUpdateInput = { status: next };
+  if (next !== "NEW" && !alreadyTriaged) data.firstTriagedAt = new Date();
+  if (next === "CLOSED" || next === "IGNORED") data.closedAt = new Date();
+  if (next === "OPEN" || next === "NEW") {
+    data.closedAt = null;
+    data.snoozeUntil = null;
+  }
+  return data;
+}
+
+export async function setConversationTriage(
+  convId: string,
+  data: Partial<{
+    status: ConversationStatus;
+    priority: ConversationPriority;
+    issueType: string | null;
+    assigneeId: string | null;
+  }>,
+  actor?: string,
+): Promise<Conversation> {
+  const existing = await prisma.supportConversation.findUniqueOrThrow({
+    where: { id: convId },
+    select: { clientId: true, status: true, firstTriagedAt: true },
+  });
+
+  const updateData: Prisma.SupportConversationUpdateInput = {};
+  if (data.status !== undefined) {
+    Object.assign(
+      updateData,
+      statusTransitionData(
+        existing.status,
+        toDbConversationStatus(data.status),
+        existing.firstTriagedAt !== null,
+      ),
+    );
+  }
+  if (data.priority !== undefined) updateData.priority = toDbConversationPriority(data.priority);
+  if (data.issueType !== undefined) updateData.issueType = data.issueType;
+  if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
+
+  const row = await prisma.supportConversation.update({
+    where: { id: convId },
+    data: updateData,
+    include: CONVERSATION_INCLUDE,
+  });
+
+  await createAuditLog(existing.clientId, {
+    actor: actor ?? "user",
+    action: "conversation_triaged",
+    target: convId,
+    metadata: data as Record<string, unknown>,
+  });
+  return serializeConversation(row);
+}
+
+export async function assignConversation(
+  convId: string,
+  assigneeId: string | null,
+  actor?: string,
+): Promise<Conversation> {
+  return setConversationTriage(convId, { assigneeId }, actor);
+}
+
+export async function snoozeConversation(
+  convId: string,
+  until: string,
+  actor?: string,
+): Promise<Conversation> {
+  const existing = await prisma.supportConversation.findUniqueOrThrow({
+    where: { id: convId },
+    select: { clientId: true, firstTriagedAt: true },
+  });
+  const row = await prisma.supportConversation.update({
+    where: { id: convId },
+    data: {
+      status: "SNOOZED",
+      snoozeUntil: new Date(until),
+      ...(existing.firstTriagedAt === null ? { firstTriagedAt: new Date() } : {}),
+    },
+    include: CONVERSATION_INCLUDE,
+  });
+  await createAuditLog(existing.clientId, {
+    actor: actor ?? "user",
+    action: "conversation_snoozed",
+    target: convId,
+    metadata: { until },
+  });
+  return serializeConversation(row);
+}
+
+export async function closeConversation(
+  convId: string,
+  opts: { ignored?: boolean } = {},
+  actor?: string,
+): Promise<Conversation> {
+  return setConversationTriage(
+    convId,
+    { status: opts.ignored ? "ignored" : "closed" },
+    actor,
+  );
+}
+
+export async function reopenConversation(
+  convId: string,
+  actor?: string,
+): Promise<Conversation> {
+  return setConversationTriage(convId, { status: "open" }, actor);
+}
+
+export async function batchUpdateConversations(
+  clientId: string,
+  convIds: string[],
+  data: Partial<{ status: ConversationStatus; priority: ConversationPriority; assigneeId: string | null }>,
+  actor?: string,
+): Promise<{ updated: number }> {
+  const updateData: Prisma.SupportConversationUpdateManyMutationInput = {};
+  if (data.priority !== undefined) updateData.priority = toDbConversationPriority(data.priority);
+  if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
+
+  if (data.status !== undefined) {
+    const next = toDbConversationStatus(data.status);
+    updateData.status = next;
+    if (next === "CLOSED" || next === "IGNORED") updateData.closedAt = new Date();
+    if (next === "OPEN" || next === "NEW") {
+      updateData.closedAt = null;
+      updateData.snoozeUntil = null;
+    }
+  }
+
+  const result = await prisma.supportConversation.updateMany({
+    where: { id: { in: convIds }, clientId },
+    data: updateData,
+  });
+
+  // Stamp firstTriagedAt for any of these that were still untouched and are now leaving NEW.
+  if (data.status !== undefined && data.status !== "new") {
+    await prisma.supportConversation.updateMany({
+      where: { id: { in: convIds }, clientId, firstTriagedAt: null },
+      data: { firstTriagedAt: new Date() },
+    });
+  }
+
+  await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversation_batch_triaged",
+    metadata: { count: result.count, ...data } as Record<string, unknown>,
+  });
+  return { updated: result.count };
+}
+
+// ─── Conversation notes (internal, staff-only) ────────────────────────────────
+
+export async function listConversationNotes(convId: string): Promise<ConversationNote[]> {
+  const rows = await prisma.supportConversationNote.findMany({
+    where: { conversationId: convId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(serializeConversationNote);
+}
+
+export async function addConversationNote(
+  convId: string,
+  data: { authorId?: string | null; body: string },
+): Promise<ConversationNote> {
+  const row = await prisma.supportConversationNote.create({
+    data: {
+      conversationId: convId,
+      authorId: data.authorId ?? null,
+      body: data.body,
+    },
+  });
+  const conv = await prisma.supportConversation.findUnique({
+    where: { id: convId },
+    select: { clientId: true },
+  });
+  if (conv) {
+    await createAuditLog(conv.clientId, {
+      actor: data.authorId ?? "user",
+      action: "conversation_note_added",
+      target: convId,
+    });
+  }
+  return serializeConversationNote(row);
 }
 
 // ─── Messages ────────────────────────────────────────────────────────────────
@@ -798,8 +1099,8 @@ export async function getTicketStatsForPeriod(
   const start = new Date(periodStart);
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
-  const tickets = await prisma.supportTicket.findMany({
-    where: { clientId, updatedAt: { gte: start, lte: end } },
+  const tickets = await prisma.supportConversation.findMany({
+    where: { clientId, receivedAt: { gte: start, lte: end } },
     select: { issueType: true, priority: true },
   });
 
@@ -850,13 +1151,13 @@ function mean(values: number[]): number | null {
 }
 
 /**
- * Compute support-desk performance for a period from ticket timestamps. Tickets are
- * scoped by createdAt so the figures describe work that *arrived* in the window. All
- * times are derived from the firstReplyAt / resolvedAt stamps already maintained by
- * createMessage() and updateTicket(); nothing new is persisted.
+ * Compute support-desk performance for a period from conversation lifecycle timestamps.
+ * Conversations are scoped by receivedAt so the figures describe work that *arrived* in
+ * the window. Times derive from firstTriagedAt / closedAt — i.e. "first response" now
+ * means **time-to-triage** (when an operator first actioned the signal), since replies
+ * happen in the native channel, not in-app. "Resolved" = status CLOSED or IGNORED.
  *
- * `slaTargetHours` defaults to 4h — Zendesk's "good" first-response tier (best-in-class
- * is <1h, acceptable is <12h), a sensible agency benchmark.
+ * `slaTargetHours` defaults to 4h — a sensible first-touch agency benchmark.
  */
 export async function getPerformanceMetricsForPeriod(
   clientId: string,
@@ -867,44 +1168,38 @@ export async function getPerformanceMetricsForPeriod(
   const start = new Date(periodStart);
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
-  const tickets = await prisma.supportTicket.findMany({
-    where: { clientId, createdAt: { gte: start, lte: end } },
-    select: { createdAt: true, firstReplyAt: true, resolvedAt: true, status: true, csatScore: true },
+  const tickets = await prisma.supportConversation.findMany({
+    where: { clientId, receivedAt: { gte: start, lte: end } },
+    select: { receivedAt: true, firstTriagedAt: true, closedAt: true, status: true },
   });
 
   const frtMs: number[] = [];
   const resolutionMs: number[] = [];
-  const csatScores: number[] = [];
   let respondedCount = 0;
   let resolvedCount = 0;
   let withinSla = 0;
   const slaTargetMs = slaTargetHours * 3600_000;
 
   for (const t of tickets) {
-    if (t.firstReplyAt) {
-      const ms = t.firstReplyAt.getTime() - t.createdAt.getTime();
+    if (t.firstTriagedAt) {
+      const ms = t.firstTriagedAt.getTime() - t.receivedAt.getTime();
       if (ms >= 0) {
         frtMs.push(ms);
         respondedCount++;
         if (ms <= slaTargetMs) withinSla++;
       }
     }
-    if (t.resolvedAt || t.status === "RESOLVED") {
+    if (t.closedAt || t.status === "CLOSED" || t.status === "IGNORED") {
       resolvedCount++;
-      if (t.resolvedAt) {
-        const ms = t.resolvedAt.getTime() - t.createdAt.getTime();
+      if (t.closedAt) {
+        const ms = t.closedAt.getTime() - t.receivedAt.getTime();
         if (ms >= 0) resolutionMs.push(ms);
       }
     }
-    if (t.csatScore != null && t.csatScore >= 1 && t.csatScore <= 5) {
-      csatScores.push(t.csatScore);
-    }
   }
 
-  const avgCsat =
-    csatScores.length > 0
-      ? Math.round((csatScores.reduce((a, b) => a + b, 0) / csatScores.length) * 10) / 10
-      : null;
+  // CSAT is not collected on the monitor-only cockpit (no in-app replies/surveys).
+  const avgCsat: number | null = null;
 
   const total = tickets.length;
   return {
@@ -932,9 +1227,9 @@ export async function getClientHealthScore(
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600_000);
 
   const [tickets, conversations] = await Promise.all([
-    prisma.supportTicket.findMany({
-      where: { clientId, createdAt: { gte: thirtyDaysAgo } },
-      select: { status: true, priority: true, firstReplyAt: true, createdAt: true },
+    prisma.supportConversation.findMany({
+      where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
+      select: { status: true, priority: true, firstTriagedAt: true, receivedAt: true },
     }),
     prisma.supportConversation.findMany({
       where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
@@ -942,10 +1237,10 @@ export async function getClientHealthScore(
     }),
   ]);
 
-  // Factor 1: FRT performance (30 pts)
+  // Factor 1: time-to-triage performance (30 pts)
   const frtMs = tickets
-    .filter((t) => t.firstReplyAt)
-    .map((t) => t.firstReplyAt!.getTime() - t.createdAt.getTime())
+    .filter((t) => t.firstTriagedAt)
+    .map((t) => t.firstTriagedAt!.getTime() - t.receivedAt.getTime())
     .filter((ms) => ms >= 0);
   const avgFrt = frtMs.length > 0 ? frtMs.reduce((a, b) => a + b, 0) / frtMs.length : null;
   let frtScore = 20; // neutral when no data
@@ -958,9 +1253,9 @@ export async function getClientHealthScore(
     else { frtScore = 0; frtNote = `Avg ${(h / 24).toFixed(1)}d — very slow`; }
   }
 
-  // Factor 2: Resolution rate (25 pts)
+  // Factor 2: Resolution rate (25 pts) — closed or ignored count as resolved
   const total = tickets.length;
-  const resolved = tickets.filter((t) => t.status === "RESOLVED").length;
+  const resolved = tickets.filter((t) => t.status === "CLOSED" || t.status === "IGNORED").length;
   const resRate = total > 0 ? (resolved / total) * 100 : null;
   let resScore = 18; // neutral when no data
   let resNote = "No tickets yet";
@@ -984,9 +1279,9 @@ export async function getClientHealthScore(
     else { sentScore = 3; sentNote = `${Math.round(negPct)}% negative — critical`; }
   }
 
-  // Factor 4: Open urgency — count of open urgent/high tickets (20 pts)
+  // Factor 4: Open urgency — count of still-open urgent/high conversations (20 pts)
   const urgentOpen = tickets.filter(
-    (t) => t.status !== "RESOLVED" && (t.priority === "URGENT" || t.priority === "HIGH"),
+    (t) => t.status !== "CLOSED" && t.status !== "IGNORED" && (t.priority === "URGENT" || t.priority === "HIGH"),
   ).length;
   let urgScore: number;
   let urgNote: string;
@@ -1397,9 +1692,11 @@ export async function listWorkspaceMembers(): Promise<
 // ─── Workflow rule evaluation ─────────────────────────────────────────────────
 //
 // Simple keyword/sentiment evaluator: each rule's triggerText is parsed for
-// quoted phrases and sentiment keywords. If the conversation matches, a ticket
-// is auto-created (requiresApproval:false) or a draft action queued (true).
-// Called non-blockingly after a new conversation is ingested.
+// quoted phrases and sentiment keywords. If the conversation matches, the rule
+// ROUTES the conversation — sets priority/issueType and moves it out of NEW into
+// OPEN (so it surfaces in "Needs action"). It never replies or creates tickets.
+// `requiresApproval` rules instead leave an internal note suggesting the action,
+// so a human decides. Called non-blockingly after a new conversation is ingested.
 
 const SENTIMENT_KEYWORDS = ["negative", "upset", "angry", "frustrated", "escalate"];
 
@@ -1454,82 +1751,62 @@ export async function evaluateWorkflowRules(
   const [conv, rules] = await Promise.all([
     prisma.supportConversation.findUnique({
       where: { id: convId },
-      select: { subject: true, preview: true, tags: true, sentiment: true, source: true, customerLabel: true },
+      select: { subject: true, preview: true, tags: true, sentiment: true, source: true, priority: true, status: true, firstTriagedAt: true },
     }),
     prisma.supportWorkflowRule.findMany({ where: { clientId }, orderBy: { createdAt: "asc" } }),
   ]);
   if (!conv || rules.length === 0) return;
 
+  const PRIORITY_ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
+
   for (const rule of rules) {
     if (!conversationMatchesRule(rule, conv)) continue;
 
-    // Don't fire the same rule twice for the same conversation (check existing tickets)
-    const alreadyFired = await prisma.supportTicket.findFirst({
-      where: { clientId, conversationId: convId, issueType: rule.name },
-      select: { id: true },
-    });
-    if (alreadyFired) continue;
+    // Don't fire the same rule twice for the same conversation (marker tag).
+    const firedTag = `rule:${rule.name}`;
+    if (conv.tags.includes(firedTag)) continue;
 
-    const title = `${rule.name} — ${conv.subject.slice(0, 80)}`;
+    const rulePriority = deriveConversationPriority(rule.name, conv.sentiment);
 
     if (!rule.requiresApproval) {
-      // Check if triage already created a ticket for this conversation
-      const existingTicket = await prisma.supportTicket.findFirst({
-        where: { clientId, conversationId: convId },
-        select: { id: true, priority: true },
+      // Auto-route: tag it, raise priority if the rule implies more urgency, and move
+      // out of NEW so it lands in "Needs action".
+      const raisePriority = (PRIORITY_ORDER[rulePriority] ?? 2) < (PRIORITY_ORDER[conv.priority] ?? 2);
+      await prisma.supportConversation.update({
+        where: { id: convId },
+        data: {
+          tags: { push: [firedTag, rule.name] },
+          issueType: rule.name,
+          ...(raisePriority ? { priority: rulePriority } : {}),
+          ...(conv.status === "NEW"
+            ? { status: "OPEN", ...(conv.firstTriagedAt === null ? { firstTriagedAt: new Date() } : {}) }
+            : {}),
+        },
       });
-
-      if (existingTicket) {
-        // Avoid a duplicate — escalate the existing ticket's priority if this rule implies urgency
-        const rulePriority = deriveTicketPriority(rule.name, conv.sentiment);
-        const ORDER: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
-        if ((ORDER[rulePriority] ?? 2) < (ORDER[existingTicket.priority] ?? 2)) {
-          await prisma.supportTicket.update({
-            where: { id: existingTicket.id },
-            data: { priority: rulePriority },
-          });
-        }
-      } else {
-        await prisma.supportTicket.create({
-          data: {
-            clientId,
-            conversationId: convId,
-            title,
-            customerLabel: conv.customerLabel,
-            source: conv.source,
-            issueType: rule.name,
-            priority: deriveTicketPriority(rule.name, conv.sentiment),
-            status: "OPEN",
-          },
-        });
-      }
+      await createAuditLog(clientId, {
+        actor: "agent:rules",
+        action: "rule_routed",
+        target: convId,
+        metadata: { rule: rule.name, priority: rulePriority },
+      });
     } else {
-      // Queue as a draft action for human review
-      const existingTicket = await prisma.supportTicket.findFirst({
-        where: { clientId, conversationId: convId },
-        select: { id: true },
+      // Suggest-only: leave an internal note for a human to action (no auto-route).
+      await prisma.supportConversation.update({
+        where: { id: convId },
+        data: { tags: { push: firedTag } },
       });
-      if (existingTicket) {
-        await prisma.draftSupportAction.create({
-          data: {
-            clientId,
-            ticketId: existingTicket.id,
-            type: "REPLY",
-            title: `Rule fired: ${rule.name}`,
-            body: rule.actionsText,
-            status: "PENDING_APPROVAL",
-            risk: "MEDIUM",
-          },
-        });
-      }
+      await addConversationNote(convId, {
+        authorId: "agent:rules",
+        body: `Rule "${rule.name}" matched — suggested action: ${rule.actionsText}`,
+      });
     }
 
-    // Only fire the first matching rule per sync (avoid cascade of auto-tickets)
+    // Only fire the first matching rule per sync (avoid a cascade).
     break;
   }
 }
 
-function deriveTicketPriority(ruleName: string, sentiment: string): SupportTicketPriority {
+function deriveConversationPriority(ruleName: string, sentiment: string): PrismaConversationPriority {
   const name = ruleName.toLowerCase();
   if (name.includes("urgent") || name.includes("critical")) return "URGENT";
   if (name.includes("bug") || name.includes("high") || sentiment === "NEGATIVE") return "HIGH";

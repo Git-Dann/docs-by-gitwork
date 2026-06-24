@@ -2,20 +2,24 @@ import { callAI, extractJson, type AiContext } from "./ai-client";
 import { prisma } from "@/lib/prisma";
 import type { IssueType, AgentPriority, AgentSentiment } from "./types";
 import type {
-  SupportTicketPriority,
+  ConversationPriority as PrismaConversationPriority,
   ConversationSentiment as PrismaSentiment,
 } from "@prisma/client";
 
+// Classify-only triage. The cockpit is monitor + triage + route, so the agent never
+// creates tickets, drafts replies, or moves the conversation out of NEW — it only
+// pre-fills sentiment / issueType / priority as *suggestions*. A human decides the
+// status; leaving it NEW keeps "NEW = untouched by a human" meaningful.
 const SYSTEM_PROMPT = `You are a support operations triage agent for Gitwork.
-You analyse customer support conversations and provide structured classification.
+You analyse customer support conversations and provide a structured classification
+to help a human operator triage them. You do NOT write replies.
 
 Return a JSON object in this exact format:
 {
   "issueType": "bug|billing|feature_request|question|complaint|other",
   "priority": "urgent|high|normal|low",
   "sentiment": "positive|neutral|negative",
-  "nextAction": "1-2 sentence description of what needs to happen next",
-  "createTicket": true|false
+  "nextAction": "1-2 sentence description of what a human should do next"
 }`;
 
 interface TriageDecision {
@@ -23,10 +27,9 @@ interface TriageDecision {
   priority: AgentPriority;
   sentiment: AgentSentiment;
   nextAction: string;
-  createTicket: boolean;
 }
 
-const PRIORITY_MAP: Record<AgentPriority, SupportTicketPriority> = {
+const PRIORITY_MAP: Record<AgentPriority, PrismaConversationPriority> = {
   urgent: "URGENT",
   high: "HIGH",
   normal: "NORMAL",
@@ -36,18 +39,14 @@ const PRIORITY_MAP: Record<AgentPriority, SupportTicketPriority> = {
 export async function triageConversation(
   ctx: AiContext,
   conversationId: string,
-): Promise<{ ticketId?: string }> {
+): Promise<void> {
   const conversation = await prisma.supportConversation.findUniqueOrThrow({
     where: { id: conversationId },
     include: {
       messages: { orderBy: { createdAt: "asc" }, take: 10 },
       client: { select: { name: true } },
-      tickets: { take: 1 },
     },
   });
-
-  // Already has a ticket — skip ticket creation but still update classification
-  const hasTicket = conversation.tickets.length > 0;
 
   const threadText = conversation.messages
     .map((m) => `[${m.direction === "outbound" ? "Support" : "Customer"}] ${m.body}`)
@@ -64,8 +63,7 @@ ${threadText || conversation.preview || "(no content)"}`;
     issueType: "other",
     priority: "normal",
     sentiment: "neutral",
-    nextAction: "Review and respond to customer",
-    createTicket: false,
+    nextAction: "Review and triage",
   };
 
   try {
@@ -75,49 +73,36 @@ ${threadText || conversation.preview || "(no content)"}`;
     // Keep defaults on failure
   }
 
-  // Update conversation sentiment + tags
   const sentimentMap: Record<AgentSentiment, PrismaSentiment> = {
     positive: "POSITIVE",
     neutral: "NEUTRAL",
     negative: "NEGATIVE",
   };
 
+  // Annotate only — sentiment, an issueType tag + the issueType field, and a suggested
+  // priority. Status stays NEW so the operator still decides what needs action.
   await prisma.supportConversation.update({
     where: { id: conversationId },
     data: {
       sentiment: sentimentMap[decision.sentiment] ?? "NEUTRAL",
+      issueType: decision.issueType,
+      priority: PRIORITY_MAP[decision.priority] ?? "NORMAL",
       tags: { push: decision.issueType },
     },
   });
 
-  // Create ticket if needed and not already present
-  if (decision.createTicket && !hasTicket) {
-    const ticket = await prisma.supportTicket.create({
-      data: {
-        clientId: conversation.clientId,
-        conversationId,
-        title: conversation.subject,
-        customerLabel: conversation.customerLabel,
-        status: "OPEN",
-        priority: PRIORITY_MAP[decision.priority] ?? "NORMAL",
-        source: conversation.source,
-        nextAction: decision.nextAction,
+  await prisma.supportAuditLog.create({
+    data: {
+      clientId: conversation.clientId,
+      actorId: "agent:triage",
+      action: "agent_classified",
+      target: conversationId,
+      metadata: {
         issueType: decision.issueType,
+        priority: decision.priority,
+        sentiment: decision.sentiment,
+        nextAction: decision.nextAction,
       },
-    });
-
-    await prisma.supportAuditLog.create({
-      data: {
-        clientId: conversation.clientId,
-        actorId: "agent:triage",
-        action: "agent_ticket_created",
-        target: ticket.id,
-        metadata: { conversationId, issueType: decision.issueType, priority: decision.priority },
-      },
-    });
-
-    return { ticketId: ticket.id };
-  }
-
-  return {};
+    },
+  });
 }

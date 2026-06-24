@@ -56,18 +56,18 @@ export async function POST(
     ]);
     if (!workspace) return apiError("Workspace not found", 404);
 
-    // Pull tickets + linked conversation sentiment for the period.
-    const tickets = await prisma.supportTicket.findMany({
+    // Pull conversations (the unit of triage) for the period.
+    const tickets = await prisma.supportConversation.findMany({
       where: {
         clientId,
-        createdAt: { gte: periodStart, lte: periodEnd },
+        receivedAt: { gte: periodStart, lte: periodEnd },
       },
       select: {
         issueType: true,
         priority: true,
         status: true,
         source: true,
-        conversation: { select: { sentiment: true } },
+        sentiment: true,
       },
     });
 
@@ -83,7 +83,7 @@ export async function POST(
       byIssueType[issue] = (byIssueType[issue] ?? 0) + 1;
       byPriority[t.priority] = (byPriority[t.priority] ?? 0) + 1;
       byStatus[t.status] = (byStatus[t.status] ?? 0) + 1;
-      const sentiment = (t.conversation?.sentiment ?? "NEUTRAL").toLowerCase();
+      const sentiment = (t.sentiment ?? "NEUTRAL").toLowerCase();
       bySentiment[sentiment] = (bySentiment[sentiment] ?? 0) + 1;
     }
 
@@ -111,9 +111,9 @@ export async function POST(
       lines.push(`Priority breakdown: ${Object.entries(byPriority).map(([k, v]) => `${k.toLowerCase()} (${v})`).join(", ")}`);
     }
     if (Object.keys(byStatus).length > 0) {
-      const resolved = (byStatus["RESOLVED"] ?? 0);
+      const resolved = (byStatus["CLOSED"] ?? 0) + (byStatus["IGNORED"] ?? 0);
       const open = total - resolved;
-      lines.push(`Status: ${resolved} resolved, ${open} still open/in-progress`);
+      lines.push(`Status: ${resolved} closed, ${open} still open/in-progress`);
     }
     if (sentimentSummary) {
       lines.push(`Conversation sentiment (all channels): ${sentimentSummary}`);

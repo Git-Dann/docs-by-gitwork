@@ -60,6 +60,11 @@ export const redditAdapter: ChannelAdapter = {
         const text = `${post.title} ${post.body}`.toLowerCase();
         const matchedKws = include.filter((kw) => text.includes(kw.toLowerCase()));
         const externalId = `reddit:${post.id}`;
+        const permalink = post.permalink?.startsWith("http")
+          ? post.permalink
+          : post.permalink
+            ? `https://www.reddit.com${post.permalink}`
+            : undefined;
         items.push({
           externalId,
           customerLabel: `u/${post.author}`,
@@ -67,6 +72,7 @@ export const redditAdapter: ChannelAdapter = {
           preview: (post.body || post.title).slice(0, 150),
           receivedAt: new Date(post.created_utc * 1000),
           tags: ["reddit", subreddit, ...matchedKws.map((k) => `kw:${k}`)],
+          externalUrl: permalink,
           // Always seed a message so the thread isn't "No messages yet" — link/image posts
           // with no selftext fall back to the title + permalink.
           messages: [{
