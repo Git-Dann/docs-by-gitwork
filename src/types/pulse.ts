@@ -328,6 +328,22 @@ export interface IndustryBenchmark {
 export type CheckConfidence = "HIGH" | "MEDIUM" | "LOW";
 export type TrustBucket = "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE";
 
+export interface ScanDiffItem {
+  checkKey: string;
+  label: string;
+  category: string;
+  status: PulseCheckStatus;
+  prevStatus?: PulseCheckStatus;
+}
+export interface PulseScanDiff {
+  previousScanId: string;
+  previousCompletedAt: string | null;
+  scoreChange: number; // current - previous health score
+  fixed: ScanDiffItem[];     // was FAIL/WARN, now PASS
+  regressed: ScanDiffItem[]; // was PASS, now FAIL/WARN
+  newIssues: ScanDiffItem[]; // FAIL/WARN checkKey not present last time
+}
+
 export interface PulseScanCheckInput {
   category: string;
   checkKey: string;

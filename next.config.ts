@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   // avoids bloating every other /api route with the ~50MB pack).
   outputFileTracingIncludes: {
     "/api/proposals/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
+    "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
   },
   images: {
     remotePatterns: [

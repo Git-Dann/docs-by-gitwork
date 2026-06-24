@@ -30,6 +30,7 @@ import { runAiReadinessChecks } from "./pulse-checks/ai-readiness";
 import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
 import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
 import { runVibeSecurityChecks } from "./pulse-checks/vibe-security";
+import { runAiAppSafetyChecks } from "./pulse-checks/ai-app-safety";
 
 export type { ExtendedCheckContext };
 
@@ -69,6 +70,7 @@ export async function runExtendedChecks(
     runVibeCodeHygieneChecks,
     runUsPrivacyExtended,
     runVibeSecurityChecks,
+    runAiAppSafetyChecks,
   ];
 
   const results = await Promise.allSettled(

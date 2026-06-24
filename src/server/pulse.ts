@@ -41,6 +41,8 @@ import type {
   JurisdictionScorecardEntry,
   ScoreBreakdown,
   PricingBand,
+  PulseScanDiff,
+  ScanDiffItem,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 
@@ -198,6 +200,61 @@ export async function getScanHistory(scanId: string): Promise<{ id: string; comp
     select: { id: true, completedAt: true, healthScore: true },
   });
   return rows.slice(-12).map((r) => ({ id: r.id, completedAt: r.completedAt?.toISOString() ?? null, healthScore: r.healthScore }));
+}
+
+/** Diff this scan against the previous COMPLETED scan of the same target — what got
+ *  fixed, what regressed, what's new. Null when there's no prior scan. */
+export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null> {
+  const current = await prisma.pulseScan.findUnique({
+    where: { id: scanId },
+    select: {
+      workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, completedAt: true, healthScore: true,
+      checks: { select: { checkKey: true, label: true, category: true, status: true } },
+    },
+  });
+  if (!current || !current.completedAt) return null;
+  const target =
+    current.inputType === "URL" && current.inputUrl ? { inputUrl: current.inputUrl } :
+    current.inputType === "GITHUB_REPO" && current.inputGithubRepo ? { inputGithubRepo: current.inputGithubRepo } :
+    null;
+  if (!target) return null;
+
+  const prev = await prisma.pulseScan.findFirst({
+    where: { workspaceId: current.workspaceId, status: "COMPLETED", completedAt: { lt: current.completedAt }, ...target },
+    orderBy: { completedAt: "desc" },
+    select: {
+      id: true, completedAt: true, healthScore: true,
+      checks: { select: { checkKey: true, label: true, category: true, status: true } },
+    },
+  });
+  if (!prev) return null;
+
+  const prevByKey = new Map(prev.checks.map((c) => [c.checkKey, c]));
+  const isIssue = (s: string) => s === "FAIL" || s === "WARN";
+  const fixed: ScanDiffItem[] = [];
+  const regressed: ScanDiffItem[] = [];
+  const newIssues: ScanDiffItem[] = [];
+
+  for (const c of current.checks) {
+    const before = prevByKey.get(c.checkKey);
+    const item: ScanDiffItem = { checkKey: c.checkKey, label: c.label, category: c.category, status: c.status, prevStatus: before?.status };
+    if (!before) {
+      if (isIssue(c.status)) newIssues.push(item);
+    } else if (isIssue(before.status) && c.status === "PASS") {
+      fixed.push(item);
+    } else if (before.status === "PASS" && isIssue(c.status)) {
+      regressed.push(item);
+    }
+  }
+
+  return {
+    previousScanId: prev.id,
+    previousCompletedAt: prev.completedAt?.toISOString() ?? null,
+    scoreChange: (current.healthScore ?? 0) - (prev.healthScore ?? 0),
+    fixed,
+    regressed,
+    newIssues,
+  };
 }
 
 export interface PulseStatsResponse {

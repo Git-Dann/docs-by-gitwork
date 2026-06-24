@@ -7,7 +7,7 @@ import type {
 
 // Categories that count double toward the health score — the production-critical
 // ones. MUST stay in sync with calculateHealthScore (which now delegates here).
-const WEIGHTED_CATEGORIES = new Set(["Infrastructure", "Security", "Legal & Compliance"]);
+const WEIGHTED_CATEGORIES = new Set(["Infrastructure", "Security", "Legal & Compliance", "AI Safety"]);
 
 /**
  * The single source of truth for the health score AND its human explanation.

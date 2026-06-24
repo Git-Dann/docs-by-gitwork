@@ -37,6 +37,8 @@ const HIGH_CONFIDENCE_KEYS = new Set<string>([
   "no_api_keys_in_html", "no_exposed_source_maps",
   // Vibe-coded live security probes — directly observed (live read-only query / bundle scan).
   "supabase_rls_enforced", "no_service_role_key_exposed", "firebase_rules_locked", "no_public_secret_env",
+  // AI-app safety — bundle-observed exposures (HIGH); the guardrail/output/rate-limit checks stay MEDIUM (heuristic default).
+  "ai_system_prompt_not_client_exposed", "ai_llm_key_not_client_exposed",
   // Email deliverability — DNS records
   "spf_record", "spf_hardfail", "dkim_record_present", "dmarc_record",
   "dmarc_quarantine_reject", "bimi_record_present", "mta_sts_policy", "tls_rpt_record",

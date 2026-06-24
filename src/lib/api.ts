@@ -1225,6 +1225,18 @@ export async function getPulseScanHistory(scanId: string): Promise<{ history: Pu
   return apiFetch<{ history: PulseScanHistoryPoint[] }>(`/api/pulse/scans/${scanId}/history`);
 }
 
+export async function getPulseScanDiff(scanId: string): Promise<{ diff: import("@/types/pulse").PulseScanDiff | null }> {
+  return apiFetch<{ diff: import("@/types/pulse").PulseScanDiff | null }>(`/api/pulse/scans/${scanId}/diff`);
+}
+
+export async function emailPulseAudit(scanId: string, input: { to: string; message?: string }): Promise<{ sent: boolean; reportUrl: string }> {
+  return apiFetch<{ sent: boolean; reportUrl: string }>(`/api/pulse/scans/${scanId}/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function getPulseBenchmarks(scanId: string): Promise<{ benchmarks: IndustryBenchmark | null }> {
   return apiFetch<{ benchmarks: IndustryBenchmark | null }>(`/api/pulse/scans/${scanId}/benchmarks`);
 }

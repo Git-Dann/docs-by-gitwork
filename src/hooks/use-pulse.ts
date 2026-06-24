@@ -9,6 +9,8 @@ import {
   getPulseScan,
   getPulseBenchmarks,
   getPulseScanHistory,
+  getPulseScanDiff,
+  emailPulseAudit,
   deletePulseScan,
   cancelPulseScan,
   retryPulseScan,
@@ -81,6 +83,21 @@ export function usePulseScanHistory(scanId: string, enabled = true) {
     queryFn: () => getPulseScanHistory(scanId),
     enabled: enabled && Boolean(scanId),
     staleTime: 1000 * 60,
+  });
+}
+
+export function usePulseScanDiff(scanId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["pulse-scan-diff", scanId],
+    queryFn: () => getPulseScanDiff(scanId),
+    enabled: enabled && Boolean(scanId),
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useEmailPulseAudit() {
+  return useMutation({
+    mutationFn: ({ scanId, ...input }: { scanId: string; to: string; message?: string }) => emailPulseAudit(scanId, input),
   });
 }
 

@@ -29,8 +29,9 @@ const MAX_BUNDLE_BYTES = 600_000;
 const MAX_TABLES = 6;
 
 /** Fetch up to MAX_BUNDLES same-origin <script src> bundles and return their text
- *  (size-capped). The engine only fetches HTML, so this is how we see client JS. */
-async function fetchBundleText(html: string, baseUrl: string): Promise<string> {
+ *  (size-capped). The engine only fetches HTML, so this is how we see client JS.
+ *  Exported so other probe modules (e.g. ai-app-safety) can scan the bundle too. */
+export async function fetchBundleText(html: string, baseUrl: string): Promise<string> {
   let origin: string;
   try { origin = new URL(baseUrl).origin; } catch { return ""; }
   const srcs = Array.from(html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)).map((m) => m[1]);

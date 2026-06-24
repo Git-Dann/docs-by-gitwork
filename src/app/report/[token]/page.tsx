@@ -9,6 +9,7 @@ import {
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { serializePulseScan, pulseInclude } from "@/server/pulse";
+import { parseWorkspaceBranding } from "@/server/documents";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
@@ -266,6 +267,10 @@ export default async function PublicReportPage({
   const scan = await loadSharedReport(token);
   if (!scan) notFound();
 
+  // Brand the cover (+ the PDF, which renders this page) with the workspace logo if set.
+  const ws = await prisma.workspace.findFirst({ select: { branding: true } });
+  const brandLogoUrl = (parseWorkspaceBranding(ws?.branding).brandLogoUrl ?? "").trim() || undefined;
+
   const llm = scan.llmAnalysis;
   const inputRef = scan.inputUrl ?? (scan.inputGithubRepo ? `github.com/${scan.inputGithubRepo}` : null);
 
@@ -310,6 +315,7 @@ export default async function PublicReportPage({
           callout={llm?.proposalHook ? { text: llm.proposalHook, tone: "blue" } : undefined}
           dated={scan.completedAt ? `Scanned ${formatDate(scan.completedAt)}` : "Recent"}
           variant="screen"
+          {...(brandLogoUrl ? { logoUrl: brandLogoUrl } : {})}
         />
       </div>
 

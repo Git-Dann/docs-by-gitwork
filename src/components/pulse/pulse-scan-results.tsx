@@ -13,6 +13,8 @@ import {
   ClipboardDocumentIcon,
   CurrencyDollarIcon,
   DocumentTextIcon,
+  DocumentArrowDownIcon,
+  EnvelopeIcon,
   ExclamationTriangleIcon,
   LinkIcon,
   LightBulbIcon,
@@ -22,8 +24,10 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory } from "@/hooks/use-pulse";
+import { Modal } from "@/components/ui/modal";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
+import { rankFindings } from "@/server/pulse-checks/priority";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { FixAgentResult } from "@/lib/api";
@@ -1212,7 +1216,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const benchmark = benchmarkData?.benchmarks ?? null;
   const { data: historyData } = usePulseScanHistory(scan.id, scan.status === "COMPLETED");
   const scoreHistory = (historyData?.history ?? []).filter((h) => typeof h.healthScore === "number");
+  const { data: diffData } = usePulseScanDiff(scan.id, scan.status === "COMPLETED");
+  const scanDiff = diffData?.diff ?? null;
   const grades = computeGrades(scan.checks);
+  const topPriorities = rankFindings(scan.checks).filter((r) => r.priority.tier === "P1" || r.priority.tier === "P2").slice(0, 6);
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
@@ -1220,7 +1227,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: addMonitor, isPending: creatingMonitor } = useCreateMonitor();
   const { mutateAsync: reanalyse, isPending: reanalysing } = useReanalysePulseScan();
   const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
+  const { mutateAsync: emailAudit, isPending: emailing } = useEmailPulseAudit();
   const [proposalGenError, setProposalGenError] = useState<string | null>(null);
+  const [pdfPending, setPdfPending] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailMsg, setEmailMsg] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -1362,6 +1376,34 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     }
   }
 
+  // Branded PDF — the route needs the scan shared (token-auth), so auto-share first.
+  async function handleDownloadPdf() {
+    setPdfPending(true);
+    try {
+      if (!isShared) {
+        const result = await shareScan(scan.id);
+        setShareToken(result.shareToken);
+        setIsShared(true);
+      }
+      window.open(`/api/pulse/scans/${scan.id}/pdf`, "_blank");
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Couldn't prepare the PDF.");
+    } finally {
+      setPdfPending(false);
+    }
+  }
+
+  async function handleSendEmail() {
+    setEmailError(null);
+    try {
+      await emailAudit({ scanId: scan.id, to: emailTo.trim(), message: emailMsg.trim() || undefined });
+      setEmailSent(true);
+      setIsShared(true);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Couldn't send the email.");
+    }
+  }
+
   async function handleUnshare() {
     setShareError(null);
     try {
@@ -1470,6 +1512,33 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
   return (
     <div className="space-y-6">
+      {/* Email-this-audit modal */}
+      <Modal open={emailModalOpen} onClose={() => setEmailModalOpen(false)} title="Email this audit">
+        {emailSent ? (
+          <div className="space-y-3">
+            <p className="text-sm text-emerald-600">Sent — {emailTo} will receive the report link and summary.</p>
+            <Button size="sm" onClick={() => setEmailModalOpen(false)}>Done</Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--text-3)]">Emails the prospect a link to the shared report plus the executive summary and proposal hook. Shares the report automatically if it isn&apos;t already.</p>
+            <div className="space-y-1.5">
+              <label className="app-field-label">Recipient email</label>
+              <input className="app-input" type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="prospect@company.com" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="app-field-label">Personal note (optional)</label>
+              <textarea className="app-input resize-none" rows={3} value={emailMsg} onChange={(e) => setEmailMsg(e.target.value)} placeholder="Hi Sam — ran our production audit on your app, a few things worth a look…" />
+            </div>
+            {emailError && <p className="text-xs text-red-600">{emailError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="tertiary" size="sm" onClick={() => setEmailModalOpen(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSendEmail} loading={emailing} disabled={!/.+@.+\..+/.test(emailTo)}>Send</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-5">
@@ -1544,6 +1613,16 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 Report
               </Button>
             </Link>
+            {scan.status === "COMPLETED" && (
+              <>
+                <Button variant="tertiary" size="sm" onClick={handleDownloadPdf} loading={pdfPending} leadingIcon={<DocumentArrowDownIcon className="h-4 w-4" />}>
+                  PDF
+                </Button>
+                <Button variant="tertiary" size="sm" onClick={() => { setEmailSent(false); setEmailError(null); setEmailModalOpen(true); }} leadingIcon={<EnvelopeIcon className="h-4 w-4" />}>
+                  Email audit
+                </Button>
+              </>
+            )}
             {scan.status === "COMPLETED" && llm && (
               scan.generatedProposalId ? (
                 <Link href={`/app/docs/${scan.generatedProposalId}`}>
@@ -1785,6 +1864,35 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 </div>
               </div>
             </button>
+          )}
+
+          {/* CHANGES SINCE LAST SCAN — diff vs the previous scan of this target */}
+          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length > 0) && (
+            <div className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header-label">CHANGES SINCE LAST SCAN</span>
+                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-emerald-600" : scanDiff.scoreChange < 0 ? "text-red-600" : "text-[var(--text-4)]")}>
+                  {scanDiff.scoreChange > 0 ? "+" : ""}{scanDiff.scoreChange} pts
+                </span>
+              </div>
+              <div className="widget-body space-y-3">
+                {[
+                  { items: scanDiff.regressed, label: "Regressed", tone: "text-red-600", sign: "▼" },
+                  { items: scanDiff.newIssues, label: "New issues", tone: "text-amber-600", sign: "+" },
+                  { items: scanDiff.fixed, label: "Fixed", tone: "text-emerald-600", sign: "✓" },
+                ].filter((g) => g.items.length > 0).map((g) => (
+                  <div key={g.label}>
+                    <p className={cn("widget-data-label", g.tone)}>{g.sign} {g.label} ({g.items.length})</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {g.items.slice(0, 8).map((it) => (
+                        <span key={it.checkKey} className="rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-xs text-[var(--text-2)]">{it.label}</span>
+                      ))}
+                      {g.items.length > 8 && <span className="text-xs text-[var(--text-4)]">+{g.items.length - 8} more</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* 01 // PROJECT HEALTH */}
@@ -2637,6 +2745,25 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
         return (
           <div className="space-y-3">
+            {/* Fix first — priority-ranked top findings (exploitability: severity × confidence × weight) */}
+            {topPriorities.length > 0 && (
+              <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="widget-data-label mb-2">Fix first</p>
+                <div className="space-y-1.5">
+                  {topPriorities.map(({ check, priority }) => (
+                    <div key={check.checkKey} className="flex items-center gap-2.5">
+                      <span className={cn(
+                        "rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold",
+                        priority.tier === "P1" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700",
+                      )}>{priority.tier}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-1)]">{check.label}</span>
+                      <span className="shrink-0 text-[11px] text-[var(--text-4)]">{check.category}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Filter chips + sort toggle */}
             <div className="flex flex-wrap items-center gap-2">
               {(["ALL", "FAIL", "WARN", "PASS"] as const).map((f) => {
