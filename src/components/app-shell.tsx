@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
-import { useViewAs, type ViewAsRole } from "@/lib/view-as";
+import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
@@ -56,7 +56,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
-  const { viewAs, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
+  const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
 
   // Close drawer on route change
   useEffect(() => {
@@ -206,6 +206,7 @@ export function AppShell({
             primaryNav={primaryNav}
             secondaryNav={secondaryNav}
             viewAs={viewAs}
+            viewAsUser={viewAsUser}
             setViewAs={setViewAs}
             setViewAsUser={setViewAsUser}
             isAdmin={isAdmin}
@@ -262,6 +263,7 @@ function ExpandedRail({
   primaryNav,
   secondaryNav,
   viewAs,
+  viewAsUser,
   setViewAs,
   setViewAsUser,
   isAdmin,
@@ -270,8 +272,9 @@ function ExpandedRail({
   primaryNav: ReadonlyArray<NavItem>;
   secondaryNav: ReadonlyArray<NavItem>;
   viewAs: ViewAsRole;
+  viewAsUser: ViewAsUser | null;
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
-  setViewAsUser: (name: string, permissions: string[]) => void;
+  setViewAsUser: (name: string, permissions: string[], role?: string) => void;
   isAdmin: boolean;
 }) {
   return (
@@ -310,7 +313,7 @@ function ExpandedRail({
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}
             />
-            <ProfileMenu viewAs={viewAs} setViewAs={setViewAs} setViewAsUser={setViewAsUser} isAdmin={isAdmin} />
+            <ProfileMenu viewAs={viewAs} viewAsUser={viewAsUser} setViewAs={setViewAs} setViewAsUser={setViewAsUser} isAdmin={isAdmin} />
           </div>
         </div>
       </div>
@@ -397,13 +400,15 @@ function Avatar({ name, url }: { name: string; url: string }) {
 
 function ProfileMenu({
   viewAs,
+  viewAsUser,
   setViewAs,
   setViewAsUser,
   isAdmin,
 }: {
   viewAs: ViewAsRole;
+  viewAsUser: ViewAsUser | null;
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
-  setViewAsUser: (name: string, permissions: string[]) => void;
+  setViewAsUser: (name: string, permissions: string[], role?: string) => void;
   isAdmin: boolean;
 }) {
   const { data: session } = useSession();
@@ -422,12 +427,15 @@ function ProfileMenu({
   // Full-access admins (empty = Super Admin equivalent) are identical to your own view — no point previewing.
   // Also exclude the bootstrap placeholder (owner@gitwork.io) and yourself.
   const BOOTSTRAP_EMAIL = "owner@gitwork.io";
-  const adminMembers = (teamData?.members ?? []).filter(
-    (m) =>
-      m.role === "ADMIN" &&
-      m.email !== session?.user?.email &&
-      m.email !== BOOTSTRAP_EMAIL &&
-      m.permissions.length > 0,
+  const selectableMembers = (teamData?.members ?? []).filter(
+    (m) => m.email !== session?.user?.email && m.email !== BOOTSTRAP_EMAIL,
+  );
+  const adminMembers = selectableMembers.filter(
+    (m) => m.role === "ADMIN" && m.permissions.length > 0,
+  );
+  // Individual staff + developers — drill into one teammate to see their exact view.
+  const teammateMembers = selectableMembers.filter(
+    (m) => m.role === "STAFF" || m.role === "DEVELOPER",
   );
 
   // Identity reads from the live Google session by default. The account hook supplies the
@@ -506,13 +514,14 @@ function ProfileMenu({
                     Admins
                   </p>
                   {adminMembers.map((m) => {
-                    const active = viewAs === "ADMIN_USER";
+                    const label = m.name ?? m.email;
+                    const active = viewAs === "USER" && viewAsUser?.name === label;
                     const perms = m.permissions as string[];
                     return (
                       <button
                         key={m.memberId}
                         type="button"
-                        onClick={() => { setViewAsUser(m.name ?? m.email, perms); setOpen(false); }}
+                        onClick={() => { setViewAsUser(label, perms, m.role); setOpen(false); }}
                         className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
                           active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                         }`}
@@ -521,6 +530,39 @@ function ProfileMenu({
                           <p className={`text-sm ${active ? "font-semibold" : "font-medium"}`}>{m.name}</p>
                           <p className={`text-[11px] ${active ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>
                             {perms.length === 0 ? "Full access" : `${perms.length} module${perms.length !== 1 ? "s" : ""} enabled`}
+                          </p>
+                        </div>
+                        {active && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Individual teammates — drill into a specific staff member or developer */}
+              {teammateMembers.length > 0 && (
+                <div className="my-1 max-h-64 overflow-y-auto border-t border-[var(--border-3)] pt-1">
+                  <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Team members
+                  </p>
+                  {teammateMembers.map((m) => {
+                    const label = m.name ?? m.email;
+                    const active = viewAs === "USER" && viewAsUser?.name === label;
+                    const perms = m.permissions as string[];
+                    const roleTag = m.role === "STAFF" ? "Staff" : "Developer";
+                    return (
+                      <button
+                        key={m.memberId}
+                        type="button"
+                        onClick={() => { setViewAsUser(label, perms, m.role); setOpen(false); }}
+                        className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
+                          active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className={`truncate text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
+                          <p className={`text-[11px] ${active ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>
+                            {roleTag} · {perms.length === 0 ? "no modules" : `${perms.length} module${perms.length !== 1 ? "s" : ""} enabled`}
                           </p>
                         </div>
                         {active && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
