@@ -9,16 +9,60 @@ import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
 
-// Rough expected check volume per input type — used only as the denominator for
-// the live progress bar during the deterministic CHECKS phase. Approximate is
-// fine: the authoritative phase signal is `checksCompletedAt` flipping to the AI
-// phase. Clamped so the bar never claims 100% before checks are actually done.
-const EXPECTED_CHECKS: Record<string, number> = { URL: 500, GITHUB_REPO: 240, FREE_TEXT: 1 };
-
 // Time-eased fill for the AI phase, which has no granular progress signal.
 function easeOut(t: number): number {
   const x = Math.min(Math.max(t, 0), 1);
   return 1 - Math.pow(1 - x, 2.5);
+}
+
+function scoreTone(score: number): string {
+  if (score >= 75) return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300";
+  if (score >= 50) return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300";
+  return "border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300";
+}
+
+// One step in the two-phase scan progress (Automated checks → AI analysis).
+function ProgressStep({
+  index,
+  title,
+  state,
+  detail,
+  bar,
+  children,
+}: {
+  index: number;
+  title: string;
+  state: "pending" | "active" | "done";
+  detail: string;
+  bar?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div
+        className={
+          state === "done"
+            ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white"
+            : state === "active"
+              ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[var(--brand-500)] text-xs font-bold tabular-nums text-[var(--brand-600)]"
+              : "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[var(--border-2)] text-xs font-bold tabular-nums text-[var(--text-4)]"
+        }
+      >
+        {state === "done" ? "✓" : index}
+      </div>
+      <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className={state === "pending" ? "text-sm font-semibold text-[var(--text-4)]" : "text-sm font-semibold text-[var(--text-1)]"}>
+            {title}
+          </p>
+          {state === "active" && <span className="text-xs text-[var(--brand-600)]">In progress</span>}
+        </div>
+        <p className="text-xs text-[var(--text-4)]">{detail}</p>
+        {bar}
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function ScanRunningState({
@@ -26,13 +70,13 @@ function ScanRunningState({
   scanId,
   liveChecks,
   checksCompletedAt,
-  inputType,
+  healthScore,
 }: {
   startedAt: string;
   scanId: string;
   liveChecks: { category: string; status: string }[];
   checksCompletedAt: string | null;
-  inputType: string;
+  healthScore: number | null;
 }) {
   const { mutate: cancel, isPending: cancelling } = useCancelPulseScan();
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -52,24 +96,10 @@ function ScanRunningState({
 
   const checksDone = Boolean(checksCompletedAt);
   const checksCount = liveChecks.length;
-  const expected = EXPECTED_CHECKS[inputType] ?? 400;
 
-  // CHECKS phase: real progress = checks persisted / expected, mapped to 0–74%.
-  // AI phase: 74% → ~99% time-eased over ~120s (AI gives no progress signal).
-  let pct: number;
-  if (checksDone) {
-    const aiMs = now - new Date(checksCompletedAt!).getTime();
-    pct = 74 + easeOut(aiMs / 120_000) * 25;
-  } else {
-    pct = Math.min(checksCount / expected, 0.98) * 74;
-  }
-  pct = Math.min(pct, 99);
-
-  const stageLabel = checksDone
-    ? "AI analysis in progress"
-    : checksCount > 0
-      ? `Running automated checks · ${checksCount} done`
-      : "Connecting & fetching page";
+  // AI phase has no granular signal — ease 0→99% over ~120s, scoped to step 2 only.
+  const aiMs = checksDone ? now - new Date(checksCompletedAt!).getTime() : 0;
+  const aiPct = Math.min(easeOut(aiMs / 120_000) * 99, 99);
   const isLong = elapsedSec > 75;
 
   // Build per-category summary from live checks
@@ -85,45 +115,74 @@ function ScanRunningState({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="w-full max-w-sm space-y-5">
-          <div className="mx-auto flex h-[100px] w-[100px] items-center justify-center rounded-full border-4 border-[var(--border-2)] bg-[var(--surface-1)]">
-            <span className="text-2xl font-bold tabular-nums text-[var(--text-3)]">
-              {Math.round(pct)}%
-            </span>
-          </div>
+      <div className="mx-auto w-full max-w-md space-y-6 py-8">
+        <div className="text-center">
+          <p className="text-sm font-semibold text-[var(--text-1)]">
+            {checksDone ? "Writing your report" : "Scanning your project"}
+          </p>
+          <p className="mt-0.5 text-xs tabular-nums text-[var(--text-4)]">{elapsedSec}s elapsed</p>
+        </div>
 
-          <div>
-            <p className="text-sm font-semibold text-[var(--text-1)]">{stageLabel}…</p>
-            <p className="mt-0.5 text-xs tabular-nums text-[var(--text-4)]">{elapsedSec}s elapsed</p>
-          </div>
-
-          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-            <div
-              className="h-full rounded-full bg-[var(--brand-600)] transition-all duration-300 ease-out"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-
-          {/* Two-phase indicator: deterministic checks → AI synthesis */}
-          <div className="flex items-center justify-center gap-2 text-[11px] font-medium">
-            <span className={checksDone ? "text-emerald-600" : "text-[var(--brand-600)]"}>
-              {checksDone ? "✓ Checks complete" : "● Running checks"}
-            </span>
-            <span className="text-[var(--border-2)]">→</span>
-            <span className={checksDone ? "text-[var(--brand-600)]" : "text-[var(--text-4)]"}>
-              {checksDone ? "● AI analysis" : "AI analysis"}
-            </span>
-          </div>
-
-          {isLong && (
-            <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
-              {checksDone
-                ? "AI synthesis can take up to a couple of minutes — your checks and score below are final."
-                : "Taking longer than usual — complex sites or large repos can take a little longer."}
-            </p>
+        {/* Step 1 — Automated checks (fast, deterministic) */}
+        <ProgressStep
+          index={1}
+          title="Automated checks"
+          state={checksDone ? "done" : "active"}
+          detail={
+            checksDone
+              ? `${checksCount} checks complete`
+              : checksCount > 0
+                ? `${checksCount} checks run so far…`
+                : "Connecting & fetching the project…"
+          }
+          bar={
+            checksDone ? (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/40">
+                <div className="h-full w-full rounded-full bg-emerald-500" />
+              </div>
+            ) : (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+                <div className="h-full w-full animate-pulse rounded-full bg-[var(--brand-500)]" />
+              </div>
+            )
+          }
+        >
+          {checksDone && healthScore !== null && (
+            <div className={`mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${scoreTone(healthScore)}`}>
+              Health score {healthScore}/100
+            </div>
           )}
+        </ProgressStep>
 
+        {/* Step 2 — AI analysis (the long pole) */}
+        <ProgressStep
+          index={2}
+          title="AI analysis"
+          state={checksDone ? "active" : "pending"}
+          detail={
+            checksDone
+              ? "Writing insights, gaps & recommendations…"
+              : "Starts once the checks are in"
+          }
+          bar={
+            checksDone ? (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
+                <div
+                  className="h-full rounded-full bg-[var(--brand-600)] transition-all duration-300 ease-out"
+                  style={{ width: `${aiPct}%` }}
+                />
+              </div>
+            ) : undefined
+          }
+        />
+
+        {isLong && checksDone && (
+          <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+            AI synthesis can take a couple of minutes — your checks and score above are already final.
+          </p>
+        )}
+
+        <div className="flex justify-center">
           <Button
             variant="tertiary"
             size="sm"

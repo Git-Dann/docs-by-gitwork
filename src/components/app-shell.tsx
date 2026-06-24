@@ -539,36 +539,41 @@ function ProfileMenu({
                 </div>
               )}
 
-              {/* Individual teammates — drill into a specific staff member or developer */}
+              {/* Individual teammates — drill into a specific staff member or developer via a dropdown */}
               {teammateMembers.length > 0 && (
-                <div className="my-1 max-h-64 overflow-y-auto border-t border-[var(--border-3)] pt-1">
-                  <p className="px-3 pb-0.5 text-[9px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    Team members
+                <div className="my-1 border-t border-[var(--border-3)] pt-1">
+                  <p className="px-3 pb-1 text-[9px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    Specific teammate
                   </p>
-                  {teammateMembers.map((m) => {
-                    const label = m.name ?? m.email;
-                    const active = viewAs === "USER" && viewAsUser?.name === label;
-                    const perms = m.permissions as string[];
-                    const roleTag = m.role === "STAFF" ? "Staff" : "Developer";
-                    return (
-                      <button
-                        key={m.memberId}
-                        type="button"
-                        onClick={() => { setViewAsUser(label, perms, m.role); setOpen(false); }}
-                        className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
-                          active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className={`truncate text-sm ${active ? "font-semibold" : "font-medium"}`}>{label}</p>
-                          <p className={`text-[11px] ${active ? "text-[var(--brand-500)]" : "text-[var(--text-4)]"}`}>
-                            {roleTag} · {perms.length === 0 ? "no modules" : `${perms.length} module${perms.length !== 1 ? "s" : ""} enabled`}
-                          </p>
-                        </div>
-                        {active && <span className="mt-1 shrink-0 text-[10px] text-[var(--brand-700)]">●</span>}
-                      </button>
-                    );
-                  })}
+                  <div className="px-3 pb-1">
+                    <select
+                      value={
+                        viewAs === "USER" && teammateMembers.some((m) => (m.name ?? m.email) === viewAsUser?.name)
+                          ? viewAsUser?.name ?? ""
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const m = teammateMembers.find((x) => (x.name ?? x.email) === e.target.value);
+                        if (!m) return;
+                        setViewAsUser(m.name ?? m.email, m.permissions as string[], m.role);
+                        setOpen(false);
+                      }}
+                      className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-2 text-sm text-[var(--text-2)] transition hover:bg-[var(--surface-1)] focus:border-[var(--brand-500)] focus:outline-none"
+                    >
+                      <option value="">Select a teammate…</option>
+                      {teammateMembers.map((m) => {
+                        const label = m.name ?? m.email;
+                        const perms = m.permissions as string[];
+                        const roleTag = m.role === "STAFF" ? "Staff" : "Developer";
+                        const modules = perms.length === 0 ? "no modules" : `${perms.length} module${perms.length !== 1 ? "s" : ""}`;
+                        return (
+                          <option key={m.memberId} value={label}>
+                            {label} — {roleTag}, {modules}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
                 </div>
               )}
 

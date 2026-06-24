@@ -858,22 +858,28 @@ export function ClientManagement() {
                 count={pendingCount}
                 highlight={pendingCount > 0}
               />
-              <TabButton
-                active={tab === "onboarding"}
-                onClick={() => setTab("onboarding")}
-                label="Onboarding links"
-                count={openOnboardingCount}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                className="ml-auto"
-                onClick={() => setShowNewLink(true)}
-              >
-                <LinkIcon className="h-3.5 w-3.5" />
-                Onboarding
-              </Button>
+              {/* Onboarding (mint links + review submissions) is a client-management
+                  action — hidden from restricted developers. */}
+              {canManageClients ? (
+                <>
+                  <TabButton
+                    active={tab === "onboarding"}
+                    onClick={() => setTab("onboarding")}
+                    label="Onboarding links"
+                    count={openOnboardingCount}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    className="ml-auto"
+                    onClick={() => setShowNewLink(true)}
+                  >
+                    <LinkIcon className="h-3.5 w-3.5" />
+                    Onboarding
+                  </Button>
+                </>
+              ) : null}
             </div>
           </div>
         </section>
