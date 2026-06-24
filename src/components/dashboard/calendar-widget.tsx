@@ -129,18 +129,18 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
       <div className="flex h-full flex-col">
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
             05 // CALENDAR
           </span>
         </div>
         {/* Body */}
         <div className="flex flex-1 flex-col overflow-hidden p-4">
           <div className="flex flex-1 flex-col items-center justify-center">
-            <p className="text-3xl tabular-nums text-[#0F172A]" style={{ fontFamily: "var(--font-display)" }}>{events.length}</p>
-            <p className="text-xs text-[#475569]">events upcoming</p>
+            <p className="text-3xl tabular-nums text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>{events.length}</p>
+            <p className="text-xs text-[var(--text-3)]">events upcoming</p>
           </div>
           {nextEvent && (
-            <p className="truncate text-center text-xs text-[#475569]">{nextEvent.summary}</p>
+            <p className="truncate text-center text-xs text-[var(--text-3)]">{nextEvent.summary}</p>
           )}
         </div>
       </div>
@@ -153,7 +153,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
       <div className="flex h-full flex-col">
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
             05 // CALENDAR
           </span>
         </div>
@@ -162,14 +162,14 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
             <VideoCameraIcon className="h-5 w-5 text-teal-400" />
           </div>
           <div>
-            <p className="text-xs font-semibold text-[#0F172A]">Calendar not connected</p>
-            <p className="mt-0.5 text-xs text-[#475569]">
+            <p className="text-xs font-semibold text-[var(--text-1)]">Calendar not connected</p>
+            <p className="mt-0.5 text-xs text-[var(--text-3)]">
               Sign out and back in to grant Calendar access
             </p>
           </div>
           <Link
             href="/api/auth/signout"
-            className="rounded-[6px] bg-[#1D4ED8] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+            className="rounded-[6px] bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
           >
             Re-connect via Google
           </Link>
@@ -187,10 +187,10 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
           05 // CALENDAR
         </span>
-        <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
+        <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
       </div>
 
       {/* Body: two-panel layout */}
@@ -198,33 +198,33 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
         {/* Left panel: event list */}
         <div className="flex w-56 shrink-0 flex-col border-r border-[rgba(0,0,0,0.08)]">
           <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2">
-            <p className="text-xs font-medium text-[#475569]">Upcoming</p>
+            <p className="text-xs font-medium text-[var(--text-3)]">Upcoming</p>
           </div>
           <div className="flex-1 overflow-y-auto">
             {events.length === 0 ? (
               <div className="flex h-full items-center justify-center p-4 text-center">
-                <p className="text-xs text-[#94A3B8]">No upcoming events</p>
+                <p className="text-xs text-[var(--text-4)]">No upcoming events</p>
               </div>
             ) : (
               events.map((ev) => (
                 <button
                   key={ev.id}
-                  className={`w-full border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[#EFF6FF] ${selected === ev.id ? "bg-[#EFF6FF]" : ""}`}
+                  className={`w-full border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-brand)] ${selected === ev.id ? "bg-[var(--surface-brand)]" : ""}`}
                   onClick={() => setSelected(ev.id === selected ? null : ev.id)}
                 >
-                  <p className="truncate text-sm font-medium text-[#0F172A]">{ev.summary}</p>
-                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                  <p className="truncate text-sm font-medium text-[var(--text-1)]">{ev.summary}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                     {formatDate(ev.start)} · {formatTime(ev.start)}
                   </p>
                   {summaries[ev.id] ? (
-                    <span className="mt-0.5 block text-xs font-medium text-[#16A34A]">✓ Ready</span>
+                    <span className="mt-0.5 block text-xs font-medium text-[var(--success-500)]">✓ Ready</span>
                   ) : (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelected(ev.id);
                       }}
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-[#1D4ED8] hover:underline"
+                      className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
                     >
                       <SparklesIcon className="h-3 w-3" /> Summarise
                     </button>
@@ -240,15 +240,15 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
           {!selected || !activeEvent ? (
             /* Nothing selected */
             <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-              <SparklesIcon className="h-6 w-6 text-[#94A3B8]" />
-              <p className="text-xs text-[#475569]">Select a meeting to prep</p>
-              <p className="text-xs text-[#94A3B8]">AI summary · emails · Slack</p>
+              <SparklesIcon className="h-6 w-6 text-[var(--text-4)]" />
+              <p className="text-xs text-[var(--text-3)]">Select a meeting to prep</p>
+              <p className="text-xs text-[var(--text-4)]">AI summary · emails · Slack</p>
             </div>
           ) : generating === selected ? (
             /* Generating */
             <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
-              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[#1D4ED8] border-t-transparent" />
-              <p className="text-xs text-[#475569]">Generating summary…</p>
+              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+              <p className="text-xs text-[var(--text-3)]">Generating summary…</p>
             </div>
           ) : activeSummary ? (
             /* Summary ready */
@@ -256,27 +256,27 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
               {/* Panel header */}
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#0F172A]">{activeEvent.summary}</p>
-                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                  <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                     {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
                   </p>
                 </div>
                 <button
                   onClick={() => setSelected(null)}
-                  className="shrink-0 rounded-[6px] p-1 text-[#475569] transition-colors hover:bg-[var(--surface-1)] hover:text-[#0F172A]"
+                  className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                 >
                   <XMarkIcon className="h-4 w-4" />
                 </button>
               </div>
               {/* Summary body */}
               <div className="flex-1 overflow-y-auto p-4">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#0F172A]">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
                   {activeSummary.summary}
                 </p>
               </div>
               {/* Footer */}
               <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[rgba(0,0,0,0.08)] px-4 py-2.5">
-                <span className="text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                   {activeSummary.cached
                     ? `Cached${activeSummary.generatedBy ? ` · ${activeSummary.generatedBy}` : ""}`
                     : "Just generated"}
@@ -284,7 +284,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
                 <button
                   type="button"
                   onClick={() => void handleSummarise(activeEvent, { force: true })}
-                  className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[#1D4ED8] transition-colors hover:bg-[var(--surface-1)]"
+                  className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-1)]"
                 >
                   <SparklesIcon className="h-3 w-3" />
                   Regenerate
@@ -297,14 +297,14 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
               {/* Panel header */}
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#0F172A]">{activeEvent.summary}</p>
-                  <p className="mt-0.5 text-xs text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
+                  <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                     {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
                   </p>
                 </div>
                 <button
                   onClick={() => setSelected(null)}
-                  className="shrink-0 rounded-[6px] p-1 text-[#475569] transition-colors hover:bg-[var(--surface-1)] hover:text-[#0F172A]"
+                  className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                 >
                   <XMarkIcon className="h-4 w-4" />
                 </button>
@@ -313,7 +313,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
               <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
                 {slackChannels.length > 0 && (
                   <div>
-                    <p className="mb-2 text-xs font-medium text-[#475569]">Slack channels</p>
+                    <p className="mb-2 text-xs font-medium text-[var(--text-3)]">Slack channels</p>
                     <div className="flex flex-wrap gap-1.5">
                       {slackChannels.map((ch) => (
                         <button
@@ -321,15 +321,15 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
                           onClick={() => toggleChannel(ch.id)}
                           className={`inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors ${
                             selectedChannels.has(ch.id)
-                              ? "border-[#1D4ED8] bg-[#1D4ED8] text-white"
-                              : "border-[rgba(0,0,0,0.12)] text-[#475569] hover:border-[#1D4ED8] hover:text-[#1D4ED8]"
+                              ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                              : "border-[rgba(0,0,0,0.12)] text-[var(--text-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                           }`}
                         >
                           #{ch.name}
                         </button>
                       ))}
                     </div>
-                    <p className="mt-1.5 text-xs text-[#94A3B8]">
+                    <p className="mt-1.5 text-xs text-[var(--text-4)]">
                       {selectedChannels.size === 0 ? "All channels will be searched" : `${selectedChannels.size} selected`}
                     </p>
                   </div>
@@ -338,12 +338,12 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
                 <div className="mt-auto">
                   <button
                     onClick={() => void handleSummarise(activeEvent)}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#1D4ED8] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
                   >
                     <SparklesIcon className="h-4 w-4" />
                     Generate Summary
                   </button>
-                  <p className="mt-2 text-center text-xs text-[#94A3B8]">Uses AI · emails · Slack</p>
+                  <p className="mt-2 text-center text-xs text-[var(--text-4)]">Uses AI · emails · Slack</p>
                 </div>
               </div>
             </div>
