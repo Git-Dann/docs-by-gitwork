@@ -22,6 +22,7 @@ import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
+import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
   BrowserAgentInsights,
@@ -40,6 +41,8 @@ export interface LiteScanInput {
   /** Skip the SSRF guard (internal callers that have already validated, or that
    *  intentionally scan platform subdomains). Public callers must leave this off. */
   skipUrlGuard?: boolean;
+  /** Jurisdiction codes the product serves — drives compliance filtering + scorecard. */
+  targetMarkets?: JurisdictionCode[];
   /** Fired with each fresh, de-duplicated, ordered batch of checks as it lands. */
   onChecks?: (batch: PulseScanCheckInput[]) => void | Promise<void>;
 }
@@ -52,6 +55,8 @@ export interface LiteScanResult {
   deployInsights: DeployAgentInsights | null;
   codeInsights: CodeAgentInsights | null;
   homepageUrl: string | null;
+  /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
+  detectedMarkets: JurisdictionCode[];
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
@@ -87,6 +92,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let deployInsights: DeployAgentInsights | null = null;
   let codeInsights: CodeAgentInsights | null = null;
   let homepageUrl: string | null = null;
+  let detectedMarkets: JurisdictionCode[] = [];
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
@@ -103,8 +109,9 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
           .catch(() => {})
       : Promise.resolve();
 
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave);
+    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
     techStack = urlResult.techStack;
+    detectedMarkets = urlResult.detectedMarkets;
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
     pending.push(ingest(urlResult.checks));
 
@@ -132,8 +139,9 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
               .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
               .catch(() => {})
           : Promise.resolve();
-        const urlResult = await runUrlChecks(safeHome, input.platform, onWave);
+        const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets);
         if (urlResult.techStack.length > 0) techStack = urlResult.techStack;
+        detectedMarkets = urlResult.detectedMarkets;
         pending.push(ingest(urlResult.checks));
         await Promise.all([deployP, browserP]);
       }
@@ -151,5 +159,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     deployInsights,
     codeInsights,
     homepageUrl,
+    detectedMarkets,
   };
 }

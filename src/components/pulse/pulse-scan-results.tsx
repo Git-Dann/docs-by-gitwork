@@ -80,7 +80,7 @@ function effectiveTechStack(scan: PulseScanRecord): { stack: string[]; inferred:
   return { stack: [...new Set(out)], inferred: true };
 }
 
-type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors";
+type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors" | "compliance";
 
 function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: number }) {
   const all: Array<{ label: string; score: number; isMain: boolean; detail?: typeof data.scans[number] }> = [
@@ -1371,10 +1371,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
   const missingCount = (llm?.productionBlockers?.length ?? 0) + (llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0);
 
-  const tabs: Array<{ id: Tab; label: string; count?: number; badgeColor?: "red" }> = [
+  const scorecard = scan.complianceScorecard ?? [];
+  const complianceMissing = scorecard.reduce((n, e) => n + e.failing, 0);
+  const tabs: Array<{ id: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
     { id: "overview", label: "Overview" },
     { id: "readiness", label: "Readiness", count: missingCount },
     { id: "checks", label: "Health Checks", count: scan.checks.filter((c) => c.status === "FAIL").length, badgeColor: "red" as const },
+    ...(scorecard.length > 0 ? [{ id: "compliance" as Tab, label: "Compliance", count: complianceMissing, badgeColor: "amber" as const }] : []),
     { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
@@ -1560,7 +1563,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={cn(
                   "rounded-full px-1.5 py-0.5 text-xs",
-                  tab.badgeColor === "red" ? "bg-red-100 text-red-700" : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                  tab.badgeColor === "red" ? "bg-red-100 text-red-700"
+                  : tab.badgeColor === "amber" ? "bg-amber-100 text-amber-700"
+                  : "bg-[var(--surface-2)] text-[var(--text-3)]",
                 )}>
                   {tab.count}
                 </span>
@@ -1668,6 +1673,38 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             );
           })()}
 
+          {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
+          {scorecard.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("compliance")}
+              className="widget-card w-full text-left transition hover:border-[var(--brand-400)]"
+            >
+              <div className="widget-header">
+                <span className="widget-header-label">COMPLIANCE BY MARKET</span>
+                <span className={cn("widget-header-right", complianceMissing > 0 ? "text-amber-600" : "text-emerald-600")}>
+                  {complianceMissing > 0 ? `${complianceMissing} missing` : "all clear"} · details →
+                </span>
+              </div>
+              <div className="widget-body">
+                <div className="flex flex-wrap gap-2">
+                  {scorecard.map((e) => {
+                    const tone = e.compliancePct >= 80 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : e.compliancePct >= 50 ? "border-amber-200 bg-amber-50 text-amber-700"
+                      : "border-red-200 bg-red-50 text-red-700";
+                    return (
+                      <div key={e.jurisdiction} className={cn("flex items-center gap-2 rounded-[8px] border px-3 py-1.5", tone)}>
+                        <span className="text-sm font-semibold">{e.label}</span>
+                        <span className="text-xs tabular-nums opacity-80">{e.compliancePct}%</span>
+                        {e.failing > 0 && <span className="text-[11px] font-medium">· {e.failing} missing</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </button>
+          )}
+
           {/* 01 // PROJECT HEALTH */}
           <div className="widget-card">
             <div className="widget-header">
@@ -1685,6 +1722,35 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       )}>
                         {scan.healthScore > scan.previousHealthScore ? "+" : ""}{scan.healthScore - scan.previousHealthScore} vs last
                       </span>
+                    )}
+                    {scan.scoreBreakdown && (
+                      <details className="w-full max-w-[12rem]">
+                        <summary className="cursor-pointer list-none text-center text-xs text-[var(--brand-600)] hover:underline">
+                          Why this score?
+                        </summary>
+                        <div className="mt-2 space-y-1.5 rounded-[8px] border border-[var(--border-2)] p-2.5 text-left">
+                          {scan.scoreBreakdown.capsApplied.length > 0 && (
+                            <div className="space-y-1 border-b border-[var(--border-2)] pb-1.5">
+                              {scan.scoreBreakdown.capsApplied.map((c) => (
+                                <p key={c.cap} className="text-[11px] leading-4 text-red-600">⚠ {c.reason}</p>
+                              ))}
+                            </div>
+                          )}
+                          {scan.scoreBreakdown.byCategory.slice(0, 8).map((cat) => (
+                            <div key={cat.category} className="flex items-center justify-between gap-2 text-[11px] leading-4">
+                              <span className="truncate text-[var(--text-3)]">
+                                {cat.category}{cat.weight === 2 ? " ×2" : ""}
+                              </span>
+                              <span className="shrink-0 tabular-nums text-[var(--text-2)]">
+                                {cat.pass}✓ {cat.warn}~ {cat.fail}✗
+                              </span>
+                            </div>
+                          ))}
+                          <p className="pt-1 text-[10px] leading-4 text-[var(--text-4)]">
+                            PASS = full credit · WARN = half · FAIL = none · Infrastructure/Security/Legal count double.
+                          </p>
+                        </div>
+                      </details>
                     )}
                   </div>
                 )}
@@ -2702,6 +2768,51 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {activeTab === "discovery" && scan.discoveryKit && (
         <DiscoveryTab kit={scan.discoveryKit} />
+      )}
+
+      {activeTab === "compliance" && (
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-3)]">
+            What each market this product serves legally requires — and what&apos;s missing.{" "}
+            {scan.targetMarkets && scan.targetMarkets.length > 0
+              ? "Markets you selected for this scan."
+              : "Auto-detected from the site — declare target markets when scanning for a precise view."}
+          </p>
+          {scorecard.length === 0 ? (
+            <div className="app-muted-card p-6 text-center text-sm text-[var(--text-3)]">
+              No market-specific compliance requirements were assessed for this scan.
+            </div>
+          ) : (
+            scorecard.map((entry) => {
+              const tone = entry.compliancePct >= 80 ? "text-emerald-600" : entry.compliancePct >= 50 ? "text-amber-600" : "text-red-600";
+              return (
+                <div key={entry.jurisdiction} className="widget-card">
+                  <div className="widget-header">
+                    <span className="widget-header-label">{entry.label} · {entry.primaryLaw}</span>
+                    <span className={cn("widget-header-right tabular-nums", tone)}>
+                      {entry.compliancePct}% · {entry.passing}/{entry.requiredChecks}
+                    </span>
+                  </div>
+                  <div className="widget-body space-y-2">
+                    {entry.missing.length === 0 ? (
+                      <p className="text-sm font-medium text-emerald-600">All {entry.requiredChecks} requirements satisfied.</p>
+                    ) : (
+                      <>
+                        <p className="widget-data-label">{entry.failing} requirement{entry.failing !== 1 ? "s" : ""} missing</p>
+                        {entry.missing.map((m) => (
+                          <div key={m.checkKey} className="rounded-[8px] border border-[var(--border-2)] p-3">
+                            <p className="text-sm font-medium text-[var(--text-1)]">{m.label}</p>
+                            {m.detail && <p className="mt-0.5 text-xs leading-5 text-[var(--text-3)]">{m.detail}</p>}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
       {activeTab === "roadmap" && !llm && <AiUnavailable aiError={scan.aiError} />}

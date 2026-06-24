@@ -1787,6 +1787,10 @@ model PulseScan {
   agentData           Json? // { codeInsights, deployInsights } from agent pipeline
   competitorUrls      Json? // string[] — optional competitor URLs to benchmark
   competitorData      Json? // CompetitorData — parallel scan results + AI comparison
+  targetMarkets       Json? // JurisdictionCode[] — user-declared markets the product serves (null = legacy/auto-only)
+  detectedMarkets     Json? // JurisdictionCode[] — auto-detected at scan time (audit + legacy fallback)
+  complianceScorecard Json? // JurisdictionScorecardEntry[] — deterministic per-market required/missing breakdown
+  scoreBreakdown      Json? // ScoreBreakdown — "why this score" (per-category contribution + hard caps)
   shareToken          String?            @unique
   isShared            Boolean            @default(false)
   errorCode           String?

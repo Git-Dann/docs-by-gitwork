@@ -6,6 +6,7 @@ import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
+import { JURISDICTIONS, JURISDICTION_CODES, JURISDICTION_PRESETS } from "@/server/pulse-checks/jurisdictions";
 import type { PulseScanInputType } from "@/types/pulse";
 
 const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder: string; description: string }> = [
@@ -153,6 +154,7 @@ export function PulseNewScanForm({
   const [selectedProvider, setSelectedProvider] = useState<AiProviderId>(activeProvider);
   const [competitorUrls, setCompetitorUrls] = useState<string[]>([""]);
   const [showCompetitors, setShowCompetitors] = useState(false);
+  const [targetMarkets, setTargetMarkets] = useState<string[]>([]);
   const [projectDescription, setProjectDescription] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testPassword, setTestPassword] = useState("");
@@ -196,6 +198,7 @@ export function PulseNewScanForm({
         clientId: clientId || undefined,
         aiProvider: selectedProvider,
         competitorUrls: cleanedCompetitors.length > 0 ? cleanedCompetitors : undefined,
+        targetMarkets: targetMarkets.length > 0 ? targetMarkets : undefined,
         projectDescription: projectDescription.trim() || undefined,
         testEmail: showTestLogin && testEmail.trim() ? testEmail.trim() : undefined,
         testPassword: showTestLogin && testPassword.trim() ? testPassword.trim() : undefined,
@@ -316,6 +319,62 @@ export function PulseNewScanForm({
                 </select>
               </div>
             )}
+
+            <div className="space-y-2">
+              <label className="app-field-label">Target markets (optional)</label>
+              <p className="text-xs text-[var(--text-4)]">
+                Which markets does this product serve? We&apos;ll check the compliance requirements for each (GDPR, CCPA…) and flag what&apos;s missing per region. Leave blank to auto-detect.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(JURISDICTION_PRESETS).map(([name, codes]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => setTargetMarkets((prev) => {
+                      const codeStrs = codes as string[];
+                      const all = codeStrs.every((c) => prev.includes(c));
+                      return all ? prev.filter((c) => !codeStrs.includes(c)) : Array.from(new Set([...prev, ...codeStrs]));
+                    })}
+                    className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-400)]"
+                  >
+                    + {name}
+                  </button>
+                ))}
+                {targetMarkets.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => setTargetMarkets([])}
+                    className="rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-2)]"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {JURISDICTION_CODES.map((code) => {
+                  const active = targetMarkets.includes(code);
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setTargetMarkets((prev) => active ? prev.filter((c) => c !== code) : [...prev, code])}
+                      title={`${JURISDICTIONS[code].label} · ${JURISDICTIONS[code].primaryLaw}`}
+                      className={cn(
+                        "rounded-full border px-2.5 py-0.5 text-xs font-medium transition",
+                        active
+                          ? "border-[var(--brand-400)] bg-[var(--surface-brand-soft)] text-[var(--brand-700)]"
+                          : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:border-[var(--brand-300)]",
+                      )}
+                    >
+                      {JURISDICTIONS[code].label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {inputType !== "FREE_TEXT" && (
               <div className="space-y-1.5">

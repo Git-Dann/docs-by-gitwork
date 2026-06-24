@@ -1204,6 +1204,7 @@ export async function createPulseScan(input: {
   clientId?: string;
   aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   competitorUrls?: string[];
+  targetMarkets?: string[];
   projectDescription?: string;
   testEmail?: string;
   testPassword?: string;

@@ -27,6 +27,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
       ["link_purpose_clear", "Links have descriptive text"],
       ["page_title_unique", "Unique page title"],
       ["language_attribute_body", "lang attribute on <html> element"],
+      ["wcag22_dragging_alternative", "Dragging movements have an alternative (WCAG 2.5.7)"],
+      ["wcag22_consistent_help", "Consistent help mechanism (WCAG 3.3.6)"],
+      ["accessibility_statement_eaa", "Accessibility statement (EU Accessibility Act)"],
     ], "Not applicable for non-web interfaces.");
   }
 
@@ -117,6 +120,21 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   // Language attribute on html element
   const hasLangAttr = /<html[^>]+lang=["'][a-z]{2}/i.test(html);
   checks.push({ category: "Accessibility", checkKey: "language_attribute_body", label: "lang attribute on <html> element", status: hasLangAttr ? "PASS" : "FAIL", detail: hasLangAttr ? "lang attribute present on <html> element — screen readers use this to select the correct pronunciation engine." : "No lang attribute on <html> — WCAG 3.1.1 requires specifying the page language so screen readers pronounce content correctly." });
+
+  // ─── WCAG 2.2 (2023) new success criteria ────────────────────────────────────
+
+  // 2.5.7 Dragging Movements — drag interactions must have a single-pointer alternative.
+  const hasDraggable = /draggable=["']true["']|@dnd-kit|react-beautiful-dnd|sortablejs|use-?draggable|on(drag|DragStart)/i.test(html);
+  const hasDragAlternative = /move (up|down)|reorder.*button|use (the )?arrow keys|keyboard.*reorder/i.test(html);
+  checks.push({ category: "Accessibility", checkKey: "wcag22_dragging_alternative", label: "Dragging movements have an alternative (WCAG 2.5.7)", status: !hasDraggable ? "PASS" : hasDragAlternative ? "PASS" : "WARN", detail: !hasDraggable ? "No drag-and-drop interactions detected." : hasDragAlternative ? "Drag interactions detected with a single-pointer/keyboard alternative." : "Drag-and-drop detected but no obvious single-pointer alternative — WCAG 2.2 (2.5.7) requires any dragging movement to also be operable with a single pointer (e.g. up/down buttons)." });
+
+  // 3.3.6 Consistent Help — a help mechanism in a consistent location across pages.
+  const hasConsistentHelp = /href=["'][^"']*(help|support|contact)[^"']*["']|intercom|crisp\.chat|zendesk|drift|help.*center|live chat|tawk\.to/i.test(html);
+  checks.push({ category: "Accessibility", checkKey: "wcag22_consistent_help", label: "Consistent help mechanism (WCAG 3.3.6)", status: hasConsistentHelp ? "PASS" : "WARN", detail: hasConsistentHelp ? "A help/contact mechanism is present — WCAG 2.2 (3.3.6) is satisfied when it appears in a consistent location across pages." : "No help/contact mechanism detected — WCAG 2.2 (3.3.6) expects a consistently located way to get help (contact link, help centre, or chat) on pages that need it." });
+
+  // EU Accessibility Act (in force June 2025) — a published accessibility statement.
+  const hasAccessibilityStatement = /accessibility statement|accessibility commitment|href=["'][^"']*accessibility[^"']*["']|we are committed to accessibility|wcag 2\.[12]|en 301 549/i.test(html);
+  checks.push({ category: "Accessibility", checkKey: "accessibility_statement_eaa", label: "Accessibility statement (EU Accessibility Act)", status: hasAccessibilityStatement ? "PASS" : "WARN", detail: hasAccessibilityStatement ? "Accessibility statement signals detected — the EU Accessibility Act (in force June 2025) requires a published statement describing conformance and feedback channels." : "No accessibility statement detected — the EU Accessibility Act (in force June 2025) requires covered services to publish an accessibility statement (conformance level, known limitations, feedback contact)." });
 
   return checks;
 }

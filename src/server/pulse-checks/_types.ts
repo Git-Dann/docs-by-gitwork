@@ -1,4 +1,5 @@
 import type { PulseScanCheckInput } from "@/types/pulse";
+import type { JurisdictionCode } from "./jurisdictions";
 
 export type { PulseScanCheckInput };
 
@@ -30,6 +31,13 @@ export interface ExtendedCheckContext {
   // Vercel / Next.js catch-all). When set, path-existence probes are inconclusive
   // and must not be reported as exposures. Computed once in runUrlChecks.
   catchAll200: boolean;
+  // Jurisdiction context (optional — additive). `targetMarkets` are user-declared,
+  // `detectedMarkets` are auto-detected from the page, `effectiveMarkets` is the
+  // resolved set used for filtering (declared if any, else detected). Modules can
+  // read these but the central applyJurisdictionFilter does the actual scoping.
+  targetMarkets?: JurisdictionCode[];
+  detectedMarkets?: JurisdictionCode[];
+  effectiveMarkets?: JurisdictionCode[];
 }
 
 // Note appended to security findings when the host serves catch-all 200s, so the

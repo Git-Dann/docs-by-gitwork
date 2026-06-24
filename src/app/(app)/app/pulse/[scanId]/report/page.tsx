@@ -501,6 +501,35 @@ export default async function PulseReportPage({
             </div>
           )}
 
+          {/* ── Compliance by market ─────────────────────────── */}
+          {scan.complianceScorecard && scan.complianceScorecard.length > 0 && (
+            <div style={{ marginBottom: 48 }}>
+              <div className="rp-widget-h kb">
+                <span className="rp-widget-label">COMPLIANCE BY MARKET</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18, marginTop: 14 }}>
+                {scan.complianceScorecard.map((entry) => {
+                  const color = entry.compliancePct >= 80 ? "#16a34a" : entry.compliancePct >= 50 ? "#d97706" : "#dc2626";
+                  return (
+                    <div key={entry.jurisdiction} className="kb">
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{entry.label} · {entry.primaryLaw}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{entry.compliancePct}% · {entry.passing}/{entry.requiredChecks}</span>
+                      </div>
+                      {entry.missing.length > 0 && (
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>
+                          {entry.missing.map((m) => (
+                            <li key={m.checkKey} style={{ fontSize: 11.5, lineHeight: 1.6, color: "#4b5563" }}>{m.label}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── Footer ───────────────────────────────────────── */}
           <div className="rp-footer">
             <span>Confidential · Prepared by Gitwork · foundry.gitwork.co.uk</span>

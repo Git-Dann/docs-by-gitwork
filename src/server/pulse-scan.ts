@@ -1,8 +1,15 @@
 import { safeGithubRequest, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
+import {
+  type JurisdictionCode,
+  CHECK_JURISDICTIONS,
+  checkAppliesToMarkets,
+  detectMarketsFromPage,
+} from "./pulse-checks/jurisdictions";
+import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 
-export const SCAN_VERSION = "pulse-v1";
+export const SCAN_VERSION = "pulse-v2";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -542,22 +549,54 @@ function applyPlatformFilter(checks: PulseScanCheckInput[], platform: string): P
   });
 }
 
+/**
+ * Apply jurisdiction-aware filtering (parallel to applyPlatformFilter): a
+ * compliance check tagged for markets the product doesn't serve is replaced with
+ * SKIPPED. Because calculateHealthScore excludes SKIPPED, this neither penalises
+ * nor inflates the score — it just stops e.g. Brazil LGPD from showing on a
+ * US/EU-only product. Untagged (global) checks always pass through. With no
+ * market context (markets empty) nothing is filtered.
+ */
+function applyJurisdictionFilter(
+  checks: PulseScanCheckInput[],
+  markets: JurisdictionCode[],
+): PulseScanCheckInput[] {
+  if (markets.length === 0) return checks;
+  return checks.map((check) => {
+    if (checkAppliesToMarkets(check.checkKey, markets)) return check;
+    const tags = CHECK_JURISDICTIONS[check.checkKey] ?? [];
+    return {
+      ...check,
+      status: "SKIPPED" as const,
+      detail: `Not applicable to your selected markets (${markets.join(", ")}) — this requirement targets ${tags.join(", ") || "another region"}.`,
+    };
+  });
+}
+
 export async function runUrlChecks(
   url: string,
   platform?: string,
   onWave?: (checks: PulseScanCheckInput[]) => void,
-): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+  targetMarkets?: JurisdictionCode[],
+): Promise<{ checks: PulseScanCheckInput[]; techStack: string[]; detectedMarkets: JurisdictionCode[] }> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
-    return runMobileStoreChecks(url, urlType);
+    return { ...(await runMobileStoreChecks(url, urlType)), detectedMarkets: [] };
   }
 
   const checks: PulseScanCheckInput[] = [];
+  // Effective markets for filtering. Declared markets are authoritative and known
+  // up front; if none were declared we fall back to markets auto-detected from the
+  // page (set below, before the compliance/extended checks stream). Mutable so the
+  // emit wrapper picks up the detected fallback once the page has been read.
+  let effectiveMarkets: JurisdictionCode[] = targetMarkets ?? [];
+  let detectedMarkets: JurisdictionCode[] = [];
   // Optional incremental emitter — fires partial waves so callers (runLiteScan)
-  // can persist + stream checks as they land. Applies the same platform filter
-  // the final return uses, so streamed statuses match the authoritative set.
+  // can persist + stream checks as they land. Applies the same platform +
+  // jurisdiction filters the final return uses, so streamed statuses match.
   const emit = onWave
-    ? (batch: PulseScanCheckInput[]) => onWave(platform ? applyPlatformFilter(batch, platform) : batch)
+    ? (batch: PulseScanCheckInput[]) =>
+        onWave(applyJurisdictionFilter(platform ? applyPlatformFilter(batch, platform) : batch, effectiveMarkets))
     : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
@@ -934,6 +973,14 @@ export async function runUrlChecks(
 
     // Legal & Compliance
     const htmlLower = pageResult.html.toLowerCase();
+
+    // Auto-detect the markets this site appears to serve (TLD / lang / currency).
+    // Used as the jurisdiction-filter fallback when the user didn't declare markets;
+    // always recorded for audit + the "we also detected X" UI hint. Set before the
+    // extended/compliance checks stream so emitted statuses match the final set.
+    detectedMarkets = detectMarketsFromPage({ hostname, html: pageResult.html, htmlLower });
+    if (effectiveMarkets.length === 0) effectiveMarkets = detectedMarkets;
+
     const hasPrivacy = ["/privacy", "/privacy-policy", "/legal/privacy", "/legal"].some((p) =>
       htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
       htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
@@ -2785,6 +2832,9 @@ export async function runUrlChecks(
         ctx,
         htmlLower,
         catchAll200,
+        targetMarkets,
+        detectedMarkets,
+        effectiveMarkets,
       }, emit);
       checks.push(...extended);
     } catch {
@@ -3272,8 +3322,9 @@ export async function runUrlChecks(
 
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html) : [];
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const filteredChecks = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
-  return { checks: filteredChecks, techStack };
+  const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
+  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
+  return { checks: filteredChecks, techStack, detectedMarkets };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
@@ -4272,29 +4323,8 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
   }));
 }
 
+// The health score and its "why this score" breakdown share one implementation
+// (computeScoreBreakdown) so the explanation can never diverge from the number.
 export function calculateHealthScore(checks: PulseScanCheckInput[]): number {
-  const weightedCategories = new Set(["Infrastructure", "Security", "Legal & Compliance"]);
-  let totalWeight = 0;
-  let earned = 0;
-
-  for (const check of checks) {
-    if (check.status === "SKIPPED") continue;
-    const weight = weightedCategories.has(check.category) ? 2 : 1;
-    totalWeight += weight;
-    if (check.status === "PASS") earned += weight;
-    else if (check.status === "WARN") earned += weight * 0.5;
-  }
-
-  if (totalWeight === 0) return 0;
-  let score = Math.round((earned / totalWeight) * 100);
-
-  // Hard caps for production blockers — these are binary launch gates
-  const hasNoSSL = checks.some((c) => c.checkKey === "ssl_valid" && c.status === "FAIL");
-  const hasNoPrivacy = checks.some((c) => c.checkKey === "privacy_policy" && c.status === "FAIL");
-  const hasNoTerms = checks.some((c) => c.checkKey === "terms_of_service" && c.status === "FAIL");
-
-  if (hasNoSSL) score = Math.min(score, 50);
-  if (hasNoPrivacy || hasNoTerms) score = Math.min(score, 65);
-
-  return score;
+  return computeScoreBreakdown(checks).finalScore;
 }

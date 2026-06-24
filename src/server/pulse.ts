@@ -11,6 +11,9 @@ import {
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
 import { calculateHealthScore, SCAN_VERSION, skipAllChecks } from "@/server/pulse-scan";
+import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
+import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
@@ -33,6 +36,8 @@ import type {
   CompetitorData,
   CompetitorScanSummary,
   IndustryBenchmark,
+  JurisdictionScorecardEntry,
+  ScoreBreakdown,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 
@@ -83,6 +88,10 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     aiError: ((record.agentData as { aiError?: string | null } | null)?.aiError) ?? null,
     competitorUrls: asJson<string[] | null>(record.competitorUrls, null),
     competitorData: asJson<CompetitorData | null>(record.competitorData, null),
+    targetMarkets: asJson<string[] | null>(record.targetMarkets, null),
+    detectedMarkets: asJson<string[] | null>(record.detectedMarkets, null),
+    complianceScorecard: asJson<JurisdictionScorecardEntry[] | null>(record.complianceScorecard, null),
+    scoreBreakdown: asJson<ScoreBreakdown | null>(record.scoreBreakdown, null),
     shareToken: record.shareToken,
     isShared: record.isShared,
     errorCode: record.errorCode,
@@ -313,6 +322,9 @@ export async function createPulseScanRecord(input: {
   clientId?: string;
   aiProvider?: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   competitorUrls?: string[];
+  /** Jurisdiction codes the product serves (e.g. "EU", "US-CA"). Drives the
+   *  per-jurisdiction compliance scorecard + which compliance checks apply. */
+  targetMarkets?: string[];
   /** User who initiated this scan — null for monitor/webhook triggers. Used by
    *  push to route the completion notification to a single user vs. the whole
    *  workspace. */
@@ -367,6 +379,9 @@ export async function createPulseScanRecord(input: {
       previousHealthScore: previousScan?.healthScore ?? null,
       competitorUrls: input.competitorUrls && input.competitorUrls.length > 0
         ? (input.competitorUrls as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+      targetMarkets: input.targetMarkets && input.targetMarkets.length > 0
+        ? (input.targetMarkets as unknown as Prisma.InputJsonValue)
         : Prisma.JsonNull,
     },
     include: pulseInclude,
@@ -424,9 +439,13 @@ export async function retryPulseScan(scanId: string): Promise<{
       status: "RUNNING",
       startedAt: new Date(),
       completedAt: null,
+      checksCompletedAt: null,
       healthScore: null,
       techStack: Prisma.JsonNull,
       llmAnalysis: Prisma.JsonNull,
+      detectedMarkets: Prisma.JsonNull,
+      complianceScorecard: Prisma.JsonNull,
+      scoreBreakdown: Prisma.JsonNull,
       errorCode: null,
       errorMessage: null,
     },
@@ -599,9 +618,13 @@ export async function runAnalysis(
     // bail out early rather than corrupting results with double-writes.
     const staleScan = await prisma.pulseScan.findUnique({
       where: { id: scanId },
-      select: { status: true, startedAt: true },
+      select: { status: true, startedAt: true, targetMarkets: true },
     });
     if (staleScan && staleScan.status !== "RUNNING") return;
+    // User-declared markets the product serves (drives compliance filtering + scorecard).
+    const declaredMarkets = (Array.isArray(staleScan?.targetMarkets) ? staleScan!.targetMarkets : [])
+      .filter((m): m is string => typeof m === "string")
+      .filter(isJurisdictionCode) as JurisdictionCode[];
     // If it's been RUNNING for more than 4 minutes before we even start the
     // heavy work, something went very wrong — mark it failed immediately.
     // (maxDuration = 300s, so at 4 min we've used 80% of the budget already.)
@@ -639,6 +662,7 @@ export async function runAnalysis(
 
     let allChecks: PulseScanCheckInput[];
     let techStack: string[] = [];
+    let detectedMarkets: JurisdictionCode[] = [];
     let codeInsights: CodeAgentInsights | null = null;
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
@@ -655,6 +679,7 @@ export async function runAnalysis(
         platform: input.platform,
         includePageSpeed: true,
         skipUrlGuard: true, // internal team scans (may target platform subdomains)
+        targetMarkets: declaredMarkets.length > 0 ? declaredMarkets : undefined,
         onChecks: persistChecks,
       });
       allChecks = lite.checks;
@@ -662,9 +687,15 @@ export async function runAnalysis(
       codeInsights = lite.codeInsights;
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
+      detectedMarkets = lite.detectedMarkets;
     }
 
     const healthScore = calculateHealthScore(allChecks);
+    // Jurisdiction compliance: effective markets = declared (authoritative) else
+    // auto-detected. Scorecard + score breakdown are deterministic (no AI).
+    const effectiveMarkets = resolveTargetMarkets(declaredMarkets, detectedMarkets).effective;
+    const complianceScorecard = computeComplianceScorecard(allChecks, effectiveMarkets);
+    const scoreBreakdown = computeScoreBreakdown(allChecks);
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).
@@ -695,6 +726,9 @@ export async function runAnalysis(
         checksCompletedAt: new Date(),
         techStack: techStack as unknown as Prisma.InputJsonValue,
         agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
+        detectedMarkets: detectedMarkets.length > 0 ? (detectedMarkets as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        complianceScorecard: complianceScorecard.length > 0 ? (complianceScorecard as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        scoreBreakdown: scoreBreakdown as unknown as Prisma.InputJsonValue,
       },
     });
 

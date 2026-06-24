@@ -334,6 +334,38 @@ export default async function PublicReportPage({
           </div>
         )}
 
+        {/* Compliance by market */}
+        {scan.complianceScorecard && scan.complianceScorecard.length > 0 && (
+          <div className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header-label">COMPLIANCE BY MARKET</span>
+              <span className="widget-header-right">
+                {scan.complianceScorecard.reduce((n, e) => n + e.failing, 0)} requirements outstanding
+              </span>
+            </div>
+            <div className="widget-body space-y-4">
+              {scan.complianceScorecard.map((entry) => {
+                const tone = entry.compliancePct >= 80 ? "text-emerald-600" : entry.compliancePct >= 50 ? "text-amber-600" : "text-red-600";
+                return (
+                  <div key={entry.jurisdiction}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-[var(--text-1)]">{entry.label} · {entry.primaryLaw}</span>
+                      <span className={cn("text-xs font-bold tabular-nums", tone)}>{entry.compliancePct}% · {entry.passing}/{entry.requiredChecks}</span>
+                    </div>
+                    {entry.missing.length > 0 && (
+                      <ul className="mt-1.5 space-y-1">
+                        {entry.missing.map((m) => (
+                          <li key={m.checkKey} className="text-xs leading-5 text-[var(--text-3)]">• {m.label}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Core Web Vitals */}
         {scan.browserInsights && <VitalsGrid insights={scan.browserInsights} />}
 

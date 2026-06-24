@@ -619,6 +619,9 @@ export const pulseScanCreateSchema = z
     clientId: z.string().cuid().optional(),
     aiProvider: z.enum(["ANTHROPIC", "OPENAI", "GEMINI", "LOCAL"]).optional(),
     competitorUrls: z.array(z.string().trim().min(1)).max(3).optional(),
+    // Jurisdiction codes the product serves (e.g. "EU", "UK", "US", "US-CA"). Validated
+    // loosely here; unknown codes are dropped downstream by resolveTargetMarkets().
+    targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
     projectDescription: z.string().trim().max(500).optional(),
     testEmail: z.string().email().optional(),
     testPassword: z.string().max(200).optional(),

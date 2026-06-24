@@ -28,6 +28,7 @@ import { runBusinessOperationsChecks } from "./pulse-checks/business-operations"
 import { runApiQualityChecks } from "./pulse-checks/api-quality";
 import { runAiReadinessChecks } from "./pulse-checks/ai-readiness";
 import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
+import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
 
 export type { ExtendedCheckContext };
 
@@ -65,6 +66,7 @@ export async function runExtendedChecks(
     runApiQualityChecks,
     runAiReadinessChecks,
     runVibeCodeHygieneChecks,
+    runUsPrivacyExtended,
   ];
 
   const results = await Promise.allSettled(

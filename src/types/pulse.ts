@@ -162,6 +162,52 @@ export interface EngagementEstimate {
 
 export const AI_MATURITY_LABELS: readonly string[] = ["Prototype", "Functional", "Production", "Robust", "Mature"];
 
+/** One requirement that a selected jurisdiction expects but the scan didn't satisfy. */
+export interface ComplianceGapItem {
+  checkKey: string;
+  label: string;
+  detail: string;
+}
+
+/** Per-jurisdiction compliance breakdown — deterministic, computed from the checks.
+ *  `jurisdiction` is a JurisdictionCode (kept as string here to avoid coupling the
+ *  shared types file to the server-side taxonomy module). */
+export interface JurisdictionScorecardEntry {
+  jurisdiction: string;
+  label: string;
+  primaryLaw: string;
+  requiredChecks: number;
+  passing: number;
+  failing: number;
+  missing: ComplianceGapItem[];
+  compliancePct: number;
+}
+
+/** "Why this score" breakdown — mirrors calculateHealthScore so the explanation
+ *  can never drift from the headline number. */
+export interface ScoreCategoryBreakdown {
+  category: string;
+  weight: number;
+  pass: number;
+  warn: number;
+  fail: number;
+  skipped: number;
+  earned: number;
+  possible: number;
+}
+export interface ScoreCap {
+  cap: number;
+  reason: string;
+}
+export interface ScoreBreakdown {
+  rawScore: number;
+  finalScore: number;
+  totalWeight: number;
+  earnedWeight: number;
+  byCategory: ScoreCategoryBreakdown[];
+  capsApplied: ScoreCap[];
+}
+
 export interface PulseScanRecord {
   id: string;
   workspaceId: string;
@@ -190,6 +236,14 @@ export interface PulseScanRecord {
   aiError: string | null;
   competitorUrls: string[] | null;
   competitorData: CompetitorData | null;
+  /** Jurisdiction codes the user declared this product serves (null = legacy/auto-only). */
+  targetMarkets: string[] | null;
+  /** Jurisdiction codes auto-detected during the scan (audit + legacy fallback). */
+  detectedMarkets: string[] | null;
+  /** Deterministic per-market required/missing compliance breakdown. */
+  complianceScorecard: JurisdictionScorecardEntry[] | null;
+  /** "Why this score" — per-category contribution + any hard caps applied. */
+  scoreBreakdown: ScoreBreakdown | null;
   shareToken: string | null;
   isShared: boolean;
   errorCode: string | null;

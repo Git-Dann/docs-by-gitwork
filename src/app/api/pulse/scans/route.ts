@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       clientId: body.clientId,
       aiProvider: body.aiProvider,
       competitorUrls: body.competitorUrls,
+      targetMarkets: body.targetMarkets,
       triggeredByUserId: requestUser?.id ?? null,
     });
 
