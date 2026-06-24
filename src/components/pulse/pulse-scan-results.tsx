@@ -412,6 +412,83 @@ function StackTab({
           </div>
         </div>
       )}
+
+      {/* Target architecture — recommended 2026 stack per layer with migration cost/risk */}
+      {analysis.targetArchitecture && analysis.targetArchitecture.length > 0 && (
+        <div>
+          <p className="mb-1 text-sm font-semibold text-[var(--text-1)]">Recommended architecture</p>
+          <p className="mb-3 text-xs text-[var(--text-4)]">The stack we&apos;d target for this product, with the effort, cost and risk of getting there.</p>
+          <div className="space-y-3">
+            {analysis.targetArchitecture.map((t, i) => {
+              const layerLabel = INFRA_LABELS.find((l) => l.key === t.layer)?.label ?? t.layer;
+              const riskTone = t.risk.level === "LOW" ? "bg-emerald-50 text-emerald-700" : t.risk.level === "MEDIUM" ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700";
+              return (
+                <div key={i} className="rounded-[10px] border border-[var(--border-2)] p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="widget-data-label">{layerLabel}</span>
+                    {t.current && <span className="text-xs text-[var(--text-4)]">{t.current}</span>}
+                    <span className="text-sm font-semibold text-[var(--brand-600)]">→ {t.recommended}</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", riskTone)}>{t.risk.level} risk</span>
+                    <span className="ml-auto text-xs text-[var(--text-4)] tabular-nums">{t.migration.effort} · ~{t.migration.weeks}w · {t.appliesAt}</span>
+                  </div>
+                  <p className="mt-1.5 text-sm leading-5 text-[var(--text-2)]">{t.rationale}</p>
+                  {t.migration.steps.length > 0 && (
+                    <ol className="mt-2 space-y-0.5">
+                      {t.migration.steps.map((s, j) => (
+                        <li key={j} className="text-xs leading-5 text-[var(--text-3)]">{j + 1}. {s}</li>
+                      ))}
+                    </ol>
+                  )}
+                  {t.migration.blockers.length > 0 && (
+                    <p className="mt-1.5 text-[11px] leading-4 text-amber-700">⚠ {t.migration.blockers.join(" · ")}</p>
+                  )}
+                  {t.alternativeOptions.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-medium text-[var(--text-3)] hover:text-[var(--text-1)]">
+                        {t.alternativeOptions.length} alternative{t.alternativeOptions.length !== 1 ? "s" : ""}
+                      </summary>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {t.alternativeOptions.map((alt, k) => (
+                          <div key={k} className="rounded-[8px] bg-[var(--surface-1)] p-2.5">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-xs font-semibold text-[var(--text-1)]">{alt.name}</span>
+                              {alt.approxCostPerMonthGbp > 0 && <span className="text-[10px] text-[var(--text-4)] tabular-nums">£{alt.approxCostPerMonthGbp}/mo</span>}
+                            </div>
+                            {alt.pros.length > 0 && <p className="mt-0.5 text-[11px] leading-4 text-emerald-700">+ {alt.pros.join(", ")}</p>}
+                            {alt.cons.length > 0 && <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-4)]">− {alt.cons.join(", ")}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Migration roadmap */}
+      {analysis.architecturePhases && analysis.architecturePhases.length > 0 && (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-[var(--text-1)]">Migration roadmap</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {analysis.architecturePhases.map((p, i) => (
+              <div key={i} className="flex-1 rounded-[10px] border border-[var(--border-2)] p-3">
+                <p className="text-xs font-semibold text-[var(--text-1)]">Phase {p.phase} · {p.duration}</p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {p.layers.map((layer) => (
+                    <span key={layer} className="rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
+                      {INFRA_LABELS.find((l) => l.key === layer)?.label ?? layer}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-4 text-[var(--text-3)]">{p.outcome}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1154,6 +1231,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [showReanalyseInput, setShowReanalyseInput] = useState(false);
   const [discoveryExpanded, setDiscoveryExpanded] = useState(false);
   const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "PASS">("ALL");
+  const [pricingTier, setPricingTier] = useState(2); // selected team size for the engagement estimate
   const [checksSortBySeverity, setChecksSortBySeverity] = useState(false);
 
   // Scan → Action: "+ Task" on failing checks creates a Portal task on the linked
@@ -1768,6 +1846,20 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       </div>
                     ))}
                   </div>
+                  {/* Trust readout — how much of this is proven vs unsure */}
+                  {(() => {
+                    const b = (name: string) => scan.checks.filter((c) => c.trustBucket === name).length;
+                    const confirmed = b("CONFIRMED"), likely = b("LIKELY"), inconclusive = b("INCONCLUSIVE"), working = b("VERIFIED_WORKING");
+                    if (confirmed + likely + inconclusive + working === 0) return null;
+                    return (
+                      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
+                        {working > 0 && <span className="text-emerald-600">{working} verified working</span>}
+                        {confirmed > 0 && <span className="text-red-600">{confirmed} confirmed issue{confirmed !== 1 ? "s" : ""}</span>}
+                        {likely > 0 && <span className="text-amber-600">{likely} likely</span>}
+                        {inconclusive > 0 && <span className="text-[var(--text-3)]">{inconclusive} inconclusive</span>}
+                      </div>
+                    );
+                  })()}
                   {(llm?.projectClassification || llm?.aiMaturityScore != null) && (
                     <div className="mb-3 flex flex-wrap gap-1.5">
                       {llm?.projectClassification && (
@@ -2353,7 +2445,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {llm?.engagementEstimate && (llm.engagementEstimate.weeksHigh > 0 || llm.engagementEstimate.priceHigh > 0) && (() => {
             const e = llm.engagementEstimate!;
             const gbp = (n: number) => `£${Math.round(n).toLocaleString("en-GB")}`;
-            const weeks = e.weeksLow && e.weeksHigh && e.weeksLow !== e.weeksHigh ? `${e.weeksLow}–${e.weeksHigh}` : `${e.weeksHigh || e.weeksLow}`;
+            const bands = scan.pricingBands ?? [];
+            const band = bands.find((b) => b.devs === pricingTier) ?? bands[0] ?? null;
+            // Prefer the deterministic, rate-card-grounded band; fall back to the AI estimate.
+            const weeksLow = band ? band.weeksLow : e.weeksLow;
+            const weeksHigh = band ? band.weeksHigh : e.weeksHigh;
+            const priceLow = band ? band.priceLowGbp : e.priceLow;
+            const priceHigh = band ? band.priceHighGbp : e.priceHigh;
+            const weeks = weeksLow && weeksHigh && weeksLow !== weeksHigh ? `${weeksLow}–${weeksHigh}` : `${weeksHigh || weeksLow}`;
             return (
               <div className="widget-card">
                 <div className="widget-header">
@@ -2362,6 +2461,29 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 </div>
                 <div className="widget-body">
                   {e.summary && <p className="mb-4 text-sm leading-6 text-[var(--text-2)]">{e.summary}</p>}
+                  {bands.length > 0 && (
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="widget-data-label">Team size</span>
+                      <div className="flex gap-1">
+                        {bands.map((b) => (
+                          <button
+                            key={b.devs}
+                            type="button"
+                            onClick={() => setPricingTier(b.devs)}
+                            className={cn(
+                              "rounded-[6px] border px-2.5 py-1 text-xs font-medium transition",
+                              b.devs === pricingTier
+                                ? "border-[var(--brand-400)] bg-[var(--surface-brand-soft)] text-[var(--brand-700)]"
+                                : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--brand-300)]",
+                            )}
+                          >
+                            {b.devs} dev{b.devs > 1 ? "s" : ""}
+                          </button>
+                        ))}
+                      </div>
+                      {band && <span className="text-xs text-[var(--text-4)]">~{gbp(band.blendedDayRateGbp)}/day blended</span>}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-[8px] bg-[var(--surface-1)] p-3">
                       <p className="widget-data-label mb-1">Timeline</p>
@@ -2372,7 +2494,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                     <div className="rounded-[8px] bg-[var(--surface-1)] p-3">
                       <p className="widget-data-label mb-1">Indicative cost</p>
                       <p className="font-serif text-3xl font-bold leading-none tabular-nums text-[var(--text-1)]">
-                        {e.priceHigh > 0 ? `${gbp(e.priceLow)}–${gbp(e.priceHigh)}` : "—"}
+                        {priceHigh > 0 ? `${gbp(priceLow)}–${gbp(priceHigh)}` : "—"}
                       </p>
                     </div>
                   </div>
@@ -2564,9 +2686,30 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                               <PulseCheckStatusIcon status={check.status} />
                             </span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
+                                {check.confidence && check.status !== "SKIPPED" && (
+                                  <span
+                                    title={check.confidenceReason ?? undefined}
+                                    className={cn(
+                                      "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                      check.trustBucket === "INCONCLUSIVE" ? "bg-[var(--surface-2)] text-[var(--text-3)]"
+                                      : check.confidence === "HIGH" ? "bg-emerald-50 text-emerald-700"
+                                      : check.confidence === "LOW" ? "bg-amber-50 text-amber-700"
+                                      : "bg-[var(--surface-1)] text-[var(--text-3)]",
+                                    )}
+                                  >
+                                    {check.trustBucket === "INCONCLUSIVE" ? "inconclusive"
+                                      : check.confidence === "HIGH" ? "confirmed"
+                                      : `${check.confidence.toLowerCase()} confidence`}
+                                  </span>
+                                )}
+                              </div>
                               {check.detail && (
                                 <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
+                              )}
+                              {check.evidence && (
+                                <p className="mt-0.5 font-mono text-[10px] leading-4 text-[var(--text-4)]">{check.evidence}</p>
                               )}
                             </div>
                             {scan.clientId && (check.status === "FAIL" || check.status === "WARN") && (() => {

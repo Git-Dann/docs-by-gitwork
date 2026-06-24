@@ -22,6 +22,7 @@ import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
+import { annotateTrust } from "@/server/pulse-checks/confidence";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
@@ -72,7 +73,8 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     const fresh: PulseScanCheckInput[] = [];
     for (const c of batch) {
       if (seen.has(c.checkKey)) continue;
-      const withOrder = { ...c, sortOrder: order++ };
+      // Trust layer — stamp confidence + bucket centrally (covers every probe).
+      const withOrder = { ...annotateTrust(c), sortOrder: order++ };
       seen.set(c.checkKey, withOrder);
       collected.push(withOrder);
       fresh.push(withOrder);

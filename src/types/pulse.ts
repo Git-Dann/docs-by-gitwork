@@ -32,11 +32,33 @@ export interface InfrastructureStack {
   cicd: string | null;
 }
 
+/** One layer of the recommended 2026 target architecture, with migration cost/risk. */
+export interface TargetArchitectureLayer {
+  layer: string;        // one of the InfrastructureStack keys (frontend, database, …)
+  current: string | null;
+  recommended: string;
+  alternativeOptions: { name: string; pros: string[]; cons: string[]; approxCostPerMonthGbp: number }[];
+  migration: { effort: PulseEffort; weeks: number; steps: string[]; blockers: string[] };
+  risk: { level: "LOW" | "MEDIUM" | "HIGH"; concerns: string[]; mitigation: string };
+  rationale: string;
+  appliesAt: "MVP" | "GROWTH" | "SCALE";
+}
+
+export interface ArchitecturePhase {
+  phase: number;
+  duration: string;
+  layers: string[];
+  outcome: string;
+}
+
 export interface PulseTechStackAnalysis {
   assessment: string;
   detectedStack: InfrastructureStack;
   recommendations: TechStackRecommendation[];
   missingForProduction: string[];
+  // Phase 2 (optional, additive): full target architecture + phased migration path.
+  targetArchitecture?: TargetArchitectureLayer[];
+  architecturePhases?: ArchitecturePhase[];
 }
 
 export interface PulseScanCheckRecord {
@@ -50,6 +72,9 @@ export interface PulseScanCheckRecord {
   evidence: string | null;
   sortOrder: number;
   createdAt: string;
+  confidence: CheckConfidence | null;
+  confidenceReason: string | null;
+  trustBucket: TrustBucket | null;
 }
 
 export interface PulseStrength {
@@ -162,6 +187,24 @@ export interface EngagementEstimate {
 
 export const AI_MATURITY_LABELS: readonly string[] = ["Prototype", "Functional", "Production", "Robust", "Mature"];
 
+/** A pricing/timeline tier for a given team size — deterministic, GBP, rate-card-grounded. */
+export interface PricingBand {
+  devs: number;          // 1 | 2 | 3
+  weeksLow: number;      // calendar weeks for this team size
+  weeksHigh: number;
+  priceLowGbp: number;
+  priceHighGbp: number;
+  blendedDayRateGbp: number;
+  rationale: string;     // e.g. "2 devs · ~6 wks · coordination overhead applied"
+}
+
+/** Workspace-level Pulse pricing config (stored on Workspace.pulsePricingConfig). */
+export interface PulsePricingConfig {
+  fxFromUsd: number;            // USD→GBP multiplier for rate-card conversion (e.g. 0.79)
+  dayRateOverrideGbp?: number;  // if set, used instead of the rate-card blend
+  seniority?: "mid" | "senior"; // which band of the rate card to blend
+}
+
 /** One requirement that a selected jurisdiction expects but the scan didn't satisfy. */
 export interface ComplianceGapItem {
   checkKey: string;
@@ -244,6 +287,8 @@ export interface PulseScanRecord {
   complianceScorecard: JurisdictionScorecardEntry[] | null;
   /** "Why this score" — per-category contribution + any hard caps applied. */
   scoreBreakdown: ScoreBreakdown | null;
+  /** Deterministic dev-tier pricing/timeline bands (1/2/3 devs), GBP. */
+  pricingBands: PricingBand[] | null;
   shareToken: string | null;
   isShared: boolean;
   errorCode: string | null;
@@ -280,6 +325,9 @@ export interface IndustryBenchmark {
   best: number;          // best peer health score
 }
 
+export type CheckConfidence = "HIGH" | "MEDIUM" | "LOW";
+export type TrustBucket = "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE";
+
 export interface PulseScanCheckInput {
   category: string;
   checkKey: string;
@@ -288,6 +336,10 @@ export interface PulseScanCheckInput {
   detail?: string;
   evidence?: string;
   sortOrder?: number;
+  // Trust layer — how sure we are this check is true, and which bucket it falls in.
+  confidence?: CheckConfidence;
+  confidenceReason?: string;
+  trustBucket?: TrustBucket;
 }
 
 // ── Agent intelligence outputs ────────────────────────────────────────────────

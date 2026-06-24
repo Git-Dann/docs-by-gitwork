@@ -14,6 +14,7 @@ import { calculateHealthScore, SCAN_VERSION, skipAllChecks } from "@/server/puls
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
@@ -25,6 +26,7 @@ import {
 } from "@/server/push/notifications";
 import type {
   PulseScanRecord,
+  PulseScanCheckRecord,
   PulseScanListItem,
   PulseScanCheckInput,
   PulseAnalysisOutput,
@@ -38,6 +40,7 @@ import type {
   IndustryBenchmark,
   JurisdictionScorecardEntry,
   ScoreBreakdown,
+  PricingBand,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 
@@ -92,6 +95,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     detectedMarkets: asJson<string[] | null>(record.detectedMarkets, null),
     complianceScorecard: asJson<JurisdictionScorecardEntry[] | null>(record.complianceScorecard, null),
     scoreBreakdown: asJson<ScoreBreakdown | null>(record.scoreBreakdown, null),
+    pricingBands: asJson<PricingBand[] | null>(record.pricingBands, null),
     shareToken: record.shareToken,
     isShared: record.isShared,
     errorCode: record.errorCode,
@@ -108,6 +112,9 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
       evidence: check.evidence,
       sortOrder: check.sortOrder,
       createdAt: check.createdAt.toISOString(),
+      confidence: (check.confidence as PulseScanCheckRecord["confidence"]) ?? null,
+      confidenceReason: check.confidenceReason ?? null,
+      trustBucket: (check.trustBucket as PulseScanCheckRecord["trustBucket"]) ?? null,
     })),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -446,6 +453,7 @@ export async function retryPulseScan(scanId: string): Promise<{
       detectedMarkets: Prisma.JsonNull,
       complianceScorecard: Prisma.JsonNull,
       scoreBreakdown: Prisma.JsonNull,
+      pricingBands: Prisma.JsonNull,
       errorCode: null,
       errorMessage: null,
     },
@@ -656,6 +664,9 @@ export async function runAnalysis(
           detail: check.detail ?? null,
           evidence: check.evidence ?? null,
           sortOrder: check.sortOrder ?? 0,
+          confidence: check.confidence ?? null,
+          confidenceReason: check.confidenceReason ?? null,
+          trustBucket: check.trustBucket ?? null,
         })),
       });
     };
@@ -884,8 +895,21 @@ export async function runAnalysis(
 
     // Phase 2: persist AI analysis and mark COMPLETED. Deterministic checks +
     // browser/PSI checks were already persisted incrementally in the CHECKS phase.
-    const current = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { status: true } });
+    const current = await prisma.pulseScan.findUnique({
+      where: { id: scanId },
+      select: { status: true, workspaceId: true, workspace: { select: { pulsePricingConfig: true } } },
+    });
     if (current?.status !== "RUNNING") return;
+
+    // Deterministic dev-tier pricing bands from the AI effort estimate (GBP, rate-card-grounded).
+    let pricingBands: PricingBand[] = [];
+    if (llmAnalysis?.engagementEstimate && current.workspaceId) {
+      pricingBands = await computePricingBandsForWorkspace(
+        current.workspaceId,
+        current.workspace?.pulsePricingConfig ?? null,
+        llmAnalysis.engagementEstimate,
+      ).catch(() => []);
+    }
 
     await prisma.pulseScan.update({
       where: { id: scanId },
@@ -897,6 +921,7 @@ export async function runAnalysis(
           : Prisma.JsonNull,
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        pricingBands: pricingBands.length > 0 ? (pricingBands as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });

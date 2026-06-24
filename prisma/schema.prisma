@@ -300,6 +300,7 @@ model Workspace {
   // ── Backstage (internal ops) ────────────────────────────────────────
   defaultAnnualLeaveDays      Int                        @default(25)
   expenseCategories           Json? // Optional override of the hardcoded category list
+  pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   /// ISO-3166-1 alpha-2 country codes whose public/religious holidays show on the
   /// team calendar for EVERYONE (workspace-wide), independent of where each member
   /// is based. Defaults to UK + Pakistan; admins can extend to other countries.
@@ -1791,6 +1792,7 @@ model PulseScan {
   detectedMarkets     Json? // JurisdictionCode[] — auto-detected at scan time (audit + legacy fallback)
   complianceScorecard Json? // JurisdictionScorecardEntry[] — deterministic per-market required/missing breakdown
   scoreBreakdown      Json? // ScoreBreakdown — "why this score" (per-category contribution + hard caps)
+  pricingBands        Json? // PricingBand[] — deterministic dev-tier pricing/timeline (1/2/3 devs)
   shareToken          String?            @unique
   isShared            Boolean            @default(false)
   errorCode           String?
@@ -1841,6 +1843,10 @@ model PulseScanCheck {
   evidence  String?
   sortOrder Int
   createdAt DateTime         @default(now())
+  // Trust layer (additive): how sure we are the check is true + which bucket.
+  confidence       String? // "HIGH" | "MEDIUM" | "LOW"
+  confidenceReason String?
+  trustBucket      String? // "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE"
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])

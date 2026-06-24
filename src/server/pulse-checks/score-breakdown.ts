@@ -34,6 +34,14 @@ export function computeScoreBreakdown(checks: PulseScanCheckInput[]): ScoreBreak
       entry.skipped++;
       continue;
     }
+    // Trust layer: a LOW-confidence FAIL/WARN is an unproven alarm — don't let it
+    // tank the score. Excluded from scoring (like SKIPPED); still shown in the UI
+    // as "Inconclusive". PASS at low confidence still counts (a working signal we
+    // saw, just weakly — excluding it would unfairly lower the score).
+    if (check.confidence === "LOW" && check.status !== "PASS") {
+      entry.skipped++;
+      continue;
+    }
     totalWeight += weight;
     entry.possible += weight;
     if (check.status === "PASS") {

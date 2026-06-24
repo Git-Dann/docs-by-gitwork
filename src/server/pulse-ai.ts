@@ -79,11 +79,43 @@ const infrastructureStackSchema = z.object({
   cicd: z.string().nullable(),
 });
 
+const targetArchitectureLayerSchema = z.object({
+  layer: z.string(),
+  current: z.string().nullable(),
+  recommended: z.string(),
+  alternativeOptions: z.array(z.object({
+    name: z.string(),
+    pros: z.array(z.string()).catch([]),
+    cons: z.array(z.string()).catch([]),
+    approxCostPerMonthGbp: z.number().catch(0),
+  })).catch([]),
+  migration: z.object({
+    effort: z.enum(["S", "M", "L", "XL"]).catch("M"),
+    weeks: z.number().catch(0),
+    steps: z.array(z.string()).catch([]),
+    blockers: z.array(z.string()).catch([]),
+  }),
+  risk: z.object({
+    level: z.enum(["LOW", "MEDIUM", "HIGH"]).catch("MEDIUM"),
+    concerns: z.array(z.string()).catch([]),
+    mitigation: z.string().catch(""),
+  }),
+  rationale: z.string(),
+  appliesAt: z.enum(["MVP", "GROWTH", "SCALE"]).catch("GROWTH"),
+});
+
 const pulseTechStackAnalysisSchema = z.object({
   assessment: z.string(),
   detectedStack: infrastructureStackSchema,
   recommendations: z.array(techStackRecommendationSchema),
   missingForProduction: z.array(z.string()),
+  targetArchitecture: z.array(targetArchitectureLayerSchema).optional(),
+  architecturePhases: z.array(z.object({
+    phase: z.number(),
+    duration: z.string(),
+    layers: z.array(z.string()).catch([]),
+    outcome: z.string(),
+  })).optional(),
 });
 
 const pulseProjectClassificationSchema = z.object({
@@ -665,7 +697,22 @@ Return ONLY these 7 fields:
         "priority": "HIGH | MEDIUM | LOW"
       }
     ],
-    "missingForProduction": ["string — production-critical infrastructure components not detected"]
+    "missingForProduction": ["string — production-critical infrastructure components not detected"],
+    "targetArchitecture": [
+      {
+        "layer": "string — one of: frontend, backend, database, hosting, auth, payments, email, storage, caching, search, backgroundJobs, monitoring, analytics, cicd",
+        "current": "string or null — what's there today (from detectedStack)",
+        "recommended": "string — the recommended 2026 choice for THIS product type (use Gitwork's preferred vendors)",
+        "alternativeOptions": [{ "name": "string", "pros": ["string"], "cons": ["string"], "approxCostPerMonthGbp": "number — indicative monthly £" }],
+        "migration": { "effort": "S|M|L|XL", "weeks": "number — elapsed weeks to migrate this layer", "steps": ["string — concrete migration steps"], "blockers": ["string — what could block/complicate it"] },
+        "risk": { "level": "LOW|MEDIUM|HIGH", "concerns": ["string"], "mitigation": "string — how to de-risk the switch" },
+        "rationale": "string — why this matters for THIS product/vertical",
+        "appliesAt": "MVP|GROWTH|SCALE — the scale at which this becomes important"
+      }
+    ],
+    "architecturePhases": [
+      { "phase": "number", "duration": "string e.g. '4 weeks'", "layers": ["string — which layers this phase tackles"], "outcome": "string — what's true after this phase" }
+    ]
   },
   "competitorSuggestions": [
     {
@@ -706,7 +753,8 @@ For productionBlockers: list 3–8 items that are genuine launch blockers for TH
 
 Populate productionReadinessChecklist with 12–20 items relevant to the declared platform. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. For web/SaaS cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime). For mobile apps focus on: App Store compliance, crash reporting, push notifications, in-app payments, deep linking, auth flows. For APIs focus on: rate limiting, auth, versioning, documentation, monitoring.
 
-For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Use Gitwork preferred vendor names from the vendor list provided. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type and platform.`;
+For techStackAnalysis: detected stack is [${input.techStack.length > 0 ? input.techStack.join(", ") : "unknown — infer from HTML signals, response headers, and scan results"}]. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Use Gitwork preferred vendor names from the vendor list provided. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type and platform.
+For targetArchitecture: recommend the ideal 2026 stack for THIS product type, one entry per relevant infrastructure layer (cover the layers that matter for this product — typically 6–10 of the 14). For each: name the recommended choice + 1–2 viable alternatives with concrete pros/cons and an indicative monthly £ cost; size the migration (effort S/M/L/XL, elapsed weeks, concrete steps, real blockers); assess switching risk (data loss, query incompatibility, vendor lock-in) and how to de-risk it; explain why it matters for this vertical and at what scale (MVP/GROWTH/SCALE) it becomes important. Be realistic — a near-complete product needs few changes; a prototype needs the foundational layers. For architecturePhases: sequence the work into 2–4 phases (each tackling 2–3 layers, earliest phases unlocking the most value/risk-reduction first). Use Gitwork's preferred vendors consistently across layers.`;
 
   // Resolve system prompt — workspace override takes precedence over built-in default
   const resolvedSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
