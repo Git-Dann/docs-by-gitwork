@@ -3195,13 +3195,13 @@ function PendingReviewBanner({
   };
 
   return (
-    <section className="rounded-[10px] border border-amber-200 bg-amber-50 px-5 py-4">
+    <section className="rounded-[10px] border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-800/50 dark:bg-amber-950/30">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-amber-900">
+          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
             Pending activation review
           </p>
-          <p className="mt-0.5 text-xs text-amber-800">
+          <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300/90">
             {companyName} has {checklist.readyCount}/{checklist.totalCount} checks ready.
             {checklist.requiredMissing > 0
               ? ` ${checklist.requiredMissing} required check${checklist.requiredMissing === 1 ? "" : "s"} still need attention.`
@@ -3227,16 +3227,16 @@ function PendingReviewBanner({
             className={cn(
               "flex min-w-0 items-start gap-2 rounded-[8px] border bg-white px-3 py-2",
               item.complete
-                ? "border-emerald-200"
+                ? "border-emerald-200 dark:border-emerald-800/50"
                 : item.required
-                  ? "border-amber-300"
+                  ? "border-amber-300 dark:border-amber-700"
                   : "border-[var(--border-2)]",
             )}
           >
             {item.complete ? (
-              <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             ) : item.required ? (
-              <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             ) : (
               <XMarkIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
             )}
@@ -3244,7 +3244,7 @@ function PendingReviewBanner({
               <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-xs font-semibold text-[var(--text-1)]">{item.label}</p>
                 {item.required ? (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                     Required
                   </span>
                 ) : null}
@@ -3257,7 +3257,7 @@ function PendingReviewBanner({
         ))}
       </div>
       {error && (
-        <p className="mt-2 text-xs text-rose-700">{error}</p>
+        <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">{error}</p>
       )}
     </section>
   );
