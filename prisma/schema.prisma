@@ -959,8 +959,12 @@ model WorkspaceClient {
   /// Monthly retainer-day allocation. Optional — surfaced in the UI only when set.
   retainerDays         Int?
   /// Retainer days used in the current month (manually maintained). Paired with
-  /// retainerDays as a "used / allowance" readout. No auto monthly reset yet.
+  /// retainerDays as a "used / allowance" readout.
   retainerDaysUsed     Int?
+  /// The month (YYYY-MM, UTC) that `retainerDaysUsed` belongs to. When this is an
+  /// earlier month than today, the used figure is treated as 0 on read (lazy monthly
+  /// reset) and re-stamped to the current month on the next edit.
+  retainerPeriodMonth  String?
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -2910,4 +2914,16 @@ model McpConnection {
 
   @@unique([userId, oauthClientId])
   @@index([workspaceId])
+}
+
+/// Generic fixed-window rate-limiter ledger (Postgres-backed, no Redis). One row per
+/// counted request, keyed by an opaque `bucket` string (e.g. "onboarding:get:<ip>").
+/// `assertWithinRateLimit()` counts recent rows in a bucket and prunes stale ones.
+/// Additive, self-contained — no relations, so rows survive their subject's deletion.
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  bucket    String
+  createdAt DateTime @default(now())
+
+  @@index([bucket, createdAt])
 }

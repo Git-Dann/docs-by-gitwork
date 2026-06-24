@@ -12,7 +12,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/server/rate-card";
-import type { ClientMonthlyCost } from "@/types/client";
+import { getHolidaysForCountry } from "@/server/backstage-holidays";
+import type { ClientMonthlyCost, ClientHealth, ClientHealthLevel } from "@/types/client";
 
 /** Count of active devs on each client — distinct candidates with an open placement
  *  (endDate null), matching the client detail's "DEVS" tile. Always shown on cards. */
@@ -65,6 +66,68 @@ export async function computeClientPulseHealth(
   return byClient;
 }
 
+/** Count of overdue open tasks per client — past due date, not done, not archived. A delivery
+ *  signal feeding the client-health roll-up. Batched; keyed by clientId. Not financial. */
+export async function computeClientOverdueTaskCounts(
+  workspaceId: string,
+  clientIds: string[],
+): Promise<Map<string, number>> {
+  if (clientIds.length === 0) return new Map();
+  const now = new Date();
+  const startOfToday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const rows = await prisma.task.groupBy({
+    by: ["clientId"],
+    where: {
+      workspaceId,
+      clientId: { in: clientIds },
+      archivedAt: null,
+      status: { not: "DONE" },
+      dueDate: { lt: startOfToday },
+    },
+    _count: true,
+  });
+  const byClient = new Map<string, number>();
+  for (const r of rows) byClient.set(r.clientId, r._count);
+  return byClient;
+}
+
+/** Derive a composite delivery-health level from the cheap signals we already gather:
+ *  overdue open tasks (delivery) + latest Pulse health (code). Returns null when neither
+ *  signal exists, so the card shows nothing rather than implying a healthy empty client. */
+export function deriveClientHealth(input: {
+  pulseHealthScore: number | null;
+  overdueTasks: number;
+}): ClientHealth | null {
+  const rank: Record<ClientHealthLevel, number> = { green: 0, amber: 1, red: 2 };
+  let level: ClientHealthLevel | null = null;
+  const reasons: string[] = [];
+  const bump = (l: ClientHealthLevel) => {
+    if (level == null || rank[l] > rank[level]) level = l;
+  };
+
+  if (input.overdueTasks > 0) {
+    bump(input.overdueTasks >= 5 ? "red" : "amber");
+    reasons.push(`${input.overdueTasks} overdue task${input.overdueTasks === 1 ? "" : "s"}`);
+  }
+  if (input.pulseHealthScore != null) {
+    if (input.pulseHealthScore < 50) {
+      bump("red");
+      reasons.push(`Pulse health ${input.pulseHealthScore}`);
+    } else if (input.pulseHealthScore < 75) {
+      bump("amber");
+      reasons.push(`Pulse health ${input.pulseHealthScore}`);
+    } else {
+      bump("green");
+    }
+  }
+
+  if (level == null) return null;
+  if (level === "green" && reasons.length === 0) reasons.push("On track");
+  return { level, reasons };
+}
+
 export interface ClientFinancials {
   monthlyCost: ClientMonthlyCost | null;
   /** Business days since the Gantt timeline started, or null when the client has no
@@ -83,8 +146,8 @@ export interface ClientFinancials {
  * sum, surfaced on the card); pro-bono devs are simply free and excluded entirely.
  *
  * Working days: business days (Mon–Fri) from the project's Gantt start — the earliest
- * dated `FeatureBlock.startDate` — to today. Null when the client has no dated feature
- * block (no Gantt timeline) so the card can hide it. Public holidays are not excluded.
+ * dated `FeatureBlock.startDate` — to today, excluding GB public/bank holidays. Null when
+ * the client has no dated feature block (no Gantt timeline) so the card can hide it.
  */
 export async function computeClientFinancials(
   workspaceId: string,
@@ -161,24 +224,42 @@ export async function computeClientFinancials(
     const devs = devsByClient.get(client.id) ?? [];
     let monthlyCost: ClientMonthlyCost | null = null;
     if (devs.length > 0) {
-      let amount = 0;
-      let pricedDevs = 0;
-      let unpricedDevs = 0;
-      let currency = "USD";
-      for (const d of devs) {
-        if (d.proBono) continue; // free — not billed, not counted as "unpriced"
-        if (d.monthly != null) {
-          amount += d.monthly;
-          pricedDevs += 1;
-          currency = d.currency;
-        } else {
-          unpricedDevs += 1;
-        }
+      const billable = devs.filter((d) => !d.proBono); // pro-bono are free, excluded entirely
+      const unpricedDevs = billable.filter((d) => d.monthly == null).length;
+
+      // Group priced devs by currency. Summing across currencies is meaningless, so we
+      // sum only the dominant currency (most devs, tie-broken by larger sum) and flag the
+      // rest as `mixedCurrency` for the card to render as "mixed" rather than a bad total.
+      const byCurrency = new Map<string, { count: number; sum: number }>();
+      for (const d of billable) {
+        if (d.monthly == null) continue;
+        const e = byCurrency.get(d.currency) ?? { count: 0, sum: 0 };
+        e.count += 1;
+        e.sum += d.monthly;
+        byCurrency.set(d.currency, e);
       }
+
       // Only surface a cost block when there's a billable dev (priced or unpriced) — an
       // all-pro-bono client shows no cost rather than a misleading "rates n/a".
-      if (pricedDevs > 0 || unpricedDevs > 0) {
-        monthlyCost = { amount: Math.round(amount), currency, pricedDevs, unpricedDevs };
+      if (byCurrency.size > 0 || unpricedDevs > 0) {
+        let currency = "USD";
+        let amount = 0;
+        let pricedDevs = 0;
+        if (byCurrency.size > 0) {
+          const [domCurrency, dom] = [...byCurrency.entries()].sort(
+            (a, b) => b[1].count - a[1].count || b[1].sum - a[1].sum,
+          )[0];
+          currency = domCurrency;
+          amount = dom.sum;
+          pricedDevs = dom.count;
+        }
+        monthlyCost = {
+          amount: Math.round(amount),
+          currency,
+          pricedDevs,
+          unpricedDevs,
+          mixedCurrency: byCurrency.size > 1,
+        };
       }
     }
 
@@ -191,8 +272,9 @@ export async function computeClientFinancials(
   return result;
 }
 
-/** Inclusive count of business days (Mon–Fri) between two dates, in UTC. Holidays not excluded. */
-export function businessDaysBetween(start: Date, end: Date): number {
+/** Inclusive count of business days (Mon–Fri) between two dates, in UTC, excluding the
+ *  country's public/bank holidays (default GB — Gitwork's base). */
+export function businessDaysBetween(start: Date, end: Date, countryCode = "GB"): number {
   const MS_PER_DAY = 86_400_000;
   const s = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
   const e = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
@@ -206,5 +288,19 @@ export function businessDaysBetween(start: Date, end: Date): number {
     const dow = (startDow + i) % 7;
     if (dow !== 0 && dow !== 6) business += 1;
   }
-  return business;
+
+  // Subtract public/bank holidays that land on a weekday within the range (deduped by date).
+  const startDate = new Date(s);
+  const endDate = new Date(e);
+  const holidayDates = new Set(
+    getHolidaysForCountry(countryCode, startDate, endDate)
+      .filter((h) => h.type === "public" || h.type === "bank")
+      .map((h) => h.date),
+  );
+  let holidayWeekdays = 0;
+  for (const iso of holidayDates) {
+    const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();
+    if (dow !== 0 && dow !== 6) holidayWeekdays += 1;
+  }
+  return Math.max(0, business - holidayWeekdays);
 }

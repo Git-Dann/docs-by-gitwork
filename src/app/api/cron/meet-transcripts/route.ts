@@ -110,11 +110,17 @@ export async function GET(request: NextRequest) {
     // Resolve each event to a single client + the best token to fetch with.
     type WorkItem = { call: CalendarCandidate; client: GClient; ownerUserId: string | null; clientId: string };
     const workItems: WorkItem[] = [];
+    // Calls we looked at but couldn't tie to exactly one client (no match or ambiguous). These
+    // are silently skipped today; surfacing them lets an operator spot notes that never landed.
+    const unattributed: string[] = [];
     for (const [eventId, work] of byEvent) {
       if (statusByEvent.get(eventId) === "SUMMARISED") continue;
 
       const clientId = await attributeToClient(workspace.id, work.call.attendees);
-      if (!clientId) continue; // not a client meeting (or ambiguous) — skip
+      if (!clientId) {
+        unattributed.push(work.call.title?.trim() || eventId);
+        continue; // not a client meeting (or ambiguous) — skip
+      }
 
       const organiser = work.call.organizerEmail?.toLowerCase();
       const chosenEmail =
@@ -170,6 +176,11 @@ export async function GET(request: NextRequest) {
     if (dropped > 0) {
       console.warn(`[meet-transcripts] ${dropped} eligible meeting(s) deferred to a later run (cap ${MAX_PER_RUN}).`);
     }
+    if (unattributed.length > 0) {
+      console.warn(
+        `[meet-transcripts] ${unattributed.length} recent call(s) had no single-client match (skipped): ${unattributed.slice(0, 10).join("; ")}`,
+      );
+    }
 
     return apiOk({
       members: members.length,
@@ -178,6 +189,8 @@ export async function GET(request: NextRequest) {
       ingested,
       withTranscript,
       dropped,
+      unattributed: unattributed.length,
+      unattributedSample: unattributed.slice(0, 10),
       errors: [...memberErrors, ...ingestErrors],
     });
   } catch (error) {

@@ -460,11 +460,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       </div>
 
-      {/* ── 08 // SLACK ACTIVITY ── */}
+      {/* ── 07 // SLACK ACTIVITY ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">08</span>
+            <span className="widget-header__label--number">07</span>
             {" // SLACK ACTIVITY"}
           </span>
           <div className="flex items-center gap-2">
@@ -500,14 +500,18 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       </section>
 
-      {/* ── 09 // CONTACT ── */}
+      {/* ── 08 // CONTACT ── */}
       {hasContactInfo && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">09</span>
+              <span className="widget-header__label--number">08</span>
               {" // CONTACT"}
             </span>
+            <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+              <PencilIcon className="h-3 w-3" />
+              Edit
+            </Button>
           </div>
           <div className="p-6">
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -573,7 +577,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* ── 10 // BILLING ── */}
+      {/* ── 09 // BILLING ── */}
       {(client.legalCompanyName ||
         client.vatNumber ||
         client.companyNumber ||
@@ -582,9 +586,13 @@ export function ClientDetail({ slug }: { slug: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">10</span>
+              <span className="widget-header__label--number">09</span>
               {" // BILLING"}
             </span>
+            <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+              <PencilIcon className="h-3 w-3" />
+              Edit
+            </Button>
           </div>
           <div className="p-6">
             <div className="grid gap-6 sm:grid-cols-3">
@@ -646,11 +654,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         />
       )}
 
-      {/* ── 11 // PLATFORMS ── */}
+      {/* ── 10 // PLATFORMS ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">12</span>
+            <span className="widget-header__label--number">10</span>
             {" // PLATFORMS"}
           </span>
           {!isSuggested && (
@@ -696,9 +704,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 12 // DESIGNS + 13 // MEETING NOTES (side by side) ── */}
+      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side) ── */}
       <div className="grid grid-cols-2 gap-4">
-      {/* 12 // DESIGNS */}
+      {/* 11 // DESIGNS */}
       <section className="widget-card flex flex-col">
         <div className="widget-header">
           <span className="widget-header__label">
@@ -750,18 +758,18 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* 13 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
+      {/* 12 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
       <section className="widget-card">
         <MeetingNotesSection slug={slug} />
       </section>
       </div>
 
-      {/* ── 14 // NOTES ── */}
+      {/* ── 13 // NOTES ── */}
       {client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">14</span>
+              <span className="widget-header__label--number">13</span>
               {" // NOTES"}
             </span>
           </div>
@@ -1359,7 +1367,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     <>
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">13</span>
+          <span className="widget-header__label--number">12</span>
           {" // MEETING NOTES"}
         </span>
         <div className="flex items-center gap-2">

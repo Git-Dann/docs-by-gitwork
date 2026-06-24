@@ -45,6 +45,9 @@ export type AuditAction =
   | "foundry.client.activated"
   | "foundry.delivery_plan.seeded"
   | "foundry.nudge.updated"
+  // Client sensitive reads / AI spend
+  | "client.bank.revealed"
+  | "client.meeting.ingested"
   // Privacy
   | "workspace.data_exported"
   | "workspace.deleted";

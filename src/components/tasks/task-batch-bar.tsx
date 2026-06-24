@@ -46,6 +46,8 @@ function Pop({
       <button
         type="button"
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
       >
@@ -55,7 +57,7 @@ function Pop({
       </button>
       {open ? (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
           <div className="absolute bottom-[calc(100%+8px)] right-0 z-50 max-h-[60vh] min-w-[200px] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
             {children(() => setOpen(false))}
           </div>
@@ -101,7 +103,11 @@ export function TaskBatchBar({
   const members = team.data ?? [];
 
   const [assignSel, setAssignSel] = useState<Set<string>>(new Set());
+  const [assignQuery, setAssignQuery] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const filteredMembers = assignQuery.trim()
+    ? members.filter((m) => (m.name ?? "").toLowerCase().includes(assignQuery.trim().toLowerCase()))
+    : members;
   const busy = batchUpdate.isPending || batchDelete.isPending;
   const n = selectedIds.length;
 
@@ -113,6 +119,7 @@ export function TaskBatchBar({
   async function applyAssignees(close: () => void) {
     await batchUpdate.mutateAsync({ ids: selectedIds, patch: { assigneeIds: [...assignSel] } });
     setAssignSel(new Set());
+    setAssignQuery("");
     close();
     onClear();
   }
@@ -145,11 +152,26 @@ export function TaskBatchBar({
               <p className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
                 Replace assignees
               </p>
+              {members.length > 6 ? (
+                <div className="px-1.5 pb-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={assignQuery}
+                    onChange={(e) => setAssignQuery(e.target.value)}
+                    placeholder="Search people…"
+                    aria-label="Search team members"
+                    className="w-full rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-xs text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                  />
+                </div>
+              ) : null}
               <div className="max-h-60 overflow-y-auto">
                 {members.length === 0 ? (
                   <p className="px-2 py-2 text-xs text-[var(--text-4)]">No team members.</p>
+                ) : filteredMembers.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-[var(--text-4)]">No matches.</p>
                 ) : (
-                  members.map((m) => {
+                  filteredMembers.map((m) => {
                     const on = assignSel.has(m.id);
                     return (
                       <button

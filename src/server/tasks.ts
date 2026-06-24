@@ -888,12 +888,15 @@ export async function listTaskComments(user: EffectiveUser, taskId: string): Pro
   });
   if (!task) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, task.clientId);
+  // Bound the fetch: take the most recent 500 (desc) then restore chronological order. A
+  // task realistically never reaches this, so it's a safety cap, not visible pagination.
   const rows = await prisma.taskComment.findMany({
     where: { taskId },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
+    take: 500,
     include: { author: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
-  return rows.map(commentRowToDTO);
+  return rows.reverse().map(commentRowToDTO);
 }
 
 export async function addTaskComment(

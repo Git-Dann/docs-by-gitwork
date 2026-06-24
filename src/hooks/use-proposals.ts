@@ -232,6 +232,33 @@ export function useDeleteClient() {
   });
 }
 
+/** Delete several clients in one action (sequential, best-effort) for the Portal bulk bar. */
+export function useBulkDeleteClients() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (slugs: string[]) => {
+      for (const slug of slugs) await deleteClient(slug);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    },
+  });
+}
+
+/** Set the status of several clients at once (e.g. bulk "move to workflow" → ACTIVE). */
+export function useBulkSetClientStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ slugs, status }: { slugs: string[]; status: WorkspaceClientStatus }) => {
+      for (const slug of slugs) await setClientStatusApi(slug, status);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
 type PlatformInput = {
   name: string;
   platformType?: string;

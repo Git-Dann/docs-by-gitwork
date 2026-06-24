@@ -23,10 +23,22 @@ export interface ClientMonthlyCost {
   amount: number;
   /** ISO 4217 code of the summed rates (e.g. "USD"). */
   currency: string;
-  /** Assigned devs that contributed a rate. */
+  /** Assigned devs that contributed a rate (those in the dominant currency when mixed). */
   pricedDevs: number;
   /** Assigned devs with no matched rate (excluded from `amount`). */
   unpricedDevs: number;
+  /** True when priced devs span more than one currency — `amount` then covers only the
+   *  dominant currency, so the card shows a "mixed" readout instead of a misleading total. */
+  mixedCurrency?: boolean;
+}
+
+export type ClientHealthLevel = "green" | "amber" | "red";
+
+/** A composite delivery-health signal for a client, derived from open-task and Pulse
+ *  signals. `reasons` explains the level for the card tooltip. Null when there's no signal. */
+export interface ClientHealth {
+  level: ClientHealthLevel;
+  reasons: string[];
 }
 
 export interface ClientListItem extends ClientRecord {
@@ -50,6 +62,8 @@ export interface ClientListItem extends ClientRecord {
   pulseHealthScore?: number | null;
   /** Id of that latest Pulse scan (deep-link target). */
   pulseScanId?: string | null;
+  /** Composite delivery-health signal (overdue tasks + Pulse). Null when no signal exists. */
+  health?: ClientHealth | null;
 }
 
 export interface ClientBankSummary {

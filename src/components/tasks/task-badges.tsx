@@ -37,6 +37,8 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
 export function TaskPriorityDot({ priority, className }: { priority: TaskPriority; className?: string }) {
   return (
     <span
+      role="img"
+      aria-label={`${TASK_PRIORITY_LABELS[priority]} priority`}
       title={`${TASK_PRIORITY_LABELS[priority]} priority`}
       className={cn("inline-block h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[priority], className)}
     />

@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  ArrowRightCircleIcon,
   ChatBubbleLeftRightIcon,
+  CheckIcon,
   ClipboardDocumentIcon,
   LinkIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SparklesIcon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,6 +18,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
+  useBulkDeleteClients,
+  useBulkSetClientStatus,
   useClientList,
   useCreateClient,
   useCreateOnboardingLink,
@@ -86,11 +91,16 @@ function DeleteButton({ clientSlug }: { clientSlug: string }) {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") close();
     }
+    // Coords are captured on open; close on scroll/resize so the popover can't float detached.
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
   }, [open, close]);
 
@@ -117,7 +127,7 @@ function DeleteButton({ clientSlug }: { clientSlug: string }) {
         <TrashIcon className="h-3.5 w-3.5" />
       </button>
 
-      {open && createPortal(
+      {open && typeof document !== "undefined" && createPortal(
         <div
           ref={popoverRef}
           style={{
@@ -205,9 +215,13 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
     function onKeyDown(e: KeyboardEvent) { if (e.key === "Escape") close(); }
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
   }, [open, close]);
 
@@ -226,7 +240,7 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
         <GitHubIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
       </button>
 
-      {open && createPortal(
+      {open && typeof document !== "undefined" && createPortal(
         <div
           ref={popoverRef}
           style={{
@@ -285,19 +299,55 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
 // ---------------------------------------------------------------------------
 // ClientCard — card-based representation of a single client
 // ---------------------------------------------------------------------------
-function ClientCard({ client }: { client: ClientListItem }) {
+function ClientCard({
+  client,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  client: ClientListItem;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (slug: string) => void;
+}) {
   const router = useRouter();
   const { canViewClientFinancials } = usePermissions();
   const devCount = client.devCount ?? 0;
+  // Retainer burn-down (gated) — a thin bar under the metrics strip; red once over allowance.
+  const retainerAllowance = client.retainerDays ?? 0;
+  const showRetainerBar = canViewClientFinancials && retainerAllowance > 0;
+  const retainerUsed = client.retainerDaysUsed ?? 0;
+  const retainerPct = showRetainerBar
+    ? Math.min(100, Math.round((retainerUsed / retainerAllowance) * 100))
+    : 0;
+  const retainerOver = retainerUsed > retainerAllowance;
 
   return (
     <article
-      className="widget-card group cursor-pointer transition-shadow hover:shadow-[rgba(0,0,0,0.04)_0px_2px_8px]"
-      onClick={() => router.push(`/app/portal/${client.slug}`)}
+      className={cn(
+        "widget-card group cursor-pointer transition-shadow hover:shadow-[rgba(0,0,0,0.04)_0px_2px_8px]",
+        selected && "ring-2 ring-[var(--brand-700)]",
+      )}
+      {...(selectable ? { "aria-pressed": selected } : {})}
+      onClick={() =>
+        selectable ? onToggleSelect?.(client.slug) : router.push(`/app/portal/${client.slug}`)
+      }
     >
       {/* Widget header */}
       <div className="widget-header">
-        <span className="widget-header__label">
+        <span className="widget-header__label flex items-center">
+          {selectable && (
+            <span
+              className={cn(
+                "mr-2 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border",
+                selected
+                  ? "border-[var(--brand-700)] bg-[var(--brand-700)] text-white"
+                  : "border-[var(--border-3)] bg-white",
+              )}
+            >
+              {selected ? <CheckIcon className="h-3 w-3" /> : null}
+            </span>
+          )}
           {client.source === "SUGGESTED" ? (
             <span className="flex items-center gap-1">
               <SparklesIcon className="h-3 w-3 text-[var(--brand-700)]" />
@@ -309,6 +359,22 @@ function ClientCard({ client }: { client: ClientListItem }) {
         </span>
         {/* Drive + ClickUp quick-links — right-aligned, no trash here */}
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {client.health && (
+            <span
+              role="img"
+              aria-label={`Client health: ${client.health.level}`}
+              title={`Health: ${client.health.level}${client.health.reasons.length ? ` — ${client.health.reasons.join(", ")}` : ""}`}
+              className="inline-block h-2 w-2 rounded-full"
+              style={{
+                backgroundColor:
+                  client.health.level === "green"
+                    ? "#10b981"
+                    : client.health.level === "amber"
+                      ? "#f59e0b"
+                      : "#ef4444",
+              }}
+            />
+          )}
           {typeof client.pulseHealthScore === "number" && client.pulseScanId && (
             <Link
               href={`/app/pulse/${client.pulseScanId}`}
@@ -454,9 +520,14 @@ function ClientCard({ client }: { client: ClientListItem }) {
             {devCount} {devCount === 1 ? "Dev" : "Devs"}
           </span>
 
-          {/* Centre — monthly cost, else "rates n/a" (gated). Empty span still holds the column. */}
+          {/* Centre — monthly cost, "mixed" when devs span currencies, else "rates n/a"
+              (all gated). Empty span still holds the column. */}
           <span className="widget-data-label justify-self-center whitespace-nowrap">
-            {canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 ? (
+            {canViewClientFinancials && client.monthlyCost && client.monthlyCost.mixedCurrency ? (
+              <span className="text-[var(--text-2)]" title="Devs span multiple currencies">
+                mixed
+              </span>
+            ) : canViewClientFinancials && client.monthlyCost && client.monthlyCost.pricedDevs > 0 ? (
               <span className="text-[var(--text-2)]">
                 {formatMoney(client.monthlyCost.amount, client.monthlyCost.currency)}/mo
               </span>
@@ -478,6 +549,22 @@ function ClientCard({ client }: { client: ClientListItem }) {
                 : null}
           </span>
         </div>
+
+        {/* Retainer burn-down bar (gated; shown only when a retainer allowance is set) */}
+        {showRetainerBar && (
+          <div
+            className="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-2)]"
+            title={`Retainer: ${retainerUsed} of ${retainerAllowance} days used this month`}
+          >
+            <div
+              className={cn(
+                "h-full rounded-full",
+                retainerOver ? "bg-red-500" : "bg-[var(--brand-700)]",
+              )}
+              style={{ width: `${retainerOver ? 100 : retainerPct}%` }}
+            />
+          </div>
+        )}
       </div>
     </article>
   );
@@ -695,6 +782,92 @@ function OnboardingLinkCard({ link }: { link: OnboardingLinkRecord }) {
 }
 
 // ---------------------------------------------------------------------------
+// ClientBatchBar — floating bulk-action bar for multi-selected clients
+// ---------------------------------------------------------------------------
+function ClientBatchBar({
+  selected,
+  onClear,
+}: {
+  selected: ClientListItem[];
+  onClear: () => void;
+}) {
+  const bulkDelete = useBulkDeleteClients();
+  const bulkStatus = useBulkSetClientStatus();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const busy = bulkDelete.isPending || bulkStatus.isPending;
+  const n = selected.length;
+  const slugs = selected.map((c) => c.slug);
+  // "Move to workflow" (→ ACTIVE) only makes sense when every selected client is pending.
+  const allPending = n > 0 && selected.every((c) => c.status === "PENDING_REVIEW");
+
+  async function doDelete() {
+    await bulkDelete.mutateAsync(slugs);
+    setConfirmDelete(false);
+    onClear();
+  }
+  async function doMoveToWorkflow() {
+    await bulkStatus.mutateAsync({ slugs, status: "ACTIVE" });
+    onClear();
+  }
+
+  return (
+    <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]">
+      <span className="whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-xs font-medium text-[var(--brand-800)] hover:bg-[var(--surface-1)]"
+      >
+        <XMarkIcon className="h-3.5 w-3.5" />
+        Clear
+      </button>
+      <span className="mx-0.5 h-5 w-px bg-[var(--border-2)]" />
+      {allPending && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={doMoveToWorkflow}
+          className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+        >
+          <ArrowRightCircleIcon className="h-3.5 w-3.5" />
+          Move to workflow
+        </button>
+      )}
+      {confirmDelete ? (
+        <div className="inline-flex items-center gap-1.5 rounded-[7px] border border-red-300 bg-red-50 px-2 py-1">
+          <span className="text-[11px] font-medium text-red-700">Delete {n}?</span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={doDelete}
+            className="rounded-[5px] bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy ? "…" : "Yes"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(false)}
+            className="rounded-[5px] px-1.5 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-100"
+          >
+            No
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setConfirmDelete(true)}
+          className="inline-flex items-center gap-1.5 rounded-[7px] border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+          Delete
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ClientManagement — Portal overview
 // ---------------------------------------------------------------------------
 export function ClientManagement() {
@@ -709,6 +882,8 @@ export function ClientManagement() {
   const [createExternalChannel, setCreateExternalChannel] = useState(false);
   const [externalInviteeEmail, setExternalInviteeEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
   const activeQuery = useClientList({ search, status: "ACTIVE" });
   const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
   const onboardingQuery = useOnboardingLinks();
@@ -737,17 +912,45 @@ export function ClientManagement() {
         : onboardingQuery.error;
   const data = tab === "active" ? activeQuery.data : pendingQuery.data;
 
-  const clients = data?.clients ?? [];
+  const clients = useMemo(() => data?.clients ?? [], [data]);
   const onboardingLinks = useMemo(
     () => onboardingQuery.data?.links ?? [],
     [onboardingQuery.data?.links],
   );
   const suggestedCount = clients.filter((c) => c.source === "SUGGESTED").length;
-  const pendingClients = pendingQuery.data?.clients ?? [];
+  const pendingClients = useMemo(
+    () => pendingQuery.data?.clients ?? [],
+    [pendingQuery.data],
+  );
   const pendingCount = pendingClients.length;
   const openOnboardingCount = useMemo(
     () => onboardingLinks.filter((l) => l.status !== "LINKED").length,
     [onboardingLinks],
+  );
+
+  // Bulk selection — reset whenever the view (tab/search) changes so a stale selection can't
+  // act on clients that are no longer visible.
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedSlugs(new Set());
+  }, [tab, search]);
+  const toggleSelect = useCallback((slug: string) => {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }, []);
+  // On the Active tab both the active grid and the bottom "Pending review" grid are selectable;
+  // on the Pending tab `clients` already is the pending set.
+  const selectableClients = useMemo(
+    () => (tab === "active" ? [...clients, ...pendingClients] : clients),
+    [tab, clients, pendingClients],
+  );
+  const selectedClients = useMemo(
+    () => selectableClients.filter((c) => selectedSlugs.has(c.slug)),
+    [selectableClients, selectedSlugs],
   );
 
   async function handleCreateClient() {
@@ -884,6 +1087,25 @@ export function ClientManagement() {
           </div>
         </section>
 
+        {/* ── Bulk-select toggle (managers only; not on the onboarding-links tab) ── */}
+        {canManageClients && tab !== "onboarding" && !isPending && !error && clients.length > 0 && (
+          <div className="flex items-center justify-end gap-2">
+            {selectMode && (
+              <span className="widget-data-label">{selectedSlugs.size} selected</span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectMode((m) => !m);
+                setSelectedSlugs(new Set());
+              }}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              {selectMode ? "Done" : "Select"}
+            </button>
+          </div>
+        )}
+
         {/* ── Content per tab ── */}
         {isPending ? (
           <div className="widget-card">
@@ -911,7 +1133,13 @@ export function ClientManagement() {
             )}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {clients.map((client) => (
-                <ClientCard key={client.id} client={client} />
+                <ClientCard
+                  key={client.id}
+                  client={client}
+                  selectable={selectMode}
+                  selected={selectedSlugs.has(client.slug)}
+                  onToggleSelect={toggleSelect}
+                />
               ))}
             </div>
           </section>
@@ -942,12 +1170,23 @@ export function ClientManagement() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {pendingClients.map((client) => (
-                <ClientCard key={client.id} client={client} />
+                <ClientCard
+                  key={client.id}
+                  client={client}
+                  selectable={selectMode}
+                  selected={selectedSlugs.has(client.slug)}
+                  onToggleSelect={toggleSelect}
+                />
               ))}
             </div>
           </section>
         )}
       </div>
+
+      {/* ── Bulk-action bar (visible while clients are selected) ── */}
+      {selectMode && selectedClients.length > 0 && (
+        <ClientBatchBar selected={selectedClients} onClear={() => setSelectedSlugs(new Set())} />
+      )}
 
       {/* ── New onboarding link modal ── */}
       {showNewLink ? (

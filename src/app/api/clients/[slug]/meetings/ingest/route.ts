@@ -8,6 +8,7 @@ import { ingestMeeting } from "@/server/meetings";
 import { meetingIngestSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { recordAuditEntry } from "@/server/audit-log";
 
 export const dynamic = "force-dynamic";
 // Synchronous: fetch the Meet transcript + one Claude summarise call. Comfortably under 60s
@@ -55,6 +56,15 @@ export async function POST(req: NextRequest, context: RouteContext) {
       eventStart: body.start ?? null,
       eventEnd: body.end ?? null,
       attendees: body.attendees ?? [],
+    });
+
+    // Audit the (paid) AI summarisation trigger — who fetched notes for which client/event.
+    void recordAuditEntry({
+      workspaceId: workspace.id,
+      actorId: session?.user?.id ?? null,
+      action: "client.meeting.ingested",
+      target: slug,
+      metadata: { calendarEventId: body.calendarEventId, meetingId: meeting?.id ?? null },
     });
 
     return apiOk({ meeting });

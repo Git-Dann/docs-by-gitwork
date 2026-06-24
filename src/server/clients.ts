@@ -21,7 +21,13 @@ import type {
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
-import { computeClientDevCounts, computeClientFinancials, computeClientPulseHealth } from "@/server/client-metrics";
+import {
+  computeClientDevCounts,
+  computeClientFinancials,
+  computeClientOverdueTaskCounts,
+  computeClientPulseHealth,
+  deriveClientHealth,
+} from "@/server/client-metrics";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
@@ -65,6 +71,22 @@ const clientPlatformLogins = (prisma as unknown as {
 const clientDesigns = (prisma as unknown as {
   clientDesign: Prisma.ClientDesignDelegate;
 }).clientDesign;
+
+/** Current retainer period as YYYY-MM (UTC) — the month `retainerDaysUsed` is counted against. */
+export function currentRetainerMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+/** Lazy monthly reset: a used figure stamped to an earlier month reads as 0 this month. A null
+ *  period (legacy rows) is left untouched so an existing value is never silently wiped. */
+function effectiveRetainerUsed(
+  used: number | null,
+  periodMonth: string | null | undefined,
+): number | null {
+  if (used == null) return used;
+  if (periodMonth && periodMonth !== currentRetainerMonth()) return 0;
+  return used;
+}
 
 type ClientAggregateRecord = {
   id: string;
@@ -116,6 +138,7 @@ type ManualClientRecord = {
   billingCountry: string | null;
   retainerDays: number | null;
   retainerDaysUsed: number | null;
+  retainerPeriodMonth: string | null;
   status: WorkspaceClientStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -227,7 +250,8 @@ function contactFieldsFromRecord(
     billingPostcode: record.billingPostcode,
     billingCountry: record.billingCountry,
     retainerDays: record.retainerDays,
-    retainerDaysUsed: record.retainerDaysUsed,
+    // Lazy monthly reset — a prior-month figure reads as 0, matching the card.
+    retainerDaysUsed: effectiveRetainerUsed(record.retainerDaysUsed, record.retainerPeriodMonth),
     bank: extras.bank,
     onboardingId: extras.onboardingId,
   };
@@ -241,7 +265,7 @@ function buildContactData(input: ClientContactInput) {
     [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed"
       ? number | null
       : string | null;
-  }> = {};
+  }> & { retainerPeriodMonth?: string | null } = {};
   const trim = (v: string) => v.trim() || null;
   if (input.website !== undefined)             data.website             = trim(input.website);
   if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
@@ -277,7 +301,12 @@ function buildContactData(input: ClientContactInput) {
   if (input.billingCountry !== undefined)      data.billingCountry      = trim(input.billingCountry);
   // Numeric retainer fields — pass through (0 is valid; null clears). No trim.
   if (input.retainerDays !== undefined)        data.retainerDays        = input.retainerDays;
-  if (input.retainerDaysUsed !== undefined)    data.retainerDaysUsed    = input.retainerDaysUsed;
+  if (input.retainerDaysUsed !== undefined) {
+    data.retainerDaysUsed = input.retainerDaysUsed;
+    // Stamp the period so the lazy monthly reset knows which month this figure belongs to;
+    // clearing the used value (null) clears the stamp too.
+    data.retainerPeriodMonth = input.retainerDaysUsed == null ? null : currentRetainerMonth();
+  }
   return data;
 }
 
@@ -567,7 +596,7 @@ export async function listDerivedClients(filters?: {
   const manualIds = manualClientMeta.map((c) => c.id);
 
   // Parallel enrichment queries — single round-trip.
-  const [careRecords, platformRepos, devCounts, pulseHealth, financials] = await Promise.all([
+  const [careRecords, platformRepos, devCounts, pulseHealth, overdueCounts, financials] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
       where: { workspaceClientId: { not: null } },
@@ -582,6 +611,8 @@ export async function listDerivedClients(filters?: {
     computeClientDevCounts(workspace.id, manualIds),
     // Latest completed Pulse scan health per client (always shown — not financial).
     computeClientPulseHealth(workspace.id, manualIds),
+    // Overdue open-task count per client — feeds the health roll-up (not financial).
+    computeClientOverdueTaskCounts(workspace.id, manualIds),
     // Sensitive monthly cost + working days — only for authorized viewers.
     includeFinancials
       ? computeClientFinancials(workspace.id, manualClientMeta)
@@ -605,7 +636,15 @@ export async function listDerivedClients(filters?: {
   // only to authorised viewers (gated below alongside cost/working days).
   const retainerByClient = new Map(
     manualClients.map(
-      (c) => [c.id, { retainerDays: c.retainerDays, retainerDaysUsed: c.retainerDaysUsed }] as const,
+      (c) =>
+        [
+          c.id,
+          {
+            retainerDays: c.retainerDays,
+            // Lazy monthly reset applied here so the card never shows a stale prior-month figure.
+            retainerDaysUsed: effectiveRetainerUsed(c.retainerDaysUsed, c.retainerPeriodMonth),
+          },
+        ] as const,
     ),
   );
 
@@ -631,6 +670,10 @@ export async function listDerivedClients(filters?: {
         retainerDaysUsed: includeFinancials ? (retainerByClient.get(client.id)?.retainerDaysUsed ?? null) : null,
         pulseHealthScore: pulse?.healthScore ?? null,
         pulseScanId: pulse?.scanId ?? null,
+        health: deriveClientHealth({
+          pulseHealthScore: pulse?.healthScore ?? null,
+          overdueTasks: overdueCounts.get(client.id) ?? 0,
+        }),
       };
     });
 
@@ -803,6 +846,7 @@ export async function updateClientRecord(
             billingCountry: null,
             retainerDays: null,
             retainerDaysUsed: null,
+            retainerPeriodMonth: null,
             status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
