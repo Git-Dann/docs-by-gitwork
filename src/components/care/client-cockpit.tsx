@@ -146,8 +146,8 @@ export function ClientCockpit({
 
   return (
     <div className="flex h-full min-h-0">
-      {/* LEFT — saved views */}
-      <aside className="flex w-52 shrink-0 flex-col border-r border-[var(--border-2)]">
+      {/* LEFT — saved views (rail on lg+; below that it collapses into the list header) */}
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-[var(--border-2)] lg:flex">
         <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-3">
           <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
             <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
@@ -191,8 +191,38 @@ export function ClientCockpit({
         </div>
       </aside>
 
-      {/* MIDDLE — conversation list */}
-      <section className="flex w-[26rem] shrink-0 flex-col border-r border-[var(--border-2)]">
+      {/* MIDDLE — conversation list. Full-width on small screens; fixed rail on lg+.
+          Hidden on small screens while a conversation is open (single-pane master-detail). */}
+      <section
+        className={cn(
+          "min-h-0 w-full flex-col border-r border-[var(--border-2)] lg:flex lg:w-80 lg:shrink-0 xl:w-96",
+          selected ? "hidden lg:flex" : "flex",
+        )}
+      >
+        {/* Mobile toolbar — the views rail is hidden < lg, so surface its controls here. */}
+        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 lg:hidden">
+          <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
+            <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
+          </button>
+          <span className="truncate text-sm font-semibold text-[var(--text-1)]">{client.name}</span>
+          <select
+            value={activeView}
+            onChange={(e) => setActiveView(e.target.value)}
+            className="ml-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-xs"
+          >
+            {SAVED_VIEWS.map((v) => (
+              <option key={v.id} value={v.id}>{v.label} ({viewCounts[v.id] ?? 0})</option>
+            ))}
+          </select>
+          <button
+            onClick={() => sync.mutate()}
+            disabled={sync.isPending}
+            className="rounded-[6px] p-1 hover:bg-[var(--surface-1)] disabled:opacity-60"
+            title="Sync now"
+          >
+            <ArrowPathIcon className={cn("h-4 w-4 text-[var(--text-3)]", sync.isPending && "animate-spin")} />
+          </button>
+        </div>
         <div className="flex items-center justify-between border-b border-[var(--border-2)] px-3 py-2">
           <span className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">02 // Conversations</span>
           <span className="font-mono text-[11px] text-[var(--text-4)]">{filtered.length}</span>
@@ -237,7 +267,7 @@ export function ClientCockpit({
 
         {/* Bulk action bar */}
         {selection.size > 0 && (
-          <div className="flex items-center gap-2 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 shadow-lg">
+          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 shadow-lg">
             <span className="font-mono text-[11px] text-[var(--text-3)]">{selection.size} selected</span>
             <select
               onChange={(e) => e.target.value && runBatch({ status: e.target.value })}
@@ -267,17 +297,19 @@ export function ClientCockpit({
         )}
       </section>
 
-      {/* RIGHT — detail */}
-      <section className="min-w-0 flex-1">
+      {/* RIGHT — detail. Full-screen on small screens (only when a conversation is open);
+          always present on lg+. */}
+      <section className={cn("min-w-0 flex-1", selected ? "flex" : "hidden lg:flex")}>
         {selected ? (
           <ConversationDetail
             key={selected.id}
             clientId={client.id}
             conversation={selected}
             connections={connectionsQ.data?.connections ?? []}
+            onBack={() => setSelectedId(null)}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-[var(--text-4)]">
+          <div className="flex h-full w-full items-center justify-center text-sm text-[var(--text-4)]">
             Select a conversation to triage.
           </div>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, Connection, ConversationStatus, ConversationPriority } from "@/types/support";
 import {
@@ -42,10 +43,13 @@ export function ConversationDetail({
   clientId,
   conversation,
   connections,
+  onBack,
 }: {
   clientId: string;
   conversation: Conversation;
   connections: Connection[];
+  /** Mobile-only "back to list" handler (the list pane is hidden < lg when a conv is open). */
+  onBack?: () => void;
 }) {
   const messagesQ = useSupportMessages(clientId, conversation.id);
   const membersQ = useSupportMembers(clientId);
@@ -66,10 +70,15 @@ export function ConversationDetail({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       {/* Header */}
       <div className="border-b border-[var(--border-2)] px-5 py-4">
         <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]">
+          {onBack && (
+            <button onClick={onBack} className="-ml-1 rounded-[6px] p-1 hover:bg-[var(--surface-1)] lg:hidden" title="Back to list">
+              <ArrowLeftIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+            </button>
+          )}
           <SourceIcon source={conversation.source} className="h-3.5 w-3.5" />
           {SOURCE_LABEL[conversation.source]}
           <span>·</span>
@@ -77,17 +86,18 @@ export function ConversationDetail({
           <span>·</span>
           <span>{formatAge(conversation.receivedAt)} ago</span>
         </div>
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
           <OpenInChannelButton conversation={conversation} connection={connection} />
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Thread + triage: stacked single-column (scrolls as one) until xl, side-by-side above. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
         {/* Thread (read-only) */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-col xl:flex-1 xl:overflow-hidden">
           <PaneHeader n="03" label="Thread" />
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          <div className="space-y-3 px-5 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
             {messagesQ.isLoading && <p className="text-sm text-[var(--text-4)]">Loading messages…</p>}
             {messagesQ.data?.messages.length === 0 && (
               <p className="text-sm text-[var(--text-4)]">No messages captured yet.</p>
@@ -110,8 +120,8 @@ export function ConversationDetail({
           </div>
         </div>
 
-        {/* Triage + notes rail */}
-        <div className="flex w-72 min-h-0 flex-col overflow-y-auto border-l border-[var(--border-2)]">
+        {/* Triage + notes rail — below the thread when stacked, a fixed rail at xl. */}
+        <div className="flex w-full min-h-0 flex-col border-t border-[var(--border-2)] xl:w-72 xl:overflow-y-auto xl:border-t-0 xl:border-l">
           <PaneHeader n="04" label="Triage" />
           <div className="space-y-4 px-4 py-4">
             {/* Status */}
