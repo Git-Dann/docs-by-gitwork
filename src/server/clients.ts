@@ -889,6 +889,9 @@ export async function deleteClientRecord(slug: string): Promise<boolean> {
         data: { hidden: true },
       });
     }
+    // Bust the 60s collection cache so the deleted client disappears immediately — without
+    // this the list keeps serving the stale snapshot and the card "doesn't go anywhere".
+    revalidateTag("client-collections");
     return true;
   }
 
