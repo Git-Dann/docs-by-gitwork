@@ -268,18 +268,11 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description: "Internal team ops — leave booking and the personal Backstage area.",
       },
       {
-        id: "backstage.expenses",
-        category: "feature",
-        label: "Access Expenses",
-        description:
-          "See and submit the Expenses tab. Off by default — switch on per person (HR, finance).",
-      },
-      {
         id: "backstage.approve",
         category: "feature",
         label: "Approve Backstage requests",
         description:
-          "Approve/reject leave and review expenses. HR-style access without making the user an Admin.",
+          "Approve/reject leave requests. HR-style access without making the user an Admin. (Expenses are Super Admin only.)",
       },
     ],
   },

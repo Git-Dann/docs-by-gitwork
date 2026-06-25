@@ -173,10 +173,11 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
   }
 }
 
-// Expenses are opt-in per account (the `backstage.expenses` flag) so HR/finance can
-// get access without becoming an Admin.
+// Expenses are Super Admin only — submitting, viewing and reviewing reimbursements
+// is restricted to the platform owner. Everyone else's Backstage is leave + holidays
+// + availability only.
 export function canManageExpenses(user: EffectiveUser): boolean {
-  return isSuperAdmin(user.role) || user.permissions.includes("backstage.expenses");
+  return isSuperAdmin(user.role);
 }
 
 /** DevOps lead: may publish the consolidated end-of-day task roll-up. */

@@ -80,7 +80,7 @@ export function AppOverview() {
   const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;
 
   const acct = { role, permissions: resolvedPermissions };
-  const canApprove = showAll || can(acct, "backstage.approve") || can(acct, "backstage.expenses");
+  const canApprove = showAll || can(acct, "backstage.approve");
   const canSeeTasks = showAll || can(acct, "clients");
   const canSeeSignoff = showAll || can(acct, "proposals");
   const canManageClientRecords = showAll || can(acct, "clients.manage");

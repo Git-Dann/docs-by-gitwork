@@ -115,7 +115,7 @@ export function AppShell({
       {
         href: "/app/backstage",
         label: "Backstage",
-        description: "Internal team ops — leave, expenses, availability",
+        description: "Leave, public holidays and team availability",
         icon: WrenchScrewdriverIcon,
         module: "backstage",
       },
