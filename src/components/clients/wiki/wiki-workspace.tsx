@@ -827,6 +827,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
   );
 
+  // Which sections are publicly shared (for the sidebar globe indicator):
+  // the whole-wiki link covers every page; otherwise only per-page-shared ones.
+  const wikiShareOn = wiki.shareEnabled && Boolean(wiki.shareToken);
+  const sharedSections: WikiSection[] = wikiShareOn
+    ? availableSections
+    : (Object.keys(wiki.pageShares ?? {}) as WikiSection[]);
+
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return null;
@@ -1413,6 +1420,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             active={activeSection}
             onSelect={setActiveSection}
             availableSections={availableSections}
+            sharedSections={sharedSections}
             addableSections={addableSections}
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}

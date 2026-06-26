@@ -712,9 +712,24 @@ export async function setWikiShare(
   if (id) {
     const updated = await prisma.clientWiki.update({
       where: { id },
-      data: { shareEnabled: enabled, ...(needsToken ? { shareToken: token } : {}) },
+      data: {
+        shareEnabled: enabled,
+        ...(needsToken ? { shareToken: token } : {}),
+        // Disabling the whole-wiki share is the master kill-switch: also revoke
+        // every per-page share so the wiki goes fully private (Dan, June 2026).
+        ...(enabled ? {} : { pageShares: {}, pageShareTokens: [] }),
+      },
       select: { shareToken: true, shareEnabled: true },
     });
+    // Master kill-switch also takes the design-system's own /brand/ share private
+    // (the DS share lives on a sibling model, also keyed by clientId). Token kept
+    // so re-enabling reuses the same URL.
+    if (!enabled) {
+      await prisma.clientDesignSystem.updateMany({
+        where: { clientId },
+        data: { shareEnabled: false },
+      });
+    }
     return { shareToken: updated.shareToken, shareEnabled: updated.shareEnabled };
   }
 
