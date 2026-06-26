@@ -200,11 +200,12 @@ export function WikiPublicView({
 
   // Per-page share: render just the one section, no sidebar nav.
   if (onlySection) {
-    return <div className="overflow-auto p-4 md:p-8">{renderContent()}</div>;
+    return <div className="flex-1 overflow-auto p-4 md:p-8">{renderContent()}</div>;
   }
 
   return (
-    <div className="flex flex-col md:flex-row">
+    // flex-1 lets this row fill the <main> height so the sidebar divider spans fully.
+    <div className="flex flex-1 flex-col md:flex-row">
       <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
         <WikiSidebar
           slug={wiki.clientSlug}

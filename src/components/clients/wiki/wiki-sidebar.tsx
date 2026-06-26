@@ -145,6 +145,8 @@ export function WikiSidebar({
             />
           )}
         </button>
+        {/* Reserve the delete slot on every row so the share globes line up in
+            one right-aligned column regardless of which rows are deletable. */}
         {canDelete ? (
           <button
             type="button"
@@ -155,7 +157,9 @@ export function WikiSidebar({
           >
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
-        ) : null}
+        ) : (
+          <span className="h-8 w-8 shrink-0" aria-hidden />
+        )}
       </div>
     );
   };
