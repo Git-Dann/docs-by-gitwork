@@ -114,13 +114,17 @@ export function WikiSidebar({
     const isActive = active === section;
     const isShared = shared.has(section);
     const canDelete = deletable.has(section) && Boolean(onDeleteSection);
+    // Only reserve right padding when there's a trailing control, so labels keep
+    // the maximum width and avoid truncating where they'd otherwise fit.
+    const hasTrailing = isShared || canDelete;
     return (
-      <div key={section} className="group flex w-auto shrink-0 items-center gap-1 md:w-full">
+      <div key={section} className="group relative flex w-auto shrink-0 items-center md:w-full">
         <button
           type="button"
           onClick={() => onSelect(section)}
           className={[
-            "flex min-w-0 flex-1 items-center gap-2.5 whitespace-nowrap rounded-[6px] px-3 py-2 text-left text-sm transition-colors",
+            "flex min-w-0 flex-1 items-center gap-2.5 whitespace-nowrap rounded-[6px] py-2 pl-3 text-left text-sm transition-colors",
+            hasTrailing ? "pr-8" : "pr-3",
             isActive
               ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] md:border-l-2 md:border-[var(--brand-700)] md:rounded-l-none"
               : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
@@ -128,7 +132,7 @@ export function WikiSidebar({
         >
           <span className="h-4 w-4 shrink-0">{icon}</span>
           <span
-            className="flex-1 truncate"
+            className="min-w-0 flex-1 truncate"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: "11px",
@@ -138,28 +142,32 @@ export function WikiSidebar({
           >
             {label}
           </span>
-          {isShared && (
-            <GlobeAltIcon
-              className="h-3.5 w-3.5 shrink-0 text-[var(--brand-600)]"
-              title="Shared publicly"
-            />
-          )}
         </button>
-        {/* Reserve the delete slot on every row so the share globes line up in
-            one right-aligned column regardless of which rows are deletable. */}
+
+        {/* Share indicator — pinned flush to the sidebar's right edge so every
+            globe sits in one clean column. Hidden on hover (desktop) where the
+            row is deletable, so the trash takes its place without overlapping. */}
+        {isShared && (
+          <GlobeAltIcon
+            title="Shared publicly"
+            className={[
+              "pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--brand-600)]",
+              canDelete ? "opacity-0 md:opacity-100 md:group-hover:opacity-0" : "",
+            ].join(" ")}
+          />
+        )}
+
         {canDelete ? (
           <button
             type="button"
             onClick={() => onDeleteSection?.(section)}
             disabled={isDeletingSection}
             title={`Delete ${label}`}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] opacity-100 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100"
+            className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[6px] text-[var(--text-4)] opacity-100 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100"
           >
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
-        ) : (
-          <span className="h-8 w-8 shrink-0" aria-hidden />
-        )}
+        ) : null}
       </div>
     );
   };
@@ -167,7 +175,7 @@ export function WikiSidebar({
   const hasAddItems = addableSections.length > 0 && Boolean(onAddSection);
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-1 py-2 md:w-[220px] md:py-4 md:pr-2">
+    <div className="flex w-full shrink-0 flex-col gap-1 py-2 md:w-[248px] md:py-4 md:pr-2">
       {/* Horizontal scroll row on mobile, vertical list from md up */}
       <div className="flex gap-1 overflow-x-auto md:flex-col md:gap-0 md:space-y-0.5 md:overflow-visible">
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
