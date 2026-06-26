@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { resolvePublicWiki } from "@/server/wiki";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -6,6 +6,7 @@ import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 
 const SECTION_LABELS: Record<string, string> = {
   timeline: "Timeline",
+  "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
   "api-docs": "API Docs",
@@ -19,7 +20,7 @@ const SECTION_LABELS: Record<string, string> = {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  params: Promise<{ slug: string; token: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
   const resolved = await resolvePublicWiki(token);
@@ -36,11 +37,18 @@ export async function generateMetadata({
 export default async function PublicWikiPage({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  params: Promise<{ slug: string; token: string }>;
 }) {
-  const { token } = await params;
+  const { slug, token } = await params;
   const resolved = await resolvePublicWiki(token);
   if (!resolved) notFound();
+
+  // The token is the source of truth; canonicalise the readable slug in the URL
+  // (forgiving of a stale or wrong slug — e.g. after a client rename).
+  if (resolved.wiki.clientSlug !== slug) {
+    redirect(`/wiki/${resolved.wiki.clientSlug}/${token}`);
+  }
+
   const { wiki, onlySection } = resolved;
 
   return (

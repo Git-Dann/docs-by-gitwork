@@ -1,6 +1,6 @@
-// /wiki/[token] — public client wiki. Section name shown when the share is
+// /wiki/[slug]/[token] — public client wiki. Section name shown when the share is
 // scoped to a single section (Design System / IA / Dev Guide / Changelog /
-// Course Requests), else just "Wiki".
+// Course Requests), else just "Wiki". Slug is cosmetic; the token resolves it.
 
 import { ImageResponse } from "next/og";
 import { BrandedCard } from "@/lib/og/card";
@@ -14,7 +14,11 @@ export const alt = "Foundry wiki";
 export const size = SIZE;
 export const contentType = CONTENT_TYPE;
 
-export default async function OgImage({ params }: { params: Promise<{ token: string }> }) {
+export default async function OgImage({
+  params,
+}: {
+  params: Promise<{ slug: string; token: string }>;
+}) {
   const { token } = await params;
   const [wiki, fonts, logo] = await Promise.all([
     loadWikiByToken(token),

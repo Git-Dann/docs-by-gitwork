@@ -71,6 +71,16 @@ function LinkRow({
 }) {
   return (
     <div className="mt-3 space-y-2">
+      {/* Smart preview — the actual social/unfurl card recipients will see. */}
+      <div className="overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${openHref}/opengraph-image`}
+          alt="Link preview"
+          loading="lazy"
+          className="block aspect-[1200/630] w-full object-cover"
+        />
+      </div>
       <p
         className="truncate rounded-[7px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-2.5 py-2 text-[11px] text-[var(--text-3)]"
         style={{ fontFamily: MONO }}
@@ -139,10 +149,10 @@ export function DesignSystemWorkspace({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedWiki, setCopiedWiki] = useState(false);
 
+  const wikiHref =
+    wikiShare?.enabled && wikiShare.token ? `/wiki/${slug}/${wikiShare.token}` : null;
   const wikiUrl =
-    wikiShare?.enabled && wikiShare.token && typeof window !== "undefined"
-      ? `${window.location.origin}/wiki/${wikiShare.token}`
-      : null;
+    wikiHref && typeof window !== "undefined" ? `${window.location.origin}${wikiHref}` : null;
 
   const tokens = ds?.tokens ?? null;
   const shareOn = ds?.share.enabled ?? false;
@@ -224,10 +234,10 @@ export function DesignSystemWorkspace({
                           onClick={() => wikiShare.onToggle(!wikiShare.enabled)}
                         />
                       </div>
-                      {wikiUrl && wikiShare.token && (
+                      {wikiUrl && wikiHref && (
                         <LinkRow
                           url={wikiUrl}
-                          openHref={`/wiki/${wikiShare.token}`}
+                          openHref={wikiHref}
                           copied={copiedWiki}
                           onCopy={() => copy(wikiUrl, setCopiedWiki)}
                         />
