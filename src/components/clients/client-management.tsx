@@ -1076,7 +1076,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
               <div className="border-t border-[rgba(0,0,0,0.08)] pt-4 sm:col-span-2">
                 <label className="block">
                   <span className="app-field-label">Notes</span>
-                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="app-input min-h-[64px]" rows={2} />
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="app-textarea min-h-[64px]" rows={2} />
                 </label>
               </div>
 

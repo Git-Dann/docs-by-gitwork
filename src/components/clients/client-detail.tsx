@@ -34,6 +34,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
+import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -92,6 +93,37 @@ type EditFormState = {
   retainerDays: string;
   retainerDaysUsed: string;
 };
+
+/** Field-type validation for the edit-client form. Returns the first error, or null if valid. */
+function validateEditForm(f: EditFormState): string | null {
+  const email = f.primaryContactEmail.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "Enter a valid contact email address.";
+  }
+  // Website is stored with the https:// scheme; require a dotted host.
+  if (f.website.trim() && !/\.[a-z]{2,}/i.test(f.website.replace(/^https?:\/\//i, "").trim())) {
+    return "Enter a valid website address (e.g. client.com).";
+  }
+  for (const [label, url] of [
+    ["Google Drive folder", f.googleDriveFolderUrl],
+    ["ClickUp folder", f.clickupUrl],
+  ] as const) {
+    const v = url.trim();
+    if (v && !/^https?:\/\/\S+\.\S+/i.test(v)) {
+      return `Enter a valid ${label} URL (including https://).`;
+    }
+  }
+  for (const [label, days] of [
+    ["Retainer days", f.retainerDays],
+    ["Used this month", f.retainerDaysUsed],
+  ] as const) {
+    const t = days.trim();
+    if (t !== "" && (!Number.isInteger(Number(t)) || Number(t) < 0 || Number(t) > 31)) {
+      return `${label} must be a whole number between 0 and 31.`;
+    }
+  }
+  return null;
+}
 
 /** Official Slack mark (4-colour). Labels the Internal / External channel fields. */
 function SlackGlyph({ className }: { className?: string }) {
@@ -343,6 +375,11 @@ export function ClientDetail({ slug }: { slug: string }) {
 
   async function handleSaveClient() {
     if (!editForm) return;
+    const validationError = validateEditForm(editForm);
+    if (validationError) {
+      setEditError(validationError);
+      return;
+    }
     setEditError(null);
     try {
       const updated = await updateClientMutation.mutateAsync({
@@ -3034,6 +3071,16 @@ function ClientEditModal({
     onChange({ ...form, [field]: value });
   }
 
+  // Retainer is off for most clients — gate the day fields behind a toggle, on only when set.
+  const [retainerOn, setRetainerOn] = useState(
+    () => Boolean(form.retainerDays && form.retainerDays.trim() !== ""),
+  );
+  function toggleRetainer(on: boolean) {
+    setRetainerOn(on);
+    // Turning it off clears both day fields in one update (so they persist as null).
+    if (!on) onChange({ ...form, retainerDays: "", retainerDaysUsed: "" });
+  }
+
   return (
     <div className="fixed inset-0 z-30">
       <button
@@ -3073,12 +3120,7 @@ function ClientEditModal({
                   </label>
                   <label className="block">
                     <span className="app-field-label">Website</span>
-                    <input
-                      value={form.website}
-                      onChange={(e) => set("website", e.target.value)}
-                      className="app-input"
-                      placeholder="https://client.com"
-                    />
+                    <WebsiteInput value={form.website} onChange={(v) => set("website", v)} />
                   </label>
                   <label className="block">
                     <span className="app-field-label">Google Drive folder URL</span>
@@ -3150,32 +3192,57 @@ function ClientEditModal({
                   )}
                   <SlackProvisionRetry slug={slug} initialError={slackProvisionError} />
 
-                  {/* Retainer — monthly allowance + days used (commercial; shown gated on cards) */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block">
-                      <span className="app-field-label">Retainer (days/mo)</span>
-                      <input
-                        value={form.retainerDays}
-                        onChange={(e) => set("retainerDays", e.target.value)}
-                        className="app-input"
-                        type="number"
-                        min={0}
-                        max={31}
-                        placeholder="e.g. 28"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="app-field-label">Used this month</span>
-                      <input
-                        value={form.retainerDaysUsed}
-                        onChange={(e) => set("retainerDaysUsed", e.target.value)}
-                        className="app-input"
-                        type="number"
-                        min={0}
-                        max={31}
-                        placeholder="e.g. 12"
-                      />
-                    </label>
+                  {/* Retainer — off for most clients; toggle reveals the day fields. */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="app-field-label !mb-0">Retainer</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={retainerOn}
+                        aria-label="Toggle retainer"
+                        onClick={() => toggleRetainer(!retainerOn)}
+                        className={cn(
+                          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                          retainerOn ? "bg-[var(--brand-700)]" : "bg-[var(--border-3)]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                            retainerOn ? "translate-x-[18px]" : "translate-x-0.5",
+                          )}
+                        />
+                      </button>
+                    </div>
+                    {retainerOn && (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="app-field-label">Days / month</span>
+                          <input
+                            value={form.retainerDays}
+                            onChange={(e) => set("retainerDays", e.target.value)}
+                            className="app-input"
+                            type="number"
+                            min={0}
+                            max={31}
+                            placeholder="e.g. 28"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="app-field-label">Used this month</span>
+                          <input
+                            value={form.retainerDaysUsed}
+                            onChange={(e) => set("retainerDaysUsed", e.target.value)}
+                            className="app-input"
+                            type="number"
+                            min={0}
+                            max={31}
+                            placeholder="e.g. 12"
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3205,11 +3272,9 @@ function ClientEditModal({
                       </label>
                       <label className="block">
                         <span className="app-field-label">Phone</span>
-                        <input
+                        <PhoneInput
                           value={form.primaryContactPhone}
-                          onChange={(e) => set("primaryContactPhone", e.target.value)}
-                          className="app-input"
-                          placeholder="+44 7700 000000"
+                          onChange={(v) => set("primaryContactPhone", v)}
                         />
                       </label>
                     </div>
@@ -3257,12 +3322,7 @@ function ClientEditModal({
                       </div>
                       <label className="block">
                         <span className="app-field-label">Country</span>
-                        <input
-                          value={form.country}
-                          onChange={(e) => set("country", e.target.value)}
-                          className="app-input"
-                          placeholder="United Kingdom"
-                        />
+                        <CountrySelect value={form.country} onChange={(v) => set("country", v)} />
                       </label>
                     </div>
                   </div>
@@ -3275,7 +3335,7 @@ function ClientEditModal({
                     <textarea
                       value={form.notes}
                       onChange={(e) => set("notes", e.target.value)}
-                      className="app-input min-h-[80px] resize-y"
+                      className="app-textarea min-h-[80px]"
                       placeholder="General notes about this client…"
                     />
                   </label>
