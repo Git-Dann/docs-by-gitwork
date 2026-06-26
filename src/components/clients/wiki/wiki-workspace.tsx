@@ -26,6 +26,7 @@ import { CourseRequestsSection } from "./course-requests-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
+import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiShareMenu } from "./wiki-share-menu";
 import {
   ApiDocsPageEditor,
@@ -81,6 +82,7 @@ const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
+  timeline: "Timeline",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -93,6 +95,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 };
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
+  timeline: "TIMELINE",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -806,6 +809,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       }),
   );
   const availableSections: WikiSection[] = [
+    "timeline",
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -1003,6 +1007,24 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function renderContent() {
+    // ── Timeline — read-only Gantt preview of the client's delivery roadmap.
+    // Sourced from the client's task-board feature blocks (loadWikiTimeline),
+    // so it matches the public /timeline/[token] share. Edit phases on the
+    // client's Tasks board, not here.
+    if (activeSection === "timeline") {
+      return (
+        <>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[13px] text-[var(--text-4)]">
+              Pulls live from this client&apos;s project phases. Edit on the Tasks board.
+            </p>
+            {renderShareMenu("timeline")}
+          </div>
+          <WikiTimelineSection timeline={wiki!.timeline} />
+        </>
+      );
+    }
+
     // ── Design System — embedded inline (has its own action bar)
     // -mt-6 cancels the parent pt-6 so DS workspace content starts flush at top;
     // the DS workspace itself adds its own pt-6, keeping its action bar in line.

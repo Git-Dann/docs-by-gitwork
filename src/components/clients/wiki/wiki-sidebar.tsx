@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BookOpenIcon,
+  CalendarDaysIcon,
   ChevronDownIcon,
   CircleStackIcon,
   ClockIcon,
@@ -17,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 export type WikiSection =
+  | "timeline"
   | "design-system"
   | "ia"
   | "dev-guide"
@@ -83,6 +85,7 @@ export function WikiSidebar({
 
   const visibleSections = new Set<WikiSection>(
     availableSections ?? [
+      "timeline",
       "design-system",
       "ia",
       "dev-guide",
@@ -151,6 +154,7 @@ export function WikiSidebar({
     <div className="flex w-full shrink-0 flex-col gap-1 py-2 md:w-[220px] md:py-4 md:pr-2">
       {/* Horizontal scroll row on mobile, vertical list from md up */}
       <div className="flex gap-1 overflow-x-auto md:flex-col md:gap-0 md:space-y-0.5 md:overflow-visible">
+        {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

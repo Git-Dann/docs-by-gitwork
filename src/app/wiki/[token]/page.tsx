@@ -5,6 +5,7 @@ import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 
 const SECTION_LABELS: Record<string, string> = {
+  timeline: "Timeline",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
   "api-docs": "API Docs",
@@ -44,19 +45,14 @@ export default async function PublicWikiPage({
 
   return (
     <div className="min-h-screen bg-[var(--surface-0)]">
-      {/* Header */}
+      {/* Header — branding lives once, in the footer. */}
       <div className="border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <p
-              className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {wiki.clientName}{" // Wiki"}
-            </p>
-          </div>
-          <p className="text-xs text-[var(--text-4)]">Powered by Gitwork</p>
-        </div>
+        <p
+          className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {wiki.clientName}{" // Wiki"}
+        </p>
       </div>
 
       <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />

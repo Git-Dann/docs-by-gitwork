@@ -2,11 +2,19 @@
 
 import { useState } from "react";
 import { Menu, MenuButton, MenuItems } from "@headlessui/react";
-import { ChevronDownIcon, ClipboardDocumentIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronDownIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+  ArrowTopRightOnSquareIcon,
+  GlobeAltIcon,
+  DocumentTextIcon,
+} from "@heroicons/react/24/outline";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
+
 const chipBtn =
-  "inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
 
 function Toggle({
   on,
@@ -28,10 +36,62 @@ function Toggle({
       style={{ background: on ? "var(--brand-600)" : "var(--border-2)" }}
     >
       <span
-        className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+        className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
         style={{ left: on ? 18 : 2 }}
       />
     </button>
+  );
+}
+
+/** URL pill + Copy / Open actions for an active share link. */
+function LinkRow({
+  url,
+  token,
+  copied,
+  onCopy,
+}: {
+  url: string;
+  token: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p
+        className="truncate rounded-[7px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-2.5 py-2 text-[11px] text-[var(--text-3)]"
+        style={{ fontFamily: MONO }}
+      >
+        {url}
+      </p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[7px] bg-[var(--brand-600)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+        >
+          {copied ? (
+            <>
+              <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+              Copied
+            </>
+          ) : (
+            <>
+              <ClipboardDocumentIcon className="h-3.5 w-3.5 shrink-0" />
+              Copy link
+            </>
+          )}
+        </button>
+        <a
+          href={`/wiki/${token}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+        >
+          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
+          Open
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -59,9 +119,10 @@ export function WikiShareMenu({
   const [copied, setCopied] = useState<string | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const pageUrl = pageToken ? `${origin}/wiki/${pageToken}` : null;
-  const wikiUrl = wikiEnabled && wikiToken ? `${origin}/wiki/${wikiToken}` : null;
+  const wikiOn = wikiEnabled && !!wikiToken;
+  const wikiUrl = wikiOn ? `${origin}/wiki/${wikiToken}` : null;
   const pageOn = !!pageToken;
-  const anyOn = pageOn || (wikiEnabled && !!wikiToken);
+  const anyOn = pageOn || wikiOn;
 
   async function copy(url: string, key: string) {
     try {
@@ -78,7 +139,7 @@ export function WikiShareMenu({
       <MenuButton className={chipBtn}>
         {anyOn ? (
           <>
-            <span className="text-[var(--brand-600)]">●</span> Shared
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" /> Shared
           </>
         ) : (
           "Share"
@@ -86,90 +147,89 @@ export function WikiShareMenu({
         <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
       </MenuButton>
 
-      <MenuItems anchor="bottom end" className="z-50 mt-1.5 w-[min(20rem,90vw)] rounded-[12px] border border-[rgba(0,0,0,0.10)] bg-white shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none">
-        {/* ── This page ── */}
-        <div className="p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[13px] font-medium text-[var(--text-1)]">Share this page</p>
-              <p className="text-[11px] text-[var(--text-4)]">Public link to {pageLabel} only.</p>
-            </div>
-            <Toggle on={pageOn} disabled={pageBusy} onClick={() => onTogglePage(!pageOn)} />
-          </div>
+      <MenuItems
+        anchor="bottom end"
+        className="z-50 mt-2 w-[min(20.5rem,92vw)] overflow-hidden rounded-[14px] border border-[rgba(0,0,0,0.08)] bg-white shadow-[0_16px_40px_-8px_rgba(0,0,0,0.22)] focus:outline-none"
+      >
+        {/* Eyebrow */}
+        <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+            style={{ fontFamily: MONO }}
+          >
+            Share
+          </p>
+        </div>
 
-          {pageOn && pageUrl && (
-            <div className="mt-2.5 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] p-2.5">
-              <p
-                className="mb-2 truncate text-[11px] text-[var(--text-4)]"
-                style={{ fontFamily: MONO }}
-              >
-                {pageUrl}
-              </p>
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => copy(pageUrl, "page")}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.10)] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-0,#fafaf9)]"
-                >
-                  <ClipboardDocumentIcon className="h-3.5 w-3.5 shrink-0" />
-                  {copied === "page" ? "Copied!" : "Copy link"}
-                </button>
-                <a
-                  href={`/wiki/${pageToken}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.10)] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-0,#fafaf9)]"
-                >
-                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                  Open
-                </a>
+        {/* ── Entire wiki (primary) ── */}
+        <div className="px-4 py-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <GlobeAltIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-3)]" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold text-[var(--text-1)]">
+                  Share entire wiki
+                </p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                  One link to every page — Timeline, docs, changelog & client sections.
+                </p>
               </div>
             </div>
+            <Toggle on={wikiOn} disabled={wikiBusy} onClick={() => onToggleWiki(!wikiOn)} />
+          </div>
+
+          {wikiUrl && wikiToken && (
+            <LinkRow
+              url={wikiUrl}
+              token={wikiToken}
+              copied={copied === "wiki"}
+              onCopy={() => copy(wikiUrl, "wiki")}
+            />
           )}
         </div>
 
-        <div className="mx-3 border-t border-[rgba(0,0,0,0.07)]" />
+        <div className="h-px bg-[rgba(0,0,0,0.06)]" />
 
-        {/* ── Entire wiki ── */}
-        <div className="p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[13px] font-medium text-[var(--text-1)]">Share entire wiki</p>
-              <p className="text-[11px] text-[var(--text-4)]">
-                One link to all pages, docs, changelog, and client-specific sections.
-              </p>
-            </div>
-            <Toggle on={wikiEnabled} disabled={wikiBusy} onClick={() => onToggleWiki(!wikiEnabled)} />
-          </div>
-
-          {wikiUrl && (
-            <div className="mt-2.5 rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] p-2.5">
-              <p
-                className="mb-2 truncate text-[11px] text-[var(--text-4)]"
-                style={{ fontFamily: MONO }}
-              >
-                {wikiUrl}
-              </p>
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => copy(wikiUrl, "wiki")}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.10)] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-0,#fafaf9)]"
-                >
-                  <ClipboardDocumentIcon className="h-3.5 w-3.5 shrink-0" />
-                  {copied === "wiki" ? "Copied!" : "Copy link"}
-                </button>
-                <a
-                  href={`/wiki/${wikiToken}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.10)] bg-white px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-0,#fafaf9)]"
-                >
-                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
-                  Open
-                </a>
+        {/* ── This page (secondary) ── */}
+        <div className="px-4 py-3.5">
+          {wikiOn ? (
+            // The full-wiki link already covers this page — no separate toggle.
+            <div className="flex items-start gap-2.5">
+              <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-[var(--text-3)]">Share this page</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                  Included in the full-wiki link above. Turn that off to share{" "}
+                  {pageLabel} on its own.
+                </p>
               </div>
             </div>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-[var(--text-1)]">
+                      Share this page
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                      Public link to {pageLabel} only.
+                    </p>
+                  </div>
+                </div>
+                <Toggle on={pageOn} disabled={pageBusy} onClick={() => onTogglePage(!pageOn)} />
+              </div>
+
+              {pageOn && pageUrl && pageToken && (
+                <LinkRow
+                  url={pageUrl}
+                  token={pageToken}
+                  copied={copied === "page"}
+                  onCopy={() => copy(pageUrl, "page")}
+                />
+              )}
+            </>
           )}
         </div>
       </MenuItems>
