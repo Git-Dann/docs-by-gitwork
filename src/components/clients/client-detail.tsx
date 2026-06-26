@@ -820,11 +820,34 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* Lead-only Scribe — document calls with a prospect (number 03 in the lead view). */}
+      {/* Lead-only 03 // MEETING NOTES + 04 // NOTES, side by side. */}
       {isLead && (
-        <section className="widget-card">
-          <MeetingNotesSection slug={slug} number="03" />
-        </section>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <section className="widget-card">
+            <MeetingNotesSection slug={slug} number="03" />
+          </section>
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">04</span>
+                {" // NOTES"}
+              </span>
+              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                <PencilIcon className="h-3 w-3" />
+                Edit
+              </Button>
+            </div>
+            <div className="p-6">
+              {client.notes ? (
+                <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+                  {client.notes}
+                </p>
+              ) : (
+                <p className="text-sm text-[var(--text-4)]">No notes yet — add some via Edit.</p>
+              )}
+            </div>
+          </section>
+        </div>
       )}
 
       {!isLead && (
@@ -1018,29 +1041,19 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 13 // NOTES (renumbered 03 in the lead view; always shown for leads) ── */}
-      {(client.notes || isLead) && (
+      {/* ── 13 // NOTES (client view; leads show notes in the 03/04 row above) ── */}
+      {!isLead && client.notes && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">{isLead ? "04" : "13"}</span>
+              <span className="widget-header__label--number">13</span>
               {" // NOTES"}
             </span>
-            {isLead && (
-              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-                <PencilIcon className="h-3 w-3" />
-                Edit
-              </Button>
-            )}
           </div>
           <div className="p-6">
-            {client.notes ? (
-              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-                {client.notes}
-              </p>
-            ) : (
-              <p className="text-sm text-[var(--text-4)]">No notes yet — add some via Edit.</p>
-            )}
+            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+              {client.notes}
+            </p>
           </div>
         </section>
       )}
