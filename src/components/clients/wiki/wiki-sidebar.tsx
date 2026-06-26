@@ -5,6 +5,7 @@ import {
   BookOpenIcon,
   CalendarDaysIcon,
   ChevronDownIcon,
+  GlobeAltIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
@@ -49,6 +50,8 @@ interface Props {
   active: WikiSection;
   onSelect: (section: WikiSection) => void;
   availableSections?: WikiSection[];
+  /** Sections currently public (per-page share or covered by the whole-wiki link). */
+  sharedSections?: WikiSection[];
   addableSections?: Array<{ section: WikiSection; label: string }>;
   onAddSection?: (section: WikiSection) => void;
   isAddingSection?: boolean;
@@ -62,6 +65,7 @@ export function WikiSidebar({
   active,
   onSelect,
   availableSections,
+  sharedSections = [],
   addableSections = [],
   onAddSection,
   isAddingSection = false,
@@ -100,6 +104,7 @@ export function WikiSidebar({
   visibleSections.add(active);
 
   const deletable = new Set(deletableSections);
+  const shared = new Set(sharedSections);
   const navItem = (
     section: WikiSection,
     label: string,
@@ -107,6 +112,7 @@ export function WikiSidebar({
   ) => {
     if (!visibleSections.has(section)) return null;
     const isActive = active === section;
+    const isShared = shared.has(section);
     const canDelete = deletable.has(section) && Boolean(onDeleteSection);
     return (
       <div key={section} className="group flex w-auto shrink-0 items-center gap-1 md:w-full">
@@ -132,6 +138,12 @@ export function WikiSidebar({
           >
             {label}
           </span>
+          {isShared && (
+            <GlobeAltIcon
+              className="h-3.5 w-3.5 shrink-0 text-[var(--brand-600)]"
+              title="Shared publicly"
+            />
+          )}
         </button>
         {canDelete ? (
           <button

@@ -60,6 +60,9 @@ export function useSetWikiShare(slug: string) {
     mutationFn: (enabled: boolean) => setWikiShareApi(slug, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+      // Disabling the wiki share also takes the design-system's /brand/ share
+      // private server-side — refresh that query so its menu reflects it.
+      queryClient.invalidateQueries({ queryKey: ["design-system", slug] });
     },
   });
 }
