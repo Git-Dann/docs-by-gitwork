@@ -63,8 +63,9 @@ export default async function PublicWikiPage({
         </p>
       </header>
 
-      {/* Content grows to fill the viewport so the footer stays pinned to the bottom. */}
-      <main className="flex-1">
+      {/* Content grows to fill the viewport so the footer stays pinned to the bottom
+          AND the sidebar divider spans the full height (flex-col → child stretches). */}
+      <main className="flex flex-1 flex-col">
         <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />
       </main>
 
