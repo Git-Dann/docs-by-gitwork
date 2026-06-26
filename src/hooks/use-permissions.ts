@@ -23,6 +23,7 @@ export function usePermissions() {
     // Role tier checks — used by gates that don't fit a single permission
     // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
     isAdminOrAbove: isAtLeast(role, "ADMIN"),
+    isSuperAdmin: isSuperAdmin(role),
     // Field gates
     canViewRates: can("code.viewRates"),
     canViewCosts: can("docs.viewCosts"),

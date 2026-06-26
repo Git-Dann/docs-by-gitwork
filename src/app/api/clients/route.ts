@@ -10,6 +10,7 @@ import {
   canViewClientFinancials,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { isSuperAdmin } from "@/types/auth";
 import { assignedClientIds } from "@/server/tasks";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,8 @@ const VALID_STATUSES: ReadonlyArray<WorkspaceClientStatus | "ALL"> = [
   "PENDING_REVIEW",
   "ACTIVE",
   "ARCHIVED",
+  "LEAD",
+  "INACTIVE",
   "ALL",
 ];
 
@@ -34,6 +37,11 @@ export async function GET(request: NextRequest) {
     // (no per-user identity) → no financials, full unscoped list (as before).
     const user = await getEffectiveUserOrNull(request);
     const includeFinancials = user ? canViewClientFinancials(user) : false;
+
+    // Leads are Super-Admin-only — never return them to anyone else, even by direct query.
+    if (status === "LEAD" && !(user && isSuperAdmin(user.role))) {
+      return apiOk({ clients: [] });
+    }
 
     const result = await listDerivedClients({ search, status, includeFinancials });
 

@@ -1090,7 +1090,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 export function ClientManagement() {
   const router = useRouter();
-  const { canManageClients } = usePermissions();
+  const { canManageClients, isSuperAdmin, isPending: permsLoading } = usePermissions();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("active");
   const [showCreate, setShowCreate] = useState(false);
@@ -1122,6 +1122,11 @@ export function ClientManagement() {
       setTab(requestedTab);
     }
   }, []);
+
+  // Leads are Super-Admin-only — if a non-super-admin lands on it (deep link), bounce to Active.
+  useEffect(() => {
+    if (!permsLoading && !isSuperAdmin && tab === "leads") setTab("active");
+  }, [permsLoading, isSuperAdmin, tab]);
 
   // Drive the right list off the selected tab.
   const listQuery =
@@ -1220,15 +1225,17 @@ export function ClientManagement() {
             </span>
             {canManageClients ? (
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => setShowAddLead(true)}
-                >
-                  <UserPlusIcon className="h-3.5 w-3.5" />
-                  Add lead
-                </Button>
+                {isSuperAdmin ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => setShowAddLead(true)}
+                  >
+                    <UserPlusIcon className="h-3.5 w-3.5" />
+                    Add lead
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="primary"
@@ -1257,8 +1264,10 @@ export function ClientManagement() {
                 />
               </label>
 
-              {/* Stats */}
-              {!isPending && !error && tab === "active" && (
+              {/* Stats — shown on all client-list tabs (not onboarding) so the header keeps a
+                  constant height when toggling between Active / Leads / Inactive. "suggested"
+                  is only meaningful on Active. */}
+              {!isPending && !error && tab !== "onboarding" && (
                 <div className="flex items-center gap-5 ml-auto">
                   <div className="text-center">
                     <p
@@ -1269,16 +1278,20 @@ export function ClientManagement() {
                     </p>
                     <p className="widget-data-label mt-1">total</p>
                   </div>
-                  <div className="h-8 w-px bg-[rgba(0,0,0,0.08)]" />
-                  <div className="text-center">
-                    <p
-                      className="text-2xl leading-none tracking-tight text-[var(--text-1)]"
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {suggestedCount}
-                    </p>
-                    <p className="widget-data-label mt-1">suggested</p>
-                  </div>
+                  {tab === "active" && (
+                    <>
+                      <div className="h-8 w-px bg-[rgba(0,0,0,0.08)]" />
+                      <div className="text-center">
+                        <p
+                          className="text-2xl leading-none tracking-tight text-[var(--text-1)]"
+                          style={{ fontFamily: "var(--font-display)" }}
+                        >
+                          {suggestedCount}
+                        </p>
+                        <p className="widget-data-label mt-1">suggested</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1291,12 +1304,14 @@ export function ClientManagement() {
                 label="Active"
                 count={tab === "active" ? clients.length : null}
               />
-              <TabButton
-                active={tab === "leads"}
-                onClick={() => setTab("leads")}
-                label="Leads"
-                count={leadsCount}
-              />
+              {isSuperAdmin ? (
+                <TabButton
+                  active={tab === "leads"}
+                  onClick={() => setTab("leads")}
+                  label="Leads"
+                  count={leadsCount}
+                />
+              ) : null}
               <TabButton
                 active={tab === "inactive"}
                 onClick={() => setTab("inactive")}
