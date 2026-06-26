@@ -1162,6 +1162,7 @@ export function ClientManagement() {
     [pendingQuery.data],
   );
   const pendingCount = pendingClients.length;
+  const activeCount = activeQuery.data?.clients?.length ?? 0;
   const leadsCount = leadsQuery.data?.clients?.length ?? 0;
   const inactiveCount = inactiveQuery.data?.clients?.length ?? 0;
   const openOnboardingCount = useMemo(
@@ -1312,7 +1313,7 @@ export function ClientManagement() {
                 active={tab === "active"}
                 onClick={() => setTab("active")}
                 label="Active"
-                count={tab === "active" ? clients.length : null}
+                count={activeCount}
               />
               {isSuperAdmin ? (
                 <TabButton
