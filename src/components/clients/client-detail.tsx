@@ -820,9 +820,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* Lead-only 03 // MEETING NOTES + 04 // NOTES, side by side. */}
+      {/* Lead-only 03 // MEETING NOTES + 04 // NOTES, side by side, equal height. */}
       {isLead && (
-        <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <section className="widget-card">
             <MeetingNotesSection slug={slug} number="03" />
           </section>
