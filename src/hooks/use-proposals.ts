@@ -33,6 +33,9 @@ import {
   saveEngagement,
   saveTimeline,
   setClientStatusApi,
+  listClientTouchpoints,
+  createClientTouchpoint,
+  type LeadInput,
   updateClient,
   updateClientDesign,
   updateClientPlatform,
@@ -46,6 +49,7 @@ import {
 import type {
   ClientDesignRecord,
   ClientPlatformRecord,
+  TouchpointType,
   WorkspaceClientStatus,
 } from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
@@ -145,9 +149,33 @@ export function useMoveOnboardingToWorkflow() {
 export function useSetClientStatus(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (status: WorkspaceClientStatus) => setClientStatusApi(slug, status),
+    mutationFn: (input: {
+      status: WorkspaceClientStatus;
+      resumeAt?: string | null;
+      pauseNote?: string | null;
+    }) => setClientStatusApi(slug, input.status, { resumeAt: input.resumeAt, pauseNote: input.pauseNote }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useClientTouchpoints(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-touchpoints", slug],
+    queryFn: () => listClientTouchpoints(slug),
+    enabled: enabled && Boolean(slug),
+  });
+}
+
+export function useAddClientTouchpoint(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { type: TouchpointType; note?: string; occurredAt?: string }) =>
+      createClientTouchpoint(slug, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-touchpoints", slug] });
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
     },
   });
@@ -204,7 +232,7 @@ type ClientUpdatePayload = {
   slackExternalChannelId?: string;
   retainerDays?: number | null;
   retainerDaysUsed?: number | null;
-};
+} & LeadInput;
 
 export function useUpdateClient(slug: string) {
   const queryClient = useQueryClient();

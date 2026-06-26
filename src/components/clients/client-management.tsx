@@ -7,9 +7,11 @@ import {
   ClipboardDocumentIcon,
   LinkIcon,
   MagnifyingGlassIcon,
+  PauseCircleIcon,
   PlusIcon,
   SparklesIcon,
   TrashIcon,
+  UserPlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
@@ -30,10 +32,10 @@ import {
 import { useOnboardingForms } from "@/hooks/use-onboarding-forms";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
-import type { ClientListItem } from "@/types/client";
+import type { ClientListItem, LeadStage } from "@/types/client";
 import type { OnboardingLinkRecord } from "@/lib/api";
 
-type Tab = "active" | "pending" | "onboarding";
+type Tab = "active" | "leads" | "inactive" | "pending" | "onboarding";
 
 /** Format a whole-currency amount, e.g. 6200 USD → "$6,200". Falls back to "6200 USD". */
 /** Live preview of the channel name as the operator types — matches the slug
@@ -296,6 +298,98 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
   );
 }
 
+const LEAD_STAGE_LABEL: Record<LeadStage, string> = {
+  NEW: "New",
+  CONTACTED: "Contacted",
+  QUALIFIED: "Qualified",
+  PROPOSAL_SENT: "Proposal sent",
+  WON: "Won",
+  LOST: "Lost",
+};
+const LEAD_STAGE_TONE: Record<LeadStage, string> = {
+  NEW: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
+  CONTACTED: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  QUALIFIED: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  PROPOSAL_SENT: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  WON: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+  LOST: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+};
+
+/** Short "5 Jul" style date for the cards. */
+function formatShortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  } catch {
+    return "";
+  }
+}
+
+/** Bottom of a LEAD card — est. value + stage + follow-up (overdue flagged). */
+function LeadCardBody({ client }: { client: ClientListItem }) {
+  const stage = client.leadStage ?? null;
+  const followUpIso = client.leadFollowUpAt ?? null;
+  const overdue = followUpIso ? new Date(followUpIso).getTime() < Date.now() : false;
+  const value = client.leadValue ?? null;
+  return (
+    <>
+      <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
+        <div>
+          {value != null ? (
+            <p className="text-3xl leading-none tracking-tight text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
+              {formatMoney(value, client.leadValueCurrency ?? "GBP")}
+            </p>
+          ) : (
+            <p className="text-3xl leading-none tracking-tight text-[var(--text-4)]" style={{ fontFamily: "var(--font-display)" }}>—</p>
+          )}
+          <p className="widget-data-label mt-1 opacity-80">{value != null ? "est. value" : "no estimate"}</p>
+        </div>
+        <p className="widget-timestamp text-right">{formatDate(client.createdAt)}</p>
+      </div>
+      <div className="grid grid-cols-[auto_1fr] items-center gap-x-2">
+        <span className="justify-self-start">
+          {stage ? (
+            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", LEAD_STAGE_TONE[stage])}>
+              {LEAD_STAGE_LABEL[stage]}
+            </span>
+          ) : null}
+        </span>
+        <span className="widget-data-label justify-self-end whitespace-nowrap">
+          {followUpIso ? (
+            <span className={overdue ? "text-red-600 dark:text-red-400" : "text-[var(--text-2)]"}>
+              {overdue ? "Overdue " : "Follow up "}
+              {formatShortDate(followUpIso)}
+            </span>
+          ) : client.leadSource ? (
+            <span className="text-[var(--text-3)]">{client.leadSource}</span>
+          ) : null}
+        </span>
+      </div>
+    </>
+  );
+}
+
+/** Bottom of an INACTIVE (paused) card — "pick back up" date + reason. */
+function InactiveCardBody({ client }: { client: ClientListItem }) {
+  const resumeIso = client.resumeAt ?? null;
+  return (
+    <>
+      <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          <PauseCircleIcon className="h-3.5 w-3.5" />
+          Paused
+        </span>
+        <p className="widget-timestamp text-right">{formatDate(client.createdAt)}</p>
+      </div>
+      <p className="widget-data-label text-[var(--text-2)]">
+        {resumeIso ? `Pick back up ${formatShortDate(resumeIso)}` : "No resume date set"}
+      </p>
+      {client.pauseNote ? (
+        <p className="line-clamp-2 text-xs text-[var(--text-3)]">{client.pauseNote}</p>
+      ) : null}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ClientCard — card-based representation of a single client
 // ---------------------------------------------------------------------------
@@ -480,6 +574,12 @@ function ClientCard({
           </div>
         </div>
 
+        {client.status === "LEAD" ? (
+          <LeadCardBody client={client} />
+        ) : client.status === "INACTIVE" ? (
+          <InactiveCardBody client={client} />
+        ) : (
+          <>
         {/* Stat + timestamp */}
         <div className="flex items-end justify-between border-t border-[rgba(0,0,0,0.06)] pt-3">
           {client.proposalCount > 0 ? (
@@ -564,6 +664,8 @@ function ClientCard({
               style={{ width: `${retainerOver ? 100 : retainerPct}%` }}
             />
           </div>
+        )}
+          </>
         )}
       </div>
     </article>
@@ -868,6 +970,122 @@ function ClientBatchBar({
 }
 
 // ---------------------------------------------------------------------------
+// AddLeadModal — create a prospect (status = LEAD) with the usual CRM fields
+// ---------------------------------------------------------------------------
+function AddLeadModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const createLead = useCreateClient();
+  const [name, setName] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [source, setSource] = useState("");
+  const [stage, setStage] = useState<LeadStage>("NEW");
+  const [followUp, setFollowUp] = useState("");
+  const [value, setValue] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Lead name is required.");
+      return;
+    }
+    setError(null);
+    try {
+      const { client } = await createLead.mutateAsync({
+        name: trimmed,
+        status: "LEAD",
+        primaryContactName: contactName.trim() || undefined,
+        primaryContactEmail: contactEmail.trim() || undefined,
+        leadSource: source.trim() || undefined,
+        leadStage: stage,
+        leadFollowUpAt: followUp || undefined,
+        leadValue: value.trim() ? Number(value) : undefined,
+        notes: notes.trim() || undefined,
+      });
+      onClose();
+      router.push(`/app/portal/${client.slug}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create lead.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-30">
+      <button
+        type="button"
+        aria-label="Close"
+        className="app-dialog-backdrop absolute inset-0"
+        onClick={onClose}
+      />
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="app-dialog-panel w-full max-w-md overflow-hidden">
+          <div className="widget-header">
+            <span className="widget-header__label">NEW LEAD</span>
+          </div>
+          <div className="max-h-[80vh] overflow-y-auto p-6">
+            <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Add lead</h2>
+            <p className="mt-1 text-sm text-[var(--text-4)]">A prospect to follow up — convert to a client when they sign.</p>
+            <div className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Name *</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} className="app-input" placeholder="Acme Health" autoFocus />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Contact name</span>
+                  <input value={contactName} onChange={(e) => setContactName(e.target.value)} className="app-input" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Contact email</span>
+                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="app-input" type="email" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Source</span>
+                  <input value={source} onChange={(e) => setSource(e.target.value)} className="app-input" placeholder="Referral, inbound…" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Stage</span>
+                  <select value={stage} onChange={(e) => setStage(e.target.value as LeadStage)} className="app-input">
+                    {(Object.keys(LEAD_STAGE_LABEL) as LeadStage[]).map((s) => (
+                      <option key={s} value={s}>{LEAD_STAGE_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Next follow-up</span>
+                  <input value={followUp} onChange={(e) => setFollowUp(e.target.value)} className="app-input" type="date" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Est. value (£)</span>
+                  <input value={value} onChange={(e) => setValue(e.target.value)} className="app-input" type="number" min="0" inputMode="numeric" />
+                </label>
+              </div>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Notes</span>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="app-input min-h-[64px]" rows={2} />
+              </label>
+              {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+              <Button type="button" variant="primary" size="sm" onClick={submit} disabled={createLead.isPending}>
+                {createLead.isPending ? "Adding…" : "Add lead"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ClientManagement — Portal overview
 // ---------------------------------------------------------------------------
 export function ClientManagement() {
@@ -884,7 +1102,10 @@ export function ClientManagement() {
   const [formError, setFormError] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
+  const [showAddLead, setShowAddLead] = useState(false);
   const activeQuery = useClientList({ search, status: "ACTIVE" });
+  const leadsQuery = useClientList({ search, status: "LEAD" });
+  const inactiveQuery = useClientList({ search, status: "INACTIVE" });
   const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
   const onboardingQuery = useOnboardingLinks();
   const createClientMutation = useCreateClient();
@@ -892,25 +1113,28 @@ export function ClientManagement() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (requestedTab === "onboarding" || requestedTab === "pending") {
+    if (
+      requestedTab === "onboarding" ||
+      requestedTab === "pending" ||
+      requestedTab === "leads" ||
+      requestedTab === "inactive"
+    ) {
       setTab(requestedTab);
     }
   }, []);
 
-  // Drive the right list off the active tab.
-  const isPending =
+  // Drive the right list off the selected tab.
+  const listQuery =
     tab === "active"
-      ? activeQuery.isPending
-      : tab === "pending"
-        ? pendingQuery.isPending
-        : onboardingQuery.isPending;
-  const error =
-    tab === "active"
-      ? activeQuery.error
-      : tab === "pending"
-        ? pendingQuery.error
-        : onboardingQuery.error;
-  const data = tab === "active" ? activeQuery.data : pendingQuery.data;
+      ? activeQuery
+      : tab === "leads"
+        ? leadsQuery
+        : tab === "inactive"
+          ? inactiveQuery
+          : pendingQuery;
+  const isPending = tab === "onboarding" ? onboardingQuery.isPending : listQuery.isPending;
+  const error = tab === "onboarding" ? onboardingQuery.error : listQuery.error;
+  const data = listQuery.data;
 
   const clients = useMemo(() => data?.clients ?? [], [data]);
   const onboardingLinks = useMemo(
@@ -923,6 +1147,8 @@ export function ClientManagement() {
     [pendingQuery.data],
   );
   const pendingCount = pendingClients.length;
+  const leadsCount = leadsQuery.data?.clients?.length ?? 0;
+  const inactiveCount = inactiveQuery.data?.clients?.length ?? 0;
   const openOnboardingCount = useMemo(
     () => onboardingLinks.filter((l) => l.status !== "LINKED").length,
     [onboardingLinks],
@@ -993,15 +1219,26 @@ export function ClientManagement() {
               {" // PORTAL"}
             </span>
             {canManageClients ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="xs"
-                onClick={() => setShowCreate(true)}
-              >
-                <PlusIcon className="h-3.5 w-3.5" />
-                Add client
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => setShowAddLead(true)}
+                >
+                  <UserPlusIcon className="h-3.5 w-3.5" />
+                  Add lead
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="xs"
+                  onClick={() => setShowCreate(true)}
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  Add client
+                </Button>
+              </div>
             ) : null}
           </div>
 
@@ -1053,6 +1290,18 @@ export function ClientManagement() {
                 onClick={() => setTab("active")}
                 label="Active"
                 count={tab === "active" ? clients.length : null}
+              />
+              <TabButton
+                active={tab === "leads"}
+                onClick={() => setTab("leads")}
+                label="Leads"
+                count={leadsCount}
+              />
+              <TabButton
+                active={tab === "inactive"}
+                onClick={() => setTab("inactive")}
+                label="Inactive"
+                count={inactiveCount}
               />
               <TabButton
                 active={tab === "pending"}
@@ -1123,9 +1372,11 @@ export function ClientManagement() {
           <OnboardingLinksList links={onboardingLinks} />
         ) : clients.length ? (
           <section className="space-y-3">
-            {tab === "active" && (
+            {(tab === "active" || tab === "leads" || tab === "inactive") && (
               <div className="flex items-center gap-2">
-                <span className="widget-data-label">Active</span>
+                <span className="widget-data-label">
+                  {tab === "leads" ? "Leads" : tab === "inactive" ? "Inactive" : "Active"}
+                </span>
                 <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--surface-2)] px-1.5 text-[11px] font-semibold text-[var(--text-3)]">
                   {clients.length}
                 </span>
@@ -1147,12 +1398,22 @@ export function ClientManagement() {
           <div className="widget-card">
             <div className="widget-body py-20 text-center">
               <p className="text-sm font-medium text-[var(--text-2)]">
-                {tab === "pending" ? "Nothing waiting for review" : "No clients yet"}
+                {tab === "pending"
+                  ? "Nothing waiting for review"
+                  : tab === "leads"
+                    ? "No leads yet"
+                    : tab === "inactive"
+                      ? "No paused clients"
+                      : "No clients yet"}
               </p>
               <p className="mt-1 text-sm text-[var(--text-4)]">
                 {tab === "pending"
                   ? "Submitted onboardings will show up here for you and Harry to approve."
-                  : "Click “Add client” above, or send an onboarding link to a new prospect."}
+                  : tab === "leads"
+                    ? "Click “Add lead” above to track a prospect or follow-up."
+                    : tab === "inactive"
+                      ? "Pause an active client (e.g. between project phases) to park it here."
+                      : "Click “Add client” above, or send an onboarding link to a new prospect."}
               </p>
             </div>
           </div>
@@ -1187,6 +1448,9 @@ export function ClientManagement() {
       {selectMode && selectedClients.length > 0 && (
         <ClientBatchBar selected={selectedClients} onClear={() => setSelectedSlugs(new Set())} />
       )}
+
+      {/* ── Add lead modal ── */}
+      {showAddLead ? <AddLeadModal onClose={() => setShowAddLead(false)} /> : null}
 
       {/* ── New onboarding link modal ── */}
       {showNewLink ? (

@@ -167,6 +167,28 @@ export const rateCardPersonCreateSchema = z.object({
   billingPeriod: rateBillingPeriodSchema.default("MONTH"),
 });
 
+export const workspaceClientStatusSchema = z.enum([
+  "PENDING_REVIEW",
+  "ACTIVE",
+  "ARCHIVED",
+  "LEAD",
+  "INACTIVE",
+]);
+
+export const leadStageSchema = z.enum([
+  "NEW",
+  "CONTACTED",
+  "QUALIFIED",
+  "PROPOSAL_SENT",
+  "WON",
+  "LOST",
+]);
+
+export const touchpointTypeSchema = z.enum(["CALL", "EMAIL", "MEETING", "NOTE"]);
+
+/** Optional ISO date string (or empty/null to clear) coerced through trim. */
+const optionalDateString = z.string().trim().nullable().optional();
+
 const clientContactFields = {
   website: z.string().trim().optional(),
   addressLine1: z.string().trim().optional(),
@@ -190,11 +212,21 @@ const clientContactFields = {
   vatNumber: z.string().trim().optional(),
   retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
   retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  // Lead (status LEAD) + paused-client (status INACTIVE) fields — all optional/clearable.
+  leadSource: z.string().trim().nullable().optional(),
+  leadStage: leadStageSchema.nullable().optional(),
+  leadFollowUpAt: optionalDateString,
+  leadValue: z.coerce.number().int().min(0).max(100_000_000).nullable().optional(),
+  leadValueCurrency: z.string().trim().max(3).nullable().optional(),
+  resumeAt: optionalDateString,
+  pauseNote: z.string().trim().nullable().optional(),
 };
 
 export const clientCreateSchema = z.object({
   name: requiredTrimmedString,
   logoUrl: z.string().trim().url().optional(),
+  /** Initial status — omit for a normal ACTIVE client; pass "LEAD" from "Add lead". */
+  status: workspaceClientStatusSchema.optional(),
   ...clientContactFields,
   /** Phase 3: optionally provision Slack channels for this client at create time.
    *  Failure to provision NEVER blocks client creation — the error lands on
@@ -638,11 +670,8 @@ export const pulseScanCreateSchema = z
 
 // ─── Client Onboarding ──────────────────────────────────────────────────────
 
-export const workspaceClientStatusSchema = z.enum([
-  "PENDING_REVIEW",
-  "ACTIVE",
-  "ARCHIVED",
-]);
+// workspaceClientStatusSchema / leadStageSchema / touchpointTypeSchema are defined above
+// `clientContactFields` so the create/update schemas can reference them (TDZ-safe).
 
 export const onboardingLinkCreateSchema = z.object({
   label: z.string().trim().max(200).optional(),
@@ -778,6 +807,16 @@ export const onboardingFormUpdateSchema = z
 
 export const clientStatusUpdateSchema = z.object({
   status: workspaceClientStatusSchema,
+  /** Optional when pausing (status INACTIVE): a "pick back up" date + a reason note.
+   *  Reactivating to ACTIVE clears both. */
+  resumeAt: z.string().trim().nullable().optional(),
+  pauseNote: z.string().trim().nullable().optional(),
+});
+
+export const touchpointCreateSchema = z.object({
+  type: touchpointTypeSchema,
+  note: z.string().trim().max(2000).optional(),
+  occurredAt: z.string().trim().optional(),
 });
 
 // ── Backstage (internal ops): leave + expenses ──────────────────────────

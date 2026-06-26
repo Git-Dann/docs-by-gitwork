@@ -16,6 +16,9 @@ import type {
   ClientPlatformReveal,
   ClientPlatformLoginSummary,
   ClientSource,
+  ClientTouchpoint,
+  LeadStage,
+  TouchpointType,
   WorkspaceClientStatus,
 } from "@/types/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -139,6 +142,13 @@ type ManualClientRecord = {
   retainerDays: number | null;
   retainerDaysUsed: number | null;
   retainerPeriodMonth: string | null;
+  leadSource: string | null;
+  leadStage: LeadStage | null;
+  leadFollowUpAt: Date | null;
+  leadValue: number | null;
+  leadValueCurrency: string | null;
+  resumeAt: Date | null;
+  pauseNote: string | null;
   status: WorkspaceClientStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -175,6 +185,13 @@ type ClientContactInput = {
   billingCountry?: string;
   retainerDays?: number | null;
   retainerDaysUsed?: number | null;
+  leadSource?: string | null;
+  leadStage?: LeadStage | null;
+  leadFollowUpAt?: string | null;
+  leadValue?: number | null;
+  leadValueCurrency?: string | null;
+  resumeAt?: string | null;
+  pauseNote?: string | null;
 };
 
 function emptyContactFields(): ClientDetailFields {
@@ -210,6 +227,13 @@ function emptyContactFields(): ClientDetailFields {
     billingCountry: null,
     retainerDays: null,
     retainerDaysUsed: null,
+    leadSource: null,
+    leadStage: null,
+    leadFollowUpAt: null,
+    leadValue: null,
+    leadValueCurrency: null,
+    resumeAt: null,
+    pauseNote: null,
     bank: null,
     onboardingId: null,
   };
@@ -252,6 +276,13 @@ function contactFieldsFromRecord(
     retainerDays: record.retainerDays,
     // Lazy monthly reset — a prior-month figure reads as 0, matching the card.
     retainerDaysUsed: effectiveRetainerUsed(record.retainerDaysUsed, record.retainerPeriodMonth),
+    leadSource: record.leadSource,
+    leadStage: record.leadStage,
+    leadFollowUpAt: record.leadFollowUpAt ? record.leadFollowUpAt.toISOString() : null,
+    leadValue: record.leadValue,
+    leadValueCurrency: record.leadValueCurrency,
+    resumeAt: record.resumeAt ? record.resumeAt.toISOString() : null,
+    pauseNote: record.pauseNote,
     bank: extras.bank,
     onboardingId: extras.onboardingId,
   };
@@ -262,11 +293,21 @@ function buildContactData(input: ClientContactInput) {
   // not overwrite an existing DB value with null on a partial PATCH.
   // Retainer keys are numeric (Int? columns); every other contact field is a string column.
   const data: Partial<{
-    [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed"
+    [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed" | "leadValue"
       ? number | null
-      : string | null;
+      : K extends "leadFollowUpAt" | "resumeAt"
+        ? Date | null
+        : K extends "leadStage"
+          ? LeadStage | null
+          : string | null;
   }> & { retainerPeriodMonth?: string | null } = {};
   const trim = (v: string) => v.trim() || null;
+  // ISO string → Date (empty/invalid → null) for the DateTime columns.
+  const toDate = (v: string | null | undefined): Date | null => {
+    if (!v || !v.trim()) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
   if (input.website !== undefined)             data.website             = trim(input.website);
   if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
   if (input.addressLine2 !== undefined)        data.addressLine2        = trim(input.addressLine2);
@@ -307,6 +348,14 @@ function buildContactData(input: ClientContactInput) {
     // clearing the used value (null) clears the stamp too.
     data.retainerPeriodMonth = input.retainerDaysUsed == null ? null : currentRetainerMonth();
   }
+  // Lead (LEAD) + paused-client (INACTIVE) fields.
+  if (input.leadSource !== undefined)        data.leadSource        = input.leadSource?.trim() || null;
+  if (input.leadStage !== undefined)         data.leadStage         = input.leadStage ?? null;
+  if (input.leadValue !== undefined)         data.leadValue         = input.leadValue ?? null;
+  if (input.leadValueCurrency !== undefined) data.leadValueCurrency = input.leadValueCurrency?.trim().toUpperCase() || null;
+  if (input.leadFollowUpAt !== undefined)    data.leadFollowUpAt    = toDate(input.leadFollowUpAt);
+  if (input.resumeAt !== undefined)          data.resumeAt          = toDate(input.resumeAt);
+  if (input.pauseNote !== undefined)         data.pauseNote         = input.pauseNote?.trim() || null;
   return data;
 }
 
@@ -648,6 +697,25 @@ export async function listDerivedClients(filters?: {
     ),
   );
 
+  // Lead (LEAD) + paused (INACTIVE) fields by client id — manual-only, attached ungated.
+  const leadInfoByClient = new Map(
+    manualClients.map(
+      (c) =>
+        [
+          c.id,
+          {
+            leadSource: c.leadSource,
+            leadStage: c.leadStage,
+            leadFollowUpAt: c.leadFollowUpAt ? c.leadFollowUpAt.toISOString() : null,
+            leadValue: c.leadValue,
+            leadValueCurrency: c.leadValueCurrency,
+            resumeAt: c.resumeAt ? c.resumeAt.toISOString() : null,
+            pauseNote: c.pauseNote,
+          },
+        ] as const,
+    ),
+  );
+
   const clients = merged
     .filter((client) => {
       if (statusFilter !== "ALL" && client.status !== statusFilter) {
@@ -674,6 +742,7 @@ export async function listDerivedClients(filters?: {
           pulseHealthScore: pulse?.healthScore ?? null,
           overdueTasks: overdueCounts.get(client.id) ?? 0,
         }),
+        ...(leadInfoByClient.get(client.id) ?? {}),
       };
     });
 
@@ -690,6 +759,8 @@ export async function createClientRecord(input: {
   externalInviteeEmail?: string;
   customInternalName?: string;
   customExternalName?: string;
+  /** Initial status — omit for a normal ACTIVE client; "LEAD" from the Add-lead flow. */
+  status?: WorkspaceClientStatus;
 } & ClientContactInput): Promise<ClientListItem> {
   const { workspace, proposals } = await loadClientCollections();
   const name = normalizeClientName(input.name);
@@ -704,6 +775,7 @@ export async function createClientRecord(input: {
       name,
       slug,
       logoUrl: input.logoUrl?.trim() || null,
+      ...(input.status ? { status: input.status } : {}),
       ...buildContactData(input),
     },
   });
@@ -847,6 +919,13 @@ export async function updateClientRecord(
             retainerDays: null,
             retainerDaysUsed: null,
             retainerPeriodMonth: null,
+            leadSource: null,
+            leadStage: null,
+            leadFollowUpAt: null,
+            leadValue: null,
+            leadValueCurrency: null,
+            resumeAt: null,
+            pauseNote: null,
             status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
             createdAt: persisted.createdAt,
             updatedAt: persisted.updatedAt,
@@ -918,6 +997,80 @@ export async function deleteClientRecord(slug: string): Promise<boolean> {
 
   revalidateTag("client-collections");
   return true;
+}
+
+/** Resolve touchpoint rows → DTOs, batching the author-name lookup. */
+async function serializeTouchpoints(
+  rows: Array<{
+    id: string;
+    type: string;
+    note: string | null;
+    occurredAt: Date;
+    authorId: string | null;
+    createdAt: Date;
+  }>,
+): Promise<ClientTouchpoint[]> {
+  const authorIds = [...new Set(rows.map((r) => r.authorId).filter(Boolean))] as string[];
+  const authors = authorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(authors.map((u) => [u.id, u.name]));
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type as TouchpointType,
+    note: r.note,
+    occurredAt: r.occurredAt.toISOString(),
+    authorId: r.authorId,
+    authorName: r.authorId ? nameById.get(r.authorId) ?? null : null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** List a client's logged touchpoints (most recent first). Null when the client is unknown. */
+export async function listClientTouchpoints(slug: string): Promise<ClientTouchpoint[] | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  return serializeTouchpoints(
+    await prisma.clientTouchpoint.findMany({
+      where: { clientId: client.id },
+      orderBy: { occurredAt: "desc" },
+      take: 200,
+    }),
+  );
+}
+
+/** Log a touchpoint (call/email/meeting/note) against a client. Null when unknown. */
+export async function addClientTouchpoint(
+  slug: string,
+  input: { type: TouchpointType; note?: string | null; occurredAt?: string | null },
+  actor?: EffectiveUser | null,
+): Promise<ClientTouchpoint | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  const occurred =
+    input.occurredAt && input.occurredAt.trim() && !Number.isNaN(new Date(input.occurredAt).getTime())
+      ? new Date(input.occurredAt)
+      : new Date();
+  const row = await prisma.clientTouchpoint.create({
+    data: {
+      clientId: client.id,
+      workspaceId: workspace.id,
+      type: input.type,
+      note: input.note?.trim() || null,
+      occurredAt: occurred,
+      authorId: actor?.id ?? null,
+    },
+  });
+  const [dto] = await serializeTouchpoints([row]);
+  return dto;
 }
 
 export async function getDerivedClientDetail(slug: string): Promise<ClientDetailRecord | null> {
@@ -1085,11 +1238,23 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  // CRM activity log (leads) — most-recent first, author names resolved in one batch.
+  const touchpoints = manualRecord
+    ? await serializeTouchpoints(
+        await prisma.clientTouchpoint.findMany({
+          where: { clientId: manualRecord.id },
+          orderBy: { occurredAt: "desc" },
+          take: 200,
+        }),
+      )
+    : [];
+
   return {
     client: {
       ...toClientListItem(client),
       ...contactFields,
     },
+    touchpoints,
     lifecycle: buildClientLifecycle({
       client,
       proposals: matchingProposals.map((proposal) => ({
@@ -1612,6 +1777,7 @@ export async function setClientStatus(
   slug: string,
   status: WorkspaceClientStatus,
   actor?: EffectiveUser | null,
+  options?: { resumeAt?: string | null; pauseNote?: string | null },
 ): Promise<ClientListItem | null> {
   const { workspace } = await ensureBaseRecords();
   const previous = await workspaceClients.findUnique({
@@ -1620,9 +1786,21 @@ export async function setClientStatus(
   });
   if (!previous) return null;
 
+  // Pausing (→ INACTIVE) optionally records a "pick back up" date + note; any other
+  // transition (e.g. reactivating to ACTIVE, converting a lead) clears both.
+  const parseDate = (v: string | null | undefined): Date | null => {
+    if (!v || !v.trim()) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const pauseData =
+    status === "INACTIVE"
+      ? { resumeAt: parseDate(options?.resumeAt), pauseNote: options?.pauseNote?.trim() || null }
+      : { resumeAt: null, pauseNote: null };
+
   const persisted = await workspaceClients.update({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    data: { status },
+    data: { status, ...pauseData },
   });
   if (previous.status === "PENDING_REVIEW" && persisted.status === "ACTIVE") {
     await recordAuditEntry({

@@ -3,7 +3,51 @@ import type { ProofDocumentRecord } from "@/lib/proof";
 
 export type ClientSource = "SUGGESTED" | "MANUAL";
 
-export type WorkspaceClientStatus = "PENDING_REVIEW" | "ACTIVE" | "ARCHIVED";
+export type WorkspaceClientStatus =
+  | "PENDING_REVIEW"
+  | "ACTIVE"
+  | "ARCHIVED"
+  | "LEAD"
+  | "INACTIVE";
+
+/** Sales pipeline stage for a lead (status === "LEAD"). */
+export type LeadStage =
+  | "NEW"
+  | "CONTACTED"
+  | "QUALIFIED"
+  | "PROPOSAL_SENT"
+  | "WON"
+  | "LOST";
+
+/** Kind of logged touchpoint on a lead/client. */
+export type TouchpointType = "CALL" | "EMAIL" | "MEETING" | "NOTE";
+
+/** A logged touchpoint (the CRM activity log on a lead's detail). */
+export interface ClientTouchpoint {
+  id: string;
+  type: TouchpointType;
+  note: string | null;
+  occurredAt: string;
+  authorId: string | null;
+  authorName: string | null;
+  createdAt: string;
+}
+
+/** Lead + paused-client fields, shared by the list item and the detail record. */
+export interface ClientLeadFields {
+  /** Where the lead came from (referral, inbound, website…). LEAD only. */
+  leadSource: string | null;
+  leadStage: LeadStage | null;
+  /** ISO date of the next follow-up. */
+  leadFollowUpAt: string | null;
+  /** Estimated deal value (whole units of `leadValueCurrency`). */
+  leadValue: number | null;
+  leadValueCurrency: string | null;
+  /** ISO date to "pick back up" a paused (INACTIVE) client. */
+  resumeAt: string | null;
+  /** Why the client was paused. */
+  pauseNote: string | null;
+}
 
 export interface ClientRecord {
   id: string;
@@ -64,6 +108,14 @@ export interface ClientListItem extends ClientRecord {
   pulseScanId?: string | null;
   /** Composite delivery-health signal (overdue tasks + Pulse). Null when no signal exists. */
   health?: ClientHealth | null;
+  // Lead + paused fields — present (non-null) only for LEAD / INACTIVE clients respectively.
+  leadSource?: string | null;
+  leadStage?: LeadStage | null;
+  leadFollowUpAt?: string | null;
+  leadValue?: number | null;
+  leadValueCurrency?: string | null;
+  resumeAt?: string | null;
+  pauseNote?: string | null;
 }
 
 export interface ClientBankSummary {
@@ -85,7 +137,7 @@ export interface ClientBankReveal {
   currency: string | null;
 }
 
-export interface ClientDetailFields {
+export interface ClientDetailFields extends ClientLeadFields {
   website: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
@@ -233,4 +285,6 @@ export interface ClientDetailRecord {
   supportClient: ClientSupportSummary | null;
   placements: ClientPlacementRecord[];
   studies: ClientStudySummary[];
+  /** CRM activity log — present for leads; empty for other clients. */
+  touchpoints: ClientTouchpoint[];
 }

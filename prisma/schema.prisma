@@ -869,6 +869,22 @@ enum WorkspaceClientStatus {
   PENDING_REVIEW
   ACTIVE
   ARCHIVED
+  /// A prospect / lead — interested but not yet an active client. Lives in the Portal
+  /// "Leads" tab; converting to ACTIVE is a status flip. (Additive — see PR #189 note.)
+  LEAD
+  /// A paused client (e.g. between project phases) — kept out of Active but easy to
+  /// "pick back up". Optional resumeAt + pauseNote on the row. (Additive.)
+  INACTIVE
+}
+
+/// Sales pipeline stage for a lead (status = LEAD). Surfaced on the lead card + detail.
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  WON
+  LOST
 }
 
 model WorkspaceClient {
@@ -965,12 +981,40 @@ model WorkspaceClient {
   /// earlier month than today, the used figure is treated as 0 on read (lazy monthly
   /// reset) and re-stamped to the current month on the next edit.
   retainerPeriodMonth  String?
+  // ── Leads (status = LEAD) — all additive, nullable ──
+  leadSource           String?
+  leadStage            LeadStage?
+  leadFollowUpAt       DateTime?
+  leadValue            Int?
+  leadValueCurrency    String?   @default("GBP")
+  // ── Paused / inactive (status = INACTIVE) ──
+  resumeAt             DateTime?
+  pauseNote            String?
+  touchpoints          ClientTouchpoint[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
   @@index([workspaceId, status])
   @@index([timelineShareToken])
   @@map("Client")
+}
+
+/// A logged lead/client touchpoint (call, email, meeting, note) — the CRM activity log
+/// surfaced on a lead's detail. Additive; cascades with its client.
+model ClientTouchpoint {
+  id          String          @id @default(cuid())
+  clientId    String
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workspaceId String
+  /// CALL | EMAIL | MEETING | NOTE
+  type        String
+  note        String?
+  occurredAt  DateTime        @default(now())
+  /// workspace User id of the author; null = system/unknown.
+  authorId    String?
+  createdAt   DateTime        @default(now())
+
+  @@index([clientId, occurredAt])
 }
 
 model ClientPlatform {

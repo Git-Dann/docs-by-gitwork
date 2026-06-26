@@ -14,10 +14,13 @@ import {
   ExclamationTriangleIcon,
   EyeIcon,
   EyeSlashIcon,
+  ArrowRightCircleIcon,
   ArrowUpRightIcon,
   GlobeAltIcon,
   MagnifyingGlassIcon,
+  PauseCircleIcon,
   PencilIcon,
+  PlayCircleIcon,
   PlusIcon,
   SignalIcon,
   SparklesIcon,
@@ -47,6 +50,7 @@ import {
   useDeleteClientPlatform,
   useRevealClientBank,
   useSetClientStatus,
+  useAddClientTouchpoint,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
@@ -62,6 +66,9 @@ import type {
   ClientDetailRecord,
   ClientDesignRecord,
   ClientPlatformRecord,
+  ClientTouchpoint,
+  LeadStage,
+  TouchpointType,
 } from "@/types/client";
 
 type EditFormState = {
@@ -102,6 +109,140 @@ function SlackGlyph({ className }: { className?: string }) {
   );
 }
 
+const LEAD_STAGE_OPTIONS: { value: LeadStage; label: string }[] = [
+  { value: "NEW", label: "New" },
+  { value: "CONTACTED", label: "Contacted" },
+  { value: "QUALIFIED", label: "Qualified" },
+  { value: "PROPOSAL_SENT", label: "Proposal sent" },
+  { value: "WON", label: "Won" },
+  { value: "LOST", label: "Lost" },
+];
+const TOUCHPOINT_LABEL: Record<TouchpointType, string> = {
+  CALL: "Call",
+  EMAIL: "Email",
+  MEETING: "Meeting",
+  NOTE: "Note",
+};
+
+/** Lead CRM workspace — editable stage/follow-up/source/value + a touchpoint activity log.
+ *  Shown on the client detail only while the client's status is LEAD. */
+function LeadWorkspace({
+  slug,
+  client,
+  touchpoints,
+}: {
+  slug: string;
+  client: ClientDetailRecord["client"];
+  touchpoints: ClientTouchpoint[];
+}) {
+  const update = useUpdateClient(slug);
+  const addTp = useAddClientTouchpoint(slug);
+  const [source, setSource] = useState(client.leadSource ?? "");
+  const [value, setValue] = useState(client.leadValue != null ? String(client.leadValue) : "");
+  const [tpType, setTpType] = useState<TouchpointType>("NOTE");
+  const [tpNote, setTpNote] = useState("");
+
+  const saveSource = () => {
+    const next = source.trim();
+    if ((client.leadSource ?? "") !== next) update.mutate({ leadSource: next || null });
+  };
+  const saveValue = () => {
+    const next = value.trim() ? Number(value) : null;
+    if ((client.leadValue ?? null) !== next) update.mutate({ leadValue: next });
+  };
+  async function log() {
+    if (tpType === "NOTE" && !tpNote.trim()) return;
+    try {
+      await addTp.mutateAsync({ type: tpType, note: tpNote.trim() || undefined });
+      setTpNote("");
+    } catch {
+      /* surfaced via mutation state */
+    }
+  }
+
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label">LEAD</span>
+      </div>
+      <div className="grid gap-6 p-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="widget-data-label mb-1.5 block">Stage</span>
+              <select
+                value={client.leadStage ?? "NEW"}
+                onChange={(e) => update.mutate({ leadStage: e.target.value as LeadStage })}
+                className="app-input"
+              >
+                {LEAD_STAGE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="widget-data-label mb-1.5 block">Next follow-up</span>
+              <input
+                type="date"
+                value={client.leadFollowUpAt ? client.leadFollowUpAt.slice(0, 10) : ""}
+                onChange={(e) => update.mutate({ leadFollowUpAt: e.target.value || null })}
+                className="app-input"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="widget-data-label mb-1.5 block">Source</span>
+              <input value={source} onChange={(e) => setSource(e.target.value)} onBlur={saveSource} className="app-input" />
+            </label>
+            <label className="block">
+              <span className="widget-data-label mb-1.5 block">Est. value (£)</span>
+              <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={saveValue} type="number" min="0" className="app-input" />
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <span className="widget-data-label">Activity</span>
+          <div className="flex items-center gap-2">
+            <select value={tpType} onChange={(e) => setTpType(e.target.value as TouchpointType)} className="app-input w-28">
+              {(Object.keys(TOUCHPOINT_LABEL) as TouchpointType[]).map((t) => (
+                <option key={t} value={t}>{TOUCHPOINT_LABEL[t]}</option>
+              ))}
+            </select>
+            <input
+              value={tpNote}
+              onChange={(e) => setTpNote(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void log(); }}
+              placeholder="Log a call, email, note…"
+              className="app-input flex-1"
+            />
+            <Button type="button" variant="primary" size="sm" onClick={() => void log()} disabled={addTp.isPending}>
+              Log
+            </Button>
+          </div>
+          <ul className="space-y-2">
+            {touchpoints.length === 0 ? (
+              <li className="text-sm text-[var(--text-4)]">No activity logged yet.</li>
+            ) : (
+              touchpoints.map((t) => (
+                <li key={t.id} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--text-2)]">{TOUCHPOINT_LABEL[t.type]}</span>
+                    <span className="widget-timestamp">{formatDate(t.occurredAt)}</span>
+                  </div>
+                  {t.note ? <p className="mt-0.5 text-[var(--text-3)]">{t.note}</p> : null}
+                  {t.authorName ? <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{t.authorName}</p> : null}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
   const { data, isPending, error } = useClientDetail(slug);
@@ -127,6 +268,12 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
+  const setStatus = useSetClientStatus(slug);
+  // Pause (→ INACTIVE) modal state.
+  const [pausing, setPausing] = useState(false);
+  const [resumeAtInput, setResumeAtInput] = useState("");
+  const [pauseNoteInput, setPauseNoteInput] = useState("");
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   if (isPending) {
     return (
@@ -150,8 +297,23 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, lifecycle, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies } = data;
+  const { client, lifecycle, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, touchpoints } = data;
   const isSuggested = client.source === "SUGGESTED";
+
+  async function changeStatus(
+    status: "ACTIVE" | "INACTIVE" | "LEAD",
+    extra?: { resumeAt?: string | null; pauseNote?: string | null },
+  ) {
+    setStatusError(null);
+    try {
+      await setStatus.mutateAsync({ status, ...extra });
+      setPausing(false);
+      setResumeAtInput("");
+      setPauseNoteInput("");
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Status change failed");
+    }
+  }
   const activationChecklist = buildActivationChecklist({ client, proposals, platforms, designs });
 
   function openEdit() {
@@ -339,12 +501,44 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
+            {!isSuggested && client.status === "LEAD" && (
+              <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
+                <ArrowRightCircleIcon className="h-3 w-3" />
+                Convert to client
+              </Button>
+            )}
+            {!isSuggested && client.status === "ACTIVE" && (
+              <Button type="button" variant="secondary" size="xs" onClick={() => setPausing(true)}>
+                <PauseCircleIcon className="h-3 w-3" />
+                Pause
+              </Button>
+            )}
+            {!isSuggested && client.status === "INACTIVE" && (
+              <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
+                <PlayCircleIcon className="h-3 w-3" />
+                Reactivate
+              </Button>
+            )}
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
               <PencilIcon className="h-3 w-3" />
               Edit
             </Button>
           </div>
         </div>
+
+        {/* Paused banner — shown for INACTIVE clients with the pick-back-up date + reason. */}
+        {client.status === "INACTIVE" && (
+          <div className="border-t border-[var(--border-3)] bg-amber-50 px-6 py-3 text-sm dark:bg-amber-950/30">
+            <span className="font-medium text-amber-800 dark:text-amber-300">Paused.</span>{" "}
+            <span className="text-amber-700 dark:text-amber-200">
+              {client.resumeAt ? `Pick back up ${formatDate(client.resumeAt)}.` : "No resume date set."}
+              {client.pauseNote ? ` ${client.pauseNote}` : ""}
+            </span>
+          </div>
+        )}
+        {statusError && (
+          <div className="border-t border-[var(--border-3)] bg-rose-50 px-6 py-2 text-sm text-rose-700">{statusError}</div>
+        )}
 
         <div className="p-6">
           <div className="flex flex-wrap items-start gap-5">
@@ -438,6 +632,11 @@ export function ClientDetail({ slug }: { slug: string }) {
           </div>
         </div>
       </section>
+
+      {/* Lead workspace (LEAD only) — CRM fields + touchpoint activity log. */}
+      {client.status === "LEAD" && (
+        <LeadWorkspace slug={slug} client={client} touchpoints={touchpoints} />
+      )}
 
       {/* ── 02-06 // STATS ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -1145,6 +1344,50 @@ export function ClientDetail({ slug }: { slug: string }) {
       )}
 
       {/* ── Edit client modal ── */}
+      {pausing && (
+        <div className="fixed inset-0 z-30">
+          <button
+            type="button"
+            aria-label="Close"
+            className="app-dialog-backdrop absolute inset-0"
+            onClick={() => setPausing(false)}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="app-dialog-panel w-full max-w-sm overflow-hidden">
+              <div className="widget-header">
+                <span className="widget-header__label">PAUSE CLIENT</span>
+              </div>
+              <div className="p-6">
+                <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">Pause {client.name}</h2>
+                <p className="mt-1 text-sm text-[var(--text-4)]">Parks the client under Inactive. Set an optional date to pick it back up.</p>
+                <div className="mt-4 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Pick back up (optional)</span>
+                    <input type="date" value={resumeAtInput} onChange={(e) => setResumeAtInput(e.target.value)} className="app-input" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Reason (optional)</span>
+                    <textarea value={pauseNoteInput} onChange={(e) => setPauseNoteInput(e.target.value)} rows={2} className="app-input min-h-[56px]" placeholder="e.g. Phase 1 MVP done — resuming for Phase 2." />
+                  </label>
+                </div>
+                <div className="mt-6 flex justify-end gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setPausing(false)}>Cancel</Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={setStatus.isPending}
+                    onClick={() => void changeStatus("INACTIVE", { resumeAt: resumeAtInput || null, pauseNote: pauseNoteInput || null })}
+                  >
+                    {setStatus.isPending ? "Pausing…" : "Pause client"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editing && editForm && (
         <ClientEditModal
           form={editForm}
@@ -3196,7 +3439,7 @@ function PendingReviewBanner({
     try {
       // The client already exists (materialised on submit) — moving to workflow
       // just flips PENDING_REVIEW → ACTIVE, which enables Pulse + full access.
-      await setStatus.mutateAsync("ACTIVE");
+      await setStatus.mutateAsync({ status: "ACTIVE" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Move failed");
     }

@@ -16,8 +16,8 @@ export async function POST(
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "change client status");
     await assertClientAccessBySlug(user, slug);
-    const { status } = clientStatusUpdateSchema.parse(await request.json());
-    const client = await setClientStatus(slug, status, user);
+    const { status, resumeAt, pauseNote } = clientStatusUpdateSchema.parse(await request.json());
+    const client = await setClientStatus(slug, status, user, { resumeAt, pauseNote });
     if (!client) return apiError("Client not found", 404);
     return apiOk({ client });
   } catch (error) {

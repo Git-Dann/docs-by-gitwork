@@ -18,6 +18,9 @@ import type {
   ClientPlatformRecord,
   ClientPlatformReveal,
   ClientPlatformLoginSummary,
+  ClientTouchpoint,
+  LeadStage,
+  TouchpointType,
   WorkspaceClientStatus,
 } from "@/types/client";
 import type {
@@ -477,11 +480,36 @@ export async function deleteOnboardingForm(
 export async function setClientStatusApi(
   slug: string,
   status: WorkspaceClientStatus,
+  options?: { resumeAt?: string | null; pauseNote?: string | null },
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}/status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...options }),
+  });
+}
+
+/** Lead fields accepted by create/update for a LEAD client. */
+export interface LeadInput {
+  leadSource?: string | null;
+  leadStage?: LeadStage | null;
+  leadFollowUpAt?: string | null;
+  leadValue?: number | null;
+  leadValueCurrency?: string | null;
+}
+
+export async function listClientTouchpoints(slug: string): Promise<{ touchpoints: ClientTouchpoint[] }> {
+  return apiFetch<{ touchpoints: ClientTouchpoint[] }>(`/api/clients/${slug}/touchpoints`);
+}
+
+export async function createClientTouchpoint(
+  slug: string,
+  input: { type: TouchpointType; note?: string; occurredAt?: string },
+): Promise<{ touchpoint: ClientTouchpoint }> {
+  return apiFetch<{ touchpoint: ClientTouchpoint }>(`/api/clients/${slug}/touchpoints`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }
 
@@ -497,6 +525,8 @@ export async function createClient(
   input: {
     name: string;
     logoUrl?: string;
+    /** Initial status — omit for ACTIVE; "LEAD" from the Add-lead flow. */
+    status?: WorkspaceClientStatus;
     /** Phase 3 — optional Slack channel provisioning on create. Failure to
      *  provision is non-blocking (the client is created either way). */
     createInternalChannel?: boolean;
@@ -504,7 +534,13 @@ export async function createClient(
     externalInviteeEmail?: string;
     customInternalName?: string;
     customExternalName?: string;
-  },
+    // Optional contact + lead fields (used by "Add lead").
+    primaryContactName?: string;
+    primaryContactEmail?: string;
+    primaryContactPhone?: string;
+    website?: string;
+    notes?: string;
+  } & LeadInput,
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>("/api/clients", {
     method: "POST",
@@ -562,7 +598,7 @@ export async function updateClient(
     slackExternalChannelId?: string;
     retainerDays?: number | null;
     retainerDaysUsed?: number | null;
-  },
+  } & LeadInput,
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {
     method: "PATCH",
