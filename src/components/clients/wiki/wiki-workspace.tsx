@@ -1013,6 +1013,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   function renderShareMenu(section: Exclude<WikiSection, "design-system">) {
     return (
       <WikiShareMenu
+        slug={slug}
         pageLabel={SECTION_TITLES[section]}
         pageToken={(wiki!.pageShares?.[section] as string | undefined) ?? null}
         pageBusy={sectionShare.isPending}

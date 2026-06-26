@@ -43,20 +43,31 @@ function Toggle({
   );
 }
 
-/** URL pill + Copy / Open actions for an active share link. */
+/** Smart preview + URL pill + Copy / Open actions for an active share link. */
 function LinkRow({
   url,
-  token,
+  openHref,
   copied,
   onCopy,
 }: {
   url: string;
-  token: string;
+  /** Relative page path, e.g. /wiki/wedge/<token> — used for Open + the preview. */
+  openHref: string;
   copied: boolean;
   onCopy: () => void;
 }) {
   return (
     <div className="mt-3 space-y-2">
+      {/* Smart preview — the actual social/unfurl card recipients will see. */}
+      <div className="overflow-hidden rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${openHref}/opengraph-image`}
+          alt="Link preview"
+          loading="lazy"
+          className="block aspect-[1200/630] w-full object-cover"
+        />
+      </div>
       <p
         className="truncate rounded-[7px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-2.5 py-2 text-[11px] text-[var(--text-3)]"
         style={{ fontFamily: MONO }}
@@ -82,7 +93,7 @@ function LinkRow({
           )}
         </button>
         <a
-          href={`/wiki/${token}`}
+          href={openHref}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
@@ -96,6 +107,8 @@ function LinkRow({
 }
 
 interface Props {
+  /** Client slug — makes the public URL readable (/wiki/<slug>/<token>). */
+  slug: string;
   pageLabel: string;
   pageToken: string | null;
   pageBusy?: boolean;
@@ -107,6 +120,7 @@ interface Props {
 }
 
 export function WikiShareMenu({
+  slug,
   pageLabel,
   pageToken,
   pageBusy,
@@ -118,9 +132,11 @@ export function WikiShareMenu({
 }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const pageUrl = pageToken ? `${origin}/wiki/${pageToken}` : null;
+  const pageHref = pageToken ? `/wiki/${slug}/${pageToken}` : null;
+  const pageUrl = pageHref ? `${origin}${pageHref}` : null;
   const wikiOn = wikiEnabled && !!wikiToken;
-  const wikiUrl = wikiOn ? `${origin}/wiki/${wikiToken}` : null;
+  const wikiHref = wikiOn ? `/wiki/${slug}/${wikiToken}` : null;
+  const wikiUrl = wikiHref ? `${origin}${wikiHref}` : null;
   const pageOn = !!pageToken;
   const anyOn = pageOn || wikiOn;
 
@@ -178,10 +194,10 @@ export function WikiShareMenu({
             <Toggle on={wikiOn} disabled={wikiBusy} onClick={() => onToggleWiki(!wikiOn)} />
           </div>
 
-          {wikiUrl && wikiToken && (
+          {wikiUrl && wikiHref && (
             <LinkRow
               url={wikiUrl}
-              token={wikiToken}
+              openHref={wikiHref}
               copied={copied === "wiki"}
               onCopy={() => copy(wikiUrl, "wiki")}
             />
@@ -221,10 +237,10 @@ export function WikiShareMenu({
                 <Toggle on={pageOn} disabled={pageBusy} onClick={() => onTogglePage(!pageOn)} />
               </div>
 
-              {pageOn && pageUrl && pageToken && (
+              {pageOn && pageUrl && pageHref && (
                 <LinkRow
                   url={pageUrl}
-                  token={pageToken}
+                  openHref={pageHref}
                   copied={copied === "page"}
                   onCopy={() => copy(pageUrl, "page")}
                 />
