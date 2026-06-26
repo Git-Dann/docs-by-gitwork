@@ -24,12 +24,16 @@ import { rosterIndexFor } from "@/lib/gitwork-roster";
 import {
   CodeClearTabs,
   EmptyState,
-  RosterScoreChip,
 } from "@/components/codeclear/codeclear-shared";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 import { ScheduleEditor } from "@/components/codeclear/schedule-editor";
 import { Button } from "@/components/ui/button";
-import { CalendarDaysIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  CalendarDaysIcon,
+  EllipsisVerticalIcon,
+  UserMinusIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CodeClearCandidateListItem } from "@/types/codeclear";
 
@@ -213,6 +217,29 @@ export function CodeClearPipelineWorkspace() {
     setActiveDragId(null);
   }
 
+  // Remove a dev from a single client (kebab menu on the card). Mirrors the
+  // drag-to-Unassigned semantics: closes that one placement, keeps the rest.
+  async function handleRemoveFromClient(candidateId: string, clientId: string) {
+    const current = effectiveClientIds.get(candidateId) ?? [];
+    if (!current.includes(clientId)) return;
+    const next = current.filter((id) => id !== clientId);
+
+    setOptimistic((prev) => ({ ...prev, [candidateId]: next }));
+
+    try {
+      await setCandidateCurrentClients(candidateId, next);
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["codeclear", "candidate", candidateId] });
+    } catch (error) {
+      setOptimistic((prev) => {
+        const fresh = { ...prev };
+        delete fresh[candidateId];
+        return fresh;
+      });
+      console.error("Failed to remove from client", error);
+    }
+  }
+
   if (candidates.length === 0 && !candidatesQuery.isLoading) {
     return (
       <div className="space-y-6">
@@ -255,6 +282,7 @@ export function CodeClearPipelineWorkspace() {
                 router.push(`/app/codeclear/candidates/${candidateId}`)
               }
               onSchedule={(candidateId) => setScheduleCandidateId(candidateId)}
+              onRemoveFromClient={handleRemoveFromClient}
             />
           ))}
         </div>
@@ -332,12 +360,14 @@ function PipelineColumn({
   activeDragId,
   onCardClick,
   onSchedule,
+  onRemoveFromClient,
 }: {
   column: { id: string; name: string; logoUrl: string | null };
   candidates: CodeClearCandidateListItem[];
   activeDragId: string | null;
   onCardClick: (candidateId: string) => void;
   onSchedule: (candidateId: string) => void;
+  onRemoveFromClient: (candidateId: string, clientId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const isUnassigned = column.id === UNASSIGNED_COLUMN_ID;
@@ -383,8 +413,11 @@ function PipelineColumn({
                 dragId={dragId}
                 candidate={candidate}
                 isDragging={activeDragId === dragId}
+                clientId={isUnassigned ? null : column.id}
+                clientName={isUnassigned ? null : column.name}
                 onClick={() => onCardClick(candidate.id)}
                 onSchedule={() => onSchedule(candidate.id)}
+                onRemoveFromClient={onRemoveFromClient}
               />
             );
           })
@@ -398,14 +431,20 @@ function DraggablePipelineCard({
   dragId,
   candidate,
   isDragging,
+  clientId,
+  clientName,
   onClick,
   onSchedule,
+  onRemoveFromClient,
 }: {
   dragId: string;
   candidate: CodeClearCandidateListItem;
   isDragging: boolean;
+  clientId: string | null;
+  clientName: string | null;
   onClick: () => void;
   onSchedule: () => void;
+  onRemoveFromClient: (candidateId: string, clientId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: dragId });
   const style = transform
@@ -423,8 +462,11 @@ function DraggablePipelineCard({
       <PipelineCard
         candidate={candidate}
         listeners={listeners}
+        clientId={clientId}
+        clientName={clientName}
         onClick={onClick}
         onSchedule={onSchedule}
+        onRemoveFromClient={onRemoveFromClient}
       />
     </div>
   );
@@ -433,17 +475,23 @@ function DraggablePipelineCard({
 function PipelineCard({
   candidate,
   listeners,
+  clientId,
+  clientName,
   onClick,
   onSchedule,
+  onRemoveFromClient,
   isOverlay,
 }: {
   candidate: CodeClearCandidateListItem;
   listeners?: ReturnType<typeof useDraggable>["listeners"];
+  clientId?: string | null;
+  clientName?: string | null;
   onClick?: () => void;
   onSchedule?: () => void;
+  onRemoveFromClient?: (candidateId: string, clientId: string) => void;
   isOverlay?: boolean;
 }) {
-  const score = candidate.score?.overallScore ?? candidate.scoreDraft?.overallScore ?? null;
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
       className={cn(
@@ -481,9 +529,46 @@ function PipelineCard({
           ) : null}
         </button>
 
-        <div className="flex shrink-0 items-center gap-1">
-          <RosterScoreChip value={score} />
-        </div>
+        {!isOverlay && clientId && onRemoveFromClient ? (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((open) => !open);
+              }}
+              aria-label={`Options for ${candidate.name}`}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] border border-transparent text-[var(--text-4)] transition hover:border-[var(--border-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+            >
+              <EllipsisVerticalIcon className="h-4 w-4" />
+            </button>
+            {menuOpen ? (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setMenuOpen(false);
+                  }}
+                />
+                <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white shadow-lg">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setMenuOpen(false);
+                      onRemoveFromClient(candidate.id, clientId);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-500 transition hover:bg-red-50"
+                  >
+                    <UserMinusIcon className="h-3.5 w-3.5 shrink-0" />
+                    Remove from {clientName ?? "client"}
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {!isOverlay && onSchedule ? (

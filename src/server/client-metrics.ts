@@ -16,14 +16,20 @@ import { getHolidaysForCountry } from "@/server/backstage-holidays";
 import type { ClientMonthlyCost, ClientHealth, ClientHealthLevel } from "@/types/client";
 
 /** Count of active devs on each client — distinct candidates with an open placement
- *  (endDate null), matching the client detail's "DEVS" tile. Always shown on cards. */
+ *  (endDate null). Excludes "Off Bench" (PRO_BONO) devs, who work off-billing and are
+ *  surfaced separately in Code; the card should only count the commercial roster.
+ *  Always shown on cards. */
 export async function computeClientDevCounts(
   workspaceId: string,
   clientIds: string[],
 ): Promise<Map<string, number>> {
   if (clientIds.length === 0) return new Map();
   const placements = await prisma.placement.findMany({
-    where: { clientId: { in: clientIds }, endDate: null, candidate: { workspaceId } },
+    where: {
+      clientId: { in: clientIds },
+      endDate: null,
+      candidate: { workspaceId, devGroup: { not: "PRO_BONO" } },
+    },
     select: { clientId: true, candidateId: true },
   });
   const byClient = new Map<string, Set<string>>();
