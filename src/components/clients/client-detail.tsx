@@ -743,12 +743,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 08 // CONTACT ── */}
-      {hasContactInfo && (
+      {/* ── 08 // CONTACT (renumbered 02 in the lead view) ── */}
+      {(hasContactInfo || isLead) && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">08</span>
+              <span className="widget-header__label--number">{isLead ? "02" : "08"}</span>
               {" // CONTACT"}
             </span>
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
@@ -1011,19 +1011,29 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 13 // NOTES ── */}
-      {client.notes && (
+      {/* ── 13 // NOTES (renumbered 03 in the lead view; always shown for leads) ── */}
+      {(client.notes || isLead) && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">13</span>
+              <span className="widget-header__label--number">{isLead ? "03" : "13"}</span>
               {" // NOTES"}
             </span>
+            {isLead && (
+              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                <PencilIcon className="h-3 w-3" />
+                Edit
+              </Button>
+            )}
           </div>
           <div className="p-6">
-            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-              {client.notes}
-            </p>
+            {client.notes ? (
+              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+                {client.notes}
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--text-4)]">No notes yet — add some via Edit.</p>
+            )}
           </div>
         </section>
       )}
