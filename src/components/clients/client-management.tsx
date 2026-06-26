@@ -973,7 +973,6 @@ function ClientBatchBar({
 // AddLeadModal — create a prospect (status = LEAD) with the usual CRM fields
 // ---------------------------------------------------------------------------
 function AddLeadModal({ onClose }: { onClose: () => void }) {
-  const router = useRouter();
   const createLead = useCreateClient();
   const [name, setName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -993,7 +992,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
     }
     setError(null);
     try {
-      const { client } = await createLead.mutateAsync({
+      await createLead.mutateAsync({
         name: trimmed,
         status: "LEAD",
         primaryContactName: contactName.trim() || undefined,
@@ -1004,8 +1003,8 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
         leadValue: value.trim() ? Number(value) : undefined,
         notes: notes.trim() || undefined,
       });
+      // Stay on the Leads list (the query invalidation refreshes it) — don't jump into the client.
       onClose();
-      router.push(`/app/portal/${client.slug}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create lead.");
     }

@@ -331,6 +331,9 @@ export function ClientDetail({ slug }: { slug: string }) {
 
   const { client, lifecycle, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, touchpoints } = data;
   const isSuggested = client.source === "SUGGESTED";
+  // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
+  // until they become a client (status flips to ACTIVE via "Convert to client").
+  const isLead = client.status === "LEAD";
 
   async function changeStatus(
     status: "ACTIVE" | "INACTIVE" | "LEAD",
@@ -675,6 +678,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         <LeadWorkspace slug={slug} client={client} touchpoints={touchpoints} />
       )}
 
+      {!isLead && (
+        <>
       {/* ── 02-06 // STATS ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard number="02" label="DOCS" value={proposals.length} />
@@ -735,6 +740,8 @@ export function ClientDetail({ slug }: { slug: string }) {
           onConfigureClick={openEdit}
         />
       </section>
+        </>
+      )}
 
       {/* ── 08 // CONTACT ── */}
       {hasContactInfo && (
@@ -813,6 +820,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
+      {!isLead && (
+        <>
       {/* ── 09 // BILLING ── */}
       {(client.legalCompanyName ||
         client.vatNumber ||
@@ -999,6 +1008,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         <MeetingNotesSection slug={slug} />
       </section>
       </div>
+        </>
+      )}
 
       {/* ── 13 // NOTES ── */}
       {client.notes && (
@@ -1017,6 +1028,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
+      {!isLead && (
+        <>
       {/* ── ACTIVITY — 2×2 grid ── */}
       {/* Row 1: Documents + Pulse */}
       <div className="grid grid-cols-2 gap-4">
@@ -1378,6 +1391,8 @@ export function ClientDetail({ slug }: { slug: string }) {
             ))}
           </div>
         </section>
+      )}
+        </>
       )}
 
       {/* ── Edit client modal ── */}

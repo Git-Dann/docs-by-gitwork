@@ -718,6 +718,9 @@ export async function listDerivedClients(filters?: {
 
   const clients = merged
     .filter((client) => {
+      // Leads are a separate pipeline — only ever returned by the explicit LEAD filter, never
+      // in "ALL" or any other view, so they don't leak into client pickers/dropdowns.
+      if (client.status === "LEAD" && statusFilter !== "LEAD") return false;
       if (statusFilter !== "ALL" && client.status !== statusFilter) {
         return false;
       }
