@@ -15,6 +15,7 @@ import type {
   WikiEntryStatus,
   CourseRequestStatus,
 } from "@prisma/client";
+import type { DesignTokens } from "@/types/design-tokens";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,12 @@ export interface WikiTimeline {
   milestones: WikiTimelineMilestone[];
 }
 
+/** The client's design system, surfaced inside the wiki when it exists. */
+export interface WikiDesignSystem {
+  tokens: DesignTokens;
+  logoUrl: string | null;
+}
+
 export interface WikiDTO {
   id: string;
   clientId: string;
@@ -94,6 +101,8 @@ export interface WikiDTO {
   courseRequests: CourseRequestRecord[];
   /** Project delivery timeline (feature blocks + milestones) — same source as /timeline/[token]. */
   timeline: WikiTimeline;
+  /** The client's design system tokens, when one exists (null otherwise). */
+  designSystem: WikiDesignSystem | null;
   updatedAt: string;
 }
 
@@ -223,6 +232,23 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   };
 }
 
+/**
+ * Load the client's design system for the wiki. The whole-wiki share is the gate
+ * (the public page only resolves when shareEnabled), so the DS is included here
+ * regardless of its own /brand/ share — "share entire wiki" means the DS too.
+ */
+async function loadWikiDesignSystem(clientId: string): Promise<WikiDesignSystem | null> {
+  const row = await prisma.clientDesignSystem.findUnique({
+    where: { clientId },
+    include: { client: { select: { logoUrl: true } } },
+  });
+  if (!row || !row.tokens) return null;
+  return {
+    tokens: row.tokens as unknown as DesignTokens,
+    logoUrl: row.client.logoUrl ?? null,
+  };
+}
+
 async function buildDTO(wiki: {
   id: string;
   clientId: string;
@@ -292,6 +318,7 @@ async function buildDTO(wiki: {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
     timeline: await loadWikiTimeline(wiki.clientId),
+    designSystem: await loadWikiDesignSystem(wiki.clientId),
     updatedAt: wiki.updatedAt.toISOString(),
   };
 }

@@ -8,6 +8,7 @@ import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-edito
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
+import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
 import { apiFetch } from "@/lib/api";
 
 type WikiPageType =
@@ -78,6 +79,7 @@ export function WikiPublicView({
     wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
   const availableSections: WikiSection[] = [
     ...(hasTimeline ? (["timeline"] as const) : []),
+    ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
     ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
     ...(COURSE_REQUESTS_SLUGS.includes(wiki.clientSlug)
@@ -130,6 +132,16 @@ export function WikiPublicView({
   function renderContent() {
     if (activeSection === "timeline") {
       return <WikiTimelineSection timeline={wiki.timeline} />;
+    }
+
+    if (activeSection === "design-system") {
+      if (!wiki.designSystem) return null;
+      return (
+        <DesignSystemViewer
+          tokens={wiki.designSystem.tokens}
+          clientLogoUrl={wiki.designSystem.logoUrl}
+        />
+      );
     }
 
     if (activeSection === "changelog") {

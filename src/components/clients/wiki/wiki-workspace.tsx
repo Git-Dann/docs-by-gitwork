@@ -762,6 +762,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
   const [pageSavedLabel, setPageSavedLabel] = useState<string | null>(null);
   const editorRef = useRef<WikiPageEditorHandle>(null);
+  /** Guards the one-time "land on Timeline" default once the wiki loads. */
+  const didInitSection = useRef(false);
 
   // Reset editor state when switching sections
   useEffect(() => {
@@ -770,6 +772,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }, [activeSection]);
 
   const { data: wiki, isPending } = useClientWiki(slug);
+
+  // On first load, open on the Timeline if the client has one (feature blocks or
+  // milestones); otherwise keep the default. Runs once so it never fights the user.
+  useEffect(() => {
+    if (didInitSection.current || !wiki) return;
+    didInitSection.current = true;
+    if (wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0) {
+      setActiveSection("timeline");
+    }
+  }, [wiki]);
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
   const setShare = useSetWikiShare(slug);
