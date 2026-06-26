@@ -1274,7 +1274,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               className={[
                 "px-3 py-1.5 text-[13px] font-medium transition",
                 pageMode === "edit"
-                  ? "bg-[var(--text-1)] text-white"
+                  ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                   : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
               ].join(" ")}
             >
@@ -1286,7 +1286,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               className={[
                 "border-l border-[var(--border-2)] px-3 py-1.5 text-[13px] font-medium transition",
                 pageMode === "preview"
-                  ? "bg-[var(--text-1)] text-white"
+                  ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                   : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
               ].join(" ")}
             >

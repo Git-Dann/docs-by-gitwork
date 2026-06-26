@@ -114,7 +114,7 @@ export function CourseRequestForm({ initial, onSave, onClose, isSaving }: Props)
                       "flex-1 px-3 py-2 text-[13px] font-medium transition",
                       i > 0 ? "border-l border-[var(--border-2)]" : "",
                       status === s
-                        ? "bg-[var(--text-1)] text-white"
+                        ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                         : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                     ].join(" ")}
                   >

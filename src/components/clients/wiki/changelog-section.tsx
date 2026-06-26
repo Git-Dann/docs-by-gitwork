@@ -307,7 +307,7 @@ export function ChangelogSection({
             className={[
               "rounded-full px-3 py-1 text-xs font-medium transition",
               platformFilter === p
-                ? "bg-[var(--text-1)] text-white"
+                ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                 : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
             ].join(" ")}
           >
@@ -329,7 +329,7 @@ export function ChangelogSection({
                     ? "bg-emerald-600 text-white"
                     : s === "PENDING"
                     ? "bg-amber-500 text-white"
-                    : "bg-[var(--text-1)] text-white"
+                    : "bg-[var(--text-1)] text-[var(--surface-0)]"
                   : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
               ].join(" ")}
             >

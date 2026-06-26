@@ -229,7 +229,7 @@ export function CourseRequestsSection({
             className={[
               "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
               filter === s
-                ? "bg-[var(--text-1)] text-white"
+                ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                 : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
             ].join(" ")}
           >

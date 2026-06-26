@@ -983,7 +983,7 @@ function CssTokensBlock({ tokens }: { tokens: DesignTokens }) {
             className={[
               "px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition border-r border-[var(--border-2)]",
               lang === l
-                ? "bg-[var(--text-1)] text-white"
+                ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                 : "bg-white text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
             ].join(" ")}
           >
