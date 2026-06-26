@@ -106,7 +106,7 @@ export function LogoImagePicker({
         <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)]">
           {value ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={value} alt="Logo preview" className="h-full w-full object-contain p-1.5" />
+            <img src={value} alt="Logo preview" className="h-full w-full object-cover" />
           ) : (
             <PhotoIcon className="h-8 w-8 text-[var(--text-4)]" />
           )}

@@ -1020,64 +1020,75 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel w-full max-w-md overflow-hidden">
-          <div className="widget-header">
+        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+          <div className="widget-header shrink-0">
             <span className="widget-header__label">NEW LEAD</span>
           </div>
-          <div className="max-h-[80vh] overflow-y-auto p-6">
-            <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Add lead</h2>
-            <p className="mt-1 text-sm text-[var(--text-4)]">A prospect to follow up — convert to a client when they sign.</p>
-            <div className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Name *</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} className="app-input" placeholder="Acme Health" autoFocus />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
+
+          <div className="flex-1 min-h-0 space-y-5 overflow-y-auto p-6">
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">Add lead</h2>
+              <p className="mt-1 text-sm text-[var(--text-4)]">A prospect to follow up — convert to a client when they sign.</p>
+            </div>
+
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              {/* LEFT */}
+              <div className="space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Contact name</span>
+                  <span className="app-field-label">Name *</span>
+                  <input value={name} onChange={(e) => setName(e.target.value)} className="app-input" placeholder="Acme Health" autoFocus />
+                </label>
+                <label className="block">
+                  <span className="app-field-label">Contact name</span>
                   <input value={contactName} onChange={(e) => setContactName(e.target.value)} className="app-input" />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Contact email</span>
-                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="app-input" type="email" />
-                </label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Source</span>
+                  <span className="app-field-label">Source</span>
                   <input value={source} onChange={(e) => setSource(e.target.value)} className="app-input" placeholder="Referral, inbound…" />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Stage</span>
+                  <span className="app-field-label">Next follow-up</span>
+                  <input value={followUp} onChange={(e) => setFollowUp(e.target.value)} className="app-input" type="date" />
+                </label>
+              </div>
+
+              {/* RIGHT */}
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="app-field-label">Contact email</span>
+                  <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="app-input" type="email" />
+                </label>
+                <label className="block">
+                  <span className="app-field-label">Stage</span>
                   <select value={stage} onChange={(e) => setStage(e.target.value as LeadStage)} className="app-input">
                     {(Object.keys(LEAD_STAGE_LABEL) as LeadStage[]).map((s) => (
                       <option key={s} value={s}>{LEAD_STAGE_LABEL[s]}</option>
                     ))}
                   </select>
                 </label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Next follow-up</span>
-                  <input value={followUp} onChange={(e) => setFollowUp(e.target.value)} className="app-input" type="date" />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Est. value (£)</span>
+                  <span className="app-field-label">Est. value (£)</span>
                   <input value={value} onChange={(e) => setValue(e.target.value)} className="app-input" type="number" min="0" inputMode="numeric" />
                 </label>
               </div>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Notes</span>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="app-input min-h-[64px]" rows={2} />
-              </label>
-              {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+
+              {/* Notes — full width */}
+              <div className="border-t border-[rgba(0,0,0,0.08)] pt-4 sm:col-span-2">
+                <label className="block">
+                  <span className="app-field-label">Notes</span>
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="app-input min-h-[64px]" rows={2} />
+                </label>
+              </div>
+
+              {error ? <p className="text-sm text-rose-600 sm:col-span-2">{error}</p> : null}
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-              <Button type="button" variant="primary" size="sm" onClick={submit} disabled={createLead.isPending}>
-                {createLead.isPending ? "Adding…" : "Add lead"}
-              </Button>
-            </div>
+          </div>
+
+          <div className="flex shrink-0 justify-end gap-2 border-t border-[rgba(0,0,0,0.08)] px-6 py-4">
+            <Button type="button" variant="secondary" size="md" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="primary" size="md" onClick={submit} disabled={createLead.isPending}>
+              {createLead.isPending ? "Adding…" : "Add lead"}
+            </Button>
           </div>
         </div>
       </div>
