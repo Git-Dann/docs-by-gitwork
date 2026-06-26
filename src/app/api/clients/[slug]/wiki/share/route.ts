@@ -10,6 +10,7 @@ const bodySchema = z.object({
   enabled: z.boolean(),
   section: z
     .enum([
+      "timeline",
       "ia",
       "dev-guide",
       "api-docs",
