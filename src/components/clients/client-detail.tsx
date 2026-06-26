@@ -820,6 +820,13 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
+      {/* Lead-only Scribe — document calls with a prospect (number 03 in the lead view). */}
+      {isLead && (
+        <section className="widget-card">
+          <MeetingNotesSection slug={slug} number="03" />
+        </section>
+      )}
+
       {!isLead && (
         <>
       {/* ── 09 // BILLING ── */}
@@ -1016,7 +1023,7 @@ export function ClientDetail({ slug }: { slug: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">{isLead ? "03" : "13"}</span>
+              <span className="widget-header__label--number">{isLead ? "04" : "13"}</span>
               {" // NOTES"}
             </span>
             {isLead && (
@@ -1526,7 +1533,7 @@ function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"
   return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
 }
 
-function MeetingNotesSection({ slug }: { slug: string }) {
+function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: string }) {
   const PAGE_SIZE = 5;
   const [page, setPage] = useState(0);
   const [input, setInput] = useState("");
@@ -1672,7 +1679,7 @@ function MeetingNotesSection({ slug }: { slug: string }) {
     <>
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">12</span>
+          <span className="widget-header__label--number">{number}</span>
           {" // MEETING NOTES"}
         </span>
         <div className="flex items-center gap-2">
