@@ -8,18 +8,106 @@ import {
   useSetClientDesignSystemShare,
 } from "@/hooks/use-design-system";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { ChevronDownIcon, EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronDownIcon,
+  EllipsisHorizontalIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+  ArrowTopRightOnSquareIcon,
+  GlobeAltIcon,
+  CubeTransparentIcon,
+} from "@heroicons/react/24/outline";
 import { DesignSystemViewer } from "./design-system-viewer";
 import { ImportModal } from "./import-modal";
 import { LogoManagerModal } from "./logo-manager-modal";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 const chipBtn =
-  "inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
 const menuPanel =
   "z-50 mt-1.5 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
 const menuItem =
   "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)]";
+
+/** Pill toggle — matches WikiShareMenu. */
+function Toggle({
+  on,
+  disabled,
+  onClick,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={onClick}
+      className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
+      style={{ background: on ? "var(--brand-600)" : "var(--border-2)" }}
+    >
+      <span
+        className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
+        style={{ left: on ? 18 : 2 }}
+      />
+    </button>
+  );
+}
+
+/** URL pill + Copy / Open actions for an active share link. */
+function LinkRow({
+  url,
+  openHref,
+  copied,
+  onCopy,
+}: {
+  url: string;
+  openHref: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p
+        className="truncate rounded-[7px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] px-2.5 py-2 text-[11px] text-[var(--text-3)]"
+        style={{ fontFamily: MONO }}
+      >
+        {url}
+      </p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[7px] bg-[var(--brand-600)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+        >
+          {copied ? (
+            <>
+              <CheckIcon className="h-3.5 w-3.5 shrink-0" />
+              Copied
+            </>
+          ) : (
+            <>
+              <ClipboardDocumentIcon className="h-3.5 w-3.5 shrink-0" />
+              Copy link
+            </>
+          )}
+        </button>
+        <a
+          href={openHref}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+        >
+          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0" />
+          Open
+        </a>
+      </div>
+    </div>
+  );
+}
 
 /** Whole-wiki share controls, passed in when the DS workspace is embedded in the wiki. */
 export interface WikiShareControls {
@@ -91,90 +179,109 @@ export function DesignSystemWorkspace({
             {/* Share — toggle + link + open, folded into one menu */}
             <Menu as="div" className="relative">
               <MenuButton className={chipBtn}>
-                {shareOn ? (
+                {shareOn || wikiUrl ? (
                   <>
-                    <span className="text-[var(--brand-600)]">●</span> Shared
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" /> Shared
                   </>
                 ) : (
                   "Share"
                 )}
                 <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
               </MenuButton>
-              <MenuItems anchor="bottom end" className={`${menuPanel} w-[min(20rem,90vw)]`}>
-                <div className="flex items-center justify-between gap-3 px-2.5 py-2">
-                  <div>
-                    <p className="text-[13px] font-medium text-[var(--text-1)]">Share this page</p>
-                    <p className="text-[11px] text-[var(--text-4)]">Public link to the design system only.</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={shareOn}
-                    disabled={share.isPending}
-                    onClick={() => share.mutate(!shareOn)}
-                    className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
-                    style={{ background: shareOn ? "var(--brand-600)" : "var(--border-2)" }}
+              <MenuItems
+                anchor="bottom end"
+                className="z-50 mt-2 w-[min(20.5rem,92vw)] overflow-hidden rounded-[14px] border border-[rgba(0,0,0,0.08)] bg-white shadow-[0_16px_40px_-8px_rgba(0,0,0,0.22)] focus:outline-none"
+              >
+                {/* Eyebrow */}
+                <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5">
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
                   >
-                    <span
-                      className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
-                      style={{ left: shareOn ? 18 : 2 }}
-                    />
-                  </button>
+                    Share
+                  </p>
                 </div>
-                {shareOn && shareUrl && (
-                  <div className="mt-1 border-t border-[rgba(0,0,0,0.06)] pt-1.5">
-                    <p className="truncate px-2.5 pb-1 text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                      {shareUrl}
-                    </p>
-                    <button type="button" onClick={() => copy(shareUrl, setCopiedLink)} className={menuItem}>
-                      {copiedLink ? "Copied ✓" : "Copy link"}
-                    </button>
-                    <a href={ds.share.url ?? "#"} target="_blank" rel="noreferrer" className={menuItem}>
-                      Open ↗
-                    </a>
-                  </div>
-                )}
 
-                {/* Whole-wiki share — only when embedded in the wiki */}
+                {/* ── Entire wiki (primary) — only when embedded in the wiki ── */}
                 {wikiShare && (
                   <>
-                    <div className="mt-1 flex items-center justify-between gap-3 border-t border-[rgba(0,0,0,0.06)] px-2.5 pb-2 pt-2.5">
-                      <div>
-                        <p className="text-[13px] font-medium text-[var(--text-1)]">Share entire wiki</p>
-                        <p className="text-[11px] text-[var(--text-4)]">
-                          One link to all pages — Design System, IA, Dev Guide &amp; Changelog.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={wikiShare.enabled}
-                        disabled={wikiShare.busy}
-                        onClick={() => wikiShare.onToggle(!wikiShare.enabled)}
-                        className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
-                        style={{ background: wikiShare.enabled ? "var(--brand-600)" : "var(--border-2)" }}
-                      >
-                        <span
-                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
-                          style={{ left: wikiShare.enabled ? 18 : 2 }}
+                    <div className="px-4 py-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <GlobeAltIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-[var(--text-1)]">
+                              Share entire wiki
+                            </p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                              One link to every page — Timeline, docs, changelog &amp; client sections.
+                            </p>
+                          </div>
+                        </div>
+                        <Toggle
+                          on={wikiShare.enabled}
+                          disabled={wikiShare.busy}
+                          onClick={() => wikiShare.onToggle(!wikiShare.enabled)}
                         />
-                      </button>
-                    </div>
-                    {wikiUrl && (
-                      <div>
-                        <p className="truncate px-2.5 pb-1 text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                          {wikiUrl}
-                        </p>
-                        <button type="button" onClick={() => copy(wikiUrl, setCopiedWiki)} className={menuItem}>
-                          {copiedWiki ? "Copied ✓" : "Copy wiki link"}
-                        </button>
-                        <a href={`/wiki/${wikiShare.token}`} target="_blank" rel="noreferrer" className={menuItem}>
-                          Open ↗
-                        </a>
                       </div>
-                    )}
+                      {wikiUrl && wikiShare.token && (
+                        <LinkRow
+                          url={wikiUrl}
+                          openHref={`/wiki/${wikiShare.token}`}
+                          copied={copiedWiki}
+                          onCopy={() => copy(wikiUrl, setCopiedWiki)}
+                        />
+                      )}
+                    </div>
+                    <div className="h-px bg-[rgba(0,0,0,0.06)]" />
                   </>
                 )}
+
+                {/* ── This page (design system) ── */}
+                <div className="px-4 py-3.5">
+                  {wikiShare?.enabled && wikiShare.token ? (
+                    // Covered by the full-wiki link — no separate toggle.
+                    <div className="flex items-start gap-2.5">
+                      <CubeTransparentIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-[var(--text-3)]">Share this page</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                          Included in the full-wiki link above. Turn that off to share the design
+                          system on its own.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <CubeTransparentIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-[var(--text-1)]">
+                              Share this page
+                            </p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--text-4)]">
+                              Public link to the design system only.
+                            </p>
+                          </div>
+                        </div>
+                        <Toggle
+                          on={shareOn}
+                          disabled={share.isPending}
+                          onClick={() => share.mutate(!shareOn)}
+                        />
+                      </div>
+                      {shareOn && shareUrl && (
+                        <LinkRow
+                          url={shareUrl}
+                          openHref={ds.share.url ?? "#"}
+                          copied={copiedLink}
+                          onCopy={() => copy(shareUrl, setCopiedLink)}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
               </MenuItems>
             </Menu>
 

@@ -53,6 +53,29 @@ export interface CourseRequestRecord {
   updatedAt: string;
 }
 
+/** A feature block rendered as a Gantt bar on the wiki Timeline page. */
+export interface WikiTimelineBlock {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  color: string | null;
+  progress: number;
+  tasks: { title: string; done: boolean }[];
+}
+
+export interface WikiTimelineMilestone {
+  id: string;
+  name: string;
+  date: string;
+  color: string | null;
+}
+
+export interface WikiTimeline {
+  blocks: WikiTimelineBlock[];
+  milestones: WikiTimelineMilestone[];
+}
+
 export interface WikiDTO {
   id: string;
   clientId: string;
@@ -69,6 +92,8 @@ export interface WikiDTO {
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
+  /** Project delivery timeline (feature blocks + milestones) — same source as /timeline/[token]. */
+  timeline: WikiTimeline;
   updatedAt: string;
 }
 
@@ -140,6 +165,64 @@ function serializeCourseRequest(r: {
 
 const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
 
+/**
+ * Load the client's delivery timeline (feature blocks + milestones) for the wiki
+ * Timeline page. Mirrors `getPublicTimeline` in client-timeline.ts so the wiki and
+ * the standalone /timeline/[token] share show the same client-facing roadmap:
+ * block names + task titles + progress only — no assignees/notes/internal status.
+ */
+async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
+  const blocks = await prisma.featureBlock.findMany({
+    where: { clientId },
+    orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
+    include: {
+      tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
+    },
+  });
+
+  const timelineBlocks: WikiTimelineBlock[] = blocks
+    .map((b) => {
+      // Sections render once they have a span — explicit dates, or derived from
+      // the date range of their tasks' due dates (so undated sections still show).
+      const dues = b.tasks
+        .map((t) => t.dueDate)
+        .filter((d): d is Date => d !== null)
+        .map((d) => d.getTime())
+        .sort((a, z) => a - z);
+      const start = b.startDate ?? (dues.length ? new Date(dues[0]) : null);
+      const end = b.endDate ?? (dues.length ? new Date(dues[dues.length - 1]) : null);
+      if (!start || !end) return null;
+      const taskCount = b.tasks.length;
+      const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
+      return {
+        id: b.id,
+        name: b.name,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        color: b.color,
+        progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
+        tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+      };
+    })
+    .filter((b): b is WikiTimelineBlock => b !== null);
+
+  const milestones = await prisma.milestone.findMany({
+    where: { clientId },
+    orderBy: { date: "asc" },
+    select: { id: true, name: true, date: true, color: true },
+  });
+
+  return {
+    blocks: timelineBlocks,
+    milestones: milestones.map((m) => ({
+      id: m.id,
+      name: m.name,
+      date: m.date.toISOString(),
+      color: m.color,
+    })),
+  };
+}
+
 async function buildDTO(wiki: {
   id: string;
   clientId: string;
@@ -208,6 +291,7 @@ async function buildDTO(wiki: {
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
+    timeline: await loadWikiTimeline(wiki.clientId),
     updatedAt: wiki.updatedAt.toISOString(),
   };
 }
@@ -648,6 +732,7 @@ export async function setWikiShare(
 
 /** Sections that can be individually shared (Design System has its own share). */
 const SHAREABLE_SECTIONS = [
+  "timeline",
   "ia",
   "dev-guide",
   "api-docs",

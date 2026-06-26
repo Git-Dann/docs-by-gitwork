@@ -2,11 +2,12 @@
 
 import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
-import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
+import { WikiSidebar, COURSE_REQUESTS_SLUGS, type WikiSection } from "./wiki-sidebar";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
+import { WikiTimelineSection } from "./wiki-timeline-section";
 import { apiFetch } from "@/lib/api";
 
 type WikiPageType =
@@ -37,6 +38,7 @@ const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
+  timeline: "Timeline",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -62,10 +64,9 @@ export function WikiPublicView({
   /** The share token from the URL — used to authenticate mutations on the public view. */
   token: string;
 }) {
-  const [activeSection, setActiveSection] = useState<WikiSection>(
-    (onlySection as WikiSection) ?? "ia",
-  );
-  const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+  // The public portal only surfaces sections that have real content. Empty doc
+  // pages and the privately-managed Design System are hidden so the client never
+  // lands on a blank or dead-end page (per Dan, June 2026).
   const hiddenSections = new Set(wiki.hiddenSections ?? []);
   const existingDocSections = wiki.pages
     .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
@@ -73,13 +74,22 @@ export function WikiPublicView({
       if (!section) return false;
       return !hiddenSections.has(section);
     });
+  const hasTimeline =
+    wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
   const availableSections: WikiSection[] = [
-    "design-system",
-    ...(["ia", "dev-guide"] as const).filter((section) => !hiddenSections.has(section)),
-    ...existingDocSections.filter((section) => ["api-docs", "architecture", "runbook", "data-model"].includes(section)),
-    "changelog",
-    "course-requests",
+    ...(hasTimeline ? (["timeline"] as const) : []),
+    ...existingDocSections,
+    ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
+    ...(COURSE_REQUESTS_SLUGS.includes(wiki.clientSlug)
+      ? (["course-requests"] as const)
+      : []),
   ];
+  // Whole-wiki share opens on the Timeline (the headline page); per-page shares
+  // open on their one section. Fall back to the first available section.
+  const [activeSection, setActiveSection] = useState<WikiSection>(
+    (onlySection as WikiSection) ?? availableSections[0] ?? "timeline",
+  );
+  const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
 
   const handleSetStatus = useCallback(
     async (ids: string[], status: string) => {
@@ -118,12 +128,8 @@ export function WikiPublicView({
   }
 
   function renderContent() {
-    if (activeSection === "design-system") {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="text-sm text-[var(--text-3)]">Design System is managed privately.</p>
-        </div>
-      );
+    if (activeSection === "timeline") {
+      return <WikiTimelineSection timeline={wiki.timeline} />;
     }
 
     if (activeSection === "changelog") {
