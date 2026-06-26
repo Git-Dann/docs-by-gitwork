@@ -81,6 +81,14 @@ function ScanRunningState({
   const { mutate: cancel, isPending: cancelling } = useCancelPulseScan();
   const [elapsedSec, setElapsedSec] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  // Faux count-up: the deterministic checks can land in a single wave (esp. GitHub
+  // repos), so the real count jumps 0→N instantly and the step looks fake. Ease the
+  // DISPLAYED count toward the real one (rate-limited) so a near-instant result still
+  // reads as work — and still tracks genuine streaming when checks trickle in.
+  const [displayCount, setDisplayCount] = useState(0);
+
+  const checksDone = Boolean(checksCompletedAt);
+  const checksCount = liveChecks.length;
 
   useEffect(() => {
     const origin = new Date(startedAt).getTime();
@@ -88,14 +96,19 @@ function ScanRunningState({
       const t = Date.now();
       setNow(t);
       setElapsedSec(Math.floor((t - origin) / 1000));
+      // Climb toward the real count (~1.5–2s for a full instant jump), capped at it.
+      setDisplayCount((d) => (d >= checksCount ? checksCount : Math.min(checksCount, d + Math.max(2, Math.ceil((checksCount - d) / 3)))));
     }
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [startedAt, checksCount]);
 
-  const checksDone = Boolean(checksCompletedAt);
-  const checksCount = liveChecks.length;
+  // Only present the checks step as "done" once the count-up has caught up — so the
+  // green/complete state never appears in the same instant the data arrives.
+  const countCaughtUp = displayCount >= checksCount;
+  const showDone = checksDone && countCaughtUp;
+  const checksPct = checksCount > 0 ? Math.round((displayCount / checksCount) * 100) : 8;
 
   // AI phase has no granular signal — ease 0→99% over ~120s, scoped to step 2 only.
   const aiMs = checksDone ? now - new Date(checksCompletedAt!).getTime() : 0;
@@ -118,7 +131,7 @@ function ScanRunningState({
       <div className="mx-auto w-full max-w-md space-y-6 py-8">
         <div className="text-center">
           <p className="text-sm font-semibold text-[var(--text-1)]">
-            {checksDone ? "Writing your report" : "Scanning your project"}
+            {showDone ? "Writing your report" : "Scanning your project"}
           </p>
           <p className="mt-0.5 text-xs tabular-nums text-[var(--text-4)]">{elapsedSec}s elapsed</p>
         </div>
@@ -127,27 +140,30 @@ function ScanRunningState({
         <ProgressStep
           index={1}
           title="Automated checks"
-          state={checksDone ? "done" : "active"}
+          state={showDone ? "done" : "active"}
           detail={
-            checksDone
+            showDone
               ? `${checksCount} checks complete`
-              : checksCount > 0
-                ? `${checksCount} checks run so far…`
+              : displayCount > 0
+                ? `Running checks… ${displayCount}`
                 : "Connecting & fetching the project…"
           }
           bar={
-            checksDone ? (
+            showDone ? (
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/40">
                 <div className="h-full w-full rounded-full bg-emerald-500" />
               </div>
             ) : (
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-                <div className="h-full w-full animate-pulse rounded-full bg-[var(--brand-500)]" />
+                <div
+                  className="h-full rounded-full bg-[var(--brand-500)] transition-all duration-300 ease-out"
+                  style={{ width: `${checksPct}%` }}
+                />
               </div>
             )
           }
         >
-          {checksDone && healthScore !== null && (
+          {showDone && healthScore !== null && (
             <div className={`mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${scoreTone(healthScore)}`}>
               Health score {healthScore}/100
             </div>
@@ -158,14 +174,14 @@ function ScanRunningState({
         <ProgressStep
           index={2}
           title="AI analysis"
-          state={checksDone ? "active" : "pending"}
+          state={showDone ? "active" : "pending"}
           detail={
-            checksDone
+            showDone
               ? "Writing insights, gaps & recommendations…"
               : "Starts once the checks are in"
           }
           bar={
-            checksDone ? (
+            showDone ? (
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
                 <div
                   className="h-full rounded-full bg-[var(--brand-600)] transition-all duration-300 ease-out"
@@ -176,7 +192,7 @@ function ScanRunningState({
           }
         />
 
-        {isLong && checksDone && (
+        {isLong && showDone && (
           <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
             AI synthesis can take a couple of minutes — your checks and score above are already final.
           </p>
@@ -198,7 +214,7 @@ function ScanRunningState({
       {categories.length > 0 && (
         <div className="rounded-[10px] border border-[var(--border-2)] p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-4)]">
-            {checksDone ? "All checks complete — AI is writing your report" : "Checks streaming in live…"}
+            {showDone ? "All checks complete — AI is writing your report" : "Checks streaming in live…"}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {categories.map(([category, s]) => {
