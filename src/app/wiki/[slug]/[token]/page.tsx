@@ -25,12 +25,21 @@ export async function generateMetadata({
   const { token } = await params;
   const resolved = await resolvePublicWiki(token);
   if (!resolved) return { title: "Not found" };
-  const suffix = resolved.onlySection
-    ? ` — ${SECTION_LABELS[resolved.onlySection] ?? "Wiki"}`
-    : " — Wiki";
+  const { clientName } = resolved.wiki;
+  const sectionLabel = resolved.onlySection
+    ? SECTION_LABELS[resolved.onlySection] ?? "Wiki"
+    : null;
+  const title = `${clientName}${sectionLabel ? ` — ${sectionLabel}` : " — Wiki"}`;
+  // Client-relative description so the social unfurl reflects this wiki, not the
+  // generic Foundry site copy from the root layout.
+  const description = sectionLabel
+    ? `${clientName}'s ${sectionLabel}, shared from their knowledge wiki.`
+    : `${clientName}'s knowledge wiki — project timeline, documentation, changelog and updates.`;
   return {
-    title: `${resolved.wiki.clientName}${suffix}`,
+    title,
+    description,
     robots: { index: false },
+    openGraph: { title, description },
   };
 }
 
