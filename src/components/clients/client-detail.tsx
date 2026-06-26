@@ -660,14 +660,16 @@ export function ClientDetail({ slug }: { slug: string }) {
                   Bank details
                 </Button>
               )}
-              <Link
-                href={`/app/portal/${slug}/wiki`}
-                title="Open knowledge wiki"
-                className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-              >
-                <BookOpenIcon className="h-3.5 w-3.5" />
-                Wiki →
-              </Link>
+              {!isLead && (
+                <Link
+                  href={`/app/portal/${slug}/wiki`}
+                  title="Open knowledge wiki"
+                  className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+                >
+                  <BookOpenIcon className="h-3.5 w-3.5" />
+                  Wiki →
+                </Link>
+              )}
             </div>
           </div>
         </div>
