@@ -44,21 +44,24 @@ export default async function PublicWikiPage({
   const { wiki, onlySection } = resolved;
 
   return (
-    <div className="min-h-screen bg-[var(--surface-0)]">
+    <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
       {/* Header — branding lives once, in the footer. */}
-      <div className="border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
+      <header className="border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
         <p
           className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
           {wiki.clientName}{" // Wiki"}
         </p>
-      </div>
+      </header>
 
-      <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />
+      {/* Content grows to fill the viewport so the footer stays pinned to the bottom. */}
+      <main className="flex-1">
+        <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />
+      </main>
 
       {/* Footer */}
-      <div className="mt-16 border-t border-[rgba(0,0,0,0.08)] bg-white px-4 py-6 md:px-8">
+      <footer className="border-t border-[rgba(0,0,0,0.08)] bg-white px-4 py-6 md:px-8">
         <div className="flex items-center justify-between text-xs text-[var(--text-4)]">
           <span>
             {wiki.clientName} · Knowledge Wiki
@@ -72,7 +75,7 @@ export default async function PublicWikiPage({
             Powered by Gitwork
           </Link>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }
