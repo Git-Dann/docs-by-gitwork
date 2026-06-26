@@ -130,7 +130,7 @@ export function ConversationDetail({
               <select
                 value={conversation.status}
                 onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
-                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-sm"
+                className="app-select-compact w-full text-sm"
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
@@ -144,7 +144,7 @@ export function ConversationDetail({
               <select
                 value={conversation.priority}
                 onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
-                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-sm"
+                className="app-select-compact w-full text-sm"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
@@ -158,7 +158,7 @@ export function ConversationDetail({
               <select
                 value={conversation.assigneeId ?? ""}
                 onChange={(e) => triage.mutate({ convId: conversation.id, data: { assigneeId: e.target.value || null } })}
-                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-sm"
+                className="app-select-compact w-full text-sm"
               >
                 <option value="">Unassigned</option>
                 {members.map((m) => (
@@ -246,7 +246,7 @@ export function ConversationDetail({
                 onChange={(e) => setNoteDraft(e.target.value)}
                 placeholder="Add an internal note…"
                 rows={2}
-                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-sm"
+                className="app-select-compact w-full text-sm"
               />
               <button
                 type="submit"

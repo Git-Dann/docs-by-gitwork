@@ -558,7 +558,7 @@ function ProfileMenu({
                         setViewAsUser(m.name ?? m.email, m.permissions as string[], m.role);
                         setOpen(false);
                       }}
-                      className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-2 text-sm text-[var(--text-2)] transition hover:bg-[var(--surface-1)] focus:border-[var(--brand-500)] focus:outline-none"
+                      className="app-select-compact w-full text-sm"
                     >
                       <option value="">Select a teammate…</option>
                       {teammateMembers.map((m) => {

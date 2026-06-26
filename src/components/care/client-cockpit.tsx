@@ -208,7 +208,7 @@ export function ClientCockpit({
           <select
             value={activeView}
             onChange={(e) => setActiveView(e.target.value)}
-            className="ml-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-xs"
+            className="app-select-compact ml-auto h-8 w-auto text-xs"
           >
             {SAVED_VIEWS.map((v) => (
               <option key={v.id} value={v.id}>{v.label} ({viewCounts[v.id] ?? 0})</option>
@@ -237,7 +237,7 @@ export function ClientCockpit({
           <select
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-xs"
+            className="app-select-compact h-8 w-auto text-xs"
           >
             <option value="all">All channels</option>
             {sources.map((s) => (
@@ -272,7 +272,7 @@ export function ClientCockpit({
             <select
               onChange={(e) => e.target.value && runBatch({ status: e.target.value })}
               defaultValue=""
-              className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-xs"
+              className="app-select-compact h-8 w-auto text-xs"
             >
               <option value="" disabled>Status…</option>
               {(["open", "snoozed", "closed", "ignored"] as const).map((s) => (
@@ -282,7 +282,7 @@ export function ClientCockpit({
             <select
               onChange={(e) => e.target.value && runBatch({ assigneeId: e.target.value === "none" ? null : e.target.value })}
               defaultValue=""
-              className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-xs"
+              className="app-select-compact h-8 w-auto text-xs"
             >
               <option value="" disabled>Assign…</option>
               <option value="none">Unassign</option>

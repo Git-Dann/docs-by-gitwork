@@ -105,8 +105,7 @@ const TEMPLATE = [
   "Write release notes,Backlog,Low,,,Docs,",
 ].join("\n");
 
-const SELECT_CLASS =
-  "rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-xs text-[var(--text-2)] focus:border-[var(--brand-500)] focus:outline-none";
+const SELECT_CLASS = "app-select-compact w-full text-xs";
 
 export function TaskImportModal({
   slug,

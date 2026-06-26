@@ -123,7 +123,7 @@ export function ChecksPanel() {
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
+          className="app-select w-auto text-sm"
         >
           <option value="all">All categories</option>
           {CHECK_CATEGORIES.map((cat) => (
@@ -353,7 +353,7 @@ function CheckDrawer({
             <select
               value={severityOverride}
               onChange={(e) => setSeverityOverride(e.target.value)}
-              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-1)] focus:border-[var(--brand-400)] focus:outline-none"
+              className="app-select w-full text-sm"
             >
               <option value="">Use built-in default</option>
               <option value="WARN">Always warn (⚠)</option>

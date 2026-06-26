@@ -864,6 +864,7 @@ export function RateCardTab() {
               <label className="block space-y-1.5">
                 <FieldLabel>Source currency</FieldLabel>
                 <select
+                  className="app-select"
                   value={COMMON_CURRENCIES.includes(draft.sourceCurrencyCode as (typeof COMMON_CURRENCIES)[number]) ? draft.sourceCurrencyCode : "CUSTOM"}
                   onChange={(event) => {
                     const nextValue = event.target.value;
@@ -910,6 +911,7 @@ export function RateCardTab() {
               <label className="block space-y-1.5">
                 <FieldLabel>Billing period</FieldLabel>
                 <select
+                  className="app-select"
                   value={draft.billingPeriod}
                   onChange={(event) =>
                     setDraft((current) => ({

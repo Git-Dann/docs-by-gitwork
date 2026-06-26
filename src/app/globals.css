@@ -929,15 +929,29 @@ h2, h3, h4, h5 {
   .app-select,
   select.app-input,
   .proposal-form-theme select {
-    background-position: calc(100% - 20px) center;
-    background-size: 18px 18px;
-    padding-right: 48px;
+    background-position: calc(100% - 12px) center;
+    background-size: 16px 16px;
+    padding-right: 38px;
   }
 
   .app-select-compact {
-    background-position: calc(100% - 16px) center;
-    background-size: 16px 16px;
-    padding-right: 40px;
+    background-position: calc(100% - 10px) center;
+    background-size: 14px 14px;
+    padding-right: 32px;
+  }
+
+  /* Chevron-only helper — gives any bespoke <select> (e.g. coloured status
+     pills that can't use the full .app-select look) the same unified arrow
+     and removes the native OS chevron. Pair with a right padding utility
+     (pr-6 / pr-7) so text never sits under the arrow. */
+  .app-select-chevron {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23717680' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: calc(100% - 7px) center;
+    background-size: 13px 13px;
   }
 
   .app-checkbox {
@@ -1142,6 +1156,7 @@ h2, h3, h4, h5 {
   [data-theme="dark"] .app-select,
   [data-theme="dark"] select.app-input,
   [data-theme="dark"] .app-select-compact,
+  [data-theme="dark"] .app-select-chevron,
   [data-theme="dark"] .proposal-form-theme select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23A0A0A6' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
   }

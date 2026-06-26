@@ -2451,7 +2451,7 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                     value={ticket.status}
                     onChange={(e) => updateTicket.mutate({ ticketId: ticket.id, data: { status: e.target.value as TicketStatus } })}
                     className={cn(
-                      "cursor-pointer rounded-md border px-2 py-0.5 text-[10px] font-semibold outline-none transition",
+                      "app-select-chevron cursor-pointer rounded-md border py-0.5 pl-2 pr-6 text-[10px] font-semibold outline-none transition",
                       STATUS_TONE[ticket.status],
                     )}
                   >
@@ -2613,7 +2613,7 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                     e.target.value = "";
                     void runBatch({ status: val });
                   }}
-                  className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                  className="app-select-compact h-7 !min-h-0 w-auto bg-[var(--surface-1)] text-[11px]"
                 >
                   <option value="">Set status…</option>
                   {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((s) => (
@@ -2628,7 +2628,7 @@ function TicketsTableView({ clientId }: { clientId: string }) {
                     e.target.value = "";
                     void runBatch({ priority: val });
                   }}
-                  className="h-7 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-[11px] text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+                  className="app-select-compact h-7 !min-h-0 w-auto bg-[var(--surface-1)] text-[11px]"
                 >
                   <option value="">Set priority…</option>
                   {(["urgent", "high", "normal", "low"] as TicketPriority[]).map((p) => (
@@ -3039,7 +3039,7 @@ function ReportBuilder({
           <select
             value={`${p.periodStart.slice(0, 7)}`}
             onChange={(e) => applyMonth(e.target.value)}
-            className="h-7 rounded-[6px] border border-[var(--border-2)] bg-white px-2 text-xs text-[var(--text-1)] outline-none transition focus:border-[var(--brand-700)]"
+            className="app-select-compact h-7 !min-h-0 w-auto bg-white text-xs"
           >
             {Array.from({ length: 12 }, (_, i) => {
               const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);

@@ -408,7 +408,7 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
                     <select
                       value={endpoint.method}
                       onChange={(event) => patchEndpoint(index, { method: methodValue(event.target.value) })}
-                      className={inputCls}
+                      className="app-select w-full text-sm"
                     >
                       {(["GET", "POST", "PATCH", "PUT", "DELETE"] as ApiMethod[]).map((method) => (
                         <option key={method} value={method}>{method}</option>
@@ -545,7 +545,7 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
           <select
             value={selectedServer}
             onChange={(event) => setSelectedServer(event.target.value)}
-            className="w-full rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-semibold text-[var(--text-1)]"
+            className="app-select w-full text-sm font-semibold"
           >
             {content.servers.map((server) => (
               <option key={`${server.url}-${server.label}`} value={server.url}>
@@ -680,7 +680,7 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
               <select
                 value={authScheme}
                 onChange={(event) => setAuthScheme(event.target.value === "apiKey" ? "apiKey" : "bearer")}
-                className="w-full rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]"
+                className="app-select w-full text-sm"
               >
                 <option value="bearer">Bearer token</option>
                 <option value="apiKey">API key</option>
