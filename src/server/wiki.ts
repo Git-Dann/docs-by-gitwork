@@ -89,6 +89,10 @@ export interface WikiDTO {
   clientId: string;
   clientName: string;
   clientSlug: string;
+  /** The client's website (from the Portal record), shown in the dashboard hero. */
+  website: string | null;
+  /** Primary contact pulled from the Portal record (null when none set). */
+  contact: { name: string | null; email: string | null; phone: string | null } | null;
   shareToken: string | null;
   shareEnabled: boolean;
   /** Active changelog platforms. Defaults to ["IOS","ANDROID","WEB"] when unset. */
@@ -274,7 +278,14 @@ async function buildDTO(
   pageShares?: unknown;
   hiddenSections?: unknown;
   updatedAt: Date;
-  client: { name: string; slug: string };
+  client: {
+    name: string;
+    slug: string;
+    website?: string | null;
+    primaryContactName?: string | null;
+    primaryContactEmail?: string | null;
+    primaryContactPhone?: string | null;
+  };
   wikiUsers?: Array<{ id: string; email: string; name: string | null; createdAt: Date }>;
   pages: Array<{
     id: string;
@@ -313,6 +324,17 @@ async function buildDTO(
     clientId: wiki.clientId,
     clientName: wiki.client.name,
     clientSlug: wiki.client.slug,
+    website: wiki.client.website ?? null,
+    contact:
+      wiki.client.primaryContactName ||
+      wiki.client.primaryContactEmail ||
+      wiki.client.primaryContactPhone
+        ? {
+            name: wiki.client.primaryContactName ?? null,
+            email: wiki.client.primaryContactEmail ?? null,
+            phone: wiki.client.primaryContactPhone ?? null,
+          }
+        : null,
     shareToken: wiki.shareToken,
     shareEnabled: wiki.shareEnabled,
     platforms: Array.isArray(wiki.platforms) ? (wiki.platforms as string[]) : DEFAULT_PLATFORMS,
@@ -354,7 +376,16 @@ async function buildDTO(
 }
 
 const WIKI_INCLUDE = {
-  client: { select: { name: true, slug: true } },
+  client: {
+    select: {
+      name: true,
+      slug: true,
+      website: true,
+      primaryContactName: true,
+      primaryContactEmail: true,
+      primaryContactPhone: true,
+    },
+  },
   pages: true,
   changelog: true,
   courseRequests: true,

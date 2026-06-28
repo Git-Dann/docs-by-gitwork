@@ -14,6 +14,10 @@ import {
   WrenchScrewdriverIcon,
   ArrowRightIcon,
   Squares2X2Icon,
+  GlobeAltIcon,
+  UserIcon,
+  EnvelopeIcon,
+  PhoneIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
@@ -89,6 +93,18 @@ function relativeDate(iso: string): string {
     return formatDate(iso);
   } catch {
     return "";
+  }
+}
+
+function normalizeUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function displayHost(url: string): string {
+  try {
+    return new URL(normalizeUrl(url)).host.replace(/^www\./, "");
+  } catch {
+    return url;
   }
 }
 
@@ -396,6 +412,47 @@ export function WikiDashboard({
               </h1>
             </div>
           </div>
+
+          {/* Portal client info — website + primary contact */}
+          {(wiki.website || wiki.contact) && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
+              {wiki.website && (
+                <a
+                  href={normalizeUrl(wiki.website)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                >
+                  <GlobeAltIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {displayHost(wiki.website)}
+                </a>
+              )}
+              {wiki.contact?.name && (
+                <span className="inline-flex items-center gap-1.5 text-[var(--text-2)]">
+                  <UserIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {wiki.contact.name}
+                </span>
+              )}
+              {wiki.contact?.email && (
+                <a
+                  href={`mailto:${wiki.contact.email}`}
+                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                >
+                  <EnvelopeIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {wiki.contact.email}
+                </a>
+              )}
+              {wiki.contact?.phone && (
+                <a
+                  href={`tel:${wiki.contact.phone}`}
+                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                >
+                  <PhoneIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {wiki.contact.phone}
+                </a>
+              )}
+            </div>
+          )}
 
           {/* Honest progress readout — what's done vs. the plan, not "complete". */}
           {pct !== null && (
