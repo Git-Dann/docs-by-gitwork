@@ -7,6 +7,11 @@ import {
   PencilSquareIcon,
   TrashIcon,
   UserCircleIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiDTO, WikiUserSummary } from "@/lib/api";
 import {
@@ -32,6 +37,20 @@ function formatDate(iso: string): string {
   } catch {
     return "";
   }
+}
+
+// 12-char alphanumeric password using the crypto RNG (unbiased rejection on the
+// charset length, so no modulo skew). Handed to the client to log in with.
+const PW_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+function generatePassword(length = 12): string {
+  const max = Math.floor(256 / PW_CHARSET.length) * PW_CHARSET.length; // reject bytes >= max
+  const out: string[] = [];
+  const buf = new Uint8Array(1);
+  while (out.length < length) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < max) out.push(PW_CHARSET[buf[0] % PW_CHARSET.length]);
+  }
+  return out.join("");
 }
 
 export function WikiAccessSettings({ wiki, slug }: { wiki: WikiDTO; slug: string }) {
@@ -179,6 +198,25 @@ function WikiUserModal({
   const [name, setName] = useState(user?.name ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reveal, setReveal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function handleGenerate() {
+    const pw = generatePassword();
+    setPassword(pw);
+    setReveal(true);
+    setCopied(false);
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable — the field is visible to copy manually */
+    }
+  }
 
   async function handleSave() {
     setError(null);
@@ -242,17 +280,66 @@ function WikiUserModal({
             />
           </div>
           <div>
-            <label className={labelCls} style={{ fontFamily: MONO }}>
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === "edit" ? "Leave blank to keep current" : "At least 8 characters"}
-              autoComplete="new-password"
-              className={inputCls}
-            />
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className={labelCls.replace("mb-1.5 ", "")} style={{ fontFamily: MONO }}>
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+              >
+                <ArrowPathIcon className="h-3.5 w-3.5" />
+                {mode === "edit" ? "Reset & generate" : "Generate"}
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type={reveal ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  mode === "edit" ? "Leave blank to keep current" : "At least 8 characters"
+                }
+                autoComplete="new-password"
+                className={`${inputCls} ${password ? "pr-16" : ""}`}
+                style={reveal ? { fontFamily: MONO, letterSpacing: "0.04em" } : undefined}
+              />
+              {password && (
+                <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setReveal((v) => !v)}
+                    title={reveal ? "Hide" : "Show"}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  >
+                    {reveal ? (
+                      <EyeSlashIcon className="h-4 w-4" />
+                    ) : (
+                      <EyeIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    title="Copy password"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  >
+                    {copied ? (
+                      <CheckIcon className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <ClipboardDocumentIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+            {mode === "edit" && (
+              <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                Generating a new password replaces the old one when you save — send the client the
+                new one.
+              </p>
+            )}
           </div>
           {error && <p className="text-[13px] text-rose-600">{error}</p>}
         </div>
