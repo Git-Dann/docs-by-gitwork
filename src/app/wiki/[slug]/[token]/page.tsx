@@ -2,12 +2,13 @@ import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolvePublicWiki } from "@/server/wiki";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
+import { auth } from "@/auth";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 import { WikiAccessGate } from "@/components/clients/wiki/wiki-access-gate";
 
-// Cookie-dependent (the optional access gate) — render per request.
+// Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
 
 const SECTION_LABELS: Record<string, string> = {
@@ -66,10 +67,12 @@ export default async function PublicWikiPage({
 
   const { wiki, onlySection } = resolved;
 
-  // Optional per-client gate: when the team has set a username/password and
-  // turned on "require login", a valid signed cookie is required before the
-  // wiki renders. Missing/invalid → show the login form.
-  if (wiki.accessProtected) {
+  // Hard lockdown: the public wiki is viewable only by (a) a logged-in
+  // Gitwork/Foundry staff member, or (b) an authenticated client user with a
+  // valid access cookie. Anyone else gets the email/password login form.
+  const session = await auth();
+  const isStaff = Boolean(session?.user?.id);
+  if (!isStaff) {
     const cookieStore = await cookies();
     const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
     const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);

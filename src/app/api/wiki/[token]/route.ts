@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPublicWiki } from "@/server/wiki";
+import { auth } from "@/auth";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 
-// Public — token in the URL is the resolver. When the wiki has the optional
-// username/password gate enabled, a valid access cookie is also required.
+// Public — token in the URL resolves the wiki, but viewing is locked down to
+// either a logged-in Gitwork/Foundry staff member OR an authenticated client
+// user (valid access cookie). No anonymous token-only access.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> },
@@ -14,7 +16,9 @@ export async function GET(
     const wiki = await getPublicWiki(token);
     if (!wiki) return apiError("Not found", 404);
 
-    if (wiki.accessProtected) {
+    const session = await auth();
+    const isStaff = Boolean(session?.user?.id);
+    if (!isStaff) {
       const cookieValue = req.cookies.get(wikiAccessCookieName(wiki.id))?.value;
       const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
       if (!unlocked) return apiError("Login required", 401);

@@ -15,7 +15,7 @@ const inputCls =
  * reload so the server component renders the wiki.
  */
 export function WikiAccessGate({ token, clientName }: { token: string; clientName: string }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -28,11 +28,11 @@ export function WikiAccessGate({ token, clientName }: { token: string; clientNam
       const res = await fetch(`/api/wiki/${token}/access`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? "Invalid username or password");
+        setError(data.error ?? "Invalid email or password");
         setSubmitting(false);
         return;
       }
@@ -74,13 +74,13 @@ export function WikiAccessGate({ token, clientName }: { token: string; clientNam
                   className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
                   style={{ fontFamily: MONO }}
                 >
-                  Username
+                  Email
                 </label>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                   className={inputCls}
                 />

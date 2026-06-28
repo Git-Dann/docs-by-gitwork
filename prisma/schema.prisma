@@ -1132,21 +1132,39 @@ model ClientWiki {
   hiddenSections    Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens   String[]               @default([])
-  /// Optional username/password gate for the PUBLIC client link. When
-  /// accessProtected = true and a hash is set, /wiki/[slug]/[token] shows a
-  /// login screen before the dashboard. Username plaintext; password bcrypt-hashed.
-  /// All three additive → apply via the build's `prisma db push`.
+  /// DEPRECATED (v1 single-credential gate, superseded by ClientWikiUser).
+  /// Kept to avoid Prisma's data-loss guard on a column drop; no longer read.
   accessProtected    Boolean               @default(false)
   accessUsername     String?
   accessPasswordHash String?
   pages             ClientWikiPage[]
   changelog         ClientChangelogEntry[]
   courseRequests    ClientCourseRequest[]
+  wikiUsers         ClientWikiUser[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
+}
+
+/// A client-facing login for the PUBLIC wiki link. Multiple per wiki; the team
+/// manages them in the wiki's Settings. Clients sign in with email + password
+/// (bcrypt-hashed); Gitwork staff bypass via their Foundry session. Replaces the
+/// deprecated single-credential fields on ClientWiki.
+model ClientWikiUser {
+  id           String     @id @default(cuid())
+  wikiId       String
+  wiki         ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  name         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([wikiId, email])
+  @@index([wikiId])
+  @@map("ClientWikiUser")
 }
 
 /// A single page/section within a ClientWiki. One row per type per wiki

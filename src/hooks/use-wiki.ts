@@ -7,7 +7,9 @@ import {
   deleteWikiPage,
   setWikiShareApi,
   setWikiSectionShareApi,
-  setWikiAccessApi,
+  createWikiUserApi,
+  updateWikiUserApi,
+  deleteWikiUserApi,
   addWikiChangelogEntry,
   deleteWikiChangelogEntry,
   updateWikiPlatformsApi,
@@ -79,11 +81,37 @@ export function useSetWikiSectionShare(slug: string) {
   });
 }
 
-export function useSetWikiAccess(slug: string) {
+export function useCreateWikiUser(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { protected: boolean; username?: string; password?: string }) =>
-      setWikiAccessApi(slug, input),
+    mutationFn: (input: { email: string; password: string; name?: string }) =>
+      createWikiUserApi(slug, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useUpdateWikiUser(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { email?: string; password?: string; name?: string };
+    }) => updateWikiUserApi(slug, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useDeleteWikiUser(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWikiUserApi(slug, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

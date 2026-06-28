@@ -104,12 +104,21 @@ export interface WikiDTO {
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
   designSystem: WikiDesignSystem | null;
-  /** Public-link username/password gate (optional, per client). Hash never exposed. */
-  accessProtected: boolean;
-  accessUsername: string | null;
-  /** Whether a password hash is stored (the hash itself is never sent to the client). */
-  accessHasPassword: boolean;
+  /**
+   * Client login accounts for the public link (email + name; password never
+   * exposed). Populated only for the internal editor — the public payload omits
+   * these so client emails never leave the server.
+   */
+  users: WikiUserSummary[];
   updatedAt: string;
+}
+
+/** A client wiki login account, safe for the client (no password hash). */
+export interface WikiUserSummary {
+  id: string;
+  email: string;
+  name: string | null;
+  createdAt: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -255,7 +264,8 @@ async function loadWikiDesignSystem(clientId: string): Promise<WikiDesignSystem 
   };
 }
 
-async function buildDTO(wiki: {
+async function buildDTO(
+  wiki: {
   id: string;
   clientId: string;
   shareToken: string | null;
@@ -263,11 +273,9 @@ async function buildDTO(wiki: {
   platforms: unknown;
   pageShares?: unknown;
   hiddenSections?: unknown;
-  accessProtected?: boolean;
-  accessUsername?: string | null;
-  accessPasswordHash?: string | null;
   updatedAt: Date;
   client: { name: string; slug: string };
+  wikiUsers?: Array<{ id: string; email: string; name: string | null; createdAt: Date }>;
   pages: Array<{
     id: string;
     type: WikiPageType;
@@ -297,7 +305,9 @@ async function buildDTO(wiki: {
     createdAt: Date;
     updatedAt: Date;
   }>;
-}): Promise<WikiDTO> {
+  },
+  opts?: { includeUsers?: boolean },
+): Promise<WikiDTO> {
   return {
     id: wiki.id,
     clientId: wiki.clientId,
@@ -328,9 +338,17 @@ async function buildDTO(wiki: {
       .map(serializeCourseRequest),
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
-    accessProtected: Boolean(wiki.accessProtected),
-    accessUsername: wiki.accessUsername ?? null,
-    accessHasPassword: Boolean(wiki.accessPasswordHash),
+    users: opts?.includeUsers
+      ? (wiki.wikiUsers ?? [])
+          .slice()
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .map((u) => ({
+            id: u.id,
+            email: u.email,
+            name: u.name,
+            createdAt: u.createdAt.toISOString(),
+          }))
+      : [],
     updatedAt: wiki.updatedAt.toISOString(),
   };
 }
@@ -340,6 +358,7 @@ const WIKI_INCLUDE = {
   pages: true,
   changelog: true,
   courseRequests: true,
+  wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
 } as const;
@@ -364,13 +383,13 @@ export async function getOrCreateWiki(clientId: string): Promise<WikiDTO> {
     where: { clientId },
     include: WIKI_INCLUDE,
   });
-  if (existing) return buildDTO(existing);
+  if (existing) return buildDTO(existing, { includeUsers: true });
 
   const wiki = await prisma.clientWiki.create({
     data: { clientId },
     include: WIKI_INCLUDE,
   });
-  return buildDTO(wiki);
+  return buildDTO(wiki, { includeUsers: true });
 }
 
 /** Fetch by slug — resolves clientId via the client record. */
@@ -784,59 +803,111 @@ export async function setWikiShare(
   return { shareToken: created.shareToken, shareEnabled: created.shareEnabled };
 }
 
-export interface WikiAccessState {
-  accessProtected: boolean;
-  accessUsername: string | null;
-  hasPassword: boolean;
+// ─── Client wiki users (public-link login accounts) ─────────────────────────────
+
+/** Thrown when a user op targets an email already present on the wiki. */
+export class WikiUserEmailTakenError extends Error {
+  status = 409;
+  constructor() {
+    super("A user with that email already exists for this wiki.");
+    this.name = "WikiUserEmailTakenError";
+  }
 }
 
-/**
- * Set the public-link username/password gate for a client's wiki. Auto-creates
- * the wiki row. A non-empty `password` is bcrypt-hashed; passing an empty string
- * clears the password (and forces the gate off). The hash is never returned.
- */
-export async function setWikiAccess(
-  clientId: string,
-  input: { protected: boolean; username?: string; password?: string },
-): Promise<WikiAccessState> {
+function serializeWikiUser(u: {
+  id: string;
+  email: string;
+  name: string | null;
+  createdAt: Date;
+}): WikiUserSummary {
+  return { id: u.id, email: u.email, name: u.name, createdAt: u.createdAt.toISOString() };
+}
+
+/** Ensure the wiki row exists for a client and return its id. */
+async function ensureWikiId(clientId: string): Promise<string> {
   const wiki = await prisma.clientWiki.upsert({
     where: { clientId },
     create: { clientId },
     update: {},
-    select: { id: true, accessPasswordHash: true },
+    select: { id: true },
   });
+  return wiki.id;
+}
 
-  const data: Prisma.ClientWikiUpdateInput = {};
+export async function listWikiUsers(clientId: string): Promise<WikiUserSummary[]> {
+  const wikiId = await ensureWikiId(clientId);
+  const users = await prisma.clientWikiUser.findMany({
+    where: { wikiId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, email: true, name: true, createdAt: true },
+  });
+  return users.map(serializeWikiUser);
+}
 
-  if (input.username !== undefined) {
-    const trimmed = input.username.trim();
-    data.accessUsername = trimmed.length > 0 ? trimmed : null;
-  }
-
-  let nextHash: string | null = wiki.accessPasswordHash;
-  if (input.password !== undefined) {
-    if (input.password.length > 0) {
-      nextHash = await bcrypt.hash(input.password, 12);
-    } else {
-      nextHash = null;
+export async function createWikiUser(
+  clientId: string,
+  input: { email: string; password: string; name?: string },
+): Promise<WikiUserSummary> {
+  const wikiId = await ensureWikiId(clientId);
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  try {
+    const user = await prisma.clientWikiUser.create({
+      data: {
+        wikiId,
+        email: input.email.trim().toLowerCase(),
+        name: input.name?.trim() || null,
+        passwordHash,
+      },
+      select: { id: true, email: true, name: true, createdAt: true },
+    });
+    return serializeWikiUser(user);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new WikiUserEmailTakenError();
     }
-    data.accessPasswordHash = nextHash;
+    throw err;
+  }
+}
+
+export async function updateWikiUser(
+  clientId: string,
+  userId: string,
+  input: { email?: string; password?: string; name?: string },
+): Promise<WikiUserSummary | null> {
+  const wikiId = await ensureWikiId(clientId);
+  // Scope the update to this wiki so one client can't touch another's users.
+  const existing = await prisma.clientWikiUser.findFirst({
+    where: { id: userId, wikiId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  const data: Prisma.ClientWikiUserUpdateInput = {};
+  if (input.email !== undefined) data.email = input.email.trim().toLowerCase();
+  if (input.name !== undefined) data.name = input.name.trim() || null;
+  if (input.password !== undefined && input.password.length > 0) {
+    data.passwordHash = await bcrypt.hash(input.password, 12);
   }
 
-  // The gate can only be on when a password actually exists.
-  data.accessProtected = input.protected && Boolean(nextHash);
+  try {
+    const user = await prisma.clientWikiUser.update({
+      where: { id: userId },
+      data,
+      select: { id: true, email: true, name: true, createdAt: true },
+    });
+    return serializeWikiUser(user);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new WikiUserEmailTakenError();
+    }
+    throw err;
+  }
+}
 
-  const updated = await prisma.clientWiki.update({
-    where: { id: wiki.id },
-    data,
-    select: { accessProtected: true, accessUsername: true, accessPasswordHash: true },
-  });
-
-  return {
-    accessProtected: updated.accessProtected,
-    accessUsername: updated.accessUsername,
-    hasPassword: Boolean(updated.accessPasswordHash),
-  };
+export async function deleteWikiUser(clientId: string, userId: string): Promise<boolean> {
+  const wikiId = await ensureWikiId(clientId);
+  const result = await prisma.clientWikiUser.deleteMany({ where: { id: userId, wikiId } });
+  return result.count > 0;
 }
 
 /** Sections that can be individually shared (Design System has its own share). */
