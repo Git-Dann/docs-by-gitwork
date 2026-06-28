@@ -1132,6 +1132,13 @@ model ClientWiki {
   hiddenSections    Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens   String[]               @default([])
+  /// Optional username/password gate for the PUBLIC client link. When
+  /// accessProtected = true and a hash is set, /wiki/[slug]/[token] shows a
+  /// login screen before the dashboard. Username plaintext; password bcrypt-hashed.
+  /// All three additive → apply via the build's `prisma db push`.
+  accessProtected    Boolean               @default(false)
+  accessUsername     String?
+  accessPasswordHash String?
   pages             ClientWikiPage[]
   changelog         ClientChangelogEntry[]
   courseRequests    ClientCourseRequest[]

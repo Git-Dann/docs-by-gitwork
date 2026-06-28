@@ -8,6 +8,7 @@ import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-edito
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
+import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
 import { apiFetch } from "@/lib/api";
 
@@ -39,6 +40,8 @@ const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
+  dashboard: "Dashboard",
+  settings: "Settings",
   timeline: "Timeline",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -78,6 +81,9 @@ export function WikiPublicView({
   const hasTimeline =
     wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
   const availableSections: WikiSection[] = [
+    // Dashboard is always the public landing — a visual overview that links into
+    // whatever sections exist below.
+    "dashboard",
     ...(hasTimeline ? (["timeline"] as const) : []),
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
@@ -86,10 +92,10 @@ export function WikiPublicView({
       ? (["course-requests"] as const)
       : []),
   ];
-  // Whole-wiki share opens on the Timeline (the headline page); per-page shares
-  // open on their one section. Fall back to the first available section.
+  // Whole-wiki share opens on the Dashboard (the headline overview); per-page
+  // shares open on their one section.
   const [activeSection, setActiveSection] = useState<WikiSection>(
-    (onlySection as WikiSection) ?? availableSections[0] ?? "timeline",
+    (onlySection as WikiSection) ?? "dashboard",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
 
@@ -130,6 +136,16 @@ export function WikiPublicView({
   }
 
   function renderContent() {
+    if (activeSection === "dashboard") {
+      return (
+        <WikiDashboard
+          wiki={wiki}
+          availableSections={availableSections}
+          onSelect={setActiveSection}
+        />
+      );
+    }
+
     if (activeSection === "timeline") {
       return <WikiTimelineSection timeline={wiki.timeline} />;
     }
