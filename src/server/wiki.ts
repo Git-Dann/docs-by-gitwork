@@ -944,6 +944,7 @@ export async function deleteWikiUser(clientId: string, userId: string): Promise<
 /** Sections that can be individually shared (Design System has its own share). */
 const SHAREABLE_SECTIONS = [
   "timeline",
+  "design-system",
   "ia",
   "dev-guide",
   "api-docs",

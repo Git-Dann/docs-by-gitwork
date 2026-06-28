@@ -12,13 +12,18 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ArrowPathIcon,
+  GlobeAltIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiDTO, WikiUserSummary } from "@/lib/api";
 import {
   useCreateWikiUser,
   useUpdateWikiUser,
   useDeleteWikiUser,
+  useSetWikiShare,
+  useSetWikiSectionShare,
 } from "@/hooks/use-wiki";
+import type { WikiSection } from "./wiki-sidebar";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -53,7 +58,30 @@ function generatePassword(length = 12): string {
   return out.join("");
 }
 
-export function WikiAccessSettings({ wiki, slug }: { wiki: WikiDTO; slug: string }) {
+// Sections that can be shared individually (mirrors SHAREABLE_SECTIONS server-side;
+// Design System has its own brand share, dashboard/settings aren't shareable).
+const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
+  timeline: "Timeline",
+  "design-system": "Design System",
+  ia: "Information Architecture",
+  "dev-guide": "Developer Guide",
+  "api-docs": "API Docs",
+  architecture: "Architecture",
+  runbook: "Runbook",
+  "data-model": "Data Model",
+  changelog: "Changelog",
+  "course-requests": "Course Requests",
+};
+
+export function WikiAccessSettings({
+  wiki,
+  slug,
+  availableSections,
+}: {
+  wiki: WikiDTO;
+  slug: string;
+  availableSections: WikiSection[];
+}) {
   const createUser = useCreateWikiUser(slug);
   const updateUser = useUpdateWikiUser(slug);
   const deleteUser = useDeleteWikiUser(slug);
@@ -158,6 +186,8 @@ export function WikiAccessSettings({ wiki, slug }: { wiki: WikiDTO; slug: string
         </div>
       </section>
 
+      <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
+
       {editing && (
         <WikiUserModal
           mode={editing === "new" ? "create" : "edit"}
@@ -178,6 +208,207 @@ export function WikiAccessSettings({ wiki, slug }: { wiki: WikiDTO; slug: string
         />
       )}
     </div>
+  );
+}
+
+function ShareToggle({
+  on,
+  disabled,
+  onClick,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={onClick}
+      className="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50"
+      style={{ background: on ? "var(--brand-600)" : "var(--border-2)" }}
+    >
+      <span
+        className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
+        style={{ left: on ? 18 : 2 }}
+      />
+    </button>
+  );
+}
+
+function ShareLinkRow({
+  href,
+  copied,
+  onCopy,
+}: {
+  href: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return (
+    <div className="mt-2.5 space-y-2">
+      {/* Smart preview — the actual unfurl card recipients will see. */}
+      <div className="overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${href}/opengraph-image`}
+          alt="Link preview"
+          loading="lazy"
+          className="block aspect-[1200/630] w-full object-cover"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+      <p
+        className="min-w-0 flex-1 truncate rounded-[7px] border border-[var(--border-1)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]"
+        style={{ fontFamily: MONO }}
+      >
+        {origin}
+        {href}
+      </p>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="inline-flex shrink-0 items-center gap-1 rounded-[7px] bg-[var(--brand-600)] px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+      >
+        {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex shrink-0 items-center justify-center rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+        title="Open"
+      >
+        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+      </a>
+      </div>
+    </div>
+  );
+}
+
+function WikiSharePanel({
+  wiki,
+  slug,
+  availableSections,
+}: {
+  wiki: WikiDTO;
+  slug: string;
+  availableSections: WikiSection[];
+}) {
+  const setShare = useSetWikiShare(slug);
+  const sectionShare = useSetWikiSectionShare(slug);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const wikiOn = wiki.shareEnabled && Boolean(wiki.shareToken);
+  const pageShares = (wiki.pageShares ?? {}) as Record<string, string>;
+  const shareable = availableSections.filter(
+    (s): s is WikiSection => Boolean(SHARE_SECTION_LABELS[s]),
+  );
+
+  async function copy(key: string, href: string) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${href}`);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <section className="widget-card mt-5">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">02</span>
+          {" // SHARING"}
+        </span>
+      </div>
+
+      <div className="space-y-5 p-6">
+        {/* Global */}
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <GlobeAltIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-3)]" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[var(--text-1)]">Share entire wiki</p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-4)]">
+                  One public link covering every page — Dashboard, Timeline, docs, changelog &amp;
+                  client sections.
+                </p>
+              </div>
+            </div>
+            <ShareToggle
+              on={wikiOn}
+              disabled={setShare.isPending}
+              onClick={() => void setShare.mutateAsync(!wikiOn)}
+            />
+          </div>
+          {wikiOn && wiki.shareToken && (
+            <ShareLinkRow
+              href={`/wiki/${slug}/${wiki.shareToken}`}
+              copied={copied === "wiki"}
+              onCopy={() => copy("wiki", `/wiki/${slug}/${wiki.shareToken}`)}
+            />
+          )}
+        </div>
+
+        <div className="h-px bg-[var(--border-1)]" />
+
+        {/* Individual pages */}
+        <div>
+          <p
+            className="mb-3 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
+            style={{ fontFamily: MONO }}
+          >
+            Or share individual pages
+          </p>
+          {shareable.length === 0 ? (
+            <p className="text-[13px] text-[var(--text-4)]">No shareable pages yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {shareable.map((section) => {
+                const token = pageShares[section];
+                const on = Boolean(token);
+                return (
+                  <li key={section}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] text-[var(--text-2)]">
+                        {SHARE_SECTION_LABELS[section]}
+                      </span>
+                      {wikiOn ? (
+                        <span className="text-[11px] text-[var(--text-4)]">
+                          Included in the full-wiki link
+                        </span>
+                      ) : (
+                        <ShareToggle
+                          on={on}
+                          disabled={sectionShare.isPending}
+                          onClick={() =>
+                            void sectionShare.mutateAsync({ section, enabled: !on })
+                          }
+                        />
+                      )}
+                    </div>
+                    {!wikiOn && on && token && (
+                      <ShareLinkRow
+                        href={`/wiki/${slug}/${token}`}
+                        copied={copied === section}
+                        onCopy={() => copy(section, `/wiki/${slug}/${token}`)}
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

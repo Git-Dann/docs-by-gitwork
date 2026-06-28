@@ -27,7 +27,6 @@ import { CourseRequestForm, type CourseRequestPayload } from "./course-request-f
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
-import { WikiShareMenu } from "./wiki-share-menu";
 import { WikiDashboard } from "./wiki-dashboard";
 import { WikiAccessSettings } from "./wiki-access-settings";
 import {
@@ -40,13 +39,11 @@ import {
   useClientWiki,
   useUpsertWikiPage,
   useDeleteWikiPage,
-  useSetWikiShare,
   useAddChangelogEntry,
   useDeleteChangelogEntry,
   useUpdateWikiPlatforms,
   useUpdateEntryStatus,
   useUpdateChangelogEntry,
-  useSetWikiSectionShare,
   useAddCourseRequest,
   useUpdateCourseRequest,
   useDeleteCourseRequest,
@@ -777,13 +774,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
-  const setShare = useSetWikiShare(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
   const updateStatus = useUpdateEntryStatus(slug);
   const updateEntry = useUpdateChangelogEntry(slug);
-  const sectionShare = useSetWikiSectionShare(slug);
   const addCourse = useAddCourseRequest(slug);
   const updateCourse = useUpdateCourseRequest(slug);
   const deleteCourse = useDeleteCourseRequest(slug);
@@ -1006,23 +1001,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     await Promise.all(ids.map((id) => updateCourse.mutateAsync({ id, data: { status } })));
   }
 
-  /** Share dropdown for a wiki page — per-page link + whole-wiki link. */
-  function renderShareMenu(section: Exclude<WikiSection, "design-system">) {
-    return (
-      <WikiShareMenu
-        slug={slug}
-        pageLabel={SECTION_TITLES[section]}
-        pageToken={(wiki!.pageShares?.[section] as string | undefined) ?? null}
-        pageBusy={sectionShare.isPending}
-        onTogglePage={(enabled) => void sectionShare.mutateAsync({ section, enabled })}
-        wikiEnabled={wiki!.shareEnabled}
-        wikiToken={wiki!.shareToken}
-        wikiBusy={setShare.isPending}
-        onToggleWiki={(enabled) => void setShare.mutateAsync(enabled)}
-      />
-    );
-  }
-
   function renderContent() {
     // ── Dashboard — the client-facing landing overview. Same component the
     // public wiki uses; tiles deep-link into the other sections.
@@ -1038,7 +1016,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     // ── Settings — set the public-link username/password gate (internal only).
     if (activeSection === "settings") {
-      return <WikiAccessSettings slug={slug} wiki={wiki!} />;
+      return (
+        <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
+      );
     }
 
     // ── Timeline — read-only Gantt preview of the client's delivery roadmap.
@@ -1052,7 +1032,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             <p className="text-[13px] text-[var(--text-4)]">
               Pulls live from this client&apos;s project phases. Edit on the Tasks board.
             </p>
-            {renderShareMenu("timeline")}
           </div>
           <WikiTimelineSection timeline={wiki!.timeline} />
         </>
@@ -1065,16 +1044,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "design-system") {
       return (
         <div className="-mx-4 -mt-4 md:-mx-8 md:-mt-6">
-          <DesignSystemWorkspace
-            slug={slug}
-            embedded
-            wikiShare={{
-              enabled: wiki!.shareEnabled,
-              token: wiki!.shareToken,
-              busy: setShare.isPending,
-              onToggle: (enabled) => void setShare.mutateAsync(enabled),
-            }}
-          />
+          {/* Sharing is managed centrally in the wiki Settings tab — no inline control. */}
+          <DesignSystemWorkspace slug={slug} embedded />
         </div>
       );
     }
@@ -1107,7 +1078,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               <PlusIcon className="h-3.5 w-3.5" />
               Add version
             </button>
-            {renderShareMenu("changelog")}
           </div>
 
           {/* Widget card */}
@@ -1187,7 +1157,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               />
               {syncMutation.isPending ? "Syncing…" : "Sync status"}
             </button>
-            {renderShareMenu("course-requests")}
           </div>
 
           {/* Sync error panel */}
@@ -1359,7 +1328,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {upsertPage.isPending ? "Saving…" : "Save"}
           </button>
-          {isDocsPageSection(activeSection) && renderShareMenu(activeSection)}
           {isDocsPageSection(activeSection) && (
             <button
               type="button"
