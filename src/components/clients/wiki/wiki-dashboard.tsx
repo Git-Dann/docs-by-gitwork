@@ -454,28 +454,6 @@ export function WikiDashboard({
             </div>
           )}
 
-          {/* Honest progress readout — what's done vs. the plan, not "complete". */}
-          {pct !== null && (
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <span
-                  className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]"
-                  style={{ fontFamily: MONO }}
-                >
-                  Project progress
-                </span>
-                <span className="text-[12px] font-medium text-[var(--text-2)]">
-                  {pct}%{phase ? ` · ${phase.name}` : ""}
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2,#eee)]">
-                <div
-                  className="h-full rounded-full bg-[var(--brand-600)] transition-all"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
