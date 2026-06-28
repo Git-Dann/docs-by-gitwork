@@ -1426,7 +1426,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh flex-col overflow-hidden">
       {/* Header */}
       <div className="widget-header sticky top-0 z-10 border-b border-[rgba(0,0,0,0.08)] bg-white">
         <div className="flex items-center gap-3">
@@ -1445,9 +1445,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
       </div>
 
-      {/* Body — stacks on mobile (nav on top), side-by-side from md up */}
-      <div className="flex min-w-0 flex-1 flex-col md:flex-row">
-        {/* Sidebar / mobile top-nav */}
+      {/* Body — stacks on mobile (nav on top), side-by-side from md up.
+          min-h-0 lets the columns own their scroll so the sidebar stays in view. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+        {/* Sidebar / mobile top-nav — pinned in view; its list scrolls internally */}
         <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
           <WikiSidebar
             slug={slug}
@@ -1465,7 +1466,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
 
         {/* Main content — pt-6 matches DesignSystemWorkspace's own pt-6 so action bars align */}
-        <div className="min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">{renderContent()}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">{renderContent()}</div>
       </div>
 
       {/* Changelog entry form modal */}

@@ -183,7 +183,7 @@ export function WikiSidebar({
     <div className="flex w-full shrink-0 flex-col gap-1 py-2 md:h-full md:w-[248px] md:py-4 md:pr-2">
       {/* Horizontal scroll row on mobile, vertical list from md up. flex-1 lets
           the list grow so the pinned footer (Settings) sits at the very bottom. */}
-      <div className="flex gap-1 overflow-x-auto md:flex-1 md:flex-col md:gap-0 md:space-y-0.5 md:overflow-visible">
+      <div className="flex gap-1 overflow-x-auto md:min-h-0 md:flex-1 md:flex-col md:gap-0 md:space-y-0.5 md:overflow-x-visible md:overflow-y-auto">
         {navItem("dashboard", "Dashboard", <Squares2X2Icon />)}
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
