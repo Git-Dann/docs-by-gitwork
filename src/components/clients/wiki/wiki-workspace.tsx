@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import Link from "next/link";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   ArrowLeftIcon,
   Cog6ToothIcon,
@@ -11,7 +12,13 @@ import {
   CodeBracketIcon,
   ArrowPathIcon,
   CheckCircleIcon,
+  CheckIcon,
   TrashIcon,
+  EllipsisHorizontalIcon,
+  PencilSquareIcon,
+  EyeIcon,
+  BookmarkSquareIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import {
   WikiSidebar,
@@ -127,6 +134,54 @@ function isDocsPageSection(section: WikiSection): section is MarkdownDocSection 
 
 const chipBtn =
   "inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
+const menuPanel =
+  "z-50 mt-1.5 min-w-[12rem] rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
+const menuItemCls =
+  "flex w-full items-center gap-2.5 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] disabled:opacity-40";
+
+interface ActionItem {
+  key: string;
+  label: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  /** Shows a check on the right (used for the current Edit/Preview mode). */
+  active?: boolean;
+}
+
+/** Clean 3-dot overflow menu — every wiki page folds its tools in here. */
+function ActionMenu({ items, label = "Page actions" }: { items: ActionItem[]; label?: string }) {
+  if (items.length === 0) return null;
+  return (
+    <Menu as="div" className="relative">
+      <MenuButton className={`${chipBtn} px-2`} aria-label={label}>
+        <EllipsisHorizontalIcon className="h-4 w-4" />
+      </MenuButton>
+      <MenuItems anchor="bottom end" className={menuPanel}>
+        {items.map((item) => (
+          <MenuItem key={item.key}>
+            <button
+              type="button"
+              onClick={item.onClick}
+              disabled={item.disabled}
+              className={[
+                menuItemCls,
+                item.danger ? "text-rose-600 data-[focus]:bg-rose-50" : "",
+              ].join(" ")}
+            >
+              {item.icon ? <item.icon className="h-4 w-4 shrink-0" /> : null}
+              <span className="flex-1">{item.label}</span>
+              {item.active ? (
+                <CheckIcon className="h-3.5 w-3.5 shrink-0 text-[var(--brand-600)]" />
+              ) : null}
+            </button>
+          </MenuItem>
+        ))}
+      </MenuItems>
+    </Menu>
+  );
+}
 
 // ─── Default starter templates ────────────────────────────────────────────────
 
@@ -1028,10 +1083,20 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "timeline") {
       return (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-4 flex h-9 items-center justify-between gap-2">
             <p className="text-[13px] text-[var(--text-4)]">
-              Pulls live from this client&apos;s project phases. Edit on the Tasks board.
+              Pulls live from this client&apos;s project phases — edit on the Tasks board.
             </p>
+            <ActionMenu
+              items={[
+                {
+                  key: "tasks",
+                  label: "Edit on Tasks board",
+                  icon: ArrowTopRightOnSquareIcon,
+                  onClick: () => window.location.assign(`/app/portal/${slug}/tasks`),
+                },
+              ]}
+            />
           </div>
           <WikiTimelineSection timeline={wiki!.timeline} />
         </>
@@ -1055,29 +1120,27 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       const wikiPlatforms = wiki!.platforms;
       return (
         <>
-          {/* Page-level action bar */}
-          <div className="mb-5 flex flex-wrap items-center justify-end gap-2">
-            {/* Platform settings gear */}
-            <button
-              type="button"
-              onClick={() => {
-                setPendingPlatforms(wikiPlatforms);
-                setShowPlatformModal(true);
-              }}
-              className={chipBtn}
-              title="Manage platforms"
-            >
-              <Cog6ToothIcon className="h-3.5 w-3.5" />
-              Platforms
-            </button>
-            <button
-              type="button"
-              onClick={openAddForm}
-              className={chipBtn}
-            >
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add version
-            </button>
+          {/* Page-level action bar — folded into a 3-dot menu */}
+          <div className="mb-4 flex h-9 items-center justify-end gap-2">
+            <ActionMenu
+              items={[
+                {
+                  key: "platforms",
+                  label: "Manage platforms",
+                  icon: Cog6ToothIcon,
+                  onClick: () => {
+                    setPendingPlatforms(wikiPlatforms);
+                    setShowPlatformModal(true);
+                  },
+                },
+                {
+                  key: "add-version",
+                  label: "Add version",
+                  icon: PlusIcon,
+                  onClick: openAddForm,
+                },
+              ]}
+            />
           </div>
 
           {/* Widget card */}
@@ -1116,47 +1179,42 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       }
       return (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowCourseImport(true)}
-              className={chipBtn}
-              title="Import from support feedback"
-            >
-              <InboxArrowDownIcon className="h-3.5 w-3.5" />
-              Import from feedback
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCourseApi(true)}
-              className={chipBtn}
-              title="Inbound course-request API"
-            >
-              <CodeBracketIcon className="h-3.5 w-3.5" />
-              API intake
-            </button>
-            <button type="button" onClick={openAddCourse} className={chipBtn}>
-              <PlusIcon className="h-3.5 w-3.5" />
-              Add request
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSyncResult(null);
-                syncMutation.mutate(
-                  { dryRun: true },
-                  { onSuccess: (data) => setSyncResult(data) },
-                );
-              }}
-              disabled={syncMutation.isPending}
-              className={chipBtn}
-              title="Sync action_taken status from Big Wedge API"
-            >
-              <ArrowPathIcon
-                className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`}
-              />
-              {syncMutation.isPending ? "Syncing…" : "Sync status"}
-            </button>
+          <div className="mb-4 flex h-9 items-center justify-end gap-2">
+            <ActionMenu
+              items={[
+                {
+                  key: "import",
+                  label: "Import from feedback",
+                  icon: InboxArrowDownIcon,
+                  onClick: () => setShowCourseImport(true),
+                },
+                {
+                  key: "api",
+                  label: "API intake",
+                  icon: CodeBracketIcon,
+                  onClick: () => setShowCourseApi(true),
+                },
+                {
+                  key: "add",
+                  label: "Add request",
+                  icon: PlusIcon,
+                  onClick: openAddCourse,
+                },
+                {
+                  key: "sync",
+                  label: syncMutation.isPending ? "Syncing…" : "Sync status",
+                  icon: ArrowPathIcon,
+                  disabled: syncMutation.isPending,
+                  onClick: () => {
+                    setSyncResult(null);
+                    syncMutation.mutate(
+                      { dryRun: true },
+                      { onSuccess: (data) => setSyncResult(data) },
+                    );
+                  },
+                },
+              ]}
+            />
           </div>
 
           {/* Sync error panel */}
@@ -1280,66 +1338,47 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     return (
       <>
-        {/* Page-level action bar — mirrors the DS workspace pattern */}
-        <div className="mb-5 flex items-center justify-end gap-2">
-          {pageSavedLabel && (
-            <span
-              className="text-[11px] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {pageSavedLabel}
-            </span>
-          )}
-
-          {/* Edit | Preview segmented toggle */}
-          <div className="flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
-            <button
-              type="button"
-              onClick={() => setPageMode("edit")}
-              className={[
-                "px-3 py-1.5 text-[13px] font-medium transition",
-                pageMode === "edit"
-                  ? "bg-[var(--text-1)] text-[var(--surface-0)]"
-                  : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-              ].join(" ")}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => setPageMode("preview")}
-              className={[
-                "border-l border-[var(--border-2)] px-3 py-1.5 text-[13px] font-medium transition",
-                pageMode === "preview"
-                  ? "bg-[var(--text-1)] text-[var(--surface-0)]"
-                  : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-              ].join(" ")}
-            >
-              Preview
-            </button>
-          </div>
-
-          {/* Save */}
-          <button
-            type="button"
-            onClick={() => void editorRef.current?.save()}
-            disabled={upsertPage.isPending}
-            className={chipBtn}
+        {/* Page-level action bar — folded into a 3-dot menu */}
+        <div className="mb-4 flex h-9 items-center justify-between gap-2">
+          <span
+            className="text-[11px] text-[var(--text-4)]"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
-            {upsertPage.isPending ? "Saving…" : "Save"}
-          </button>
-          {isDocsPageSection(activeSection) && (
-            <button
-              type="button"
-              onClick={() => confirmDeletePage(activeSection)}
-              disabled={deletePage.isPending}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border border-rose-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
-              title={`Delete ${SECTION_TITLES[activeSection]}`}
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-              {deletePage.isPending ? "Deleting…" : "Delete page"}
-            </button>
-          )}
+            {pageSavedLabel ?? ""}
+          </span>
+          <ActionMenu
+            items={[
+              {
+                key: "edit",
+                label: "Edit",
+                icon: PencilSquareIcon,
+                onClick: () => setPageMode("edit"),
+                active: pageMode === "edit",
+              },
+              {
+                key: "preview",
+                label: "Preview",
+                icon: EyeIcon,
+                onClick: () => setPageMode("preview"),
+                active: pageMode === "preview",
+              },
+              {
+                key: "save",
+                label: upsertPage.isPending ? "Saving…" : "Save",
+                icon: BookmarkSquareIcon,
+                disabled: upsertPage.isPending,
+                onClick: () => void editorRef.current?.save(),
+              },
+              {
+                key: "delete",
+                label: deletePage.isPending ? "Deleting…" : "Delete page",
+                icon: TrashIcon,
+                danger: true,
+                disabled: deletePage.isPending,
+                onClick: () => confirmDeletePage(activeSection),
+              },
+            ]}
+          />
         </div>
 
         {/* Widget card */}

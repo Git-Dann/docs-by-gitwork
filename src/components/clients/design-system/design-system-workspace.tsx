@@ -186,7 +186,8 @@ export function DesignSystemWorkspace({
 
         {ds?.exists && (
           <div className={`flex items-center gap-2${embedded ? " ml-auto" : ""}`}>
-            {/* Share — toggle + link + open, folded into one menu */}
+            {/* Share — hidden when embedded in the wiki (sharing lives in wiki Settings). */}
+            {!embedded && (
             <Menu as="div" className="relative">
               <MenuButton className={chipBtn}>
                 {shareOn || wikiUrl ? (
@@ -294,6 +295,7 @@ export function DesignSystemWorkspace({
                 </div>
               </MenuItems>
             </Menu>
+            )}
 
             {/* Maintenance — Copy CSS / Update / Logos */}
             <Menu as="div" className="relative">
