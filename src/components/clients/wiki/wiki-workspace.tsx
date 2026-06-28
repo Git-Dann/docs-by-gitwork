@@ -28,6 +28,8 @@ import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiShareMenu } from "./wiki-share-menu";
+import { WikiDashboard } from "./wiki-dashboard";
+import { WikiAccessSettings } from "./wiki-access-settings";
 import {
   ApiDocsPageEditor,
   normalizeApiDocsContent,
@@ -82,6 +84,8 @@ const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
 };
 
 const SECTION_TITLES: Record<WikiSection, string> = {
+  dashboard: "Dashboard",
+  settings: "Settings",
   timeline: "Timeline",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -742,7 +746,7 @@ const ALL_PLATFORM_OPTIONS = [
 ];
 
 export function WikiWorkspace({ slug, clientName }: Props) {
-  const [activeSection, setActiveSection] = useState<WikiSection>("design-system");
+  const [activeSection, setActiveSection] = useState<WikiSection>("dashboard");
   const [showChangelogForm, setShowChangelogForm] = useState(false);
   /** Version string currently being edited, or null when adding a new one. */
   const [editingVersion, setEditingVersion] = useState<string | null>(null);
@@ -762,8 +766,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [pageMode, setPageMode] = useState<"edit" | "preview">("edit");
   const [pageSavedLabel, setPageSavedLabel] = useState<string | null>(null);
   const editorRef = useRef<WikiPageEditorHandle>(null);
-  /** Guards the one-time "land on Timeline" default once the wiki loads. */
-  const didInitSection = useRef(false);
 
   // Reset editor state when switching sections
   useEffect(() => {
@@ -773,15 +775,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   const { data: wiki, isPending } = useClientWiki(slug);
 
-  // On first load, open on the Timeline if the client has one (feature blocks or
-  // milestones); otherwise keep the default. Runs once so it never fights the user.
-  useEffect(() => {
-    if (didInitSection.current || !wiki) return;
-    didInitSection.current = true;
-    if (wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0) {
-      setActiveSection("timeline");
-    }
-  }, [wiki]);
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
   const setShare = useSetWikiShare(slug);
@@ -821,6 +814,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       }),
   );
   const availableSections: WikiSection[] = [
+    "dashboard",
     "timeline",
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -832,6 +826,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ),
     "changelog",
     ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
+    "settings",
   ];
   const addableSections = OPTIONAL_DOC_SECTIONS.filter(
     (item) =>
@@ -842,9 +837,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   // Which sections are publicly shared (for the sidebar globe indicator):
   // the whole-wiki link covers every page; otherwise only per-page-shared ones.
   const wikiShareOn = wiki.shareEnabled && Boolean(wiki.shareToken);
-  const sharedSections: WikiSection[] = wikiShareOn
-    ? availableSections
-    : (Object.keys(wiki.pageShares ?? {}) as WikiSection[]);
+  const sharedSections: WikiSection[] = (
+    wikiShareOn
+      ? availableSections
+      : (Object.keys(wiki.pageShares ?? {}) as WikiSection[])
+  ).filter((section) => section !== "settings");
 
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
@@ -1027,6 +1024,23 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function renderContent() {
+    // ── Dashboard — the client-facing landing overview. Same component the
+    // public wiki uses; tiles deep-link into the other sections.
+    if (activeSection === "dashboard") {
+      return (
+        <WikiDashboard
+          wiki={wiki!}
+          availableSections={availableSections}
+          onSelect={setActiveSection}
+        />
+      );
+    }
+
+    // ── Settings — set the public-link username/password gate (internal only).
+    if (activeSection === "settings") {
+      return <WikiAccessSettings slug={slug} wiki={wiki!} />;
+    }
+
     // ── Timeline — read-only Gantt preview of the client's delivery roadmap.
     // Sourced from the client's task-board feature blocks (loadWikiTimeline),
     // so it matches the public /timeline/[token] share. Edit phases on the

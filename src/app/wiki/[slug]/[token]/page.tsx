@@ -1,8 +1,14 @@
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { resolvePublicWiki } from "@/server/wiki";
+import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
+import { WikiAccessGate } from "@/components/clients/wiki/wiki-access-gate";
+
+// Cookie-dependent (the optional access gate) — render per request.
+export const dynamic = "force-dynamic";
 
 const SECTION_LABELS: Record<string, string> = {
   timeline: "Timeline",
@@ -59,6 +65,18 @@ export default async function PublicWikiPage({
   }
 
   const { wiki, onlySection } = resolved;
+
+  // Optional per-client gate: when the team has set a username/password and
+  // turned on "require login", a valid signed cookie is required before the
+  // wiki renders. Missing/invalid → show the login form.
+  if (wiki.accessProtected) {
+    const cookieStore = await cookies();
+    const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
+    const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
+    if (!unlocked) {
+      return <WikiAccessGate token={token} clientName={wiki.clientName} />;
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">

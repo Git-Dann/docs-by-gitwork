@@ -2843,8 +2843,8 @@ export async function setClientDesignSystemEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiAccessState } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiAccessState };
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
@@ -2950,6 +2950,18 @@ export async function updateWikiPlatformsApi(slug: string, platforms: string[]):
 
 export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
+}
+
+// Set/clear the public-link username/password gate for this client's wiki.
+export async function setWikiAccessApi(
+  slug: string,
+  body: { protected: boolean; username?: string; password?: string },
+): Promise<WikiAccessState> {
+  return apiFetch<WikiAccessState>(`/api/clients/${slug}/wiki/access`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────

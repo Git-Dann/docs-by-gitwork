@@ -7,6 +7,7 @@
  */
 
 import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type {
@@ -103,6 +104,11 @@ export interface WikiDTO {
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
   designSystem: WikiDesignSystem | null;
+  /** Public-link username/password gate (optional, per client). Hash never exposed. */
+  accessProtected: boolean;
+  accessUsername: string | null;
+  /** Whether a password hash is stored (the hash itself is never sent to the client). */
+  accessHasPassword: boolean;
   updatedAt: string;
 }
 
@@ -257,6 +263,9 @@ async function buildDTO(wiki: {
   platforms: unknown;
   pageShares?: unknown;
   hiddenSections?: unknown;
+  accessProtected?: boolean;
+  accessUsername?: string | null;
+  accessPasswordHash?: string | null;
   updatedAt: Date;
   client: { name: string; slug: string };
   pages: Array<{
@@ -319,6 +328,9 @@ async function buildDTO(wiki: {
       .map(serializeCourseRequest),
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
+    accessProtected: Boolean(wiki.accessProtected),
+    accessUsername: wiki.accessUsername ?? null,
+    accessHasPassword: Boolean(wiki.accessPasswordHash),
     updatedAt: wiki.updatedAt.toISOString(),
   };
 }
@@ -770,6 +782,61 @@ export async function setWikiShare(
     select: { shareToken: true, shareEnabled: true },
   });
   return { shareToken: created.shareToken, shareEnabled: created.shareEnabled };
+}
+
+export interface WikiAccessState {
+  accessProtected: boolean;
+  accessUsername: string | null;
+  hasPassword: boolean;
+}
+
+/**
+ * Set the public-link username/password gate for a client's wiki. Auto-creates
+ * the wiki row. A non-empty `password` is bcrypt-hashed; passing an empty string
+ * clears the password (and forces the gate off). The hash is never returned.
+ */
+export async function setWikiAccess(
+  clientId: string,
+  input: { protected: boolean; username?: string; password?: string },
+): Promise<WikiAccessState> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true, accessPasswordHash: true },
+  });
+
+  const data: Prisma.ClientWikiUpdateInput = {};
+
+  if (input.username !== undefined) {
+    const trimmed = input.username.trim();
+    data.accessUsername = trimmed.length > 0 ? trimmed : null;
+  }
+
+  let nextHash: string | null = wiki.accessPasswordHash;
+  if (input.password !== undefined) {
+    if (input.password.length > 0) {
+      nextHash = await bcrypt.hash(input.password, 12);
+    } else {
+      nextHash = null;
+    }
+    data.accessPasswordHash = nextHash;
+  }
+
+  // The gate can only be on when a password actually exists.
+  data.accessProtected = input.protected && Boolean(nextHash);
+
+  const updated = await prisma.clientWiki.update({
+    where: { id: wiki.id },
+    data,
+    select: { accessProtected: true, accessUsername: true, accessPasswordHash: true },
+  });
+
+  return {
+    accessProtected: updated.accessProtected,
+    accessUsername: updated.accessUsername,
+    hasPassword: Boolean(updated.accessPasswordHash),
+  };
 }
 
 /** Sections that can be individually shared (Design System has its own share). */

@@ -7,6 +7,7 @@ import {
   deleteWikiPage,
   setWikiShareApi,
   setWikiSectionShareApi,
+  setWikiAccessApi,
   addWikiChangelogEntry,
   deleteWikiChangelogEntry,
   updateWikiPlatformsApi,
@@ -72,6 +73,17 @@ export function useSetWikiSectionShare(slug: string) {
   return useMutation({
     mutationFn: ({ section, enabled }: { section: string; enabled: boolean }) =>
       setWikiSectionShareApi(slug, section, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useSetWikiAccess(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { protected: boolean; username?: string; password?: string }) =>
+      setWikiAccessApi(slug, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },
