@@ -196,14 +196,9 @@ export function WikiSidebar({
         {navItem("changelog", "Changelog", <ClockIcon />)}
         {COURSE_REQUESTS_SLUGS.includes(slug) &&
           navItem("course-requests", "Course Requests", <FlagIcon />)}
-      </div>
-
-      {/* Pinned footer — Settings (+ Add New) anchored to the very bottom on md+ */}
-      <div className="flex shrink-0 gap-1 md:mt-2 md:flex-col md:gap-0 md:space-y-0.5 md:border-t md:border-[var(--border-1)] md:pt-2">
-        {navItem("settings", "Settings", <Cog6ToothIcon />)}
 
         {hasAddItems && (
-          <div ref={addMenuRef} className="relative shrink-0">
+          <div ref={addMenuRef} className="relative shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
             <button
               type="button"
               onClick={() => setAddOpen((open) => !open)}
@@ -247,6 +242,11 @@ export function WikiSidebar({
             )}
           </div>
         )}
+      </div>
+
+      {/* Pinned footer — Settings anchored to the very bottom on md+ */}
+      <div className="flex shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
+        {navItem("settings", "Settings", <Cog6ToothIcon />)}
       </div>
     </div>
   );
