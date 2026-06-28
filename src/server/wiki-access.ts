@@ -1,10 +1,11 @@
 /**
- * wiki-access.ts — username/password gate for the PUBLIC client wiki link.
+ * wiki-access.ts — client login gate for the PUBLIC wiki link.
  *
- * Cookie-based, no session table. The cookie value is an HMAC of the wiki id +
- * its current `accessPasswordHash`, so changing the password (or clearing it)
- * auto-invalidates every previously-issued cookie. The gate is optional per
- * client — only enforced when `ClientWiki.accessProtected` is true.
+ * Multiple client users (ClientWikiUser, email + password) per wiki. The cookie
+ * is bound to a specific user: it embeds the user id and an HMAC of the wiki id,
+ * user id and current password hash — so removing the user or changing their
+ * password invalidates any existing session. Gitwork staff bypass this entirely
+ * via their Foundry (NextAuth) session; this module only covers client users.
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
@@ -29,17 +30,6 @@ function accessSecret(): string {
   );
 }
 
-/**
- * Signed cookie value for an unlocked wiki. Bound to the password hash so a
- * password change invalidates the cookie. Returns null when no hash is set.
- */
-export function signWikiAccess(wikiId: string, passwordHash: string | null): string | null {
-  if (!passwordHash) return null;
-  return createHmac("sha256", accessSecret())
-    .update(`${wikiId}:${passwordHash}`)
-    .digest("base64url");
-}
-
 function constantTimeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -48,20 +38,42 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Verify a cookie value against the wiki's current password hash (loaded fresh
- * from the DB). True only when the gate is active and the signature matches.
+ * Signed cookie value for a logged-in wiki user:
+ *   "<userId>.<hmac(wikiId:userId:passwordHash)>"
+ * The password hash binding means a password change or user deletion
+ * invalidates the cookie on the next request.
+ */
+export function signWikiUserAccess(
+  wikiId: string,
+  user: { id: string; passwordHash: string },
+): string {
+  const sig = createHmac("sha256", accessSecret())
+    .update(`${wikiId}:${user.id}:${user.passwordHash}`)
+    .digest("base64url");
+  return `${user.id}.${sig}`;
+}
+
+/**
+ * Verify a cookie value: parse the user id, load that ClientWikiUser (scoped to
+ * the wiki), recompute the signature against its current hash, constant-time
+ * compare. Returns true only when the user still exists and the hash is unchanged.
  */
 export async function verifyWikiAccessCookie(
   wikiId: string,
   cookieValue: string | undefined | null,
 ): Promise<boolean> {
   if (!cookieValue) return false;
-  const wiki = await prisma.clientWiki.findUnique({
-    where: { id: wikiId },
-    select: { accessPasswordHash: true },
+  const dot = cookieValue.indexOf(".");
+  if (dot <= 0) return false;
+  const userId = cookieValue.slice(0, dot);
+
+  const user = await prisma.clientWikiUser.findFirst({
+    where: { id: userId, wikiId },
+    select: { id: true, passwordHash: true },
   });
-  const expected = signWikiAccess(wikiId, wiki?.accessPasswordHash ?? null);
-  if (!expected) return false;
+  if (!user) return false;
+
+  const expected = signWikiUserAccess(wikiId, user);
   return constantTimeEqual(cookieValue, expected);
 }
 
@@ -72,37 +84,41 @@ export interface WikiLoginResult {
 }
 
 /**
- * Validate a username/password against the wiki resolved from a public share
- * token (whole-wiki token or any per-section token). Returns the cookie to set
- * on success, or null on bad token / disabled gate / wrong credentials.
+ * Validate an email/password against the wiki resolved from a public share token
+ * (whole-wiki token or any per-section token). Returns the cookie to set on
+ * success, or null on bad token / unknown email / wrong password.
  */
 export async function loginWikiAccess(
   token: string,
-  username: string,
+  email: string,
   password: string,
 ): Promise<WikiLoginResult | null> {
   // Resolve by whole-wiki token first, then by any per-section token — mirrors
-  // resolvePublicWiki so the login works from whatever public link was shared.
+  // resolvePublicWiki so login works from whatever public link was shared.
   const wiki =
     (await prisma.clientWiki.findFirst({
       where: { shareToken: token, shareEnabled: true },
-      select: { id: true, accessProtected: true, accessUsername: true, accessPasswordHash: true },
+      select: { id: true },
     })) ??
     (await prisma.clientWiki.findFirst({
       where: { pageShareTokens: { has: token } },
-      select: { id: true, accessProtected: true, accessUsername: true, accessPasswordHash: true },
+      select: { id: true },
     }));
 
-  if (!wiki || !wiki.accessProtected || !wiki.accessPasswordHash) return null;
+  if (!wiki) return null;
 
-  const userOk = constantTimeEqual(
-    username.trim().toLowerCase(),
-    (wiki.accessUsername ?? "").trim().toLowerCase(),
-  );
-  const passOk = await bcrypt.compare(password, wiki.accessPasswordHash);
-  if (!userOk || !passOk) return null;
+  const user = await prisma.clientWikiUser.findUnique({
+    where: { wikiId_email: { wikiId: wiki.id, email: email.trim().toLowerCase() } },
+    select: { id: true, passwordHash: true },
+  });
+  if (!user) return null;
 
-  const cookieValue = signWikiAccess(wiki.id, wiki.accessPasswordHash);
-  if (!cookieValue) return null;
-  return { wikiId: wiki.id, cookieName: wikiAccessCookieName(wiki.id), cookieValue };
+  const passOk = await bcrypt.compare(password, user.passwordHash);
+  if (!passOk) return null;
+
+  return {
+    wikiId: wiki.id,
+    cookieName: wikiAccessCookieName(wiki.id),
+    cookieValue: signWikiUserAccess(wiki.id, user),
+  };
 }

@@ -1,176 +1,279 @@
 "use client";
 
 import { useState } from "react";
-import { LockClosedIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
-import type { WikiDTO } from "@/lib/api";
-import { useSetWikiAccess } from "@/hooks/use-wiki";
+import {
+  LockClosedIcon,
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  UserCircleIcon,
+} from "@heroicons/react/24/outline";
+import type { WikiDTO, WikiUserSummary } from "@/lib/api";
+import {
+  useCreateWikiUser,
+  useUpdateWikiUser,
+  useDeleteWikiUser,
+} from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
 const inputCls =
   "w-full rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]";
+const labelCls =
+  "mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]";
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
 
 export function WikiAccessSettings({ wiki, slug }: { wiki: WikiDTO; slug: string }) {
-  const setAccess = useSetWikiAccess(slug);
+  const createUser = useCreateWikiUser(slug);
+  const updateUser = useUpdateWikiUser(slug);
+  const deleteUser = useDeleteWikiUser(slug);
 
-  const [requireLogin, setRequireLogin] = useState(wiki.accessProtected);
-  const [username, setUsername] = useState(wiki.accessUsername ?? "");
+  // null = closed; "new" = add form; otherwise the user being edited.
+  const [editing, setEditing] = useState<WikiUserSummary | "new" | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+
+  const users = wiki.users ?? [];
+
+  return (
+    <div className="mx-auto w-full max-w-2xl">
+      <section className="widget-card">
+        <div className="widget-header flex items-center justify-between">
+          <span className="widget-header__label" style={{ fontFamily: MONO }}>
+            <span className="widget-header__label--number">01</span>
+            {" // CLIENT ACCESS"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setEditing("new")}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+          >
+            <PlusIcon className="h-3.5 w-3.5" /> Add user
+          </button>
+        </div>
+
+        <div className="space-y-5 p-6">
+          <div className="flex items-start gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+            <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-3)]" />
+            <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
+              The public wiki link is <strong>locked</strong>. Clients sign in with one of the
+              email/password accounts below. Gitwork staff signed into Foundry can always view it
+              without these credentials.
+            </p>
+          </div>
+
+          {/* User list */}
+          {users.length === 0 ? (
+            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
+              No client users yet. Until you add one, only Gitwork staff can open the link.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-1)] overflow-hidden rounded-[10px] border border-[var(--border-1)]">
+              {users.map((u) => (
+                <li key={u.id} className="flex items-center gap-3 bg-white px-4 py-3">
+                  <UserCircleIcon className="h-8 w-8 shrink-0 text-[var(--text-4)]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-[var(--text-1)]">
+                      {u.email}
+                    </div>
+                    <div className="truncate text-[12px] text-[var(--text-4)]">
+                      {u.name ? `${u.name} · ` : ""}Added {formatDate(u.createdAt)}
+                    </div>
+                  </div>
+                  {confirmingDelete === u.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] text-[var(--text-4)]">Remove?</span>
+                      <button
+                        type="button"
+                        disabled={deleteUser.isPending}
+                        onClick={async () => {
+                          await deleteUser.mutateAsync(u.id);
+                          setConfirmingDelete(null);
+                        }}
+                        className="rounded-[6px] bg-rose-600 px-2.5 py-1 text-[12px] font-medium text-white transition hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDelete(null)}
+                        className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(u)}
+                        title="Edit"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                      >
+                        <PencilSquareIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDelete(u.id)}
+                        title="Remove"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      {editing && (
+        <WikiUserModal
+          mode={editing === "new" ? "create" : "edit"}
+          user={editing === "new" ? null : editing}
+          busy={createUser.isPending || updateUser.isPending}
+          onClose={() => setEditing(null)}
+          onSubmit={async ({ email, name, password }) => {
+            if (editing === "new") {
+              await createUser.mutateAsync({ email, name, password: password ?? "" });
+            } else {
+              await updateUser.mutateAsync({
+                id: editing.id,
+                data: { email, name, ...(password ? { password } : {}) },
+              });
+            }
+            setEditing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function WikiUserModal({
+  mode,
+  user,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  mode: "create" | "edit";
+  user: WikiUserSummary | null;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (input: { email: string; name: string; password?: string }) => Promise<void>;
+}) {
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [name, setName] = useState(user?.name ?? "");
   const [password, setPassword] = useState("");
-  const [hasPassword, setHasPassword] = useState(wiki.accessHasPassword);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Can't require login until a password exists (either already stored, or being set now).
-  const passwordWillExist = hasPassword || password.trim().length > 0;
-  const usernameValid = username.trim().length > 0;
 
   async function handleSave() {
     setError(null);
-    setSaved(false);
-    if (requireLogin && (!usernameValid || !passwordWillExist)) {
-      setError("Set a username and password before requiring login.");
+    if (!email.trim()) {
+      setError("Email is required.");
+      return;
+    }
+    if (mode === "create" && password.trim().length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (mode === "edit" && password.length > 0 && password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     try {
-      const result = await setAccess.mutateAsync({
-        protected: requireLogin,
-        username,
-        // Only send a password when the operator typed one — empty string would clear it.
-        ...(password.trim().length > 0 ? { password } : {}),
-      });
-      setRequireLogin(result.accessProtected);
-      setUsername(result.accessUsername ?? "");
-      setHasPassword(result.hasPassword);
-      setPassword("");
-      setSaved(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    }
-  }
-
-  async function handleClearPassword() {
-    setError(null);
-    setSaved(false);
-    try {
-      const result = await setAccess.mutateAsync({ protected: false, password: "" });
-      setRequireLogin(result.accessProtected);
-      setHasPassword(result.hasPassword);
-      setPassword("");
-      setSaved(true);
+      await onSubmit({ email: email.trim(), name: name.trim(), password: password || undefined });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">01</span>
-            {" // ACCESS"}
-          </span>
-        </div>
-
-        <div className="space-y-6 p-6">
-          <div className="flex items-start gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
-            <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-3)]" />
-            <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
-              Protect the <strong>public client link</strong> with a username and password.
-              When enabled, anyone opening the shared <code>/wiki</code> link must sign in before
-              seeing the dashboard. Leave it off to keep the link open to anyone who has it.
-            </p>
-          </div>
-
-          {/* Require login toggle */}
-          <label className="flex cursor-pointer items-center justify-between gap-4">
-            <span className="text-sm font-medium text-[var(--text-1)]">
-              Require login to view the public wiki
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={requireLogin}
-              onClick={() => setRequireLogin((v) => !v)}
-              className={[
-                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition",
-                requireLogin ? "bg-[var(--brand-600)]" : "bg-[var(--border-2)]",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                  requireLogin ? "translate-x-5" : "translate-x-0.5",
-                ].join(" ")}
-              />
-            </button>
-          </label>
-
-          {/* Username */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-[16px] border border-[rgba(0,0,0,0.08)] bg-white p-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.35)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          className="text-lg text-[var(--text-1)]"
+          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+        >
+          {mode === "create" ? "Add client user" : "Edit user"}
+        </h2>
+        <div className="mt-5 space-y-4">
           <div>
-            <label
-              className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
-              style={{ fontFamily: MONO }}
-            >
-              Username
+            <label className={labelCls} style={{ fontFamily: MONO }}>
+              Email
             </label>
             <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. client-team"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="off"
               className={inputCls}
             />
           </div>
-
-          {/* Password */}
           <div>
-            <label
-              className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
-              style={{ fontFamily: MONO }}
-            >
+            <label className={labelCls} style={{ fontFamily: MONO }}>
+              Name (optional)
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="off"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls} style={{ fontFamily: MONO }}>
               Password
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={hasPassword ? "•••••••• (leave blank to keep current)" : "Set a password"}
+              placeholder={mode === "edit" ? "Leave blank to keep current" : "At least 8 characters"}
               autoComplete="new-password"
               className={inputCls}
             />
-            {hasPassword && (
-              <button
-                type="button"
-                onClick={handleClearPassword}
-                disabled={setAccess.isPending}
-                className="mt-2 text-[12px] text-[var(--text-4)] underline hover:text-rose-600 disabled:opacity-50"
-              >
-                Clear password &amp; disable login
-              </button>
-            )}
           </div>
-
           {error && <p className="text-[13px] text-rose-600">{error}</p>}
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={setAccess.isPending}
-              className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
-            >
-              {setAccess.isPending ? "Saving…" : "Save"}
-            </button>
-            {saved && !setAccess.isPending && (
-              <span className="inline-flex items-center gap-1.5 text-[13px] text-emerald-600">
-                <CheckCircleIcon className="h-4 w-4" /> Saved
-              </span>
-            )}
-          </div>
         </div>
-      </section>
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={busy}
+            className="rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
+          >
+            {busy ? "Saving…" : mode === "create" ? "Add user" : "Save"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

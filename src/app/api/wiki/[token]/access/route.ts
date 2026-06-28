@@ -4,11 +4,11 @@ import { loginWikiAccess, WIKI_ACCESS_COOKIE_MAX_AGE } from "@/server/wiki-acces
 import { z } from "zod";
 
 const bodySchema = z.object({
-  username: z.string().min(1),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 
-// Public — token in the URL is the wiki resolver; credentials are the gate.
+// Public — token in the URL resolves the wiki; email + password is the gate.
 // On success sets an HttpOnly cookie so the public wiki page renders thereafter.
 export async function POST(
   req: NextRequest,
@@ -16,10 +16,10 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
-    const { username, password } = bodySchema.parse(await req.json());
+    const { email, password } = bodySchema.parse(await req.json());
 
-    const result = await loginWikiAccess(token, username, password);
-    if (!result) return apiError("Invalid username or password", 401);
+    const result = await loginWikiAccess(token, email, password);
+    if (!result) return apiError("Invalid email or password", 401);
 
     const res = apiOk({ ok: true });
     res.cookies.set({

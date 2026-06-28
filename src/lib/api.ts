@@ -2843,8 +2843,8 @@ export async function setClientDesignSystemEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiAccessState } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiAccessState };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiUserSummary } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiUserSummary };
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
@@ -2952,16 +2952,32 @@ export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
 }
 
-// Set/clear the public-link username/password gate for this client's wiki.
-export async function setWikiAccessApi(
+// ─── Client wiki users (public-link login accounts) ─────────────────────────
+export async function createWikiUserApi(
   slug: string,
-  body: { protected: boolean; username?: string; password?: string },
-): Promise<WikiAccessState> {
-  return apiFetch<WikiAccessState>(`/api/clients/${slug}/wiki/access`, {
+  body: { email: string; password: string; name?: string },
+): Promise<WikiUserSummary> {
+  return apiFetch<WikiUserSummary>(`/api/clients/${slug}/wiki/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateWikiUserApi(
+  slug: string,
+  userId: string,
+  body: { email?: string; password?: string; name?: string },
+): Promise<WikiUserSummary> {
+  return apiFetch<WikiUserSummary>(`/api/clients/${slug}/wiki/users/${userId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+export async function deleteWikiUserApi(slug: string, userId: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/users/${userId}`, { method: "DELETE" });
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────
