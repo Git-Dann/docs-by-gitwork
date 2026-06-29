@@ -1,54 +1,196 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { PlusIcon, SignalIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { PULSE_FRAMEWORK, PULSE_CHECK_TOTAL, PULSE_CATEGORY_TOTAL } from "@/config/pulse-framework";
+import { Button } from "@/components/ui/button";
+import { PULSE_FRAMEWORK, PULSE_CHECK_TOTAL, PULSE_CATEGORY_TOTAL, type PulseFrameworkCategory } from "@/config/pulse-framework";
 import type { PulseCheckStatus, PulseScanStatus, PulseUrgency, PulseBusinessValue, PulseEffort } from "@/types/pulse";
 
-// What Pulse checks — the framework category grid. Reference material, shown on the
-// empty state (first-time context) and behind a disclosure on the dashboard.
+// ── Framework coverage ─────────────────────────────────────────────────────────
+// Categories grouped into four themes so "what Pulse checks" reads as a capability
+// showcase, not a 23-cell spreadsheet. Reference material — shown on the empty state
+// and behind a disclosure on the dashboard.
+
+type FrameworkTheme = "AI-era" | "Security & compliance" | "Performance & quality" | "Growth & ops";
+
+const THEME_ORDER: FrameworkTheme[] = ["AI-era", "Security & compliance", "Performance & quality", "Growth & ops"];
+
+const THEME_BY_NAME: Record<string, FrameworkTheme> = {
+  Security: "Security & compliance",
+  "Legal & Compliance": "Security & compliance",
+  Authentication: "Security & compliance",
+  "Roles & Permissions": "Security & compliance",
+  "Business Operations": "Security & compliance",
+  Performance: "Performance & quality",
+  "Accessibility (WCAG)": "Performance & quality",
+  SEO: "Performance & quality",
+  "API Quality": "Performance & quality",
+  Observability: "Performance & quality",
+  "Code Quality": "Performance & quality",
+  "Code Intelligence": "Performance & quality",
+};
+
+function themeFor(cat: PulseFrameworkCategory): FrameworkTheme {
+  if (cat.aiEra) return "AI-era";
+  return THEME_BY_NAME[cat.name] ?? "Growth & ops";
+}
+
 export function PulseFrameworkCoverage() {
-  const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? PULSE_FRAMEWORK : PULSE_FRAMEWORK.slice(0, 9);
+  const grouped = THEME_ORDER.map((theme) => {
+    const cats = PULSE_FRAMEWORK.filter((c) => themeFor(c) === theme);
+    const checks = cats.reduce((sum, c) => sum + c.count, 0);
+    return { theme, cats, checks };
+  }).filter((g) => g.cats.length > 0);
+
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-[var(--text-3)]">Framework coverage</p>
-        <p className="text-xs text-[var(--text-4)]">
-          {PULSE_CHECK_TOTAL}+ checks · {PULSE_CATEGORY_TOTAL} categories
+      <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border-2)] pb-3">
+        <p className="text-sm font-semibold text-[var(--text-1)]">What Pulse checks</p>
+        <p className="text-xs tabular-nums text-[var(--text-4)]">
+          <span className="font-semibold text-[var(--text-2)]">{PULSE_CHECK_TOTAL}+</span> checks ·{" "}
+          <span className="font-semibold text-[var(--text-2)]">{PULSE_CATEGORY_TOTAL}</span> categories
         </p>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((cat) => (
-          <div
-            key={cat.name}
-            className={cn(
-              "rounded-[8px] border px-3 py-2 text-left",
-              cat.aiEra
-                ? "border-[var(--brand-300)] bg-[var(--surface-brand-soft)]"
-                : "border-[var(--border-2)] bg-[var(--surface-1)]",
-            )}
-            title={cat.blurb}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-xs font-semibold text-[var(--text-1)]">{cat.name}</span>
-              <span className="shrink-0 text-[11px] font-medium tabular-nums text-[var(--text-3)]">{cat.count}</span>
-            </div>
-            {cat.aiEra && (
-              <span className="mt-0.5 inline-block text-[9px] font-bold uppercase tracking-wide text-[var(--brand-600)]">
-                New · AI-era
+
+      <div className="mt-4 space-y-5">
+        {grouped.map(({ theme, cats, checks }) => (
+          <div key={theme}>
+            <div className="mb-2 flex items-center gap-2">
+              <span
+                className={cn(
+                  "text-[10px] font-bold uppercase tracking-[0.12em]",
+                  theme === "AI-era" ? "text-[var(--brand-600)]" : "text-[var(--text-4)]",
+                )}
+              >
+                {theme}
               </span>
-            )}
+              <span className="h-px flex-1 bg-[var(--border-2)]" />
+              <span className="text-[10px] tabular-nums text-[var(--text-4)]">{checks} checks</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+              {cats.map((cat) => (
+                <div
+                  key={cat.name}
+                  className={cn(
+                    "group/cat rounded-[8px] border px-2.5 py-2 text-left transition",
+                    cat.aiEra
+                      ? "border-[var(--brand-200)] bg-[var(--surface-brand-soft)] hover:border-[var(--brand-300)]"
+                      : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-3)] hover:bg-[var(--surface-1)]",
+                  )}
+                  title={cat.blurb}
+                >
+                  <div className="flex items-start justify-between gap-1.5">
+                    <span className="text-xs font-semibold leading-tight text-[var(--text-1)]">{cat.name}</span>
+                    <span className="shrink-0 rounded-full bg-[var(--surface-2)] px-1.5 text-[10px] font-semibold tabular-nums leading-5 text-[var(--text-3)]">
+                      {cat.count}
+                    </span>
+                  </div>
+                  {cat.aiEra && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[var(--brand-100)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--brand-700)]">
+                      <span className="h-1 w-1 rounded-full bg-[var(--brand-500)]" />
+                      New
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="mt-3 text-xs font-medium text-[var(--brand-600)] hover:underline"
-      >
-        {expanded ? "Show less" : `Show all ${PULSE_CATEGORY_TOTAL} categories`}
-      </button>
+    </div>
+  );
+}
+
+// ── Shared liveness primitives (used by the scan list + portfolio) ───────────────
+
+/** Tiny inline score-history sparkline. Colour follows direction of travel. */
+export function MiniSparkline({ scores, width = 56, height = 18 }: { scores: number[]; width?: number; height?: number }) {
+  if (scores.length < 2) return null;
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+  const range = max - min || 1;
+  const points = scores
+    .map((s, i) => {
+      const x = (i / (scores.length - 1)) * (width - 2) + 1;
+      const y = height - ((s - min) / range) * (height - 4) - 2;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const last = scores[scores.length - 1];
+  const first = scores[0];
+  const color = last > first ? "#10b981" : last < first ? "#ef4444" : "#94a3b8";
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} fill="none" className="shrink-0">
+      <polyline points={points} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Score-delta chip (+5 / −3 / →). */
+export function TrendDelta({ delta }: { delta: number | null }) {
+  if (delta === null) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+        delta > 0 ? "bg-emerald-50 text-emerald-700" : delta < 0 ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-500",
+      )}
+    >
+      {delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "→"}
+    </span>
+  );
+}
+
+/** Health-score pill (X/100). */
+export function HealthScorePill({ score }: { score: number | null }) {
+  if (score === null) return <span className="text-xs text-[var(--text-4)]">—</span>;
+  const cls =
+    score >= 75
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : score >= 50
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-red-50 text-red-700 border-red-200";
+  return (
+    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums", cls)}>
+      {score}/100
+    </span>
+  );
+}
+
+/** Monitor status dot — solid emerald when watching, pulsing red when alerting. */
+export function MonitorDot({ monitor }: { monitor: { active: boolean; alerting: boolean } | null }) {
+  if (!monitor || !monitor.active) {
+    return <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--border-3)]" title="Not monitored" />;
+  }
+  if (monitor.alerting) {
+    return (
+      <span className="relative inline-flex h-2 w-2" title="Monitor alerting">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+      </span>
+    );
+  }
+  return <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" title="Monitored" />;
+}
+
+/** First-run empty state — leads with the value (what Pulse checks) + a New-scan CTA. */
+export function PulseEmptyState() {
+  return (
+    <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-14 text-center">
+      <SignalIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
+      <p className="text-sm font-medium text-[var(--text-2)]">No scans yet</p>
+      <p className="mt-1 text-sm text-[var(--text-4)]">Run your first Pulse scan to validate a client project.</p>
+      <div className="mt-4 flex justify-center">
+        <Link href="/app/pulse/new">
+          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
+            New scan
+          </Button>
+        </Link>
+      </div>
+      <div className="mx-auto mt-10 max-w-4xl border-t border-[var(--border-2)] pt-8 text-left">
+        <PulseFrameworkCoverage />
+      </div>
     </div>
   );
 }

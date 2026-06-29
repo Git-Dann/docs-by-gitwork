@@ -145,7 +145,13 @@ export function serializePulseScanListItem(
   };
 }
 
-export async function listPulseScans(params?: { clientId?: string }): Promise<PulseScanListItem[]> {
+/** `clientIds: null/undefined` → unscoped (admins / trusted API_KEY callers).
+ *  `clientIds: string[]` → restrict to those clients (an empty array sees nothing,
+ *  the same impossible-filter convention used by the task client scope). */
+export async function listPulseScans(params?: {
+  clientId?: string;
+  clientIds?: string[] | null;
+}): Promise<PulseScanListItem[]> {
   const workspace = await prisma.workspace.findFirst({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
     select: { id: true },
@@ -156,6 +162,7 @@ export async function listPulseScans(params?: { clientId?: string }): Promise<Pu
     where: {
       workspaceId: workspace.id,
       ...(params?.clientId ? { clientId: params.clientId } : {}),
+      ...(params?.clientIds ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } } : {}),
     },
     include: {
       client: { select: { name: true } },
@@ -164,6 +171,121 @@ export async function listPulseScans(params?: { clientId?: string }): Promise<Pu
   });
 
   return scans.map(serializePulseScanListItem);
+}
+
+/** Lower-cased target key for a scan — the unit a trend / monitor is keyed on. */
+function scanTargetKey(scan: { inputUrl: string | null; inputGithubRepo: string | null; projectName: string }): string {
+  return (scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName).toLowerCase().trim();
+}
+
+/**
+ * Client-grouped portfolio for the Pulse dashboard. One pass over the (scoped)
+ * workspace scans + one monitors read — no per-target history fetch — so it holds
+ * up at 100s of clients. Standalone scans with no client are grouped by target.
+ * Pre-sorted by attention: alerting first, then lowest current score, then recency.
+ */
+export async function getPulsePortfolio(params?: { clientIds?: string[] | null }): Promise<import("@/types/pulse").PulsePortfolioEntry[]> {
+  const workspace = await prisma.workspace.findFirst({
+    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    select: { id: true },
+  });
+  if (!workspace) return [];
+
+  const [scans, monitors] = await Promise.all([
+    prisma.pulseScan.findMany({
+      where: {
+        workspaceId: workspace.id,
+        ...(params?.clientIds ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } } : {}),
+      },
+      include: { client: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.pulseMonitor.findMany({
+      where: { workspaceId: workspace.id },
+      select: { inputUrl: true, inputGithubRepo: true, isActive: true, lastHealthScore: true, alertThreshold: true },
+    }),
+  ]);
+
+  // Monitor status indexed by target key (OR-combined when several watch one target).
+  const monitorByTarget = new Map<string, { active: boolean; alerting: boolean }>();
+  for (const m of monitors) {
+    const key = (m.inputUrl ?? m.inputGithubRepo ?? "").toLowerCase().trim();
+    if (!key) continue;
+    const prev = monitorByTarget.get(key) ?? { active: false, alerting: false };
+    prev.active = prev.active || m.isActive;
+    // alertThreshold is a drop-tolerance: a low last score means the watched target is unhealthy.
+    prev.alerting = prev.alerting || (m.isActive && m.lastHealthScore !== null && m.lastHealthScore < 50);
+    monitorByTarget.set(key, prev);
+  }
+
+  // Group scans (already newest-first) by client, or by target when unassigned.
+  const groups = new Map<string, typeof scans>();
+  for (const scan of scans) {
+    const key = scan.clientId ? `client:${scan.clientId}` : `target:${scanTargetKey(scan)}`;
+    const list = groups.get(key) ?? [];
+    list.push(scan);
+    groups.set(key, list);
+  }
+
+  const entries: import("@/types/pulse").PulsePortfolioEntry[] = [];
+  for (const [key, groupScans] of groups) {
+    const latest = groupScans[0]; // newest-first
+    const completed = [...groupScans]
+      .filter((s) => s.status === "COMPLETED" && s.healthScore !== null)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const scores = completed.map((s) => s.healthScore as number);
+    const delta = scores.length >= 2 ? scores[scores.length - 1] - scores[scores.length - 2] : null;
+
+    // Lowest *current* score across the group's distinct targets (attention signal).
+    const latestByTarget = new Map<string, number>();
+    for (const s of completed) {
+      latestByTarget.set(scanTargetKey(s), s.healthScore as number); // completed asc → last write is newest
+    }
+    const currentScores = [...latestByTarget.values()];
+    const worstScore = currentScores.length ? Math.min(...currentScores) : null;
+
+    // Monitor across the group's distinct targets (OR-combined).
+    const targetKeys = new Set(groupScans.map(scanTargetKey));
+    let hasMonitor = false;
+    let monitorActive = false;
+    let monitorAlerting = false;
+    for (const t of targetKeys) {
+      const m = monitorByTarget.get(t);
+      if (!m) continue;
+      hasMonitor = true;
+      monitorActive = monitorActive || m.active;
+      monitorAlerting = monitorAlerting || m.alerting;
+    }
+    const monitor = hasMonitor ? { active: monitorActive, alerting: monitorAlerting } : null;
+
+    entries.push({
+      key,
+      clientId: latest.clientId,
+      label: latest.clientId ? (latest.client?.name ?? "Client") : latest.projectName,
+      scanCount: groupScans.length,
+      latestScanId: latest.id,
+      latestScore: latest.healthScore,
+      latestStatus: latest.status,
+      lastScannedAt: latest.createdAt.toISOString(),
+      delta,
+      sparkline: scores.slice(-8),
+      worstScore,
+      monitor,
+      running: groupScans.some((s) => s.status === "RUNNING"),
+    });
+  }
+
+  // Attention sort: alerting first → lowest current score → most recent.
+  entries.sort((a, b) => {
+    const alert = Number(b.monitor?.alerting ?? false) - Number(a.monitor?.alerting ?? false);
+    if (alert !== 0) return alert;
+    const aw = a.worstScore ?? 999;
+    const bw = b.worstScore ?? 999;
+    if (aw !== bw) return aw - bw;
+    return new Date(b.lastScannedAt ?? 0).getTime() - new Date(a.lastScannedAt ?? 0).getTime();
+  });
+
+  return entries;
 }
 
 export async function getPulseScan(id: string): Promise<PulseScanRecord | null> {

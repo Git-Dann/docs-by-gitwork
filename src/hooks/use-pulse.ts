@@ -7,6 +7,7 @@ import {
   listPulseScans,
   createPulseScan,
   getPulseScan,
+  getPulsePortfolio,
   getPulseBenchmarks,
   getPulseScanHistory,
   getPulseScanDiff,
@@ -65,6 +66,14 @@ export function usePulseScans(params?: { clientId?: string }) {
   return useQuery({
     queryKey: ["pulse-scans", params],
     queryFn: () => listPulseScans(params),
+  });
+}
+
+export function usePulsePortfolio() {
+  return useQuery({
+    queryKey: ["pulse-portfolio"],
+    queryFn: getPulsePortfolio,
+    staleTime: 1000 * 15,
   });
 }
 
@@ -169,6 +178,7 @@ export function usePulseScanStream(scanId: string, enabled: boolean) {
           queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
           queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
           queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
+          queryClient.invalidateQueries({ queryKey: ["pulse-portfolio"] });
         }
       } catch {
         // ignore malformed events
@@ -206,6 +216,7 @@ export function useDeletePulseScan() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-portfolio"] });
     },
   });
 }

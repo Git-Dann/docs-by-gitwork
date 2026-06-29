@@ -5,20 +5,28 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   ArrowRightIcon,
-  BeakerIcon,
   DocumentTextIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SignalIcon,
+  Squares2X2Icon,
+  TableCellsIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useRouter } from "next/navigation";
-import { usePulseScans, useDeletePulseScan, useLoadDemoScan } from "@/hooks/use-pulse";
-import { cn, formatDate } from "@/lib/format";
+import { usePulseScans, useDeletePulseScan, useMonitors } from "@/hooks/use-pulse";
+import { cn, formatRelative } from "@/lib/format";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
-import { PulseScanStatusBadge, PulseFrameworkCoverage } from "@/components/pulse/pulse-shared";
+import {
+  PulseScanStatusBadge,
+  PulseEmptyState,
+  MiniSparkline,
+  TrendDelta,
+  HealthScorePill,
+  MonitorDot,
+} from "@/components/pulse/pulse-shared";
+import { PulsePortfolioView } from "@/components/pulse/pulse-portfolio";
 import { Button } from "@/components/ui/button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,7 +34,14 @@ import { Button } from "@/components/ui/button";
 type StatusFilter = PulseScanStatus | "ALL";
 type HealthFilter = "ALL" | "GREEN" | "AMBER" | "RED";
 type InputFilter = PulseScanInputType | "ALL";
+type MonitorFilter = "ALL" | "MONITORED" | "ALERTING";
+type MoveFilter = "ALL" | "REGRESSED" | "IMPROVED";
 type SortKey = "NEWEST" | "OLDEST" | "SCORE_HIGH" | "SCORE_LOW";
+type ViewMode = "PORTFOLIO" | "ALL";
+
+type MonitorStatus = { active: boolean; alerting: boolean };
+
+const PAGE_SIZE = 50;
 
 // ── Small helpers ──────────────────────────────────────────────────────────────
 
@@ -37,19 +52,8 @@ function healthTier(score: number | null): HealthFilter {
   return "RED";
 }
 
-function HealthPill({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-xs text-[var(--text-4)]">—</span>;
-  const cls =
-    score >= 75
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : score >= 50
-        ? "bg-amber-50 text-amber-700 border-amber-200"
-        : "bg-red-50 text-red-700 border-red-200";
-  return (
-    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums", cls)}>
-      {score}/100
-    </span>
-  );
+function targetKey(s: { inputUrl: string | null; inputGithubRepo: string | null; projectName: string }): string {
+  return (s.inputUrl ?? s.inputGithubRepo ?? s.projectName).toLowerCase().trim();
 }
 
 function InputTypePill({ type }: { type: PulseScanInputType }) {
@@ -98,45 +102,29 @@ function FilterOption<T extends string>({
   );
 }
 
-function MiniSparkline({ scores }: { scores: number[] }) {
-  if (scores.length < 2) return null;
-  const W = 48;
-  const H = 18;
-  const min = Math.min(...scores);
-  const max = Math.max(...scores);
-  const range = max - min || 1;
-  const points = scores
-    .map((s, i) => {
-      const x = (i / (scores.length - 1)) * (W - 2) + 1;
-      const y = H - ((s - min) / range) * (H - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const last = scores[scores.length - 1];
-  const first = scores[0];
-  const color = last > first ? "#10b981" : last < first ? "#ef4444" : "#94a3b8";
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none" className="shrink-0">
-      <polyline points={points} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function FiltersDropdown({
   statusFilter,
   healthFilter,
   inputFilter,
+  monitorFilter,
+  moveFilter,
   onStatusChange,
   onHealthChange,
   onInputChange,
+  onMonitorChange,
+  onMoveChange,
   onClear,
 }: {
   statusFilter: StatusFilter;
   healthFilter: HealthFilter;
   inputFilter: InputFilter;
+  monitorFilter: MonitorFilter;
+  moveFilter: MoveFilter;
   onStatusChange: (v: StatusFilter) => void;
   onHealthChange: (v: HealthFilter) => void;
   onInputChange: (v: InputFilter) => void;
+  onMonitorChange: (v: MonitorFilter) => void;
+  onMoveChange: (v: MoveFilter) => void;
   onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -146,6 +134,8 @@ function FiltersDropdown({
     statusFilter !== "ALL",
     healthFilter !== "ALL",
     inputFilter !== "ALL",
+    monitorFilter !== "ALL",
+    moveFilter !== "ALL",
   ].filter(Boolean).length;
 
   useEffect(() => {
@@ -179,7 +169,7 @@ function FiltersDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1.5 w-56 rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-lg">
+        <div className="absolute right-0 top-full z-20 mt-1.5 max-h-[70vh] w-60 overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white p-3 shadow-lg">
           <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Status</p>
           <FilterOption value={"ALL" as StatusFilter} active={statusFilter === "ALL"} onClick={onStatusChange}>All statuses</FilterOption>
           <FilterOption value={"COMPLETED" as StatusFilter} active={statusFilter === "COMPLETED"} onClick={onStatusChange}>Completed</FilterOption>
@@ -193,6 +183,20 @@ function FiltersDropdown({
           <FilterOption value={"GREEN" as HealthFilter} active={healthFilter === "GREEN"} onClick={onHealthChange}>Healthy 75+</FilterOption>
           <FilterOption value={"AMBER" as HealthFilter} active={healthFilter === "AMBER"} onClick={onHealthChange}>Moderate 50–74</FilterOption>
           <FilterOption value={"RED" as HealthFilter} active={healthFilter === "RED"} onClick={onHealthChange}>At risk &lt;50</FilterOption>
+
+          <div className="my-2 border-t border-[var(--border-2)]" />
+
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Movement</p>
+          <FilterOption value={"ALL" as MoveFilter} active={moveFilter === "ALL"} onClick={onMoveChange}>Any change</FilterOption>
+          <FilterOption value={"REGRESSED" as MoveFilter} active={moveFilter === "REGRESSED"} onClick={onMoveChange}>Regressed ↓</FilterOption>
+          <FilterOption value={"IMPROVED" as MoveFilter} active={moveFilter === "IMPROVED"} onClick={onMoveChange}>Improved ↑</FilterOption>
+
+          <div className="my-2 border-t border-[var(--border-2)]" />
+
+          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-4)]">Monitoring</p>
+          <FilterOption value={"ALL" as MonitorFilter} active={monitorFilter === "ALL"} onClick={onMonitorChange}>All</FilterOption>
+          <FilterOption value={"MONITORED" as MonitorFilter} active={monitorFilter === "MONITORED"} onClick={onMonitorChange}>Monitored</FilterOption>
+          <FilterOption value={"ALERTING" as MonitorFilter} active={monitorFilter === "ALERTING"} onClick={onMonitorChange}>Alerting</FilterOption>
 
           <div className="my-2 border-t border-[var(--border-2)]" />
 
@@ -319,7 +323,6 @@ function DeleteButton({ scanId, onDeleted }: { scanId: string; onDeleted?: () =>
 }
 
 // Shared grid template — header and every row use the same columns so they align exactly.
-// Actions column is fixed (not auto) so the empty header spacer matches the row's buttons.
 const GRID_COLS = "auto 2rem 1fr 4rem 5rem 6rem 6rem 7rem";
 
 // ── Scan row ──────────────────────────────────────────────────────────────────
@@ -329,11 +332,13 @@ function ScanRow({
   selected,
   onToggle,
   trend,
+  monitor,
 }: {
   scan: PulseScanListItem;
   selected: boolean;
   onToggle: () => void;
   trend?: { delta: number | null; sparkline: number[] };
+  monitor?: MonitorStatus;
 }) {
   const inputLabel =
     scan.inputType === "URL"
@@ -344,7 +349,7 @@ function ScanRow({
 
   return (
     <div
-      className={cn("group flex sm:grid items-center gap-3 px-4 py-3.5 transition", selected && "bg-[var(--brand-50)]")}
+      className={cn("group flex sm:grid items-center gap-3 px-4 py-3.5 transition hover:bg-[var(--surface-1)]", selected && "bg-[var(--brand-50)]")}
       style={{ gridTemplateColumns: GRID_COLS }}
     >
       {/* Col 1 — Checkbox */}
@@ -378,18 +383,11 @@ function ScanRow({
         {trend && (trend.sparkline.length >= 2 || trend.delta !== null) && (
           <div className="mt-1.5 flex items-center gap-2">
             <MiniSparkline scores={trend.sparkline} />
-            {trend.delta !== null && (
-              <span className={cn(
-                "rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-                trend.delta > 0 ? "bg-emerald-50 text-emerald-700" : trend.delta < 0 ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-500",
-              )}>
-                {trend.delta > 0 ? `+${trend.delta}` : trend.delta}
-              </span>
-            )}
+            <TrendDelta delta={trend.delta} />
           </div>
         )}
         <div className="mt-1.5 flex items-center gap-2 sm:hidden">
-          <HealthPill score={scan.healthScore} />
+          <HealthScorePill score={scan.healthScore} />
           <PulseScanStatusBadge status={scan.status} />
         </div>
       </Link>
@@ -401,17 +399,18 @@ function ScanRow({
 
       {/* Col 5 — Score (desktop only) */}
       <div className="hidden sm:flex sm:items-center">
-        <HealthPill score={scan.healthScore} />
+        <HealthScorePill score={scan.healthScore} />
       </div>
 
-      {/* Col 6 — Status (desktop only) */}
-      <div className="hidden sm:flex sm:items-center">
+      {/* Col 6 — Status + monitor dot (desktop only) */}
+      <div className="hidden sm:flex sm:items-center sm:gap-1.5">
         <PulseScanStatusBadge status={scan.status} />
+        {monitor?.active && <MonitorDot monitor={monitor} />}
       </div>
 
       {/* Col 7 — Date (desktop only) */}
-      <span className="hidden sm:block text-right text-xs text-[var(--text-4)]">
-        {formatDate(scan.createdAt)}
+      <span className="hidden sm:block text-right text-xs text-[var(--text-4)]" title={scan.createdAt}>
+        {formatRelative(scan.createdAt)}
       </span>
 
       {/* Col 8 — Actions */}
@@ -428,36 +427,46 @@ function ScanRow({
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// ── All-scans view (the flat list) ───────────────────────────────────────────
 
-export function PulseScanListView() {
-  const router = useRouter();
+function AllScansView() {
   const { data, isLoading, error } = usePulseScans();
+  const { data: monitorsData } = useMonitors();
   const { mutateAsync: bulkDelete, isPending: bulkDeleting } = useDeletePulseScan();
-  const { mutateAsync: loadDemo, isPending: loadingDemo } = useLoadDemoScan();
-
-  async function handleLoadDemo() {
-    const result = await loadDemo();
-    router.push(`/app/pulse/${result.scanId}`);
-  }
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [healthFilter, setHealthFilter] = useState<HealthFilter>("ALL");
   const [inputFilter, setInputFilter] = useState<InputFilter>("ALL");
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("ALL");
+  const [moveFilter, setMoveFilter] = useState<MoveFilter>("ALL");
   const [sort, setSort] = useState<SortKey>("NEWEST");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   const allScans = useMemo<PulseScanListItem[]>(() => data?.scans ?? [], [data?.scans]);
+
+  // Monitor status indexed by target — for the per-row dot + the monitoring filter.
+  const monitorByTarget = useMemo<Map<string, MonitorStatus>>(() => {
+    const map = new Map<string, MonitorStatus>();
+    for (const m of monitorsData?.monitors ?? []) {
+      const key = (m.inputUrl ?? m.inputGithubRepo ?? "").toLowerCase().trim();
+      if (!key) continue;
+      const prev = map.get(key) ?? { active: false, alerting: false };
+      prev.active = prev.active || m.isActive;
+      prev.alerting = prev.alerting || (m.isActive && m.lastHealthScore !== null && m.lastHealthScore < 50);
+      map.set(key, prev);
+    }
+    return map;
+  }, [monitorsData?.monitors]);
 
   const scanTrends = useMemo<Map<string, { delta: number | null; sparkline: number[] }>>(() => {
     const projectMap = new Map<string, PulseScanListItem[]>();
     for (const s of allScans) {
-      const key = (s.inputUrl ?? s.inputGithubRepo ?? s.projectName).toLowerCase().trim();
-      const list = projectMap.get(key) ?? [];
+      const list = projectMap.get(targetKey(s)) ?? [];
       list.push(s);
-      projectMap.set(key, list);
+      projectMap.set(targetKey(s), list);
     }
     const trends = new Map<string, { delta: number | null; sparkline: number[] }>();
     for (const [, scansForProject] of projectMap) {
@@ -492,16 +501,23 @@ export function PulseScanListView() {
       );
     }
 
-    if (statusFilter !== "ALL") {
-      list = list.filter((s) => s.status === statusFilter);
+    if (statusFilter !== "ALL") list = list.filter((s) => s.status === statusFilter);
+    if (healthFilter !== "ALL") list = list.filter((s) => healthTier(s.healthScore) === healthFilter);
+    if (inputFilter !== "ALL") list = list.filter((s) => s.inputType === inputFilter);
+
+    if (monitorFilter !== "ALL") {
+      list = list.filter((s) => {
+        const m = monitorByTarget.get(targetKey(s));
+        return monitorFilter === "MONITORED" ? Boolean(m?.active) : Boolean(m?.alerting);
+      });
     }
 
-    if (healthFilter !== "ALL") {
-      list = list.filter((s) => healthTier(s.healthScore) === healthFilter);
-    }
-
-    if (inputFilter !== "ALL") {
-      list = list.filter((s) => s.inputType === inputFilter);
+    if (moveFilter !== "ALL") {
+      list = list.filter((s) => {
+        const d = scanTrends.get(s.id)?.delta ?? null;
+        if (d === null) return false;
+        return moveFilter === "REGRESSED" ? d < 0 : d > 0;
+      });
     }
 
     list = [...list].sort((a, b) => {
@@ -513,14 +529,18 @@ export function PulseScanListView() {
     });
 
     return list;
-  }, [allScans, search, statusFilter, healthFilter, inputFilter, sort]);
+  }, [allScans, search, statusFilter, healthFilter, inputFilter, monitorFilter, moveFilter, sort, monitorByTarget, scanTrends]);
+
+  // Reset the render window whenever the result set changes.
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [search, statusFilter, healthFilter, inputFilter, monitorFilter, moveFilter, sort]);
+
+  const shown = filtered.slice(0, visible);
 
   function toggleAll() {
-    if (selected.size === filtered.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(filtered.map((s) => s.id)));
-    }
+    if (selected.size === shown.length) setSelected(new Set());
+    else setSelected(new Set(shown.map((s) => s.id)));
   }
 
   function toggleOne(id: string) {
@@ -547,6 +567,8 @@ export function PulseScanListView() {
     setStatusFilter("ALL");
     setHealthFilter("ALL");
     setInputFilter("ALL");
+    setMonitorFilter("ALL");
+    setMoveFilter("ALL");
   }
 
   if (isLoading) {
@@ -567,7 +589,6 @@ export function PulseScanListView() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        {/* Search */}
         <div className="relative flex-1">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
           <input
@@ -588,18 +609,20 @@ export function PulseScanListView() {
         </div>
 
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          {/* Filters dropdown */}
           <FiltersDropdown
             statusFilter={statusFilter}
             healthFilter={healthFilter}
             inputFilter={inputFilter}
+            monitorFilter={monitorFilter}
+            moveFilter={moveFilter}
             onStatusChange={setStatusFilter}
             onHealthChange={setHealthFilter}
             onInputChange={setInputFilter}
+            onMonitorChange={setMonitorFilter}
+            onMoveChange={setMoveFilter}
             onClear={clearFilters}
           />
 
-          {/* Sort */}
           <select
             className="app-select-compact flex-1 text-sm sm:flex-none sm:w-36"
             value={sort}
@@ -610,25 +633,6 @@ export function PulseScanListView() {
             <option value="SCORE_HIGH">Score: high → low</option>
             <option value="SCORE_LOW">Score: low → high</option>
           </select>
-
-          {/* Demo */}
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={handleLoadDemo}
-            loading={loadingDemo}
-            leadingIcon={<BeakerIcon className="h-4 w-4" />}
-            className="shrink-0 whitespace-nowrap"
-          >
-            {loadingDemo ? "Loading…" : "Demo scan"}
-          </Button>
-
-          {/* New scan */}
-          <Link href="/app/pulse/new" className="shrink-0">
-            <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
-              New scan
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -682,101 +686,116 @@ export function PulseScanListView() {
       )}
 
       {/* Results summary */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--text-4)]">
-          {filtered.length === allScans.length
-            ? `${allScans.length} scan${allScans.length !== 1 ? "s" : ""}`
-            : `${filtered.length} of ${allScans.length} scans`}
-        </p>
-      </div>
+      <p className="text-xs text-[var(--text-4)]">
+        {filtered.length === allScans.length
+          ? `${allScans.length} scan${allScans.length !== 1 ? "s" : ""}`
+          : `${filtered.length} of ${allScans.length} scans`}
+      </p>
 
       {/* List */}
       {allScans.length === 0 ? (
-        <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center">
-          <SignalIcon className="mx-auto mb-3 h-8 w-8 text-[var(--text-4)]" />
-          <p className="text-sm font-medium text-[var(--text-2)]">No scans yet</p>
-          <p className="mt-1 text-sm text-[var(--text-4)]">
-            Run your first Pulse scan to validate a client project.
-          </p>
-          <div className="mt-4 flex justify-center gap-3">
-            <Link href="/app/pulse/new">
-              <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />}>
-                New scan
-              </Button>
-            </Link>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleLoadDemo}
-              loading={loadingDemo}
-              leadingIcon={<BeakerIcon className="h-4 w-4" />}
-            >
-              Load demo scan
-            </Button>
-          </div>
-          <div className="mx-auto mt-10 max-w-3xl border-t border-[var(--border-2)] pt-8 text-left">
-            <PulseFrameworkCoverage />
-          </div>
-        </div>
+        <PulseEmptyState />
       ) : filtered.length === 0 ? (
         <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-12 text-center">
           <p className="text-sm font-medium text-[var(--text-2)]">No results</p>
           <p className="mt-1 text-sm text-[var(--text-4)]">Try adjusting your search or filters.</p>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="mt-3 text-sm text-[var(--brand-600)] hover:underline"
-          >
+          <button type="button" onClick={clearFilters} className="mt-3 text-sm text-[var(--brand-600)] hover:underline">
             Clear all filters
           </button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
-          {/* Table header — uses the same grid template as ScanRow for exact alignment */}
-          <div
-            className="flex sm:grid items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5"
-            style={{ gridTemplateColumns: GRID_COLS }}
-          >
-            {/* Col 1 — Checkbox */}
-            <input
-              type="checkbox"
-              className="app-checkbox shrink-0"
-              checked={selected.size === filtered.length && filtered.length > 0}
-              ref={(el) => {
-                if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length;
-              }}
-              onChange={toggleAll}
-            />
-            {/* Col 2 — Icon spacer */}
-            <div className="hidden sm:block" />
-            {/* Col 3 — Project */}
-            <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Project</span>
-            {/* Col 4 — Type */}
-            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Type</span>
-            {/* Col 5 — Score */}
-            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Score</span>
-            {/* Col 6 — Status */}
-            <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Status</span>
-            {/* Col 7 — Date */}
-            <span className="hidden sm:block text-right text-xs font-medium text-[var(--text-4)]">Date</span>
-            {/* Col 8 — Actions spacer */}
-            <div className="hidden sm:block" />
+        <>
+          <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+            {/* Table header */}
+            <div
+              className="flex sm:grid items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5"
+              style={{ gridTemplateColumns: GRID_COLS }}
+            >
+              <input
+                type="checkbox"
+                className="app-checkbox shrink-0"
+                checked={selected.size === shown.length && shown.length > 0}
+                ref={(el) => {
+                  if (el) el.indeterminate = selected.size > 0 && selected.size < shown.length;
+                }}
+                onChange={toggleAll}
+              />
+              <div className="hidden sm:block" />
+              <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Project</span>
+              <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Type</span>
+              <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Score</span>
+              <span className="hidden sm:block text-xs font-medium text-[var(--text-4)]">Status</span>
+              <span className="hidden sm:block text-right text-xs font-medium text-[var(--text-4)]">Scanned</span>
+              <div className="hidden sm:block" />
+            </div>
+
+            {/* Rows */}
+            <div className="divide-y divide-[var(--border-2)]">
+              {shown.map((scan) => (
+                <ScanRow
+                  key={scan.id}
+                  scan={scan}
+                  selected={selected.has(scan.id)}
+                  onToggle={() => toggleOne(scan.id)}
+                  trend={scanTrends.get(scan.id)}
+                  monitor={monitorByTarget.get(targetKey(scan))}
+                />
+              ))}
+            </div>
           </div>
 
-          {/* Rows */}
-          <div className="divide-y divide-[var(--border-2)]">
-            {filtered.map((scan) => (
-              <ScanRow
-                key={scan.id}
-                scan={scan}
-                selected={selected.has(scan.id)}
-                onToggle={() => toggleOne(scan.id)}
-                trend={scanTrends.get(scan.id)}
-              />
-            ))}
-          </div>
-        </div>
+          {filtered.length > visible && (
+            <div className="flex justify-center">
+              <Button variant="secondary" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+                Load more · showing {shown.length} of {filtered.length}
+              </Button>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+// ── Container — Portfolio / All-scans toggle ─────────────────────────────────
+
+export function PulseScanListView() {
+  const [view, setView] = useState<ViewMode>("PORTFOLIO");
+
+  return (
+    <div className="space-y-4">
+      {/* View toggle + New scan */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-full bg-[var(--surface-1)] p-1">
+          {([
+            { key: "PORTFOLIO" as ViewMode, label: "Portfolio", Icon: Squares2X2Icon },
+            { key: "ALL" as ViewMode, label: "All scans", Icon: TableCellsIcon },
+          ]).map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition",
+                view === key
+                  ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm"
+                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <Link href="/app/pulse/new" className="shrink-0">
+          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
+            New scan
+          </Button>
+        </Link>
+      </div>
+
+      {view === "PORTFOLIO" ? <PulsePortfolioView /> : <AllScansView />}
     </div>
   );
 }

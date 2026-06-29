@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
-import { usePulseStats } from "@/hooks/use-pulse";
+import { usePulseStats, usePulsePortfolio, useMonitors } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
 import { PulseFrameworkCoverage } from "@/components/pulse/pulse-shared";
 
@@ -18,10 +18,12 @@ function Stat({
   label,
   value,
   tone = "text-[var(--text-1)]",
+  sub,
 }: {
   label: string;
   value: string;
   tone?: string;
+  sub?: ReactNode;
 }) {
   return (
     <div className="px-4 py-3 first:pl-0">
@@ -29,6 +31,7 @@ function Stat({
       <p className={cn("mt-1 text-2xl font-normal tracking-[-0.01em] tabular-nums", tone)} style={{ fontFamily: "var(--font-display)" }}>
         {value}
       </p>
+      {sub && <p className="mt-0.5 text-[11px] leading-tight text-[var(--text-4)]">{sub}</p>}
     </div>
   );
 }
@@ -41,7 +44,7 @@ function HealthSplit({ green, amber, red }: { green: number; amber: number; red:
   const a = Math.round((amber / total) * 100);
   const r = 100 - g - a;
   return (
-    <div className="flex min-w-[120px] flex-1 flex-col justify-center gap-1.5 px-4">
+    <div className="flex min-w-[140px] flex-1 flex-col justify-center gap-1.5 px-4">
       <div className="flex h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
         {g > 0 && <div className="bg-emerald-400" style={{ width: `${g}%` }} />}
         {a > 0 && <div className="bg-amber-400" style={{ width: `${a}%` }} />}
@@ -58,6 +61,8 @@ function HealthSplit({ green, amber, red }: { green: number; amber: number; red:
 
 export function PulseOverview() {
   const { data: stats, isLoading } = usePulseStats();
+  const { data: portfolioData } = usePulsePortfolio();
+  const { data: monitorsData } = useMonitors();
   const [showFramework, setShowFramework] = useState(false);
 
   if (isLoading) {
@@ -66,21 +71,58 @@ export function PulseOverview() {
 
   if (!stats || stats.totalScans === 0) return null;
 
+  // Live movement derived from the client-grouped portfolio (no extra fetch on the
+  // happy path — the dashboard already loads it).
+  const portfolio = portfolioData?.portfolio ?? [];
+  const regressed = portfolio.filter((e) => (e.delta ?? 0) < 0).length;
+  const improved = portfolio.filter((e) => (e.delta ?? 0) > 0).length;
+
+  const monitors = monitorsData?.monitors ?? [];
+  const activeMonitors = monitors.filter((m) => m.isActive).length;
+  const alertingMonitors = monitors.filter(
+    (m) => m.isActive && m.lastHealthScore !== null && m.lastHealthScore < 50,
+  ).length;
+
   return (
     <div className="space-y-3">
       {/* Slim KPI strip — the dashboard summary in one row, not five cards */}
       <div className="app-card flex flex-col gap-2 p-4 sm:flex-row sm:items-stretch sm:gap-0 sm:divide-x sm:divide-[var(--border-2)]">
-        <div className="flex flex-1 divide-x divide-[var(--border-2)]">
+        <div className="flex flex-1 flex-wrap divide-x divide-[var(--border-2)]">
           <Stat label="Total scans" value={String(stats.totalScans)} />
           <Stat
             label="Avg health"
             value={stats.avgHealthScore !== null ? `${stats.avgHealthScore}` : "—"}
             tone={healthTone(stats.avgHealthScore)}
+            sub={
+              improved + regressed > 0 ? (
+                <>
+                  {improved > 0 && <span className="text-emerald-600">↑{improved}</span>}
+                  {improved > 0 && regressed > 0 && " "}
+                  {regressed > 0 && <span className="text-red-600">↓{regressed}</span>}
+                  <span className="ml-1">vs last</span>
+                </>
+              ) : undefined
+            }
           />
           <Stat
-            label="Critical gaps"
-            value={String(stats.totalCriticalGaps)}
-            tone={stats.totalCriticalGaps > 10 ? "text-red-600" : stats.totalCriticalGaps > 4 ? "text-amber-600" : "text-[var(--text-1)]"}
+            label="Regressed"
+            value={String(regressed)}
+            tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
+            sub={regressed > 0 ? "need a look" : "none"}
+          />
+          <Stat
+            label="Monitors"
+            value={String(activeMonitors)}
+            tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
+            sub={
+              alertingMonitors > 0 ? (
+                <span className="text-red-600">{alertingMonitors} alerting</span>
+              ) : activeMonitors > 0 ? (
+                "watching"
+              ) : (
+                "none active"
+              )
+            }
           />
           <Stat
             label="Follow-up"

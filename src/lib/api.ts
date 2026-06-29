@@ -1249,6 +1249,10 @@ export async function listPulseScans(params?: {
   return apiFetch<{ scans: PulseScanListItem[] }>(`/api/pulse/scans${qs ? `?${qs}` : ""}`);
 }
 
+export async function getPulsePortfolio(): Promise<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }> {
+  return apiFetch<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }>("/api/pulse/portfolio");
+}
+
 export async function createPulseScan(input: {
   projectName: string;
   inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";

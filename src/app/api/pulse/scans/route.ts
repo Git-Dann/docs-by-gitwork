@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManagePulse, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assignedClientIds } from "@/server/tasks";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
 import { getRequestUser } from "@/server/auth/request-user";
@@ -12,7 +13,11 @@ export const maxDuration = 300;
 export async function GET(request: NextRequest) {
   try {
     const clientId = request.nextUrl.searchParams.get("clientId") ?? undefined;
-    const scans = await listPulseScans({ clientId });
+    // Scope to the viewer's clients. Null user = trusted API_KEY / legacy caller → unscoped
+    // (preserved). A restricted developer only ever receives their assigned clients' scans.
+    const user = await getEffectiveUserOrNull(request);
+    const clientIds = user && !canSeeAllClients(user) ? await assignedClientIds(user) : null;
+    const scans = await listPulseScans({ clientId, clientIds });
     return apiOk({ scans });
   } catch (error) {
     return fromError(error);

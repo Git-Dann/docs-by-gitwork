@@ -315,6 +315,26 @@ export interface PulseScanListItem {
   updatedAt: string;
 }
 
+// ── Portfolio (dashboard, client-grouped) ─────────────────────────────────────
+// One row per client (or per standalone target for unassigned scans). Aggregated
+// server-side in a single pass so the dashboard scales to 100s of clients without
+// an N+1 of per-target history fetches.
+export interface PulsePortfolioEntry {
+  key: string;                 // stable group key (client:<id> | target:<url|repo|name>)
+  clientId: string | null;
+  label: string;               // client name, or the project name for standalone scans
+  scanCount: number;
+  latestScanId: string | null;
+  latestScore: number | null;  // most-recent scan's health (null while running / never completed)
+  latestStatus: PulseScanStatus | null;
+  lastScannedAt: string | null;
+  delta: number | null;        // latest completed score − previous completed score (same group)
+  sparkline: number[];         // up to 8 most-recent completed scores, chronological
+  worstScore: number | null;   // lowest current score across the group's targets (attention signal)
+  monitor: { active: boolean; alerting: boolean } | null; // null when no monitor watches any target
+  running: boolean;            // a scan in this group is currently RUNNING
+}
+
 // ── Industry benchmarks (Wave E3) ─────────────────────────────────────────────
 export interface IndustryBenchmark {
   projectType: string;   // the classification this scan was benchmarked within
