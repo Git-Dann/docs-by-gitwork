@@ -16,12 +16,15 @@ const PAGE_SIZE = 5;
 export function DailyRollup({
   enabled = true,
   canPublish = true,
+  index = 2,
 }: {
   enabled?: boolean;
   /** When false the card renders as monitor-only (no Publish / Publish-anyway
    *  buttons). Super admins watching the roster shouldn't see the publishing
    *  CTAs — that's the DevOps lead's surface (`tasks.publish` permission). */
   canPublish?: boolean;
+  /** Sequential dashboard number, supplied by the HQ overview. */
+  index?: number;
 }) {
   const { data, isPending } = useRollupRoster(enabled);
   const publish = usePublishRollup();
@@ -56,7 +59,7 @@ export function DailyRollup({
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">02</span>
+          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
           {" // DAILY ROLL-UP"}
         </span>
         {total > 0 ? (

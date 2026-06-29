@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import PulseWidget from "@/components/dashboard/pulse-widget";
 import CareWidget from "@/components/dashboard/care-widget";
 import ProposalsWidget from "@/components/dashboard/proposals-widget";
@@ -18,29 +19,69 @@ import { useViewAs } from "@/lib/view-as";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
+type WidgetBand = "feed" | "summary";
+
 type GridEntry = {
-  component: React.ComponentType<{ size: WidgetSize }>;
-  cols: 1 | 2 | 3;
-  rows: 1 | 2 | 3;
+  component: React.ComponentType<{ size: WidgetSize; index: number }>;
+  /** "feed" tiles are tall (list/inbox content); "summary" tiles are short. */
+  band: WidgetBand;
   size: WidgetSize;
   /** Module permission required to see this widget (undefined = always shown). */
   module?: string;
 };
 
 const ROW_HEIGHT = 220;
+const TILE_GAP = 12;
 
-// 6 widgets: row 1 (PULSE/CARE/DOCS) = 3 short tiles; row 2-3 (CLIENTS/MAIL/
-// CALENDAR) = 3 tall tiles so the feed-style content (client list, mail
-// inbox, upcoming meetings) is actually readable instead of summarised-to-
-// uselessness. Total cells = 3 + 6 = 9 = 3 rows × 3 cols.
+// The bento renders in two bands so it always tiles cleanly, whatever the
+// viewer's permissions filter out:
+//   • feeds  (CLIENTS / MAIL / CALENDAR) — tall, feed-style content (client
+//     list, mail inbox, upcoming meetings) that needs height to be readable.
+//   • summaries (PULSE / CARE / DOCS) — short stat tiles.
+// Each band lays its tiles on a 6-column grid and the final row stretches to
+// fill the full width (3→2-span, 2→3-span, 1→6-span), so there is never a
+// blank cell — and numbering stays sequential because the parent assigns it.
 const GRID: GridEntry[] = [
-  { component: ClientsWidget,   cols: 1, rows: 2, size: "md", module: "clients" },
-  { component: GmailWidget,     cols: 1, rows: 2, size: "md" },
-  { component: CalendarWidget,  cols: 1, rows: 2, size: "md" },
-  { component: PulseWidget,     cols: 1, rows: 1, size: "sm", module: "pulse" },
-  { component: CareWidget,      cols: 1, rows: 1, size: "sm", module: "support" },
-  { component: ProposalsWidget, cols: 1, rows: 1, size: "sm", module: "proposals" },
+  { component: ClientsWidget,   band: "feed",    size: "md", module: "clients" },
+  { component: GmailWidget,     band: "feed",    size: "md" },
+  { component: CalendarWidget,  band: "feed",    size: "md" },
+  { component: PulseWidget,     band: "summary", size: "sm", module: "pulse" },
+  { component: CareWidget,      band: "summary", size: "sm", module: "support" },
+  { component: ProposalsWidget, band: "summary", size: "sm", module: "proposals" },
 ];
+
+type NumberedTile = GridEntry & { number: number };
+
+/**
+ * One band of bento tiles on a 6-column grid. Rows of three tiles span 2
+ * columns each; a final row of two spans 3 each and a lone tile spans all 6 —
+ * so every row is completely filled and no blank cells are ever left.
+ */
+function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand }) {
+  const height = band === "feed" ? ROW_HEIGHT * 2 + TILE_GAP : ROW_HEIGHT;
+  return (
+    <div
+      className="grid grid-cols-1 lg:grid-cols-6"
+      style={{ gap: `${TILE_GAP}px` }}
+    >
+      {tiles.map(({ component: Widget, size, number }, i) => {
+        // Length of the (max-3) row this tile sits in → its column span.
+        const rowStart = Math.floor(i / 3) * 3;
+        const rowLen = Math.min(3, tiles.length - rowStart);
+        const span = 6 / rowLen; // 3→2, 2→3, 1→6
+        return (
+          <div
+            key={number}
+            className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
+            style={{ gridColumn: `span ${span}`, height: `${height}px` }}
+          >
+            <Widget size={size} index={number} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function greetingPart(): string {
   const h = new Date().getHours();
@@ -51,6 +92,10 @@ export function AppOverview() {
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, effectivePermissions } = useViewAs(isAdmin);
+  // "On your desk" self-hides on an empty desk; it reports its render state so
+  // the dashboard numbering below stays gap-free (declared before any early
+  // return to respect the rules of hooks).
+  const [deskVisible, setDeskVisible] = useState(false);
 
   // Wait for role/permissions so a restricted developer never flashes the full
   // agency grid before their task-focused view loads.
@@ -97,6 +142,22 @@ export function AppOverview() {
   const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];
   const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
+  // ── Sequential numbering, computed from what actually renders so there are
+  //    never holes (01, 02, 03 …). The desk card is always slot 1 when shown;
+  //    the roll-up follows; then the bento feeds, then the bento summaries. ──
+  let counter = deskVisible ? 1 : 0;
+  const rollupNumber = canPublishRollup ? (counter += 1) : 0;
+  const feeds = widgets
+    .filter((w) => w.band === "feed")
+    .map((w) => ({ ...w, number: (counter += 1) }));
+  const summaries = widgets
+    .filter((w) => w.band === "summary")
+    .map((w) => ({ ...w, number: (counter += 1) }));
+
+  // The today band is two-up only when BOTH cards are actually present, else
+  // the lone card spans full width — no half-empty row.
+  const todayTwoUp = deskVisible && canPublishRollup;
+
   return (
     <div className="space-y-5">
       {/* Context strip — date · greeting · who's off (subtle, not a second title) */}
@@ -106,46 +167,27 @@ export function AppOverview() {
         {hasBackstage ? <WhoIsOffToday /> : null}
       </div>
 
-      {/* 01 + 02 sit side by side: "On your desk" is the personal to-do (auto-
-          hides when empty); "Daily roll-up" is the DevOps lead's publishing UI
-          for tasks.publish holders (Shahab; admins bypass). When the roll-up
-          isn't visible to the viewer, "On your desk" spans the full row. */}
-      <div className={canPublishRollup ? "grid gap-3 lg:grid-cols-2" : ""}>
+      {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
+          and the DevOps lead's "Daily roll-up". Side-by-side only when both
+          render; otherwise the present card fills the row. */}
+      <div className={todayTwoUp ? "grid gap-3 lg:grid-cols-2" : ""}>
         <OnYourDeskCard
+          index={1}
+          onVisibilityChange={setDeskVisible}
           canApprove={canApprove}
           canSeeTasks={canSeeTasks}
           canSeeSignoff={canSeeSignoff}
         />
-        {canPublishRollup ? <DailyRollup canPublish={canActuallyPublish} /> : null}
+        {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
       </div>
 
-      {/* 03+ // Module bento — filtered to the user's access. */}
-      <div
-        className="flex flex-col gap-3 lg:grid lg:gap-3"
-        style={{
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gridAutoRows: `${ROW_HEIGHT}px`,
-          gridAutoFlow: "dense",
-        }}
-      >
-        {widgets.map(({ component: Widget, cols, rows, size }, i) => {
-          const cellHeight = rows === 1 ? ROW_HEIGHT : ROW_HEIGHT * rows + (rows - 1) * 12;
-          return (
-          <div
-            key={i}
-            className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
-            style={{
-              gridColumn: `span ${cols}`,
-              gridRow: `span ${rows}`,
-              // Explicit height (not just min) so h-full works inside both flex-col and grid modes
-              height: `${cellHeight}px`,
-            }}
-          >
-            <Widget size={size} />
-          </div>
-          );
-        })}
-      </div>
+      {/* Module bento — two gap-free bands, filtered to the user's access. */}
+      {(feeds.length > 0 || summaries.length > 0) && (
+        <div className="space-y-3">
+          {feeds.length > 0 && <BentoBand tiles={feeds} band="feed" />}
+          {summaries.length > 0 && <BentoBand tiles={summaries} band="summary" />}
+        </div>
+      )}
 
       {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard /> : null}
     </div>

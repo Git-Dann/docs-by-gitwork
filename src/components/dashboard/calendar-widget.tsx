@@ -47,7 +47,8 @@ interface CachedSummary {
   generatedBy?: string | null;
 }
 
-export default function CalendarWidget({ size }: { size: WidgetSize }) {
+export default function CalendarWidget({ size, index }: { size: WidgetSize; index: number }) {
+  const num = String(index).padStart(2, "0");
   const [summaries, setSummaries] = useState<Record<string, CachedSummary>>({});
   const [generating, setGenerating] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -130,7 +131,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            05 // CALENDAR
+            {`${num} // CALENDAR`}
           </span>
         </div>
         {/* Body */}
@@ -154,7 +155,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            05 // CALENDAR
+            {`${num} // CALENDAR`}
           </span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
@@ -188,7 +189,7 @@ export default function CalendarWidget({ size }: { size: WidgetSize }) {
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          05 // CALENDAR
+          {`${num} // CALENDAR`}
         </span>
         <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
       </div>

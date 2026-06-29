@@ -40,7 +40,8 @@ function ClientRow({ clientId, name }: { clientId: string; name: string }) {
   );
 }
 
-export default function CareWidget(_: { size: WidgetSize }) {
+export default function CareWidget({ index }: { size: WidgetSize; index: number }) {
+  const num = String(index).padStart(2, "0");
   const { data: clientsData, isLoading } = useSupportClients();
 
   if (isLoading) {
@@ -56,7 +57,7 @@ export default function CareWidget(_: { size: WidgetSize }) {
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-          07 // CARE
+          {`${num} // CARE`}
         </span>
         <Link href="/app/support" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all

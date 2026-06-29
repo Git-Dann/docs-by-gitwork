@@ -30,7 +30,7 @@ import { useStaffingAlerts } from "@/hooks/use-backstage";
 import type { LeaveType, StaffingAlert } from "@/types/backstage";
 import { formatDateRange, formatDay } from "@/components/backstage/format";
 import { CalendarDaysIcon, GlobeAltIcon } from "@heroicons/react/24/solid";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   ANNUAL: "Annual leave",
@@ -54,9 +54,14 @@ interface OnYourDeskCardProps {
   canApprove: boolean;
   canSeeTasks: boolean;
   canSeeSignoff: boolean;
+  /** Sequential dashboard number (this card is always first when shown). */
+  index: number;
+  /** Reports whether the card actually rendered, so the parent can keep the
+   *  dashboard numbering gap-free when this card self-hides on an empty desk. */
+  onVisibilityChange?: (visible: boolean) => void;
 }
 
-export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYourDeskCardProps) {
+export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, onVisibilityChange }: OnYourDeskCardProps) {
   // Tasks — scoped to the current user's assignments. A super admin/admin doesn't
   // want the whole workspace's 242 overdue bleeding into their "On your desk"
   // (that's a Portal-level concern); they want what THEY own.
@@ -136,13 +141,18 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff }: OnYou
   const hasUpcoming = upcomingAlerts.length > 0;
   const hasAnything = hasTasks || hasApprovals || hasSignoff || hasUpcoming;
 
+  // Report render state up so the parent renumbers the dashboard with no gaps.
+  useEffect(() => {
+    onVisibilityChange?.(hasAnything);
+  }, [hasAnything, onVisibilityChange]);
+
   if (!hasAnything) return null;
 
   return (
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">01</span>
+          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
           {" // ON YOUR DESK"}
         </span>
         <span

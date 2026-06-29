@@ -14,7 +14,8 @@ import type { ClientListItem } from "@/types/client";
  *  - inner scroll inside the bento tile so a long list doesn't blow out the
  *    grid height
  */
-export default function ClientsWidget(_: { size: WidgetSize }) {
+export default function ClientsWidget({ index }: { size: WidgetSize; index: number }) {
+  const num = String(index).padStart(2, "0");
   const { data, isLoading } = useClientList();
 
   if (isLoading) {
@@ -35,7 +36,7 @@ export default function ClientsWidget(_: { size: WidgetSize }) {
           className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          03 // CLIENTS
+          {`${num} // CLIENTS`}
         </span>
         <Link
           href="/app/portal"

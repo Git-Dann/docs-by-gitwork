@@ -25,7 +25,8 @@ function parseFrom(from: string): string {
   return match ? match[1].replace(/"/g, "") : from.split("@")[0];
 }
 
-export default function GmailWidget({ size }: { size: WidgetSize }) {
+export default function GmailWidget({ size, index }: { size: WidgetSize; index: number }) {
+  const num = String(index).padStart(2, "0");
   const { data, isLoading } = useQuery({
     queryKey: ["integrations", "gmail"],
     queryFn: getGmailMessages,
@@ -43,7 +44,7 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
         {/* Widget header */}
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            04 // MAIL
+            {`${num} // MAIL`}
           </span>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
@@ -76,7 +77,7 @@ export default function GmailWidget({ size }: { size: WidgetSize }) {
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-          04 // MAIL
+          {`${num} // MAIL`}
         </span>
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
           {unread > 0 && (

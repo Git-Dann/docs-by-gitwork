@@ -25,7 +25,8 @@ const STATUS_LABEL: Record<string, string> = {
   ARCHIVED:         "Archived",
 };
 
-export default function ProposalsWidget({ size }: { size: WidgetSize }) {
+export default function ProposalsWidget({ size, index }: { size: WidgetSize; index: number }) {
+  const num = String(index).padStart(2, "0");
   const { data, isLoading } = useProposalList({});
 
   if (isLoading) {
@@ -48,7 +49,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
       <div className="flex h-full flex-col">
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
           <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-            08 // DOCS
+            {`${num} // DOCS`}
           </span>
           <Link href="/app/docs" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
             View all
@@ -100,7 +101,7 @@ export default function ProposalsWidget({ size }: { size: WidgetSize }) {
       {/* Widget header */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
-          08 // DOCS
+          {`${num} // DOCS`}
         </span>
         <Link href="/app/docs" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
