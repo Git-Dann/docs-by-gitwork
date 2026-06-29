@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { ArrowUpTrayIcon, ArrowDownTrayIcon, DocumentTextIcon } from "@heroicons/react/24/outline";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpTrayIcon, ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useImportTasks } from "@/hooks/use-tasks";
+import { findRosterByName } from "@/lib/team-roster-aliases";
 import {
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
@@ -107,14 +108,52 @@ const TEMPLATE = [
 
 const SELECT_CLASS = "app-select-compact w-full text-xs";
 
+// Normalise a title for duplicate comparison (case- and whitespace-insensitive).
+const normTitle = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+// Mono section eyebrow used in the left controls rail.
+const RAIL_EYEBROW = "text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]";
+
+// Tri-state select-all box (checked / indeterminate / empty) — the documented
+// bulk-selection pattern (see DESIGN.md · Task board · Bulk selection).
+function TriStateBox({
+  checked,
+  indeterminate,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      aria-label={label}
+      className="h-3.5 w-3.5 cursor-pointer accent-[var(--brand-700)]"
+    />
+  );
+}
+
 export function TaskImportModal({
   slug,
   blocks,
+  existingTitles = [],
   onClose,
   onDone,
 }: {
   slug: string;
   blocks: { id: string; name: string }[];
+  /** Titles already on this client's board — used to flag duplicate rows. */
+  existingTitles?: string[];
   onClose: () => void;
   onDone: (created: number) => void;
 }) {
@@ -133,8 +172,17 @@ export function TaskImportModal({
   // Distinct unmatched value → chosen id ("" = leave unset).
   const [assigneeFix, setAssigneeFix] = useState<Record<string, string>>({});
   const [categoryFix, setCategoryFix] = useState<Record<string, string>>({});
+  // Duplicate row indices the user chose to import anyway. Empty = every
+  // duplicate is skipped (the safe default).
+  const [importDupes, setImportDupes] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Titles already on the board (normalised) — for duplicate detection.
+  const existingTitleSet = useMemo(
+    () => new Set(existingTitles.map((t) => normTitle(t)).filter(Boolean)),
+    [existingTitles],
+  );
 
   // member / block lookups (by lowercased name + email)
   const memberByKey = useMemo(() => {
@@ -176,6 +224,7 @@ export function TaskImportModal({
         setMapping(next);
         setAssigneeFix({});
         setCategoryFix({});
+        setImportDupes(new Set());
       })
       .catch(() => setError("Could not read that file."));
   }
@@ -199,15 +248,23 @@ export function TaskImportModal({
     };
     const unmatchedAssignees = new Set<string>();
     const unmatchedCategories = new Set<string>();
+    const seenTitles = new Set<string>(); // titles seen earlier in this CSV
 
-    const rows = parsed.rows.map((r) => {
+    const rows = parsed.rows.map((r, idx) => {
       const title = cell(r, "title");
       const st = mapStatus(cell(r, "status"));
       const pr = mapPriority(cell(r, "priority"));
       const dueRaw = cell(r, "dueDate");
       const dueIso = parseDate(dueRaw);
       const aName = cell(r, "assignee");
+      // 1) exact match against a live member (name or email)
       let aId: string | null = aName ? memberByKey.get(aName.toLowerCase()) ?? null : null;
+      // 2) ClickUp custom-dropdown name → roster alias → canonical email → member
+      if (!aId && aName) {
+        const rosterEmail = findRosterByName(aName)?.email;
+        if (rosterEmail) aId = memberByKey.get(rosterEmail.toLowerCase()) ?? null;
+      }
+      // 3) manual reconciliation fix, else flag as unmatched
       if (!aId && aName) {
         const fix = assigneeFix[aName.toLowerCase()];
         if (fix) aId = fix;
@@ -220,7 +277,19 @@ export function TaskImportModal({
         if (fix) cId = fix;
         else unmatchedCategories.add(cName);
       }
+      // Duplicate detection (title-based, per client): already on the board, or
+      // repeated earlier in this same CSV.
+      const key = normTitle(title);
+      let duplicate: "existing" | "csv" | null = null;
+      if (key) {
+        if (existingTitleSet.has(key)) duplicate = "existing";
+        else if (seenTitles.has(key)) duplicate = "csv";
+        seenTitles.add(key);
+      }
+      // A duplicate is skipped unless the user ticked it to import anyway.
+      const skipped = Boolean(duplicate) && !importDupes.has(idx);
       return {
+        idx,
         title,
         description: cell(r, "description"),
         status: st.value,
@@ -236,17 +305,35 @@ export function TaskImportModal({
         categoryName: cName,
         categoryId: cId,
         categoryFlagged: Boolean(cName) && !cId,
+        duplicate,
+        skipped,
         valid: title.length > 0,
       };
     });
+    const willImport = (r: (typeof rows)[number]) => r.valid && !r.skipped;
+    const dupes = rows.filter((r) => r.valid && r.duplicate);
     return {
       rows,
       unmatchedAssignees: [...unmatchedAssignees],
       unmatchedCategories: [...unmatchedCategories],
-      importCount: rows.filter((r) => r.valid).length,
+      dupes,
+      importCount: rows.filter(willImport).length,
       skipCount: rows.filter((r) => !r.valid).length,
+      duplicateCount: dupes.length,
+      keptDupeCount: dupes.filter((r) => importDupes.has(r.idx)).length,
+      willImport,
     };
-  }, [parsed, mapping, memberByKey, blockByName, assigneeFix, categoryFix]);
+  }, [parsed, mapping, memberByKey, blockByName, assigneeFix, categoryFix, existingTitleSet, importDupes]);
+
+  // Toggle one duplicate row in/out of the import.
+  function toggleDupe(idx: number) {
+    setImportDupes((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
 
   const titleMapped = mapping.title != null;
 
@@ -254,7 +341,7 @@ export function TaskImportModal({
     if (!resolved) return;
     setError(null);
     const tasks = resolved.rows
-      .filter((r) => r.valid)
+      .filter(resolved.willImport)
       .map((r) => ({
         title: r.title,
         description: r.description || undefined,
@@ -276,170 +363,239 @@ export function TaskImportModal({
     }
   }
 
-  return (
-    <Modal open onClose={onClose} title="Import tasks" panelClassName="w-full max-w-3xl">
-      <div className="max-h-[calc(100dvh-160px)] overflow-y-auto p-5">
-        {!parsed ? (
-          // ── Step 1: pick a file ──────────────────────────────────────────────
-          <div className="space-y-4">
-            <p className="text-sm text-[var(--text-3)]">
-              Upload a <strong>CSV</strong> of tasks. The first row must be column headers. Only
-              <strong> Title</strong> is required — Status, Priority, Assignee, Due date, Category and
-              Description are optional and will be auto-matched (you can adjust the mapping next).
-            </p>
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-xs text-[var(--text-3)]">
-              <p className="mb-1 font-medium text-[var(--text-2)]">Expected columns</p>
-              <p>
-                <span className="font-mono">Title</span>, <span className="font-mono">Status</span>{" "}
-                (Backlog / To&nbsp;Do / Doing / In&nbsp;Review / Done), <span className="font-mono">Priority</span>{" "}
-                (Low / Medium / High), <span className="font-mono">Assignee</span> (name or email),{" "}
-                <span className="font-mono">Due&nbsp;date</span> (YYYY-MM-DD), <span className="font-mono">Category</span>,{" "}
-                <span className="font-mono">Description</span>.
-              </p>
-              <button
-                type="button"
-                onClick={downloadTemplate}
-                className="mt-2 inline-flex items-center gap-1.5 font-medium text-[var(--brand-700)] hover:underline"
-              >
-                <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download template
-              </button>
-            </div>
+  const skippedDupeCount = resolved ? resolved.duplicateCount - resolved.keptDupeCount : 0;
+  const panelClass = parsed
+    ? "flex h-[680px] max-h-[calc(100dvh-40px)] w-full max-w-4xl flex-col"
+    : "w-full max-w-xl";
 
-            <label
-              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] bg-white px-4 py-10 text-center transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
+  return (
+    <Modal open onClose={onClose} labelledById="task-import-title" panelClassName={panelClass}>
+      {/* Header — mono eyebrow + title (house pattern, cf. TaskFormModal) */}
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
+        <div>
+          <p className="widget-data-label">IMPORT TASKS</p>
+          <h3 id="task-import-title" className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            Import tasks from CSV
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
+      </div>
+
+      {!parsed ? (
+        // ── Step 1: pick a file ────────────────────────────────────────────────
+        <div className="space-y-4 p-6">
+          <p className="text-sm text-[var(--text-3)]">
+            Upload a <strong>CSV</strong> of tasks. The first row must be column headers. Only
+            <strong> Title</strong> is required — Status, Priority, Assignee, Due date, Category and
+            Description are optional and will be auto-matched (you can adjust the mapping next).
+          </p>
+          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3 text-xs text-[var(--text-3)]">
+            <p className="mb-1 font-medium text-[var(--text-2)]">Expected columns</p>
+            <p>
+              <span className="font-mono">Title</span>, <span className="font-mono">Status</span>{" "}
+              (Backlog / To&nbsp;Do / Doing / In&nbsp;Review / Done), <span className="font-mono">Priority</span>{" "}
+              (Low / Medium / High), <span className="font-mono">Assignee</span> (name or email),{" "}
+              <span className="font-mono">Due&nbsp;date</span> (YYYY-MM-DD), <span className="font-mono">Category</span>,{" "}
+              <span className="font-mono">Description</span>.
+            </p>
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="mt-2 inline-flex items-center gap-1.5 font-medium text-[var(--brand-700)] hover:underline"
+            >
+              <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download template
+            </button>
+          </div>
+
+          <label
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[var(--border-2)] bg-white px-4 py-10 text-center transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) onFile(f);
+            }}
+          >
+            <ArrowUpTrayIcon className="h-6 w-6 text-[var(--text-4)]" />
+            <span className="text-sm font-medium text-[var(--text-2)]">Drop a CSV here, or click to browse</span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
                 if (f) onFile(f);
               }}
-            >
-              <ArrowUpTrayIcon className="h-6 w-6 text-[var(--text-4)]" />
-              <span className="text-sm font-medium text-[var(--text-2)]">Drop a CSV here, or click to browse</span>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onFile(f);
-                }}
-              />
-            </label>
-            {error ? <p className="text-xs font-medium text-rose-600">{error}</p> : null}
-          </div>
-        ) : (
-          // ── Step 2: map, fix, preview ────────────────────────────────────────
-          <div className="space-y-5">
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-3)]">
-                <DocumentTextIcon className="h-4 w-4" /> {fileName} · {parsed.rows.length} rows
-              </span>
-              <button
-                type="button"
-                onClick={() => { setParsed(null); setFileName(null); }}
-                className="text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-1)]"
-              >
-                Choose a different file
-              </button>
-            </div>
-
-            {/* Column mapping */}
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                Map columns
-              </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {FIELDS.map((f) => {
-                  const unmapped = mapping[f.key] == null;
-                  return (
-                    <label key={f.key} className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
-                      <span className="text-xs font-medium text-[var(--text-2)]">
-                        {f.label}
-                        {f.required ? <span className="text-rose-500"> *</span> : null}
-                        {f.required && unmapped ? (
-                          <span className="ml-1 text-[10px] font-normal text-rose-600">needs a column</span>
-                        ) : null}
-                      </span>
-                      <select
-                        className={cn(SELECT_CLASS, f.required && unmapped && "border-rose-400")}
-                        value={mapping[f.key] ?? ""}
-                        onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value === "" ? null : Number(e.target.value) }))}
-                      >
-                        <option value="">— skip —</option>
-                        {parsed.headers.map((h, i) => (
-                          <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
-                        ))}
-                      </select>
-                    </label>
-                  );
-                })}
+            />
+          </label>
+          {error ? <p className="text-xs font-medium text-rose-600">{error}</p> : null}
+        </div>
+      ) : (
+        // ── Step 2: map, fix, preview — fixed-height 2-column body + pinned footer ─
+        <>
+          <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.95fr)] lg:overflow-hidden">
+            {/* LEFT rail — mapping + reconciliation (scrolls) */}
+            <div className="space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-3)]">
+                  <DocumentTextIcon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{fileName} · {parsed.rows.length} rows</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setParsed(null); setFileName(null); }}
+                  className="shrink-0 text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-1)]"
+                >
+                  Choose a different file
+                </button>
               </div>
-            </div>
 
-            {/* Align unmatched assignees / categories */}
-            {resolved && (resolved.unmatchedAssignees.length > 0 || resolved.unmatchedCategories.length > 0) ? (
-              <div className="space-y-3 rounded-[10px] border border-amber-200 bg-amber-50/60 p-3">
-                <p className="text-xs font-medium text-amber-800">
-                  Some values didn&apos;t match — align them to existing records (or leave unset).
-                </p>
-                {resolved.unmatchedAssignees.length > 0 ? (
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[1px] text-amber-700">Assignees</p>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {resolved.unmatchedAssignees.map((name) => (
-                        <div key={name} className="flex items-center justify-between gap-2 rounded-[6px] bg-white px-2 py-1.5">
-                          <span className="truncate text-xs text-[var(--text-2)]">{name}</span>
-                          <select
-                            className={SELECT_CLASS}
-                            value={assigneeFix[name.toLowerCase()] ?? ""}
-                            onChange={(e) => setAssigneeFix((s) => ({ ...s, [name.toLowerCase()]: e.target.value }))}
-                          >
-                            <option value="">Unassigned</option>
-                            {members.map((m) => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {resolved.unmatchedCategories.length > 0 ? (
-                  <div>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[1px] text-amber-700">Categories</p>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {resolved.unmatchedCategories.map((name) => (
-                        <div key={name} className="flex items-center justify-between gap-2 rounded-[6px] bg-white px-2 py-1.5">
-                          <span className="truncate text-xs text-[var(--text-2)]">{name}</span>
-                          <select
-                            className={SELECT_CLASS}
-                            value={categoryFix[name.toLowerCase()] ?? ""}
-                            onChange={(e) => setCategoryFix((s) => ({ ...s, [name.toLowerCase()]: e.target.value }))}
-                          >
-                            <option value="">No category</option>
-                            {blocks.map((b) => (
-                              <option key={b.id} value={b.id}>{b.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {/* Preview */}
-            {resolved ? (
+              {/* Column mapping */}
               <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                <p className={cn(RAIL_EYEBROW, "mb-2")}>Map columns</p>
+                <div className="space-y-2">
+                  {FIELDS.map((f) => {
+                    const unmapped = mapping[f.key] == null;
+                    return (
+                      <label key={f.key} className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+                        <span className="text-xs font-medium text-[var(--text-2)]">
+                          {f.label}
+                          {f.required ? <span className="text-rose-500"> *</span> : null}
+                          {f.required && unmapped ? (
+                            <span className="ml-1 text-[10px] font-normal text-rose-600">needs a column</span>
+                          ) : null}
+                        </span>
+                        <select
+                          className={cn(SELECT_CLASS, "max-w-[55%]", f.required && unmapped && "border-rose-400")}
+                          value={mapping[f.key] ?? ""}
+                          onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value === "" ? null : Number(e.target.value) }))}
+                        >
+                          <option value="">— skip —</option>
+                          {parsed.headers.map((h, i) => (
+                            <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Duplicates — select one / all, dismiss (skip) */}
+              {resolved && resolved.dupes.length > 0 ? (
+                <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
+                  <div className="flex items-center justify-between gap-2 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                    <label className="flex items-center gap-2">
+                      <TriStateBox
+                        checked={resolved.keptDupeCount === resolved.dupes.length}
+                        indeterminate={resolved.keptDupeCount > 0 && resolved.keptDupeCount < resolved.dupes.length}
+                        onChange={(c) => setImportDupes(c ? new Set(resolved.dupes.map((d) => d.idx)) : new Set())}
+                        label="Import all duplicates"
+                      />
+                      <span className={RAIL_EYEBROW}>Duplicates · {resolved.dupes.length}</span>
+                    </label>
+                    <span className="text-[11px] text-[var(--text-4)]">{skippedDupeCount} skipped</span>
+                  </div>
+                  <div className="max-h-44 divide-y divide-[rgba(0,0,0,0.05)] overflow-y-auto">
+                    {resolved.dupes.map((d) => {
+                      const keep = importDupes.has(d.idx);
+                      return (
+                        <label key={d.idx} className="flex items-center gap-2 px-3 py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={keep}
+                            onChange={() => toggleDupe(d.idx)}
+                            aria-label={`Import "${d.title}" anyway`}
+                            className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--brand-700)]"
+                          />
+                          <span className={cn("min-w-0 flex-1 truncate text-xs", keep ? "text-[var(--text-1)]" : "text-[var(--text-4)] line-through")}>
+                            {d.title}
+                          </span>
+                          <span className="shrink-0 rounded-[4px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-amber-700">
+                            {d.duplicate === "existing" ? "on board" : "in file"}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="border-t border-[var(--border-2)] px-3 py-2 text-[11px] text-[var(--text-4)]">
+                    Duplicates are skipped by default. Tick a row (or the header) to import it anyway.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Align unmatched assignees / categories */}
+              {resolved && (resolved.unmatchedAssignees.length > 0 || resolved.unmatchedCategories.length > 0) ? (
+                <div className="space-y-3 rounded-[10px] border border-amber-200 bg-amber-50/50 p-3">
+                  <p className="text-[11px] text-amber-800">
+                    Some values didn&apos;t match. Assignees auto-resolve against the team roster — align anything
+                    left over below (or leave it unset).
+                  </p>
+                  {resolved.unmatchedAssignees.length > 0 ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Assignees</p>
+                      <div className="space-y-1.5">
+                        {resolved.unmatchedAssignees.map((name) => (
+                          <div key={name} className="flex items-center justify-between gap-2 rounded-[6px] bg-white px-2 py-1.5">
+                            <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]">{name}</span>
+                            <select
+                              className={cn(SELECT_CLASS, "max-w-[55%]")}
+                              value={assigneeFix[name.toLowerCase()] ?? ""}
+                              onChange={(e) => setAssigneeFix((s) => ({ ...s, [name.toLowerCase()]: e.target.value }))}
+                            >
+                              <option value="">Unassigned</option>
+                              {members.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {resolved.unmatchedCategories.length > 0 ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Categories</p>
+                      <div className="space-y-1.5">
+                        {resolved.unmatchedCategories.map((name) => (
+                          <div key={name} className="flex items-center justify-between gap-2 rounded-[6px] bg-white px-2 py-1.5">
+                            <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]">{name}</span>
+                            <select
+                              className={cn(SELECT_CLASS, "max-w-[55%]")}
+                              value={categoryFix[name.toLowerCase()] ?? ""}
+                              onChange={(e) => setCategoryFix((s) => ({ ...s, [name.toLowerCase()]: e.target.value }))}
+                            >
+                              <option value="">No category</option>
+                              {blocks.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* RIGHT — live preview (scrolls) */}
+            {resolved ? (
+              <div className="flex min-h-0 flex-col gap-2 lg:overflow-hidden">
+                <p className={RAIL_EYEBROW}>
                   Preview · first {Math.min(8, resolved.rows.length)} of {resolved.rows.length}
                 </p>
-                <div className="overflow-x-auto rounded-[8px] border border-[var(--border-2)]">
+                <div className="min-h-0 flex-1 overflow-auto rounded-[8px] border border-[var(--border-2)]">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--surface-1)] text-[10px] uppercase tracking-[0.5px] text-[var(--text-4)]">
+                    <thead className="sticky top-0 bg-[var(--surface-1)] text-[10px] uppercase tracking-[0.5px] text-[var(--text-4)]">
                       <tr>
                         <th className="px-2 py-1.5 font-medium">Title</th>
                         <th className="px-2 py-1.5 font-medium">Status</th>
@@ -450,12 +606,24 @@ export function TaskImportModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {resolved.rows.slice(0, 8).map((r, i) => {
+                      {resolved.rows.slice(0, 8).map((r) => {
                         const flag = "text-amber-700";
                         return (
-                          <tr key={i} className={cn("border-t border-[rgba(0,0,0,0.05)]", !r.valid && "bg-rose-50")}>
+                          <tr
+                            key={r.idx}
+                            className={cn(
+                              "border-t border-[rgba(0,0,0,0.05)]",
+                              !r.valid && "bg-rose-50",
+                              r.skipped && "opacity-50",
+                            )}
+                          >
                             <td className={cn("px-2 py-1.5", !r.valid && "text-rose-600")}>
                               {r.title || <span className="italic">missing title — skipped</span>}
+                              {r.duplicate ? (
+                                <span className="ml-1.5 rounded-[4px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-amber-700">
+                                  {r.duplicate === "existing" ? "on board" : "dup in file"}
+                                </span>
+                              ) : null}
                             </td>
                             <td className={cn("px-2 py-1.5", r.statusFlagged && flag)}>{TASK_STATUS_LABELS[r.status]}</td>
                             <td className={cn("px-2 py-1.5", r.priorityFlagged && flag)}>{TASK_PRIORITY_LABELS[r.priority]}</td>
@@ -474,33 +642,40 @@ export function TaskImportModal({
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
-                  Amber = adjusted to a default/unset value. {resolved.skipCount > 0 ? `${resolved.skipCount} row(s) without a title will be skipped.` : ""}
+                <p className="shrink-0 text-[11px] text-[var(--text-4)]">
+                  Amber = adjusted to a default/unset value.{" "}
+                  {resolved.skipCount > 0 ? `${resolved.skipCount} without a title skipped. ` : ""}
+                  {skippedDupeCount > 0 ? `${skippedDupeCount} duplicate(s) skipped.` : ""}
                 </p>
               </div>
             ) : null}
+          </div>
 
-            {error ? <p className="text-xs font-medium text-rose-600">{error}</p> : null}
-
-            <div className="flex items-center justify-between gap-3 border-t border-[var(--border-2)] pt-4">
-              <span className="text-xs text-[var(--text-3)]">
-                {resolved ? <><strong>{resolved.importCount}</strong> task{resolved.importCount === 1 ? "" : "s"} will be imported</> : null}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={runImport}
-                  disabled={!titleMapped || !resolved || resolved.importCount === 0 || importMut.isPending}
-                >
-                  {importMut.isPending ? "Importing…" : `Import ${resolved?.importCount ?? 0} tasks`}
-                </Button>
-              </div>
+          {/* Footer — pinned */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border-2)] px-6 py-4">
+            <span className="min-w-0 truncate text-xs">
+              {error ? (
+                <span className="font-medium text-rose-600">{error}</span>
+              ) : resolved ? (
+                <span className="text-[var(--text-3)]">
+                  <strong>{resolved.importCount}</strong> task{resolved.importCount === 1 ? "" : "s"} will be imported
+                </span>
+              ) : null}
+            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={runImport}
+                disabled={!titleMapped || !resolved || resolved.importCount === 0 || importMut.isPending}
+              >
+                {importMut.isPending ? "Importing…" : `Import ${resolved?.importCount ?? 0} tasks`}
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
     </Modal>
   );
 }
