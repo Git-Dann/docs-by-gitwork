@@ -23,6 +23,15 @@ const LOOKBACK_DAYS = 2;
 // Backlog clears over subsequent runs (oldest first). Anything dropped is logged in the result.
 const MAX_PER_RUN = 6;
 
+// Scribe auto-pulls only from the calendars of the people who organise client calls, so it
+// doesn't ingest everyone's internal standups (e.g. a dev's daily standup). Anyone can still
+// pull a specific call by hand via "Grab note" on the client page.
+const SCRIBE_ORGANISER_EMAILS = new Set([
+  "dan@gitwork.co.uk",
+  "harry@gitwork.co.uk",
+  "syed@gitwork.co.uk",
+]);
+
 /**
  * GET /api/cron/meet-transcripts  (Vercel cron)
  *
@@ -48,14 +57,19 @@ export async function GET(request: NextRequest) {
     });
     if (!workspace) return apiError("Workspace not found", 404);
 
-    // Members with a stored Google refresh token (their calendar + Meet access).
-    const members = await prisma.workspaceMember.findMany({
+    // Members with a stored Google refresh token (their calendar + Meet access), scoped to the
+    // designated Scribe organisers so we don't auto-ingest everyone's internal standups.
+    const connectedMembers = await prisma.workspaceMember.findMany({
       where: { workspaceId: workspace.id, user: { googleOAuthRefreshToken: { not: null } } },
       select: {
         user: { select: { id: true, googleOAuthRefreshToken: true, googleOAuthEmail: true } },
       },
     });
-    if (members.length === 0) return apiOk({ reason: "no_connected_members", processed: 0 });
+    const members = connectedMembers.filter((m) => {
+      const email = m.user.googleOAuthEmail?.toLowerCase();
+      return email !== undefined && SCRIBE_ORGANISER_EMAILS.has(email);
+    });
+    if (members.length === 0) return apiOk({ reason: "no_connected_organisers", processed: 0 });
 
     // Existing meetings → status, so we skip already-summarised events (no re-charging the AI).
     const existing = await prisma.meeting.findMany({

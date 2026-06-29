@@ -1676,7 +1676,10 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
     });
   }
 
-  const meetings = data?.meetings ?? [];
+  // Hide calls where Scribe found no notes doc (NO_TRANSCRIPT) — they're noise (e.g. internal
+  // standups with no Gemini notes). Summarised / in-progress / errored stay; the manual
+  // "Grab note" picker can still re-pull any recent call.
+  const meetings = (data?.meetings ?? []).filter((m) => m.status !== "NO_TRANSCRIPT");
   const candidates = data?.candidates ?? [];
   type Row = | { kind: "candidate"; c: (typeof candidates)[0] } | { kind: "meeting"; m: ScribeMeeting };
   // One list sorted by the call's start date (newest first), NOT a candidates block then a
