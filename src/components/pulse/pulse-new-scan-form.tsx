@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, type FormEvent, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type FormEvent, type ChangeEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon, GlobeAltIcon, CodeBracketIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
@@ -63,6 +63,18 @@ function deriveProjectName(inputType: PulseScanInputType, value: string): string
   }
   const words = v.split(/\s+/).slice(0, 6).join(" ");
   return words.length > 0 ? words : "Untitled idea";
+}
+
+/** Smart-detect the input type from what the user pastes, so the segmented control
+ *  becomes a fallback rather than a required first click. Only switches between
+ *  URL ↔ GitHub repo (never auto-selects Description — that's an explicit choice). */
+function detectInputType(value: string, current: PulseScanInputType): PulseScanInputType {
+  if (current === "FREE_TEXT") return current;
+  const v = value.trim();
+  if (!v) return current;
+  if (/github\.com\//i.test(v) || /^[\w.-]+\/[\w.-]+$/.test(v)) return "GITHUB_REPO";
+  if (/^https?:\/\//i.test(v) || /\.[a-z]{2,}(\/|$)/i.test(v)) return "URL";
+  return current;
 }
 
 type AiProviderId = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
@@ -181,6 +193,7 @@ export function PulseNewScanForm({
   const [testPassword, setTestPassword] = useState("");
   const [showTestLogin, setShowTestLogin] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [marketQuery, setMarketQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
@@ -255,54 +268,77 @@ export function PulseNewScanForm({
         ))}
       </div>
 
-      {/* The hero — paste a URL / repo / description and go */}
+      {/* The hero — a single command bar: paste a URL/repo, press ⌘↵ or Scan */}
       <div className="space-y-2">
         {inputType === "FREE_TEXT" ? (
-          <textarea
-            className="app-input min-h-[140px] resize-y text-base"
-            placeholder={selectedType.placeholder}
-            value={inputValue}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInputValue(e.target.value)}
-            disabled={isPending}
-            autoFocus
-          />
+          <>
+            <textarea
+              className="app-input min-h-[140px] resize-y text-base"
+              placeholder={selectedType.placeholder}
+              value={inputValue}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInputValue(e.target.value)}
+              disabled={isPending}
+              autoFocus
+            />
+            <Button type="submit" variant="primary" size="lg" loading={isPending} className="w-full">
+              {isPending ? "Starting scan…" : "Run Pulse scan"}
+            </Button>
+          </>
         ) : (
-          <input
-            className="app-input !h-14 text-lg"
-            placeholder={selectedType.placeholder}
-            value={inputValue}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
-            disabled={isPending}
-            autoFocus
-            inputMode="url"
-          />
+          <div className="flex items-stretch gap-1.5 rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1.5 shadow-sm transition focus-within:border-[var(--brand-400)] focus-within:shadow-[0_0_0_4px_var(--surface-brand-soft)]">
+            <span className="flex items-center pl-2.5 text-[var(--text-4)]">
+              {inputType === "GITHUB_REPO" ? <CodeBracketIcon className="h-5 w-5" /> : <GlobeAltIcon className="h-5 w-5" />}
+            </span>
+            <input
+              className="min-w-0 flex-1 bg-transparent px-1 text-lg text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
+              placeholder={selectedType.placeholder}
+              value={inputValue}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                const v = e.target.value;
+                setInputValue(v);
+                const detected = detectInputType(v, inputType);
+                if (detected !== inputType) setInputType(detected);
+              }}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") e.currentTarget.form?.requestSubmit();
+              }}
+              disabled={isPending}
+              autoFocus
+              inputMode="url"
+            />
+            <Button type="submit" variant="primary" size="lg" loading={isPending} className="shrink-0">
+              {isPending ? "Scanning…" : "Run Pulse scan"}
+            </Button>
+          </div>
         )}
-        <p className="px-1 text-xs text-[var(--text-4)]">
-          {derivedName
-            ? <>We&apos;ll call this <span className="font-medium text-[var(--text-2)]">{derivedName}</span> — rename it any time.</>
-            : selectedType.description}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
+          <p className="text-xs text-[var(--text-4)]">
+            {derivedName
+              ? <>We&apos;ll call this <span className="font-medium text-[var(--text-2)]">{derivedName}</span> — rename it any time.</>
+              : selectedType.description}
+          </p>
+          {inputType === "URL" && !inputValue && (
+            <button type="button" onClick={() => setInputValue("https://vercel.com")} className="text-xs text-[var(--brand-600)] hover:underline">
+              Try an example →
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Platform (compact, secondary) + the primary CTA */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm text-[var(--text-3)]">
-          Scanning as
-          <select
-            className="app-select !h-9 !w-auto !py-0 pr-8 text-sm"
-            value={platform}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
-            disabled={isPending}
-          >
-            {PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit" variant="primary" size="lg" loading={isPending} className="min-w-[160px]">
-          {isPending ? "Starting scan…" : "Run Pulse scan"}
-        </Button>
-      </div>
+      {/* Platform — compact, secondary */}
+      <label className="flex items-center gap-2 text-sm text-[var(--text-3)]">
+        Scanning as
+        <select
+          className="app-select-compact w-auto"
+          value={platform}
+          onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
+          disabled={isPending}
+        >
+          {PLATFORMS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
+      </label>
 
       {/* Advanced options — collapsed by default. Keeps the core form to four fields. */}
       <div className="rounded-[10px] border border-[var(--border-2)]">
@@ -355,56 +391,68 @@ export function PulseNewScanForm({
             <div className="space-y-2">
               <label className="app-field-label">Target markets (optional)</label>
               <p className="text-xs text-[var(--text-4)]">
-                Which markets does this product serve? We&apos;ll check the compliance requirements for each (GDPR, CCPA…) and flag what&apos;s missing per region. Leave blank to auto-detect.
+                Which markets does this serve? We&apos;ll check each region&apos;s compliance (GDPR, CCPA…) and flag what&apos;s missing. Leave blank to auto-detect.
               </p>
+              {/* Preset quick-adds */}
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(JURISDICTION_PRESETS).map(([name, codes]) => (
                   <button
                     key={name}
                     type="button"
                     disabled={isPending}
-                    onClick={() => setTargetMarkets((prev) => {
-                      const codeStrs = codes as string[];
-                      const all = codeStrs.every((c) => prev.includes(c));
-                      return all ? prev.filter((c) => !codeStrs.includes(c)) : Array.from(new Set([...prev, ...codeStrs]));
-                    })}
-                    className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-400)]"
+                    onClick={() => setTargetMarkets((prev) => Array.from(new Set([...prev, ...(codes as string[])])))}
+                    className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-400)]"
                   >
                     + {name}
                   </button>
                 ))}
-                {targetMarkets.length > 0 && (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => setTargetMarkets([])}
-                    className="rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-2)]"
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {JURISDICTION_CODES.map((code) => {
-                  const active = targetMarkets.includes(code);
-                  return (
-                    <button
-                      key={code}
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => setTargetMarkets((prev) => active ? prev.filter((c) => c !== code) : [...prev, code])}
-                      title={`${JURISDICTIONS[code].label} · ${JURISDICTIONS[code].primaryLaw}`}
-                      className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-xs font-medium transition",
-                        active
-                          ? "border-[var(--brand-400)] bg-[var(--surface-brand-soft)] text-[var(--brand-700)]"
-                          : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:border-[var(--brand-300)]",
-                      )}
-                    >
-                      {JURISDICTIONS[code].label}
-                    </button>
+              {/* Selected tags + filterable picker */}
+              <div className="rounded-[10px] border border-[var(--border-2)] p-2">
+                {targetMarkets.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {targetMarkets.map((code) => (
+                      <span key={code} className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-brand-soft)] py-0.5 pl-2.5 pr-1 text-xs font-medium text-[var(--brand-700)]">
+                        {(JURISDICTIONS as Record<string, { label: string }>)[code]?.label ?? code}
+                        <button type="button" disabled={isPending} onClick={() => setTargetMarkets((prev) => prev.filter((c) => c !== code))} className="rounded-full p-0.5 hover:bg-[var(--brand-100)]" aria-label={`Remove ${code}`}>
+                          <XMarkIcon className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button type="button" disabled={isPending} onClick={() => setTargetMarkets([])} className="px-1.5 text-xs text-[var(--text-4)] hover:text-[var(--text-2)]">Clear all</button>
+                  </div>
+                )}
+                <input
+                  className="w-full bg-transparent px-1 py-1 text-sm outline-none placeholder:text-[var(--text-4)]"
+                  placeholder={targetMarkets.length > 0 ? "Add another market…" : "Search markets (EU, California, Japan…)"}
+                  value={marketQuery}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setMarketQuery(e.target.value)}
+                  disabled={isPending}
+                />
+                {marketQuery.trim() && (() => {
+                  const q = marketQuery.trim().toLowerCase();
+                  const matches = JURISDICTION_CODES.filter(
+                    (code) => !targetMarkets.includes(code) &&
+                      (JURISDICTIONS[code].label.toLowerCase().includes(q) || JURISDICTIONS[code].primaryLaw.toLowerCase().includes(q) || code.toLowerCase().includes(q)),
                   );
-                })}
+                  if (matches.length === 0) return <p className="px-1 pt-1 text-xs text-[var(--text-4)]">No markets match &ldquo;{marketQuery}&rdquo;.</p>;
+                  return (
+                    <div className="mt-1 max-h-44 overflow-auto border-t border-[var(--border-2)] pt-1">
+                      {matches.map((code) => (
+                        <button
+                          key={code}
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => { setTargetMarkets((prev) => [...prev, code]); setMarketQuery(""); }}
+                          className="flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-left text-sm text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        >
+                          <span>{JURISDICTIONS[code].label}</span>
+                          <span className="text-xs text-[var(--text-4)]">{JURISDICTIONS[code].primaryLaw}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
