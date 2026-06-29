@@ -9,6 +9,7 @@
 import { TrashIcon, PlusIcon, TableCellsIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { DataTableSectionData } from "@/types/proposal";
 
 export const dataTableSection = defineSection<DataTableSectionData>({
@@ -27,6 +28,7 @@ export const dataTableSection = defineSection<DataTableSectionData>({
   defaultTitle: "Data Table",
   defaultDescription: "Editable rows and columns.",
   aiExpandable: false,
+  inlineEditable: true,
   Editor: ({ data, onChange }) => {
     const cols = data.columns ?? [];
     const rows = data.rows ?? [];
@@ -154,9 +156,111 @@ export const dataTableSection = defineSection<DataTableSectionData>({
       </SimpleForm>
     );
   },
-  Preview: ({ data }) => {
+  Preview: ({ data, editable, onChange }) => {
     const cols = data.columns ?? [];
     const rows = data.rows ?? [];
+
+    if (editable && onChange) {
+      const updateCol = (i: number, value: string) =>
+        onChange({ ...data, columns: cols.map((c, j) => (j === i ? value : c)) });
+      const addCol = () =>
+        onChange({
+          ...data,
+          columns: [...cols, `Column ${String.fromCharCode(65 + cols.length)}`],
+          rows: rows.map((r) => [...r, ""]),
+        });
+      const removeCol = (i: number) => {
+        if (cols.length <= 1) return;
+        onChange({
+          ...data,
+          columns: cols.filter((_, j) => j !== i),
+          rows: rows.map((r) => r.filter((_, j) => j !== i)),
+        });
+      };
+      const updateCell = (ri: number, ci: number, value: string) =>
+        onChange({
+          ...data,
+          rows: rows.map((r, i) => (i === ri ? r.map((c, j) => (j === ci ? value : c)) : r)),
+        });
+      const addRow = () => onChange({ ...data, rows: [...rows, cols.map(() => "")] });
+      const removeRow = (ri: number) => onChange({ ...data, rows: rows.filter((_, i) => i !== ri) });
+
+      return (
+        <div className="space-y-3">
+          <InlineTextArea
+            value={data.caption ?? ""}
+            onChange={(caption) => onChange({ ...data, caption })}
+            placeholder="Caption (optional)…"
+            ariaLabel="Table caption"
+            className="text-sm leading-7 text-[var(--text-2)]"
+          />
+          <div className="overflow-x-auto rounded-[10px] border border-[var(--border-2)] bg-white">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  {cols.map((col, i) => (
+                    <th
+                      key={i}
+                      className="group/row border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-3 py-2 text-left align-top"
+                    >
+                      <div className="flex items-start gap-1">
+                        <div className="flex-1">
+                          <InlineTextArea
+                            value={col}
+                            onChange={(v) => updateCol(i, v)}
+                            placeholder={`Column ${i + 1}`}
+                            ariaLabel={`Column ${i + 1} heading`}
+                            className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
+                          />
+                        </div>
+                        {cols.length > 1 ? (
+                          <InlineRemoveButton onClick={() => removeCol(i)} label="Remove column" />
+                        ) : null}
+                      </div>
+                    </th>
+                  ))}
+                  <th className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-2 py-2 align-middle">
+                    <button
+                      type="button"
+                      onClick={addCol}
+                      aria-label="Add column"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={ri} className="group/row">
+                    {cols.map((_, ci) => (
+                      <td
+                        key={ci}
+                        className="border-t border-[var(--border-3)] px-3 py-2 align-top text-[13px] leading-6 text-[var(--text-2)]"
+                      >
+                        <InlineTextArea
+                          value={row[ci] ?? ""}
+                          onChange={(v) => updateCell(ri, ci, v)}
+                          placeholder="—"
+                          ariaLabel={`Row ${ri + 1}, ${cols[ci] ?? `column ${ci + 1}`}`}
+                          className="text-[13px] leading-6 text-[var(--text-2)]"
+                        />
+                      </td>
+                    ))}
+                    <td className="border-t border-[var(--border-3)] px-2 py-2 align-middle">
+                      <InlineRemoveButton onClick={() => removeRow(ri)} label="Remove row" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <InlineAddButton label="Add row" onClick={addRow} />
+        </div>
+      );
+    }
+
     if (cols.length === 0 || rows.length === 0) {
       return (
         <p className="text-sm italic text-[var(--text-4)]">
