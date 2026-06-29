@@ -19,7 +19,7 @@ import { DocumentType } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { canViewAdminDocTypes, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   getWorkspaceDocumentAnalytics,
   type WorkspaceDocAnalyticsOptions,
@@ -28,6 +28,11 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
+    // Cross-doc analytics is proposal/win-rate insight — admin-level. Developers (no
+    // docs.viewAdminTypes) can't access it. API-key/server callers (null user) pass.
+    if (user && !canViewAdminDocTypes(user)) {
+      return apiError("You don't have access to document analytics.", 403);
+    }
     const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
 
     const sp = request.nextUrl.searchParams;

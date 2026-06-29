@@ -2,7 +2,7 @@
 
 import { HashtagIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { FormInput, SimpleForm } from "@/lib/sections/_shared";
+import { SimpleForm } from "@/lib/sections/_shared";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { HeadingSectionData } from "@/types/proposal";
 
@@ -24,6 +24,7 @@ export const headingSection = defineSection<HeadingSectionData>({
   // Universally useful — no recommendedFor, shows for all doc types.
   aiExpandable: false,
   inlineEditable: true,
+  hasOptions: true,
   // Heading already provides its own visual title — opt out of the standard wrapper so it
   // doesn't render as "Section NN — Heading" with the actual heading underneath.
   renderShell: false,
@@ -51,18 +52,9 @@ export const headingSection = defineSection<HeadingSectionData>({
           })}
         </div>
       </label>
-      <FormInput
-        label="Eyebrow (optional)"
-        value={data.eyebrow ?? ""}
-        onChange={(eyebrow) => onChange({ ...data, eyebrow })}
-        placeholder="A short label in mono caps, e.g. PART 02"
-      />
-      <FormInput
-        label="Text"
-        value={data.text}
-        onChange={(text) => onChange({ ...data, text })}
-        placeholder="Section heading"
-      />
+      <p className="text-xs leading-5 text-[var(--text-4)]">
+        The heading text and eyebrow are edited inline on the canvas.
+      </p>
     </SimpleForm>
   ),
   Preview: ({ data, editable, onChange }) => {

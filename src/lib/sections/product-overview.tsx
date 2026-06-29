@@ -2,7 +2,8 @@
 
 import { CubeIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { EditorHint, FormInput, FormTextArea, PlatformSupportField, SimpleForm } from "@/lib/sections/_shared";
+import { EditorHint, PlatformSupportField, SimpleForm } from "@/lib/sections/_shared";
+import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { ProductOverviewSectionData } from "@/types/proposal";
 
 const PLATFORM_OPTIONS = ["iOS", "Android", "Web", "Cross Platform"] as const;
@@ -26,49 +27,80 @@ export const productOverviewSection = defineSection<ProductOverviewSectionData>(
   defaultDescription: "Platform, audience, value proposition.",
   recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
+  inlineEditable: true,
+  hasOptions: true,
+  // Options = the supported-platforms setting only; the prose cards are edited inline.
   Editor: ({ data, onChange }) => (
     <SimpleForm>
-      <FormTextArea
-        label="What the platform is"
-        value={data.platformDescription}
-        onChange={(platformDescription) => onChange({ ...data, platformDescription })}
-      />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <FormInput
-          label="Who it is for"
-          value={data.audience}
-          onChange={(audience) => onChange({ ...data, audience })}
-        />
-        <FormInput
-          label="Key value proposition"
-          value={data.valueProposition}
-          onChange={(valueProposition) => onChange({ ...data, valueProposition })}
-        />
-      </div>
       <PlatformSupportField
         label="Platforms supported"
         value={data.platformsSupported}
         onChange={(platformsSupported) => onChange({ ...data, platformsSupported })}
         options={PLATFORM_OPTIONS}
       />
-      <EditorHint message="Architecture and workflow visuals are managed in Supporting Links & Assets." />
+      <EditorHint message="Platform / audience / value are edited inline on the canvas. Architecture and workflow visuals are managed in Supporting Links & Assets." />
     </SimpleForm>
   ),
-  Preview: ({ data }) => (
-    <div className="grid gap-4 md:grid-cols-2">
-      <InfoCard title="Platform" content={data.platformDescription} />
-      <InfoCard title="Audience" content={data.audience} />
-      <InfoCard title="Value" content={data.valueProposition} />
-      <InfoCard title="Supported Platforms" content={data.platformsSupported} />
-    </div>
-  ),
+  Preview: ({ data, editable, onChange }) => {
+    if (editable && onChange) {
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <InfoCard
+            title="Platform"
+            content={data.platformDescription}
+            onChange={(platformDescription) => onChange({ ...data, platformDescription })}
+          />
+          <InfoCard
+            title="Audience"
+            content={data.audience}
+            onChange={(audience) => onChange({ ...data, audience })}
+          />
+          <InfoCard
+            title="Value"
+            content={data.valueProposition}
+            onChange={(valueProposition) => onChange({ ...data, valueProposition })}
+          />
+          {/* Supported platforms is a multi-select setting → edited via Options, shown read-only here. */}
+          <InfoCard title="Supported Platforms" content={data.platformsSupported} />
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        <InfoCard title="Platform" content={data.platformDescription} />
+        <InfoCard title="Audience" content={data.audience} />
+        <InfoCard title="Value" content={data.valueProposition} />
+        <InfoCard title="Supported Platforms" content={data.platformsSupported} />
+      </div>
+    );
+  },
 });
 
-function InfoCard({ title, content }: { title: string; content: string }) {
+function InfoCard({
+  title,
+  content,
+  onChange,
+}: {
+  title: string;
+  content: string;
+  onChange?: (next: string) => void;
+}) {
   return (
     <article className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
       <p className="text-xs font-semibold tracking-wide text-[var(--text-4)] uppercase">{title}</p>
-      <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{content || "—"}</p>
+      {onChange ? (
+        <div className="mt-2">
+          <InlineTextArea
+            value={content}
+            onChange={onChange}
+            placeholder={`${title}…`}
+            ariaLabel={title}
+            className="text-sm leading-7 text-[var(--text-2)]"
+          />
+        </div>
+      ) : (
+        <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{content || "—"}</p>
+      )}
     </article>
   );
 }

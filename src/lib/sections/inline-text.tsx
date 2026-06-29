@@ -14,7 +14,8 @@
 
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 const FIELD_RESET: CSSProperties = {
   gridArea: "1 / 1 / 2 / 2",
@@ -67,6 +68,80 @@ export function InlineTextArea({
       <div aria-hidden style={{ ...FIELD_RESET, visibility: "hidden", pointerEvents: "none" }}>
         {value ? `${value} ` : placeholder || " "}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Editor-only "add a row" affordance for list blocks (objectives, scope, milestones…). Rendered
+ * inside the editable Preview, never in the export — a dashed, low-emphasis button.
+ */
+export function InlineAddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-2 text-sm font-medium text-[var(--text-3)] transition hover:border-[var(--brand-300)] hover:bg-[var(--surface-brand)]/40 hover:text-[var(--brand-700)]"
+    >
+      <PlusIcon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  );
+}
+
+/** Editor-only "remove this row" affordance — a hover-revealed × on a list item (wrap the row in
+ *  a `group/row` so it appears on hover). */
+export function InlineRemoveButton({ onClick, label = "Remove" }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] opacity-0 transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)] focus-visible:opacity-100 group-hover/row:opacity-100"
+    >
+      <XMarkIcon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
+/**
+ * Inline editable string-list (assumptions, out-of-scope, checklist items…). Each row is an
+ * auto-growing field with a leading marker and a hover × to remove; a "+" adds a row. Editor-only.
+ */
+export function InlineStringList({
+  items,
+  onChange,
+  marker,
+  placeholder,
+  addLabel,
+}: {
+  items: string[];
+  onChange: (next: string[]) => void;
+  /** Leading marker per row (e.g. "01", a tick icon). */
+  marker: (index: number) => ReactNode;
+  placeholder?: string;
+  addLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={index} className="group/row flex items-start gap-3">
+          <span className="pt-1.5">{marker(index)}</span>
+          <div className="flex-1">
+            <InlineTextArea
+              value={item}
+              onChange={(next) => onChange(items.map((entry, i) => (i === index ? next : entry)))}
+              placeholder={placeholder}
+              ariaLabel={`Item ${index + 1}`}
+              className="text-sm leading-7 text-[var(--text-2)]"
+            />
+          </div>
+          <span className="pt-1">
+            <InlineRemoveButton onClick={() => onChange(items.filter((_, i) => i !== index))} />
+          </span>
+        </div>
+      ))}
+      <InlineAddButton label={addLabel} onClick={() => onChange([...items, ""])} />
     </div>
   );
 }

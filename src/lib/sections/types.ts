@@ -121,6 +121,13 @@ export interface SectionType<TData = ProposalSectionData> {
    * inspector instead.
    */
   inlineEditable?: boolean;
+  /**
+   * Whether the block has non-content settings worth an "Options" panel (cover style, callout
+   * tone, heading level…). Drives the per-block hover "Options" button on the canvas. Defaults to
+   * `!inlineEditable` — a non-inline block opens its full editor in Options; a fully-inline block
+   * with no settings (prose, introduction) shows no Options button unless this is set true.
+   */
+  hasOptions?: boolean;
   /** Default data shape used when the palette inserts a fresh instance. */
   defaultData: TData;
   /** Default visibility when inserted. Almost always true; cover defaults to true too. */

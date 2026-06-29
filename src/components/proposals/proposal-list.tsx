@@ -389,13 +389,16 @@ export function ProposalList() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/app/docs/analytics"
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <ChartBarIcon className="h-4 w-4" />
-              Analytics
-            </Link>
+            {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
+            {canViewAdminDocTypes ? (
+              <Link
+                href="/app/docs/analytics"
+                className={buttonStyles({ variant: "secondary", size: "md" })}
+              >
+                <ChartBarIcon className="h-4 w-4" />
+                Analytics
+              </Link>
+            ) : null}
             {canManageDocs ? (
               <Button
                 type="button"

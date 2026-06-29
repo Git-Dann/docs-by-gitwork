@@ -3,7 +3,16 @@
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { ListItemsEditor } from "@/components/proposals/list-items-editor";
 import { defineSection } from "@/lib/sections/types";
+import { InlineStringList } from "@/lib/sections/inline-text";
 import type { ListSectionData } from "@/types/proposal";
+
+function crossMarker() {
+  return (
+    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+      ×
+    </span>
+  );
+}
 
 export const outOfScopeSection = defineSection<ListSectionData>({
   key: "out_of_scope",
@@ -16,6 +25,7 @@ export const outOfScopeSection = defineSection<ListSectionData>({
   defaultDescription: "Items expressly excluded.",
   recommendedFor: ["PROPOSAL", "SOW"],
   aiExpandable: true,
+  inlineEditable: true,
   Editor: ({ data, onChange }) => (
     <ListItemsEditor
       title="Out of scope"
@@ -23,16 +33,29 @@ export const outOfScopeSection = defineSection<ListSectionData>({
       onChange={(items) => onChange({ ...data, items })}
     />
   ),
-  Preview: ({ data }) => (
-    <ul className="space-y-2 text-sm leading-7 text-[var(--text-2)]">
-      {(data.items ?? []).map((item, index) => (
-        <li key={index} className="flex gap-3">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] pt-1.5">
-            ×
-          </span>
-          <span className="flex-1">{item}</span>
-        </li>
-      ))}
-    </ul>
-  ),
+  Preview: ({ data, editable, onChange }) => {
+    if (editable && onChange) {
+      return (
+        <InlineStringList
+          items={data.items ?? []}
+          onChange={(items) => onChange({ ...data, items })}
+          marker={crossMarker}
+          placeholder="Something expressly excluded…"
+          addLabel="Add exclusion"
+        />
+      );
+    }
+    return (
+      <ul className="space-y-2 text-sm leading-7 text-[var(--text-2)]">
+        {(data.items ?? []).map((item, index) => (
+          <li key={index} className="flex gap-3">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] pt-1.5">
+              ×
+            </span>
+            <span className="flex-1">{item}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  },
 });

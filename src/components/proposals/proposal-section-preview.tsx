@@ -10,6 +10,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -81,41 +82,36 @@ export function ProposalSectionPreview({
     />
   );
 
-  // In the editor every block gets a `data-canvas-block` wrapper so the outline can scroll-spy the
-  // section in view. Non-inline blocks additionally become a quiet click-to-edit target that opens
-  // the inspector. Both are skipped on the public/print view → that DOM stays byte-for-byte read-only.
+  // In the editor every block gets a `data-canvas-block` wrapper (scroll-spy anchor). Content is
+  // edited inline directly; non-content SETTINGS live behind a per-block hover "Options" button
+  // that opens the docked Options panel. The block body itself is NOT a click target, so editing
+  // inline text never accidentally pops a panel. All of this is skipped on the public/print view.
   const selectionId = section.id ?? section.key;
   const editorMode = Boolean(editable) || Boolean(onSelectSection);
-  const selectable = Boolean(onSelectSection) && !inlineEditing;
-  const isActive = selectable && activeSectionId === selectionId;
+  const showOptions =
+    Boolean(onSelectSection) && (sectionType.hasOptions ?? !sectionType.inlineEditable);
+  const isActive = activeSectionId === selectionId;
 
   function wrapSelectable(content: ReactNode) {
     if (!editorMode) return content;
-    if (!selectable) {
-      // Inline-editable blocks: just the scroll-spy anchor — clicks fall through to the text fields.
-      return (
-        <div data-canvas-block={selectionId} className="scroll-mt-24">
-          {content}
-        </div>
-      );
-    }
     return (
       <div
         data-canvas-block={selectionId}
-        role="button"
-        tabIndex={0}
-        aria-label={`Edit ${section.title}`}
-        onClick={() => onSelectSection?.(selectionId)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onSelectSection?.(selectionId);
-          }
-        }}
-        className={`relative scroll-mt-24 cursor-pointer rounded-[10px] outline-none transition-colors ${
-          isActive ? "bg-[var(--surface-brand)]/40" : "hover:bg-[var(--surface-1)]"
+        className={`group/block relative scroll-mt-24 rounded-[10px] transition-shadow ${
+          isActive ? "shadow-[0_0_0_2px_var(--brand-600)]" : ""
         }`}
       >
+        {showOptions ? (
+          <button
+            type="button"
+            onClick={() => onSelectSection?.(selectionId)}
+            aria-label={`Options for ${section.title}`}
+            className="absolute -top-2 right-2 z-10 inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)] opacity-0 shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)] focus-visible:opacity-100 group-hover/block:opacity-100"
+          >
+            <Cog6ToothIcon className="h-3 w-3" />
+            Options
+          </button>
+        ) : null}
         {content}
       </div>
     );

@@ -2,7 +2,7 @@
 
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { FormInput, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { SimpleForm } from "@/lib/sections/_shared";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { CalloutSectionData } from "@/types/proposal";
 
@@ -33,6 +33,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
   defaultDescription: "A highlighted note.",
   aiExpandable: true,
   inlineEditable: true,
+  hasOptions: true,
   Editor: ({ data, onChange }) => (
     <SimpleForm>
       <label className="block space-y-1.5">
@@ -59,17 +60,9 @@ export const calloutSection = defineSection<CalloutSectionData>({
           })}
         </div>
       </label>
-      <FormInput
-        label="Headline (optional)"
-        value={data.headline ?? ""}
-        onChange={(headline) => onChange({ ...data, headline })}
-      />
-      <FormTextArea
-        label="Body"
-        value={data.body}
-        onChange={(body) => onChange({ ...data, body })}
-        rows={4}
-      />
+      <p className="text-xs leading-5 text-[var(--text-4)]">
+        The headline and body are edited inline on the canvas.
+      </p>
     </SimpleForm>
   ),
   Preview: ({ data, editable, onChange }) => {
