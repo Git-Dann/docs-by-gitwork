@@ -205,7 +205,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     // once per meeting at ingest). It's always human-reviewed before any client-facing
     // use (the automation layer is manual-gated), so "light" trades ~3.75× cost for a
     // small, operator-caught quality margin. Revert to standard if summaries thin out.
-    raw = await completeText({ config, system: SUMMARY_SYSTEM, user: userPrompt, maxTokens: 1500, tier: "light" });
+    raw = await completeText({ config, system: SUMMARY_SYSTEM, user: userPrompt, maxTokens: 4000, tier: "light" });
   } catch (err) {
     console.error("[scribe] AI completion failed", meetingId, err);
     await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });
@@ -213,12 +213,19 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
   }
 
   const parsed = parseJsonObject<SummaryShape>(raw);
+  if (!parsed) {
+    // Couldn't parse the structured JSON (usually a truncated model response). Mark the
+    // meeting ERROR so the UI offers a retry, rather than dumping raw JSON into the summary.
+    console.error("[scribe] failed to parse summary JSON", meetingId, raw.slice(0, 300));
+    await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });
+    return;
+  }
 
-  const decisions = Array.isArray(parsed?.decisions)
-    ? parsed!.decisions.filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+  const decisions = Array.isArray(parsed.decisions)
+    ? parsed.decisions.filter((d): d is string => typeof d === "string" && d.trim().length > 0)
     : [];
-  const actionItems = Array.isArray(parsed?.actionItems)
-    ? parsed!.actionItems
+  const actionItems = Array.isArray(parsed.actionItems)
+    ? parsed.actionItems
         .filter((a) => a && typeof a.text === "string" && a.text.trim().length > 0)
         .map((a) => ({ title: a.title?.toString().trim() || null, text: a.text.trim(), owner: a.owner?.toString().trim() || null }))
     : [];
@@ -227,7 +234,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     prisma.meeting.update({
       where: { id: meetingId },
       data: {
-        summary: parsed?.summary?.trim() || raw.trim() || null,
+        summary: parsed.summary?.trim() || null,
         decisions,
         modelUsed: config.model,
         status: "SUMMARISED",
