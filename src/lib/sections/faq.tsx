@@ -6,6 +6,7 @@
 import { PlusIcon, TrashIcon, QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { FaqItem, FaqSectionData } from "@/types/proposal";
 
 function newItem(): FaqItem {
@@ -22,6 +23,7 @@ export const faqSection = defineSection<FaqSectionData>({
   defaultTitle: "Frequently asked questions",
   defaultDescription: "Q+A pairs for client questions.",
   aiExpandable: true,
+  inlineEditable: true,
   Editor: ({ data, onChange }) => {
     const items = data.items ?? [];
 
@@ -88,7 +90,54 @@ export const faqSection = defineSection<FaqSectionData>({
       </SimpleForm>
     );
   },
-  Preview: ({ data }) => {
+  Preview: ({ data, editable, onChange }) => {
+    if (editable && onChange) {
+      const list = data.items ?? [];
+      return (
+        <div className="space-y-3">
+          <InlineTextArea
+            value={data.intro ?? ""}
+            onChange={(intro) => onChange({ ...data, intro })}
+            placeholder="Intro (optional)…"
+            ariaLabel="FAQ intro"
+            className="text-sm leading-7 text-[var(--text-2)]"
+          />
+          <div className="divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
+            {list.map((item, i) => (
+              <div key={i} className="group/row flex items-start gap-3 px-5 py-3">
+                <span className="pt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="flex-1 space-y-1">
+                  <InlineTextArea
+                    value={item.question}
+                    onChange={(question) =>
+                      onChange({ ...data, items: list.map((it, j) => (j === i ? { ...it, question } : it)) })
+                    }
+                    placeholder="Question"
+                    ariaLabel="Question"
+                    className="text-sm font-medium text-[var(--text-1)]"
+                  />
+                  <InlineTextArea
+                    value={item.answer}
+                    onChange={(answer) =>
+                      onChange({ ...data, items: list.map((it, j) => (j === i ? { ...it, answer } : it)) })
+                    }
+                    placeholder="Answer…"
+                    ariaLabel="Answer"
+                    className="text-sm leading-7 text-[var(--text-2)]"
+                  />
+                </div>
+                <span className="pt-1">
+                  <InlineRemoveButton onClick={() => onChange({ ...data, items: list.filter((_, j) => j !== i) })} />
+                </span>
+              </div>
+            ))}
+          </div>
+          <InlineAddButton label="Add question" onClick={() => onChange({ ...data, items: [...list, newItem()] })} />
+        </div>
+      );
+    }
     const items = (data.items ?? []).filter((item) => item.question || item.answer);
     if (items.length === 0) {
       return (
