@@ -20,16 +20,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
+    // Type-agnostic: any document type (proposal, contract, handover, report, brief, blank)
+    // is fetched by id — the editor at /app/docs/[id] is generic. id is a unique cuid.
     const document = await prisma.document.findFirst({
       where: {
         id,
-        documentType: "PROPOSAL",
       },
       include: proposalInclude,
     });
 
     if (!document) {
-      return apiError("Proposal not found", 404);
+      return apiError("Document not found", 404);
     }
 
     // Field gate: blank costs/margins for users without docs.viewCosts (API-key → full).
@@ -55,7 +56,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const existing = await prisma.document.findFirst({
       where: {
         id,
-        documentType: "PROPOSAL",
       },
       include: {
         sections: true,
@@ -63,7 +63,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     });
 
     if (!existing) {
-      return apiError("Proposal not found", 404);
+      return apiError("Document not found", 404);
     }
 
     // ── P1.7: Edit lock when document is SENT ─────────────────────────────────────────
@@ -103,6 +103,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           status: nextStatus,
           productName: payload.productName,
           clientName: payload.clientName,
+          // Link/unlink a Portal client. undefined → leave untouched; null → unlink.
+          clientId: payload.clientId === undefined ? undefined : payload.clientId,
           summary: payload.summary,
           version: payload.version,
           expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : payload.expiresAt,
@@ -235,13 +237,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updated = await prisma.document.findFirst({
       where: {
         id,
-        documentType: "PROPOSAL",
       },
       include: proposalInclude,
     });
 
     if (!updated) {
-      return apiError("Proposal not found after update", 404);
+      return apiError("Document not found after update", 404);
     }
 
     return apiOk({ proposal: serializeProposal(updated) });

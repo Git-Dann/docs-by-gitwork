@@ -37,17 +37,6 @@ interface TemplateGalleryProps {
   initialFilter?: DocumentType | "ALL";
 }
 
-const TYPE_LABEL: Record<DocumentType, string> = {
-  PROPOSAL: "Proposal",
-  SLA: "Service Level Agreement",
-  SOW: "Statement of Work",
-  MSA: "Master Service Agreement",
-  NDA: "Non-Disclosure Agreement",
-  CO: "Change Order",
-  DSA: "Data Sharing Agreement",
-  OTHER: "Document",
-};
-
 /**
  * Order chips deliberately: the most-used doc type first, then commercial contracts grouped
  * together, then catch-all. "All" sits at the end so the default scan starts with the relevant
@@ -55,25 +44,31 @@ const TYPE_LABEL: Record<DocumentType, string> = {
  */
 const CHIP_ORDER: Array<DocumentType | "ALL"> = [
   "PROPOSAL",
+  "HANDOVER",
+  "REPORT",
+  "BRIEF",
+  "OTHER",
   "SLA",
   "SOW",
   "MSA",
   "NDA",
   "CO",
   "DSA",
-  "OTHER",
   "ALL",
 ];
 
 const CHIP_LABEL: Record<DocumentType | "ALL", string> = {
   PROPOSAL: "Proposal",
+  HANDOVER: "Handover",
+  REPORT: "Report",
+  BRIEF: "Brief",
+  OTHER: "Blank",
   SLA: "SLA",
   SOW: "SOW",
   MSA: "MSA",
   NDA: "NDA",
   CO: "Change Order",
   DSA: "DSA",
-  OTHER: "Other",
   ALL: "All",
 };
 

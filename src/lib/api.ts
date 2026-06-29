@@ -51,6 +51,7 @@ import type {
 } from "@/lib/proof";
 import type {
   CostingSectionData,
+  DocumentType,
   ProposalDocument,
   ProposalListItem,
   TemplateSummary,
@@ -188,7 +189,7 @@ export async function createProposal(input: {
   productName?: string;
   templateId?: string;
   /** Defaults to PROPOSAL server-side if omitted. */
-  documentType?: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";
+  documentType?: DocumentType;
 }): Promise<{ proposal: ProposalDocument }> {
   return apiFetch<{ proposal: ProposalDocument }>("/api/proposals", {
     method: "POST",
@@ -235,6 +236,24 @@ export async function deleteProposal(id: string): Promise<{ ok: boolean }> {
 
 export async function fetchTemplates(): Promise<{ templates: TemplateSummary[] }> {
   return apiFetch<{ templates: TemplateSummary[] }>("/api/templates");
+}
+
+/**
+ * Capture the current document's sections + metadata into a new workspace-owned template,
+ * selectable in the create-document gallery. Returns the created template's id + name.
+ */
+export async function createTemplateFromDocument(
+  documentId: string,
+  body: { name: string; description?: string },
+): Promise<{ template: { id: string; name: string } }> {
+  return apiFetch<{ template: { id: string; name: string } }>(
+    `/api/templates/from-document/${documentId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export async function saveCosting(

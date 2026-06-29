@@ -27,6 +27,9 @@ const TYPE_PREFIX: Record<DocumentType, string> = {
   NDA: "NDA",
   CO: "CO",
   DSA: "DSA",
+  HANDOVER: "HAND",
+  REPORT: "RPT",
+  BRIEF: "BRIEF",
   OTHER: "DOC",
 };
 

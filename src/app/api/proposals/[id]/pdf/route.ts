@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
 
     const doc = await prisma.document.findFirst({
-      where: { id, documentType: "PROPOSAL" },
+      where: { id },
       select: { id: true, shareToken: true, isShared: true, title: true, documentNumber: true },
     });
     if (!doc) return apiError("Document not found", 404);

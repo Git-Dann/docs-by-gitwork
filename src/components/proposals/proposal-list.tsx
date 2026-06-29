@@ -66,6 +66,9 @@ const LABEL_BY_TYPE: Record<DocumentType, string> = {
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
   DSA: "Data Sharing Agreement",
+  HANDOVER: "Handover",
+  REPORT: "Status Report",
+  BRIEF: "Brief",
   OTHER: "Document",
 };
 const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
@@ -76,6 +79,9 @@ const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
   NDA: "Untitled NDA",
   CO: "Untitled Change Order",
   DSA: "Untitled Data Sharing Agreement",
+  HANDOVER: "Project Handover",
+  REPORT: "Status Report",
+  BRIEF: "Untitled Brief",
   OTHER: "Untitled Document",
 };
 const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
@@ -86,6 +92,9 @@ const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
   NDA: "Acme — Mutual NDA",
   CO: "Acme — Change Order #1",
   DSA: "Acme — Data Sharing Agreement",
+  HANDOVER: "Acme — Project Handover",
+  REPORT: "Acme — June Status Report",
+  BRIEF: "Acme — Kickoff Brief",
   OTHER: "Acme — Briefing Note",
 };
 
@@ -398,7 +407,7 @@ export function ProposalList() {
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
             FILTER BY TYPE
           </span>
-          {(["ALL", "PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"] as const).map((type) => {
+          {(["ALL", "PROPOSAL", "HANDOVER", "REPORT", "BRIEF", "OTHER", "SLA", "SOW", "MSA", "NDA", "CO", "DSA"] as const).map((type) => {
             const count = type === "ALL" ? totalCount : docTypeCounts[type] ?? 0;
             if (type !== "ALL" && count === 0) return null;
             const active = docTypeFilter === type;
@@ -859,8 +868,7 @@ export function ProposalList() {
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                       Client
                     </span>
-                    {clientsQuery.data?.clients &&
-                    clientsQuery.data.clients.filter((c) => c.source === "MANUAL").length > 0 ? (
+                    {clientsQuery.data?.clients && clientsQuery.data.clients.length > 0 ? (
                       <div className="space-y-2">
                         <select
                           value={form.clientId ?? ""}
@@ -876,14 +884,12 @@ export function ProposalList() {
                           }}
                           className="app-select"
                         >
-                          <option value="">— Select a Portal client —</option>
-                          {clientsQuery.data.clients
-                            .filter((c) => c.source === "MANUAL")
-                            .map((client) => (
-                              <option key={client.id} value={client.id}>
-                                {client.name}
-                              </option>
-                            ))}
+                          <option value="">— Select a client —</option>
+                          {clientsQuery.data.clients.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.name}
+                            </option>
+                          ))}
                         </select>
                         {!form.clientId && (
                           <input
@@ -895,7 +901,7 @@ export function ProposalList() {
                               }))
                             }
                             className="app-input"
-                            placeholder="Or type a custom client name"
+                            placeholder="Or type a name for a prospect"
                           />
                         )}
                       </div>

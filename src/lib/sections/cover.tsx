@@ -11,7 +11,24 @@ import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
-import type { CoverSectionData } from "@/types/proposal";
+import { approvalTrackApplies } from "@/lib/templates";
+import type { CoverSectionData, DocumentType } from "@/types/proposal";
+
+// Cover eyebrow label per doc type (`FOUNDRY // {LABEL}`). Mono caps. Kept here (not imported
+// from server/documents.ts) because that module pulls in Prisma and can't go client-side.
+const DOC_TYPE_EYEBROW: Record<DocumentType, string> = {
+  PROPOSAL: "PROPOSAL",
+  SLA: "SLA",
+  SOW: "SOW",
+  MSA: "MSA",
+  NDA: "NDA",
+  CO: "CHANGE ORDER",
+  DSA: "DSA",
+  HANDOVER: "HANDOVER",
+  REPORT: "STATUS REPORT",
+  BRIEF: "BRIEF",
+  OTHER: "DOCUMENT",
+};
 
 const DEFAULT_COVER_DATA: CoverSectionData = {
   proposalTitle: "Untitled document",
@@ -71,6 +88,17 @@ export const coverSection = defineSection<CoverSectionData>({
       }
       linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
       linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
+      linkedClientId={proposal.clientId ?? null}
+      onLinkClient={(clientId, clientName) =>
+        onProposalChange({
+          ...proposal,
+          clientId,
+          // Linking sets the doc-level name; unlinking clears it so the cover override / free
+          // text takes over. metadata.client mirrors it for legacy merge-variable resolution.
+          clientName: clientId ? clientName : "",
+          metadata: { ...proposal.metadata, client: clientId ? clientName : proposal.metadata.client },
+        })
+      }
     />
   ),
   Preview: ({ data, proposal, section }) => {
@@ -113,19 +141,7 @@ export const coverSection = defineSection<CoverSectionData>({
     const titleLine = data.proposalTitle || proposal.title || "Untitled document";
 
     const docTypeLabel =
-      proposal.documentType === "SLA"
-        ? "SLA"
-        : proposal.documentType === "SOW"
-          ? "SOW"
-          : proposal.documentType === "MSA"
-            ? "MSA"
-            : proposal.documentType === "NDA"
-              ? "NDA"
-              : proposal.documentType === "CO"
-                ? "CHANGE ORDER"
-                : proposal.documentType === "OTHER"
-                  ? "DOCUMENT"
-                  : "PROPOSAL";
+      DOC_TYPE_EYEBROW[proposal.documentType] ?? "DOCUMENT";
     const eyebrow = `FOUNDRY // ${docTypeLabel}`;
 
     const visibleSections = proposal.sections.filter((s) => s.isVisible).length;
@@ -156,7 +172,13 @@ export const coverSection = defineSection<CoverSectionData>({
       data.subtitle?.trim() ||
       "";
 
-    const watermark = pickWatermark(proposal.status);
+    // Lightweight docs (handover, report, brief, blank) live in DRAFT until shared — they have no
+    // review track, so the "DRAFT" watermark is misleading on a finished doc. Suppress it there;
+    // keep the SENT / ARCHIVED watermarks for everyone.
+    let watermark = pickWatermark(proposal.status);
+    if (watermark === "DRAFT" && !approvalTrackApplies(proposal.documentType, proposal.metadata)) {
+      watermark = undefined;
+    }
     const watermarkTone: "neutral" | "warning" | "danger" =
       watermark === "OUT FOR SIGNATURE" ? "warning" : "neutral";
 
@@ -174,14 +196,24 @@ export const coverSection = defineSection<CoverSectionData>({
               documentNumber={proposal.documentNumber ?? undefined}
               version={proposal.version || "v1.0"}
               status={statusLabelForCover(proposal.status)}
+              tone={(data.coverStyle ?? "light") === "bold" ? "light" : "dark"}
             />
           }
-          stats={[
-            { count: visibleSections, label: "Sections" },
-            { count: phasesCount, label: "Phases" },
-            { count: touchpointsCount, label: "Touchpoints" },
-            { count: formattedValue, label: "Value", color: "#1D4ED8" },
-          ]}
+          coverStyle={data.coverStyle ?? "light"}
+          heroImage={data.heroImage?.trim() || undefined}
+          // The proposal-grade stat strip (Sections / Phases / Touchpoints / Value) only makes
+          // sense for proposals — lightweight docs (handover, report, brief, blank) get a clean
+          // cover with no zeroed-out metrics.
+          stats={
+            proposal.documentType === "PROPOSAL"
+              ? [
+                  { count: visibleSections, label: "Sections" },
+                  { count: phasesCount, label: "Phases" },
+                  { count: touchpointsCount, label: "Touchpoints" },
+                  { count: formattedValue, label: "Value", color: "#1D4ED8" },
+                ]
+              : undefined
+          }
           executiveSummary={summary || undefined}
           callout={confidentialityText ? { text: confidentialityText, tone: "neutral" } : undefined}
           dated={proposal.updatedAt.slice(0, 10)}

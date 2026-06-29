@@ -14,6 +14,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -26,6 +27,7 @@ const schema = z.object({
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "manage templates");
     const { id } = await context.params;
     const body = schema.parse(await request.json());
 

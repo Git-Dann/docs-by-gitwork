@@ -9,7 +9,18 @@ export type DocumentStatus =
   | "DECLINED"
   | "ARCHIVED";
 
-export type DocumentType = "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "DSA" | "OTHER";
+export type DocumentType =
+  | "PROPOSAL"
+  | "SLA"
+  | "SOW"
+  | "MSA"
+  | "NDA"
+  | "CO"
+  | "DSA"
+  | "HANDOVER"
+  | "REPORT"
+  | "BRIEF"
+  | "OTHER";
 
 export type SectionKey =
   // ── Shared / proposal-original ─────────────────────────────────────────────
@@ -82,6 +93,12 @@ export interface CoverSectionData {
   confidentiality: string;
   confidentialityMode?: "INTERNAL" | "EXTERNAL";
   heroImage?: string;
+  /**
+   * Visual treatment of the cover hero. `light` (editorial, warm canvas, blue used only as a
+   * thin accent) is the Docs default; `minimal` is the barest variant; `bold` is the legacy
+   * full-bleed blue gradient. `undefined` → the Docs surface defaults to `light`.
+   */
+  coverStyle?: "light" | "minimal" | "bold";
   brandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
   /** Per-document override for the Foundry/Gitwork mark. Blank → workspace branding logo. */
   brandLogoUrl?: string;
@@ -547,6 +564,12 @@ export interface ProposalMetadata {
   productSignOff: boolean;
   techSignOff: boolean;
   approvalChecked: boolean;
+  /**
+   * Per-document override for whether the internal review track (Product / Tech / MD sign-off)
+   * applies. `undefined` → fall back to the doc type's default (see `DOC_TYPE_CONFIG`). Set
+   * explicitly to force the review track on or off regardless of type.
+   */
+  approvalTrackEnabled?: boolean;
 }
 
 export interface ProposalDocument {

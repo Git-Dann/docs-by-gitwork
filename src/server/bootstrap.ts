@@ -278,6 +278,11 @@ async function _ensureBaseRecords() {
     DocumentType.NDA,
     DocumentType.CO,
     DocumentType.DSA,
+    // Lightweight everyday docs — no costing/timeline/sign-off.
+    DocumentType.HANDOVER,
+    DocumentType.REPORT,
+    DocumentType.BRIEF,
+    DocumentType.OTHER,
   ] as const) {
     const blueprints = getTemplateBlueprintsForType(type);
     const slug = TEMPLATE_SLUG_BY_TYPE[type];

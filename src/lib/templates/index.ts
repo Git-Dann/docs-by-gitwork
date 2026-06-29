@@ -12,14 +12,19 @@
  */
 
 import type { DocumentType } from "@prisma/client";
+import type { ProposalMetadata } from "@/types/proposal";
 import {
   proposalSectionBlueprints,
   type SectionBlueprint,
 } from "@/lib/default-template";
+import { briefSectionBlueprints } from "@/lib/templates/brief";
 import { coSectionBlueprints } from "@/lib/templates/co";
 import { dsaSectionBlueprints } from "@/lib/templates/dsa";
+import { handoverSectionBlueprints } from "@/lib/templates/handover";
 import { msaSectionBlueprints } from "@/lib/templates/msa";
 import { ndaSectionBlueprints } from "@/lib/templates/nda";
+import { otherSectionBlueprints } from "@/lib/templates/other";
+import { reportSectionBlueprints } from "@/lib/templates/report";
 import { slaSectionBlueprints } from "@/lib/templates/sla";
 import { sowSectionBlueprints } from "@/lib/templates/sow";
 
@@ -31,11 +36,44 @@ export const TEMPLATES_BY_TYPE: Record<DocumentType, SectionBlueprint[]> = {
   NDA: ndaSectionBlueprints,
   CO: coSectionBlueprints,
   DSA: dsaSectionBlueprints,
-  OTHER: proposalSectionBlueprints,
+  HANDOVER: handoverSectionBlueprints,
+  REPORT: reportSectionBlueprints,
+  BRIEF: briefSectionBlueprints,
+  OTHER: otherSectionBlueprints,
 };
 
 export function getTemplateBlueprintsForType(type: DocumentType): SectionBlueprint[] {
   return TEMPLATES_BY_TYPE[type] ?? proposalSectionBlueprints;
+}
+
+/**
+ * Per-type behaviour config. `usesApprovalTrack` controls whether the internal review track
+ * (Product / Tech / MD sign-off) applies by default. Proposals and contracts keep it; the
+ * lightweight everyday docs skip it. A per-document `metadata.approvalTrackEnabled` overrides this.
+ */
+export const DOC_TYPE_CONFIG: Record<DocumentType, { usesApprovalTrack: boolean }> = {
+  PROPOSAL: { usesApprovalTrack: true },
+  SLA: { usesApprovalTrack: true },
+  SOW: { usesApprovalTrack: true },
+  MSA: { usesApprovalTrack: true },
+  NDA: { usesApprovalTrack: true },
+  CO: { usesApprovalTrack: true },
+  DSA: { usesApprovalTrack: true },
+  HANDOVER: { usesApprovalTrack: false },
+  REPORT: { usesApprovalTrack: false },
+  BRIEF: { usesApprovalTrack: false },
+  OTHER: { usesApprovalTrack: false },
+};
+
+/**
+ * Resolve whether the internal review/sign-off track applies to a document: the per-document
+ * toggle wins, otherwise fall back to the type default.
+ */
+export function approvalTrackApplies(
+  type: DocumentType,
+  metadata?: Pick<ProposalMetadata, "approvalTrackEnabled"> | null,
+): boolean {
+  return metadata?.approvalTrackEnabled ?? DOC_TYPE_CONFIG[type].usesApprovalTrack;
 }
 
 /** Slug used for the DocumentTemplate row seeded into Postgres. */
@@ -47,6 +85,9 @@ export const TEMPLATE_SLUG_BY_TYPE: Record<DocumentType, string> = {
   NDA: "default-nda",
   CO: "default-co",
   DSA: "default-dsa",
+  HANDOVER: "default-handover",
+  REPORT: "default-report",
+  BRIEF: "default-brief",
   OTHER: "default-other",
 };
 
@@ -58,5 +99,8 @@ export const TEMPLATE_NAME_BY_TYPE: Record<DocumentType, string> = {
   NDA: "NDA — default",
   CO: "Change Order — default",
   DSA: "Data Sharing Agreement — default",
-  OTHER: "Document — default",
+  HANDOVER: "Handover — default",
+  REPORT: "Status report — default",
+  BRIEF: "Brief / meeting notes — default",
+  OTHER: "Blank document",
 };

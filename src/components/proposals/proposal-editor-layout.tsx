@@ -59,6 +59,8 @@ import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
+import { approvalTrackApplies } from "@/lib/templates";
+import { createTemplateFromDocument } from "@/lib/api";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
 type EditorTab = "overview" | "builder";
@@ -173,13 +175,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
     if (!name?.trim()) return;
     try {
-      const res = await fetch(`/api/templates/from-document/${proposalId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Failed to save template");
+      await createTemplateFromDocument(proposalId, { name: name.trim() });
       setTemplateSavedAt(name.trim());
       setTimeout(() => setTemplateSavedAt(null), 4000);
     } catch (err) {
@@ -277,6 +273,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     publicSharePath && typeof window !== "undefined"
       ? `${window.location.origin}${publicSharePath}`
       : publicSharePath ?? "";
+
+  // Whether the internal review/sign-off track applies to this document (per-doc override →
+  // type default). Drives the Review & Send popover.
+  const approvalApplies = draft
+    ? approvalTrackApplies(draft.documentType, draft.metadata)
+    : false;
 
   const handleTabChange = useCallback(
     (tab: EditorTab) => {
@@ -447,7 +449,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     }
     setLocalDraft({
       ...nextDraft,
-      status: deriveProposalStatus(nextDraft.metadata),
+      status: deriveProposalStatus(
+        nextDraft.metadata,
+        approvalTrackApplies(nextDraft.documentType, nextDraft.metadata),
+      ),
     });
     setSaveState("saving");
   }
@@ -677,6 +682,25 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     updateDraft({
       ...draft,
       metadata: nextMetadata,
+    });
+  }
+
+  // Per-document override for the internal review / sign-off track. Setting it explicitly wins
+  // over the doc type's default. When switched off we also clear any sign-off flags so the doc
+  // settles back to DRAFT cleanly.
+  function handleApprovalTrackToggle(enabled: boolean) {
+    if (!draft) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      metadata: {
+        ...draft.metadata,
+        approvalTrackEnabled: enabled,
+        ...(enabled
+          ? {}
+          : { productSignOff: false, techSignOff: false, approvalChecked: false }),
+      },
     });
   }
 
@@ -913,32 +937,58 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 </div>
 
                 <div className="p-5">
-                  {/* Approvals — flat rows divided by hairlines, no nested cards. */}
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-                    Approvals
-                  </p>
-                  <div className="mt-1 divide-y divide-[var(--border-2)]">
-                    {approvalOptions.map((option) => {
-                      const checked = Boolean(draft.metadata[option.key]);
-                      return (
-                        <label
-                          key={option.key}
-                          className="flex cursor-pointer items-start gap-3 py-2.5 text-sm text-[var(--text-2)]"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
-                            className="app-checkbox mt-0.5 rounded"
-                          />
-                          <span>
-                            <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
-                            <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
+                  {/* Internal review track — opt-in per doc. Lightweight docs (handover, report,
+                      brief, blank) default off; proposals/contracts default on. The toggle stores
+                      an explicit override on metadata.approvalTrackEnabled. */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                        Internal review
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--text-3)]">
+                        Require Product / Tech / MD sign-off before this doc is ready.
+                      </p>
+                    </div>
+                    <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={approvalApplies}
+                        onChange={(event) => handleApprovalTrackToggle(event.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <span className="h-5 w-9 rounded-full bg-[var(--text-4)]/40 transition-colors peer-checked:bg-[var(--brand-600)]" />
+                      <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
+                    </label>
                   </div>
+
+                  {approvalApplies ? (
+                    <div className="mt-3 divide-y divide-[var(--border-2)] border-t border-[var(--border-2)] pt-1">
+                      {approvalOptions.map((option) => {
+                        const checked = Boolean(draft.metadata[option.key]);
+                        return (
+                          <label
+                            key={option.key}
+                            className="flex cursor-pointer items-start gap-3 py-2.5 text-sm text-[var(--text-2)]"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
+                              className="app-checkbox mt-0.5 rounded"
+                            />
+                            <span>
+                              <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
+                              <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-3 border-t border-[var(--border-2)] pt-3 text-xs text-[var(--text-3)]">
+                      No sign-off needed — share or send whenever you&apos;re ready.
+                    </p>
+                  )}
 
                   {/* Public link */}
                   <div className="mt-5 border-t border-[var(--border-2)] pt-4">

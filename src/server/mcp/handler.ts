@@ -200,7 +200,19 @@ const findMeetingsSchema = z.object({
   limit: z.number().int().min(1).max(50).optional(),
 });
 
-const DOCUMENT_TYPE = z.enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"]);
+const DOCUMENT_TYPE = z.enum([
+  "PROPOSAL",
+  "SLA",
+  "SOW",
+  "MSA",
+  "NDA",
+  "CO",
+  "DSA",
+  "HANDOVER",
+  "REPORT",
+  "BRIEF",
+  "OTHER",
+]);
 
 const createDocumentSchema = z.object({
   title: z.string().min(1).max(200),
@@ -478,7 +490,7 @@ const TOOLS: ToolDef[] = [
         client: { type: "string", description: "Optional client slug, name, or cuid to attach the doc to." },
         documentType: {
           type: "string",
-          enum: ["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"],
+          enum: ["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "HANDOVER", "REPORT", "BRIEF", "OTHER"],
           description: "Document type. Defaults to PROPOSAL.",
         },
         productName: {

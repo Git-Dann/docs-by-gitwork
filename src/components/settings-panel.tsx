@@ -37,7 +37,7 @@ import { ChecksPanel } from "@/components/settings/checks-panel";
 import { SavedIndicator } from "@/components/settings/saved-indicator";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { SECTION_REGISTRY, allSectionKeys, sectionsByCategory } from "@/lib/sections/registry";
-import type { SectionKey } from "@/types/proposal";
+import type { DocumentType, SectionKey } from "@/types/proposal";
 
 type TabId =
   | "general"
@@ -3935,7 +3935,7 @@ interface TemplateRecord {
   name: string;
   slug: string;
   description: string | null;
-  documentType: "PROPOSAL" | "SLA" | "SOW" | "MSA" | "NDA" | "CO" | "OTHER";
+  documentType: DocumentType;
   isDefault: boolean;
   sections: unknown;
   workspaceId: string | null;
@@ -3944,13 +3944,17 @@ interface TemplateRecord {
   documentCount: number;
 }
 
-const DOC_TYPE_LABEL: Record<TemplateRecord["documentType"], string> = {
+const DOC_TYPE_LABEL: Record<string, string> = {
   PROPOSAL: "Proposal",
   SLA: "Service Level Agreement",
   SOW: "Statement of Work",
   MSA: "Master Service Agreement",
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
+  DSA: "Data Sharing Agreement",
+  HANDOVER: "Handover",
+  REPORT: "Status Report",
+  BRIEF: "Brief",
   OTHER: "Document",
 };
 
@@ -4063,12 +4067,16 @@ export function TemplatesTab() {
 
   const orderedTypes: TemplateRecord["documentType"][] = [
     "PROPOSAL",
+    "HANDOVER",
+    "REPORT",
+    "BRIEF",
+    "OTHER",
     "SLA",
     "SOW",
     "MSA",
     "NDA",
     "CO",
-    "OTHER",
+    "DSA",
   ];
 
   return (

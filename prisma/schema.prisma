@@ -16,7 +16,10 @@ enum DocumentType {
   NDA // Non-Disclosure Agreement
   CO // Change Order (against a SOW)
   DSA // Data Sharing Agreement / DPA (GDPR Article 28)
-  OTHER // Catch-all for one-offs without a dedicated template yet
+  HANDOVER // End-of-project handover — lightweight, client-facing wrap-up
+  REPORT // Status report / recurring progress update
+  BRIEF // Meeting notes / short brief — context, decisions, actions
+  OTHER // Blank / freeform document
 }
 
 enum DocumentStatus {

@@ -1,8 +1,16 @@
 "use client";
 
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
+import { cn } from "@/lib/format";
 import type { CoverSectionData } from "@/types/proposal";
+
+const COVER_STYLES: Array<{ value: NonNullable<CoverSectionData["coverStyle"]>; label: string; hint: string }> = [
+  { value: "light", label: "Light", hint: "Editorial, warm canvas" },
+  { value: "minimal", label: "Minimal", hint: "Bare title + logo" },
+  { value: "bold", label: "Bold", hint: "Blue gradient hero" },
+];
 
 export function CoverEditor({
   value,
@@ -11,6 +19,8 @@ export function CoverEditor({
   onPreparedByChange,
   linkedClientLogoUrl,
   linkedClientName,
+  linkedClientId,
+  onLinkClient,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
@@ -20,9 +30,16 @@ export function CoverEditor({
   linkedClientLogoUrl?: string;
   /** Name of the linked Portal client, for the inheritance hint. */
   linkedClientName?: string;
+  /** Currently linked WorkspaceClient id (Document.clientId), if any. */
+  linkedClientId?: string | null;
+  /** Link/unlink the document to a real Portal client. clientId null → unlink (prospect). */
+  onLinkClient?: (clientId: string | null, clientName: string) => void;
 }) {
   const brandingQuery = useWorkspaceBranding();
   const branding = brandingQuery.data;
+  const clientsQuery = useClientList({ status: "ALL", search: "" });
+  const clients = clientsQuery.data?.clients ?? [];
+  const coverStyle = value.coverStyle ?? "light";
   const confidentialityMode = value.confidentialityMode ?? "INTERNAL";
   const confidentialityText =
     (confidentialityMode === "EXTERNAL"
@@ -36,18 +53,77 @@ export function CoverEditor({
 
   return (
     <div className="space-y-4">
+      {/* Linked client — attribute the doc to a real Portal client (drives the cover lockup,
+          {{client_name}}, and per-client grouping). Falls back to free text for a prospect. */}
+      {onLinkClient ? (
+        <section className="space-y-2">
+          <label className="space-y-1.5 block">
+            <span className="text-sm font-medium text-[var(--text-2)]">Client</span>
+            <select
+              value={linkedClientId ?? ""}
+              onChange={(event) => {
+                const id = event.target.value || null;
+                const picked = clients.find((c) => c.id === id);
+                // Linking clears the free-text override so the linked name shows; unlinking
+                // leaves the override field for a prospect name.
+                onLinkClient(id, picked?.name ?? "");
+                if (id) onChange({ ...value, clientName: "" });
+              }}
+              className="app-select w-full"
+            >
+              <option value="">— Not linked (prospect / free text) —</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!linkedClientId ? (
+            <Input
+              label="Display name (prospect)"
+              value={value.clientName}
+              onChange={(clientName) => onChange({ ...value, clientName })}
+            />
+          ) : (
+            <p className="text-xs text-[var(--text-4)]">
+              Linked to <span className="font-medium text-[var(--text-2)]">{linkedClientName?.trim() || "a Portal client"}</span>.
+              The cover, sharing, and analytics now track this client.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {/* Cover style — Light is the modern editorial default; Bold is the legacy blue hero. */}
+      <section className="space-y-1.5">
+        <span className="text-sm font-medium text-[var(--text-2)]">Cover style</span>
+        <div className="flex gap-2">
+          {COVER_STYLES.map((style) => (
+            <button
+              key={style.value}
+              type="button"
+              onClick={() => onChange({ ...value, coverStyle: style.value })}
+              className={cn(
+                "flex-1 rounded-[8px] border px-3 py-2 text-left transition-colors",
+                coverStyle === style.value
+                  ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
+                  : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
+              )}
+            >
+              <span className="block text-sm font-medium text-[var(--text-1)]">{style.label}</span>
+              <span className="block text-xs text-[var(--text-4)]">{style.hint}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2">
         <Input
-          label="Proposal title"
+          label="Title"
           value={value.proposalTitle}
           onChange={(proposalTitle) => onChange({ ...value, proposalTitle })}
         />
         <Input label="Prepared by" value={preparedBy} onChange={onPreparedByChange} />
-        <Input
-          label="Client / company name"
-          value={value.clientName}
-          onChange={(clientName) => onChange({ ...value, clientName })}
-        />
         <Input
           label="Subtitle / version"
           value={value.subtitle}

@@ -17,7 +17,20 @@ import {
   useWorkspaceDocAnalytics,
 } from "@/hooks/use-document-analytics";
 
-const TYPE_OPTIONS = ["ALL", "PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"] as const;
+const TYPE_OPTIONS = [
+  "ALL",
+  "PROPOSAL",
+  "HANDOVER",
+  "REPORT",
+  "BRIEF",
+  "OTHER",
+  "SLA",
+  "SOW",
+  "MSA",
+  "NDA",
+  "CO",
+  "DSA",
+] as const;
 const RANGE_OPTIONS: Array<{ label: string; days?: number }> = [
   { label: "30d", days: 30 },
   { label: "90d", days: 90 },

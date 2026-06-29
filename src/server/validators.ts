@@ -129,6 +129,7 @@ export const metadataSchema = z.object({
   productSignOff: z.boolean(),
   techSignOff: z.boolean(),
   approvalChecked: z.boolean(),
+  approvalTrackEnabled: z.boolean().optional(),
 });
 
 const requiredTrimmedString = z.string().trim().min(1);
@@ -514,7 +515,9 @@ export const proposalCreateSchema = z.object({
   templateId: z.string().optional(),
   // Document type for the new record. Defaults to PROPOSAL at the API layer if omitted, so
   // existing callers (legacy "New document" flow that didn't know about types) still work.
-  documentType: z.enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "OTHER"]).optional(),
+  documentType: z
+    .enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "HANDOVER", "REPORT", "BRIEF", "OTHER"])
+    .optional(),
 });
 
 export const supportClientCreateSchema = z.object({
@@ -588,6 +591,7 @@ export const proposalUpdateSchema = z.object({
   status: documentStatusSchema.optional(),
   productName: z.string().optional(),
   clientName: z.string().optional(),
+  clientId: z.string().cuid().nullable().optional(),
   summary: z.string().optional(),
   version: z.string().optional(),
   expiresAt: z.string().nullable().optional(),

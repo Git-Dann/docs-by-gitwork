@@ -18,6 +18,9 @@ const TYPE_PREFIX: Record<DocumentType, string> = {
   NDA: "NDA",
   CO: "CO",
   DSA: "DSA",
+  HANDOVER: "HAND",
+  REPORT: "RPT",
+  BRIEF: "BRIEF",
   OTHER: "DOC",
 };
 
@@ -30,6 +33,9 @@ export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
   NDA: "Non-Disclosure Agreement",
   CO: "Change Order",
   DSA: "Data Sharing Agreement",
+  HANDOVER: "Handover",
+  REPORT: "Status Report",
+  BRIEF: "Brief",
   OTHER: "Document",
 };
 
@@ -42,6 +48,9 @@ export const DOCUMENT_TYPE_SHORT: Record<DocumentType, string> = {
   NDA: "NDA",
   CO: "CHANGE ORDER",
   DSA: "DSA",
+  HANDOVER: "HANDOVER",
+  REPORT: "STATUS REPORT",
+  BRIEF: "BRIEF",
   OTHER: "DOCUMENT",
 };
 

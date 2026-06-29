@@ -93,6 +93,14 @@ export interface DocumentCoverProps {
    * shows the client alongside the Foundry mark — client logo if a URL is given, else the name.
    */
   coBrand?: { clientName?: string; clientLogoUrl?: string };
+  /**
+   * Hero treatment. `bold` is the legacy full-bleed blue gradient (default, so Pulse and any
+   * other direct caller are unchanged). `light` is the editorial default for Docs — ink title on
+   * a warm canvas with blue used only as a thin accent. `minimal` is the barest variant.
+   */
+  coverStyle?: "light" | "minimal" | "bold";
+  /** Optional banner image shown across the top of light/minimal covers. */
+  heroImage?: string;
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
@@ -116,6 +124,8 @@ export function DocumentCover({
   watermark,
   watermarkTone = "neutral",
   coBrand,
+  coverStyle = "bold",
+  heroImage,
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
@@ -123,6 +133,29 @@ export function DocumentCover({
 
   const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
   const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
+
+  // ── Theme: `bold` keeps the legacy blue gradient hero; `light`/`minimal` are editorial covers
+  // on a light field with ink type and blue used only as a thin accent (per DESIGN.md). ──
+  const isBold = coverStyle === "bold";
+  const isMinimal = coverStyle === "minimal";
+  const hero = {
+    background: isBold
+      ? "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)"
+      : isMinimal
+        ? "#FFFFFF"
+        : "#FAFAF9",
+    minHeight: isBold ? (isPrint ? "44vh" : 220) : undefined,
+    eyebrow: isBold ? "rgba(255,255,255,0.55)" : "#1D4ED8",
+    title: isBold ? "white" : "#0F172A",
+    subtitle: isBold ? "rgba(255,255,255,0.60)" : "#475569",
+    metaLabel: isBold ? "rgba(255,255,255,0.50)" : "#64748B",
+    metaValue: isBold ? "rgba(255,255,255,0.90)" : "#0F172A",
+    // The single accent rule under the header on light covers; minimal uses a hairline.
+    rule: isBold ? null : isMinimal ? "rgba(0,0,0,0.10)" : "#1D4ED8",
+    watermarkColor: isBold
+      ? `rgba(255,255,255,${watermarkAlpha})`
+      : `rgba(15,23,42,${watermarkTone === "neutral" ? "0.05" : watermarkAlpha})`,
+  };
 
   return (
     <section
@@ -138,46 +171,74 @@ export function DocumentCover({
         overflow: "hidden",
       }}
     >
-      {/* ── Blue gradient hero ──────────────────────────────────────────────── */}
+      {/* ── Hero (bold = blue gradient · light/minimal = editorial light field) ── */}
       <div
         style={{
           position: "relative",
-          background: "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)",
-          padding: isPrint ? "52px 60px 56px" : "36px 44px 44px",
-          minHeight: isPrint ? "44vh" : 220,
+          background: hero.background,
+          padding: isBold
+            ? isPrint
+              ? "52px 60px 56px"
+              : "36px 44px 44px"
+            : isPrint
+              ? "56px 60px 24px"
+              : "32px 44px 20px",
+          minHeight: hero.minHeight,
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           overflow: "hidden",
         }}
       >
-        {/* Subtle geometric accent — large faded circle top-right */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: -80,
-            right: -80,
-            width: 340,
-            height: 340,
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.10)",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: -30,
-            right: -30,
-            width: 200,
-            height: 200,
-            borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.08)",
-            pointerEvents: "none",
-          }}
-        />
+        {/* Optional top banner image (light/minimal only) */}
+        {!isBold && heroImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={heroImage}
+            alt=""
+            aria-hidden="true"
+            style={{
+              width: "100%",
+              height: isPrint ? 180 : 120,
+              objectFit: "cover",
+              borderRadius: 10,
+              marginBottom: 28,
+              display: "block",
+            }}
+          />
+        ) : null}
+
+        {/* Subtle geometric accents — only on the bold blue hero */}
+        {isBold ? (
+          <>
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: -80,
+                right: -80,
+                width: 340,
+                height: 340,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.10)",
+                pointerEvents: "none",
+              }}
+            />
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: -30,
+                right: -30,
+                width: 200,
+                height: 200,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.08)",
+                pointerEvents: "none",
+              }}
+            />
+          </>
+        ) : null}
 
         {/* Watermark */}
         {watermark ? (
@@ -195,7 +256,7 @@ export function DocumentCover({
               fontSize: isPrint ? "7vw" : 72,
               letterSpacing: "0.25em",
               whiteSpace: "nowrap",
-              color: `rgba(255,255,255,${watermarkAlpha})`,
+              color: hero.watermarkColor,
               userSelect: "none",
             }}
           >
@@ -222,7 +283,7 @@ export function DocumentCover({
                 fontWeight: 600,
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
-                color: "rgba(255,255,255,0.55)",
+                color: hero.eyebrow,
               }}
             >
               {eyebrow}
@@ -241,7 +302,7 @@ export function DocumentCover({
               fontWeight: 400,
               letterSpacing: "-0.025em",
               lineHeight: 1.08,
-              color: "white",
+              color: hero.title,
               maxWidth: "80%",
             }}
           >
@@ -257,7 +318,7 @@ export function DocumentCover({
                     margin: "0 0 10px",
                     fontSize: 14,
                     lineHeight: 1.5,
-                    color: "rgba(255,255,255,0.60)",
+                    color: hero.subtitle,
                   }}
                 >
                   {subtitle}
@@ -274,11 +335,11 @@ export function DocumentCover({
                         fontWeight: 500,
                         letterSpacing: "0.06em",
                         textTransform: "uppercase",
-                        color: "rgba(255,255,255,0.50)",
+                        color: hero.metaLabel,
                       }}
                     >
                       {row.label}:{" "}
-                      <span style={{ color: "rgba(255,255,255,0.90)", fontWeight: 600 }}>
+                      <span style={{ color: hero.metaValue, fontWeight: 600 }}>
                         {row.value}
                       </span>
                     </span>
@@ -286,6 +347,20 @@ export function DocumentCover({
                 </div>
               ) : null}
             </div>
+          ) : null}
+
+          {/* Accent rule — light covers' single stroke of blue; minimal uses a hairline. */}
+          {hero.rule ? (
+            <div
+              aria-hidden="true"
+              style={{
+                marginTop: 24,
+                height: isMinimal ? 1 : 3,
+                width: isMinimal ? "100%" : 64,
+                borderRadius: 2,
+                background: hero.rule,
+              }}
+            />
           ) : null}
         </div>
       </div>
@@ -545,11 +620,15 @@ export function DocumentVersionChip({
   version,
   status,
   documentNumber,
+  tone = "light",
 }: {
   version: string;
   status: string;
   documentNumber?: string | null;
+  /** `light` = white text for the bold blue hero; `dark` = ink text for light/minimal covers. */
+  tone?: "light" | "dark";
 }) {
+  const isDark = tone === "dark";
   return (
     <div
       style={{
@@ -568,7 +647,7 @@ export function DocumentVersionChip({
             fontWeight: 600,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
-            color: "rgba(147,197,253,1)", // light blue on dark bg
+            color: isDark ? "#1D4ED8" : "rgba(147,197,253,1)",
           }}
         >
           {documentNumber}
@@ -581,7 +660,7 @@ export function DocumentVersionChip({
           fontWeight: 400,
           letterSpacing: "-0.02em",
           lineHeight: 1,
-          color: "white",
+          color: isDark ? "#0F172A" : "white",
         }}
       >
         {version}
@@ -593,7 +672,7 @@ export function DocumentVersionChip({
           fontWeight: 600,
           letterSpacing: "0.1em",
           textTransform: "uppercase",
-          color: "rgba(255,255,255,0.55)",
+          color: isDark ? "#64748B" : "rgba(255,255,255,0.55)",
         }}
       >
         {status}
