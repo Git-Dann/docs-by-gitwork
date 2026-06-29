@@ -9,6 +9,8 @@ export function ProposalPreview({
   showTableOfContents = true,
   frame = true,
   trackSections = false,
+  activeSectionId,
+  onSelectSection,
 }: {
   proposal: ProposalDocument;
   className?: string;
@@ -20,6 +22,10 @@ export function ProposalPreview({
    * editor and print DOM stay unchanged.
    */
   trackSections?: boolean;
+  /** Editor-only: id of the selected block (active ring). Omitted on public/print → read-only. */
+  activeSectionId?: string | null;
+  /** Editor-only: click a rendered block to select it. Omitted on public/print → read-only. */
+  onSelectSection?: (id: string) => void;
 }) {
   // Substitute merge variables ({{client_name}}, {{total}}, …) for the rendered/exported view.
   // The editor's section forms still show the raw tokens — only this render surface resolves them.
@@ -51,6 +57,8 @@ export function ProposalPreview({
               section={section}
               proposal={resolved}
               index={index}
+              activeSectionId={activeSectionId}
+              onSelectSection={onSelectSection}
             />
           ),
         )}

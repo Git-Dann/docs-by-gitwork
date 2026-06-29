@@ -54,6 +54,7 @@ import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
+import { SlideOver } from "@/components/ui/slide-over";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
@@ -89,7 +90,7 @@ const ProposalBuilderPanel = dynamic(
     loading: () => (
       <article className="widget-card">
         <div className="widget-header">
-          <span className="widget-header-label">03 // BUILDER</span>
+          <span className="widget-header-label">04 // BUILDER</span>
           <span className="widget-header-right">LOADING</span>
         </div>
         <div className="widget-body">
@@ -187,9 +188,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
   /** P5.17 — outline drawer toggle on < xl screens. */
   const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
-  // Split-screen live preview (Phase 2) — renders the document beside the section editor on wide
-  // screens, updating live from `draft` as the operator types.
-  const [showPreview, setShowPreview] = useState(true);
+  // Canvas editor (2026): the document IS the canvas. The outline collapses to reclaim width, and
+  // selecting a block opens its editor in a contextual right-hand inspector drawer.
+  const [railOpen, setRailOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   // Scroll-position preservation when switching active section. We capture window.scrollY in
   // a ref *before* setActiveSectionId fires, then a useLayoutEffect restores it on the next
@@ -198,6 +200,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const selectSection = useCallback((id: string) => {
     scrollRestoreRef.current = typeof window !== "undefined" ? window.scrollY : null;
     setActiveSectionId(id);
+    // Selecting a block (from the canvas or the outline rail) opens its contextual inspector.
+    setInspectorOpen(true);
   }, []);
   useLayoutEffect(() => {
     if (scrollRestoreRef.current != null && typeof window !== "undefined") {
@@ -1109,124 +1113,136 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Live-preview toggle — xl only (the preview pane needs the width). */}
-          <div className="hidden justify-end xl:flex">
+          {/* Toolbar — the document IS the canvas: click any block to edit it. Outline collapses
+              to reclaim width on a laptop. */}
+          <div className="hidden items-center justify-between xl:flex">
             <button
               type="button"
-              onClick={() => setShowPreview((v) => !v)}
-              aria-pressed={showPreview}
+              onClick={() => setRailOpen((v) => !v)}
+              aria-pressed={railOpen}
               className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${
-                showPreview
+                railOpen
                   ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
                   : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
               }`}
             >
-              {showPreview ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
-              {showPreview ? "Live preview on" : "Live preview off"}
+              {railOpen ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
+              {railOpen ? "Outline shown" : "Outline hidden"}
             </button>
+            <span className="text-[11px] text-[var(--text-4)]">Click any block on the page to edit it →</span>
           </div>
 
           <section
-            className={`grid gap-4 ${
-              showPreview
-                ? "xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,1fr)]"
-                : "xl:grid-cols-[340px_minmax(0,1fr)]"
-            }`}
+            className={`grid gap-4 ${railOpen ? "xl:grid-cols-[280px_minmax(0,1fr)]" : "xl:grid-cols-1"}`}
           >
-            {/* Desktop: outline pinned to the side */}
-            <div className="hidden xl:block">
-              <TableOfContentsCard
-                sections={sectionEntries}
-                activeId={activeEntry?.id ?? null}
-                editable
-                onSelect={(id) => selectSection(id)}
-                onInsertAt={(index) => setPaletteInsertAt(index)}
-                onDeleteSection={handleDeleteSection}
-                onReorder={updateSectionOrder}
-                onToggleVisibility={handleToggleVisibility}
-              />
-            </div>
+            {/* Desktop: collapsible outline rail */}
+            {railOpen ? (
+              <div className="hidden xl:block">
+                <TableOfContentsCard
+                  sections={sectionEntries}
+                  activeId={activeEntry?.id ?? null}
+                  editable
+                  onSelect={(id) => selectSection(id)}
+                  onInsertAt={(index) => setPaletteInsertAt(index)}
+                  onDeleteSection={handleDeleteSection}
+                  onReorder={updateSectionOrder}
+                  onToggleVisibility={handleToggleVisibility}
+                />
+              </div>
+            ) : null}
 
-          {/* Mobile/tablet: outline opens as a slide-in drawer (P5.17) */}
-          <div className="xl:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileOutlineOpen(true)}
-              className="inline-flex h-11 w-full items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-white px-4 text-sm font-medium text-[var(--text-1)] shadow-[var(--shadow-xs)] transition active:bg-[var(--surface-1)]"
-            >
-              <span>
-                Outline · {sectionEntries.length} block{sectionEntries.length === 1 ? "" : "s"}
-              </span>
-              <ChevronRightIcon className="h-4 w-4 text-[var(--text-3)]" />
-            </button>
-          </div>
-
-          {mobileOutlineOpen ? (
-            <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-label="Document outline">
+            {/* Mobile/tablet: outline opens as a slide-in drawer (P5.17) */}
+            <div className="xl:hidden">
               <button
                 type="button"
-                aria-label="Close outline"
-                onClick={() => setMobileOutlineOpen(false)}
-                className="absolute inset-0 bg-black/30"
-              />
-              <aside className="absolute inset-y-0 left-0 flex w-full max-w-[380px] flex-col bg-white shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
-                  <span className="widget-header-label">02 {"// "}OUTLINE</span>
-                  <button
-                    type="button"
-                    onClick={() => setMobileOutlineOpen(false)}
-                    aria-label="Close"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                  >
-                    <ChevronRightIcon className="h-4 w-4 rotate-180" />
-                  </button>
+                onClick={() => setMobileOutlineOpen(true)}
+                className="inline-flex h-11 w-full items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-white px-4 text-sm font-medium text-[var(--text-1)] shadow-[var(--shadow-xs)] transition active:bg-[var(--surface-1)]"
+              >
+                <span>
+                  Outline · {sectionEntries.length} block{sectionEntries.length === 1 ? "" : "s"}
+                </span>
+                <ChevronRightIcon className="h-4 w-4 text-[var(--text-3)]" />
+              </button>
+            </div>
+
+            {mobileOutlineOpen ? (
+              <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-label="Document outline">
+                <button
+                  type="button"
+                  aria-label="Close outline"
+                  onClick={() => setMobileOutlineOpen(false)}
+                  className="absolute inset-0 bg-black/30"
+                />
+                <aside className="absolute inset-y-0 left-0 flex w-full max-w-[380px] flex-col bg-white shadow-[var(--shadow-lg)]">
+                  <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
+                    <span className="widget-header-label">02 {"// "}OUTLINE</span>
+                    <button
+                      type="button"
+                      onClick={() => setMobileOutlineOpen(false)}
+                      aria-label="Close"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                    >
+                      <ChevronRightIcon className="h-4 w-4 rotate-180" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    <TableOfContentsCard
+                      sections={sectionEntries}
+                      activeId={activeEntry?.id ?? null}
+                      editable
+                      onSelect={(id) => {
+                        selectSection(id);
+                        setMobileOutlineOpen(false);
+                      }}
+                      onInsertAt={(index) => {
+                        setPaletteInsertAt(index);
+                        setMobileOutlineOpen(false);
+                      }}
+                      onDeleteSection={handleDeleteSection}
+                      onReorder={updateSectionOrder}
+                      onToggleVisibility={handleToggleVisibility}
+                    />
+                  </div>
+                </aside>
+              </div>
+            ) : null}
+
+            {/* Canvas — the live client document. Click a block to open its inspector. */}
+            <div className="min-w-0">
+              <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
+                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
+                    03 // CANVAS
+                  </span>
+                  <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
                 </div>
-                <div className="flex-1 overflow-y-auto">
-                  <TableOfContentsCard
-                    sections={sectionEntries}
-                    activeId={activeEntry?.id ?? null}
-                    editable
-                    onSelect={(id) => {
-                      selectSection(id);
-                      setMobileOutlineOpen(false);
-                    }}
-                    onInsertAt={(index) => {
-                      setPaletteInsertAt(index);
-                      setMobileOutlineOpen(false);
-                    }}
-                    onDeleteSection={handleDeleteSection}
-                    onReorder={updateSectionOrder}
-                    onToggleVisibility={handleToggleVisibility}
+                <div className="overflow-auto p-4 sm:p-6">
+                  <ProposalPreview
+                    proposal={draft}
+                    showTableOfContents={false}
+                    frame={false}
+                    activeSectionId={activeEntry?.id ?? null}
+                    onSelectSection={(id) => selectSection(id)}
                   />
                 </div>
-              </aside>
+              </div>
             </div>
-          ) : null}
+          </section>
 
+          {/* Contextual block inspector — hosts the existing per-block editor unchanged. */}
+          <SlideOver
+            open={inspectorOpen && Boolean(activeEntry)}
+            onClose={() => setInspectorOpen(false)}
+            title="Edit block"
+            panelClassName="w-[460px] max-w-[94vw]"
+          >
             <ProposalBuilderPanel
               proposal={draft}
               sections={sectionEntries}
               activeId={activeEntry?.id ?? null}
               onProposalChange={(next) => updateDraft(next, { coalesce: true })}
             />
-
-            {/* Split-screen live preview — the rendered client view, updating as you type. */}
-            {showPreview ? (
-              <div className="hidden xl:block">
-                <div className="sticky top-4 flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
-                  <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
-                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                      04 // LIVE PREVIEW
-                    </span>
-                    <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
-                  </div>
-                  <div className="overflow-auto p-4">
-                    <ProposalPreview proposal={draft} showTableOfContents={false} frame={false} />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </section>
+          </SlideOver>
         </div>
       )}
 

@@ -9,6 +9,7 @@
 
 "use client";
 
+import type { ReactNode } from "react";
 import { getSectionType } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -39,10 +40,16 @@ export function ProposalSectionPreview({
   section,
   proposal,
   index,
+  activeSectionId,
+  onSelectSection,
 }: {
   section: ProposalSection;
   proposal: ProposalDocument;
   index: number;
+  /** Editor-only: the currently-selected block's id (for the active ring). Absent on public view. */
+  activeSectionId?: string | null;
+  /** Editor-only: click a rendered block to select it (opens the inspector). Absent on public view. */
+  onSelectSection?: (id: string) => void;
 }) {
   if (!section.isVisible) {
     return null;
@@ -56,16 +63,47 @@ export function ProposalSectionPreview({
   const Preview = sectionType.Preview;
   const previewElement = <Preview data={section.data} proposal={proposal} section={section} />;
 
+  // Editor-only: make the rendered block selectable. When onSelectSection is absent (public /docs
+  // and print), this wrapper is skipped entirely so the DOM stays byte-for-byte read-only.
+  const selectionId = section.id ?? section.key;
+  const selectable = Boolean(onSelectSection);
+  const isActive = selectable && activeSectionId === selectionId;
+
+  function wrapSelectable(content: ReactNode) {
+    if (!selectable) return content;
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit ${section.title}`}
+        onClick={() => onSelectSection?.(selectionId)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelectSection?.(selectionId);
+          }
+        }}
+        className={`group/select relative cursor-pointer rounded-[12px] outline-none transition ${
+          isActive
+            ? "ring-2 ring-[var(--brand-600)] ring-offset-2 ring-offset-[var(--surface-canvas)]"
+            : "ring-1 ring-transparent hover:ring-[var(--border-1)]"
+        }`}
+      >
+        {content}
+      </div>
+    );
+  }
+
   // Sections that render their own full-page layout (cover) opt out of the standard shell.
   if (sectionType.renderShell === false) {
-    return previewElement;
+    return wrapSelectable(previewElement);
   }
 
   const sectionId = `section-${section.id ?? section.key}`;
   const sectionNumber = String(index + 1).padStart(2, "0");
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
 
-  return (
+  return wrapSelectable(
     <section
       id={sectionId}
       className="proposal-block-avoid space-y-6 border-b border-[var(--border-2)] pb-10 last:border-0 last:pb-0 print:pb-8"
