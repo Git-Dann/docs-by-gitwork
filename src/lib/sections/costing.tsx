@@ -21,13 +21,6 @@ import type { CostingSectionData } from "@/types/proposal";
 const DEFAULT_COSTING = proposalSectionBlueprints.find((entry) => entry.key === "costing")
   ?.data as CostingSectionData;
 
-function parseTechStackValue(value?: string) {
-  return (value ?? "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 function formatMilestoneAmount(
   value: number | null | undefined,
   currency: "GBP" | "USD" | "EUR",
@@ -143,20 +136,11 @@ export const costingSection = defineSection<CostingSectionData>({
                   <tr key={item.id ?? `${item.category}-${item.itemName}`}>
                     <td className="text-[var(--text-2)]">{item.category || "-"}</td>
                     <td>
-                      <div className="flex flex-wrap gap-1.5">
-                        {parseTechStackValue(item.description).length ? (
-                          parseTechStackValue(item.description).map((entry) => (
-                            <span
-                              key={entry}
-                              className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs font-medium text-[var(--text-2)]"
-                            >
-                              {entry}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-[var(--text-3)]">No stack selected</span>
-                        )}
-                      </div>
+                      {item.description?.trim() ? (
+                        <p className="text-sm leading-6 text-[var(--text-2)]">{item.description}</p>
+                      ) : (
+                        <span className="text-xs text-[var(--text-3)]">—</span>
+                      )}
                     </td>
                     <td className="text-right text-[var(--text-2)]">{item.quantity}</td>
                     <td className="text-right text-[var(--text-2)]">

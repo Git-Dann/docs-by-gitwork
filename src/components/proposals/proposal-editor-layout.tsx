@@ -32,6 +32,7 @@ import {
   HomeIcon,
   LinkIcon,
   PlusIcon,
+  QueueListIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -186,22 +187,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
-  /** P5.17 — outline drawer toggle on < xl screens. */
-  const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false);
-  // Canvas editor (2026): the document IS the canvas. The outline collapses to reclaim width, and
-  // selecting a block opens its editor in a contextual right-hand inspector drawer.
-  const [railOpen, setRailOpen] = useState(true);
+  // Canvas editor (2026): the document IS the full-width working area. The outline is a toggled
+  // overlay (no reserved column), and structured blocks open a docked inspector for their settings.
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
-  // Select a block + scroll the canvas to it (used by the outline rail). Inspector-opening is
-  // decided by the caller (only non-inline blocks open it — text blocks edit inline on the canvas).
+  // Mark a block active WITHOUT moving the page — clicking a block to edit it must retain your
+  // scroll position. (Deliberate navigation from the outline overlay scrolls; see handleOutlineSelect.)
   const selectSection = useCallback((id: string) => {
     setActiveSectionId(id);
-    if (typeof document !== "undefined") {
-      document
-        .querySelector(`[data-canvas-block="${window.CSS.escape(id)}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
   }, []);
 
   // Scroll-spy: the outline highlights whichever block is currently in view as you scroll.
@@ -661,17 +655,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
   }
 
-  // Outline-rail click: scroll to + select the block. Open the inspector only for structured
-  // (non-inline) blocks — text blocks are edited inline on the canvas, so they don't pop a panel.
+  // Outline-overlay click: deliberate navigation, so scroll the canvas to the block. Open the
+  // inspector only for structured (non-inline) blocks — text blocks are edited inline.
   function handleOutlineSelect(id: string) {
-    selectSection(id);
+    setActiveSectionId(id);
+    if (typeof document !== "undefined") {
+      document
+        .querySelector(`[data-canvas-block="${window.CSS.escape(id)}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     const entry = sectionEntries.find((section) => section.id === id);
     const type = entry ? SECTION_REGISTRY[entry.section.key] : null;
-    if (type && !type.inlineEditable) {
-      setInspectorOpen(true);
-    } else {
-      setInspectorOpen(false);
-    }
+    setInspectorOpen(Boolean(type && !type.inlineEditable));
   }
 
   async function handleShareLink() {
@@ -1173,109 +1168,78 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Toolbar — the document IS the canvas: click any block to edit it. Outline collapses
-              to reclaim width on a laptop. */}
-          <div className="hidden items-center justify-between xl:flex">
+          {/* Toolbar — the canvas IS the working area. A tidy "Overlay" toggle reveals the outline
+              as a floating panel (no reserved column), so the canvas always uses the full width. */}
+          <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setRailOpen((v) => !v)}
-              aria-pressed={railOpen}
+              onClick={() => setOutlineOpen((v) => !v)}
+              aria-pressed={outlineOpen}
               className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${
-                railOpen
+                outlineOpen
                   ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
                   : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
               }`}
             >
-              {railOpen ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
-              {railOpen ? "Outline shown" : "Outline hidden"}
+              <QueueListIcon className="h-4 w-4" />
+              Overlay
             </button>
-            <span className="text-[11px] text-[var(--text-4)]">Click any block on the page to edit it →</span>
+            <span className="hidden text-[11px] text-[var(--text-4)] sm:inline">
+              Click any block on the page to edit it →
+            </span>
           </div>
+
+          {/* Outline overlay — floating, toggled; never reserves a column, so opening/closing it
+              doesn't reflow the document. */}
+          {outlineOpen ? (
+            <div className="fixed inset-0 z-40" role="dialog" aria-label="Document outline">
+              <button
+                type="button"
+                aria-label="Close outline"
+                onClick={() => setOutlineOpen(false)}
+                className="absolute inset-0 bg-black/20"
+              />
+              <aside className="absolute inset-y-0 left-0 flex w-full max-w-[320px] flex-col bg-white shadow-[var(--shadow-lg)]">
+                <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
+                  <span className="widget-header-label">02 {"// "}OUTLINE</span>
+                  <button
+                    type="button"
+                    onClick={() => setOutlineOpen(false)}
+                    aria-label="Close"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <TableOfContentsCard
+                    sections={sectionEntries}
+                    activeId={viewingSectionId ?? activeEntry?.id ?? null}
+                    editable
+                    onSelect={(id) => {
+                      handleOutlineSelect(id);
+                      setOutlineOpen(false);
+                    }}
+                    onInsertAt={(index) => {
+                      setPaletteInsertAt(index);
+                      setOutlineOpen(false);
+                    }}
+                    onDeleteSection={handleDeleteSection}
+                    onReorder={updateSectionOrder}
+                    onToggleVisibility={handleToggleVisibility}
+                  />
+                </div>
+              </aside>
+            </div>
+          ) : null}
 
           <section
             className={`grid gap-4 ${
-              railOpen
-                ? inspectorDocked
-                  ? "xl:grid-cols-[240px_minmax(0,1fr)_minmax(340px,380px)]"
-                  : "xl:grid-cols-[280px_minmax(0,1fr)]"
-                : inspectorDocked
-                  ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)]"
-                  : "xl:grid-cols-1"
+              inspectorDocked ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]" : "xl:grid-cols-1"
             }`}
           >
-            {/* Desktop: collapsible outline rail */}
-            {railOpen ? (
-              <div className="hidden xl:block">
-                <TableOfContentsCard
-                  sections={sectionEntries}
-                  activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                  editable
-                  onSelect={handleOutlineSelect}
-                  onInsertAt={(index) => setPaletteInsertAt(index)}
-                  onDeleteSection={handleDeleteSection}
-                  onReorder={updateSectionOrder}
-                  onToggleVisibility={handleToggleVisibility}
-                />
-              </div>
-            ) : null}
-
-            {/* Mobile/tablet: outline opens as a slide-in drawer (P5.17) */}
-            <div className="xl:hidden">
-              <button
-                type="button"
-                onClick={() => setMobileOutlineOpen(true)}
-                className="inline-flex h-11 w-full items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-white px-4 text-sm font-medium text-[var(--text-1)] shadow-[var(--shadow-xs)] transition active:bg-[var(--surface-1)]"
-              >
-                <span>
-                  Outline · {sectionEntries.length} block{sectionEntries.length === 1 ? "" : "s"}
-                </span>
-                <ChevronRightIcon className="h-4 w-4 text-[var(--text-3)]" />
-              </button>
-            </div>
-
-            {mobileOutlineOpen ? (
-              <div className="fixed inset-0 z-40 xl:hidden" role="dialog" aria-label="Document outline">
-                <button
-                  type="button"
-                  aria-label="Close outline"
-                  onClick={() => setMobileOutlineOpen(false)}
-                  className="absolute inset-0 bg-black/30"
-                />
-                <aside className="absolute inset-y-0 left-0 flex w-full max-w-[380px] flex-col bg-white shadow-[var(--shadow-lg)]">
-                  <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
-                    <span className="widget-header-label">02 {"// "}OUTLINE</span>
-                    <button
-                      type="button"
-                      onClick={() => setMobileOutlineOpen(false)}
-                      aria-label="Close"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                    >
-                      <ChevronRightIcon className="h-4 w-4 rotate-180" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                    <TableOfContentsCard
-                      sections={sectionEntries}
-                      activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                      editable
-                      onSelect={(id) => {
-                        handleOutlineSelect(id);
-                        setMobileOutlineOpen(false);
-                      }}
-                      onInsertAt={(index) => {
-                        setPaletteInsertAt(index);
-                        setMobileOutlineOpen(false);
-                      }}
-                      onDeleteSection={handleDeleteSection}
-                      onReorder={updateSectionOrder}
-                      onToggleVisibility={handleToggleVisibility}
-                    />
-                  </div>
-                </aside>
-              </div>
-            ) : null}
-
-            {/* Canvas — the live client document. Click a block to open its inspector. */}
+            {/* Canvas — the live client document, full working width. Click a block to edit it
+                inline (text) or open its options (structured blocks). Selection never scrolls. */}
             <div className="min-w-0">
               <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                 <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
@@ -1292,7 +1256,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     editable
                     activeSectionId={activeEntry?.id ?? null}
                     onSelectSection={(id) => {
-                      // Canvas onSelectSection only fires for non-inline blocks → open the inspector.
+                      // Canvas onSelectSection only fires for non-inline blocks → open options.
+                      // No scroll — clicking a block retains your position.
                       selectSection(id);
                       setInspectorOpen(true);
                     }}
@@ -1308,12 +1273,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <aside className="flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] xl:sticky xl:top-4">
                 <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
                   <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                    EDIT · {activeEntry?.section.title}
+                    OPTIONS · {activeEntry?.section.title}
                   </span>
                   <button
                     type="button"
                     onClick={() => setInspectorOpen(false)}
-                    aria-label="Close inspector"
+                    aria-label="Close options"
                     className="-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                   >
                     <XMarkIcon className="h-4 w-4" />
