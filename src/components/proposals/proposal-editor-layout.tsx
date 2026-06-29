@@ -33,6 +33,7 @@ import {
   LinkIcon,
   PlusIcon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -54,7 +55,6 @@ import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
-import { SlideOver } from "@/components/ui/slide-over";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
@@ -284,6 +284,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const approvalApplies = draft
     ? approvalTrackApplies(draft.documentType, draft.metadata)
     : false;
+
+  // Whether the contextual inspector is docked open (a non-inline block is selected for editing).
+  const inspectorDocked = inspectorOpen && Boolean(activeEntry);
 
   const handleTabChange = useCallback(
     (tab: EditorTab) => {
@@ -1150,7 +1153,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <section
-            className={`grid gap-4 ${railOpen ? "xl:grid-cols-[280px_minmax(0,1fr)]" : "xl:grid-cols-1"}`}
+            className={`grid gap-4 ${
+              railOpen
+                ? inspectorDocked
+                  ? "xl:grid-cols-[240px_minmax(0,1fr)_minmax(340px,380px)]"
+                  : "xl:grid-cols-[280px_minmax(0,1fr)]"
+                : inspectorDocked
+                  ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)]"
+                  : "xl:grid-cols-1"
+            }`}
           >
             {/* Desktop: collapsible outline rail */}
             {railOpen ? (
@@ -1246,23 +1257,36 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 </div>
               </div>
             </div>
-          </section>
 
-          {/* Contextual block inspector — hosts the existing per-block editor unchanged. */}
-          <SlideOver
-            open={inspectorOpen && Boolean(activeEntry)}
-            onClose={() => setInspectorOpen(false)}
-            title="Edit block"
-            dim={false}
-            panelClassName="w-[460px] max-w-[94vw]"
-          >
-            <ProposalBuilderPanel
-              proposal={draft}
-              sections={sectionEntries}
-              activeId={activeEntry?.id ?? null}
-              onProposalChange={(next) => updateDraft(next, { coalesce: true })}
-            />
-          </SlideOver>
+            {/* Contextual inspector — a docked column that pushes the canvas (never overlays it),
+                for structured blocks (cover, costing, timeline). Text blocks edit inline. */}
+            {inspectorDocked ? (
+              <aside className="flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] xl:sticky xl:top-4">
+                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
+                  <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
+                    EDIT · {activeEntry?.section.title}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setInspectorOpen(false)}
+                    aria-label="Close inspector"
+                    className="-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <ProposalBuilderPanel
+                    embedded
+                    proposal={draft}
+                    sections={sectionEntries}
+                    activeId={activeEntry?.id ?? null}
+                    onProposalChange={(next) => updateDraft(next, { coalesce: true })}
+                  />
+                </div>
+              </aside>
+            ) : null}
+          </section>
         </div>
       )}
 

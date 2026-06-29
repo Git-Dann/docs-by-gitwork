@@ -21,11 +21,15 @@ export function ProposalBuilderPanel({
   sections,
   activeId,
   onProposalChange,
+  embedded = false,
 }: {
   proposal: ProposalDocument;
   sections: Array<{ id: string; section: ProposalSection; order: number }>;
   activeId: string | null;
   onProposalChange: (proposal: ProposalDocument) => void;
+  /** Chromeless mode — drop the widget-card wrapper + header so it sits flush inside a docked
+   *  inspector column that supplies its own chrome. */
+  embedded?: boolean;
 }) {
   const createSnippet = useCreateSnippet();
   const [snippetOpen, setSnippetOpen] = useState(false);
@@ -179,24 +183,38 @@ export function ProposalBuilderPanel({
   const sectionType = SECTION_REGISTRY[activeSection.key];
   const aiExpandable = sectionType?.aiExpandable === true;
 
+  const Wrapper = embedded ? "div" : "article";
   return (
-    <article className="proposal-form-theme widget-card overflow-hidden">
-      <div className="widget-header">
-        <span className="widget-header-label">04 {"// "}{moduleLabel}</span>
-        <span className="widget-header-right">BUILDER</span>
-      </div>
-      <div className="space-y-5 p-5 sm:p-6">
+    <Wrapper className={embedded ? "proposal-form-theme" : "proposal-form-theme widget-card overflow-hidden"}>
+      {embedded ? null : (
+        <div className="widget-header">
+          <span className="widget-header-label">04 {"// "}{moduleLabel}</span>
+          <span className="widget-header-right">BUILDER</span>
+        </div>
+      )}
+      <div className={embedded ? "space-y-5 p-5" : "space-y-5 p-5 sm:p-6"}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <h3 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
-              {activeSection.title}
-            </h3>
-            {activeSection.description ? (
-              <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+          {embedded ? (
+            // The docked inspector header already names the block; show just the description.
+            activeSection.description ? (
+              <p className="max-w-3xl text-sm leading-6 text-[var(--text-3)]">
                 {activeSection.description}
               </p>
-            ) : null}
-          </div>
+            ) : (
+              <span />
+            )
+          ) : (
+            <div className="max-w-3xl">
+              <h3 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
+                {activeSection.title}
+              </h3>
+              {activeSection.description ? (
+                <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                  {activeSection.description}
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-1">
             {aiExpandable ? (
@@ -281,7 +299,7 @@ export function ProposalBuilderPanel({
           </div>
         </div>
       </Modal>
-    </article>
+    </Wrapper>
   );
 }
 
