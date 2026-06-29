@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getRequestUser } from "@/server/auth/request-user";
+import { allowedDocTypes } from "@/lib/templates";
+import type { DocumentType } from "@/types/proposal";
 import {
   isAtLeast,
   isSuperAdmin,
@@ -223,6 +225,18 @@ export function canViewRateCard(user: EffectiveUser): boolean {
  *  except Super Admins (always) and members explicitly granted it (e.g. Syed). */
 export function canViewClientFinancials(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role) || user.permissions.includes("clients.viewFinancials");
+}
+
+/** Whether the user may see the admin document types (proposals + contracts). Off for developers
+ *  by default → they're scoped to the lightweight types. */
+export function canViewAdminDocTypes(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role) || user.permissions.includes("docs.viewAdminTypes");
+}
+
+/** The document types this user may list, open, or create. Null user (API-key/server) → all. */
+export function allowedDocTypesForUser(user: EffectiveUser | null): DocumentType[] {
+  if (!user) return allowedDocTypes(true);
+  return allowedDocTypes(canViewAdminDocTypes(user));
 }
 
 // ── Action-level (view vs manage + high-risk) ────────────────────────────────

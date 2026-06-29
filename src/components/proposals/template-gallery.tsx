@@ -16,6 +16,8 @@ import { useEffect, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/24/outline";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/format";
+import { usePermissions } from "@/hooks/use-permissions";
+import { allowedDocTypes } from "@/lib/templates";
 import type { DocumentType } from "@/types/proposal";
 
 interface TemplateRecord {
@@ -81,6 +83,13 @@ export function TemplateGallery({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<DocumentType | "ALL">(initialFilter);
 
+  // Role-gate the doc types: developers only see/create the lightweight types. Recompute a valid
+  // active filter rather than locking initial state (the account perms load asynchronously).
+  const { canViewAdminDocTypes } = usePermissions();
+  const allowedTypeSet = new Set<string>(allowedDocTypes(canViewAdminDocTypes));
+  const effectiveFilter: DocumentType | "ALL" =
+    filter === "ALL" || allowedTypeSet.has(filter) ? filter : "ALL";
+
   useEffect(() => {
     setLoading(true);
     void apiFetch<{ templates: TemplateRecord[] }>("/api/templates")
@@ -89,9 +98,14 @@ export function TemplateGallery({
       .finally(() => setLoading(false));
   }, []);
 
-  // Filter, then sort: Foundry stock first (canonical starting point), workspace customs after,
-  // defaults pinned to the top within each group.
-  const filtered = (filter === "ALL" ? templates : templates.filter((t) => t.documentType === filter))
+  // Role-gate first (never list admin templates to a developer), then apply the active filter,
+  // then sort: Foundry stock first (canonical starting point), workspace customs after, defaults
+  // pinned to the top within each group.
+  const visibleTemplates = templates.filter((t) => allowedTypeSet.has(t.documentType));
+  const filtered = (effectiveFilter === "ALL"
+    ? visibleTemplates
+    : visibleTemplates.filter((t) => t.documentType === effectiveFilter)
+  )
     .slice()
     .sort((a, b) => {
       const aStock = a.workspaceId === null ? 1 : 0;
@@ -101,9 +115,9 @@ export function TemplateGallery({
       return a.name.localeCompare(b.name);
     });
 
-  // Only show chips for types that actually have a template seeded — keeps the strip honest as
-  // the workspace grows or shrinks its library.
-  const availableTypes = new Set(templates.map((t) => t.documentType));
+  // Only show chips for types that actually have a (role-allowed) template seeded — keeps the strip
+  // honest as the workspace grows/shrinks, and never offers an admin type to a developer.
+  const availableTypes = new Set(visibleTemplates.map((t) => t.documentType));
   const visibleChips = CHIP_ORDER.filter(
     (chip) => chip === "ALL" || availableTypes.has(chip as DocumentType),
   );
@@ -116,7 +130,7 @@ export function TemplateGallery({
           content bleeding through above it. */}
       <div className="sticky top-0 z-10 flex flex-wrap gap-1.5 border-b border-[var(--border-2)] bg-[var(--surface-canvas)] px-3 py-2.5">
         {visibleChips.map((chip) => (
-          <FilterChip key={chip} active={filter === chip} onClick={() => setFilter(chip)}>
+          <FilterChip key={chip} active={effectiveFilter === chip} onClick={() => setFilter(chip)}>
             {CHIP_LABEL[chip]}
           </FilterChip>
         ))}

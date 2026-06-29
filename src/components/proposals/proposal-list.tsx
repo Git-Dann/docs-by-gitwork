@@ -34,6 +34,7 @@ import {
   useProposalList,
 } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
+import { allowedDocTypes } from "@/lib/templates";
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
 import type { DocumentType } from "@/types/proposal";
@@ -100,7 +101,11 @@ const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
 
 export function ProposalList() {
   const router = useRouter();
-  const { canManageDocs } = usePermissions();
+  const { canManageDocs, canViewAdminDocTypes } = usePermissions();
+  const allowedTypeSet = useMemo(
+    () => new Set<string>(allowedDocTypes(canViewAdminDocTypes)),
+    [canViewAdminDocTypes],
+  );
   const searchParams = useSearchParams();
   const clientFilter = searchParams.get("client")?.trim() ?? "";
   const openCreate = searchParams.get("new") === "1";
@@ -139,6 +144,10 @@ export function ProposalList() {
     search,
     status,
     sort,
+    // Fetch every type the viewer is allowed to see (server scopes by role); the chip row below
+    // filters client-side. This is also what surfaces the lightweight docs (handover/report/…),
+    // which the old PROPOSAL-only default hid.
+    documentType: "ALL",
   });
   const clientsQuery = useClientList();
   const createMutation = useCreateProposal();
@@ -408,6 +417,8 @@ export function ProposalList() {
             FILTER BY TYPE
           </span>
           {(["ALL", "PROPOSAL", "HANDOVER", "REPORT", "BRIEF", "OTHER", "SLA", "SOW", "MSA", "NDA", "CO", "DSA"] as const).map((type) => {
+            // Role-gate: developers never see the admin doc-type chips.
+            if (type !== "ALL" && !allowedTypeSet.has(type)) return null;
             const count = type === "ALL" ? totalCount : docTypeCounts[type] ?? 0;
             if (type !== "ALL" && count === 0) return null;
             const active = docTypeFilter === type;

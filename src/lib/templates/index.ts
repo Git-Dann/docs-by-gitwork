@@ -47,23 +47,47 @@ export function getTemplateBlueprintsForType(type: DocumentType): SectionBluepri
 }
 
 /**
- * Per-type behaviour config. `usesApprovalTrack` controls whether the internal review track
- * (Product / Tech / MD sign-off) applies by default. Proposals and contracts keep it; the
- * lightweight everyday docs skip it. A per-document `metadata.approvalTrackEnabled` overrides this.
+ * Per-type behaviour config.
+ *  - `usesApprovalTrack` — whether the internal review track (Product / Tech / MD sign-off) applies
+ *    by default. Proposals and contracts keep it; the lightweight everyday docs skip it. A
+ *    per-document `metadata.approvalTrackEnabled` overrides this.
+ *  - `adminOnly` — whether this is an admin/staff document type. Developers (without the
+ *    `docs.viewAdminTypes` permission) never see, open, or create these; they get the lightweight
+ *    types only. Enforced server-side (see allowedDocTypesForUser) and reflected in the UI.
  */
-export const DOC_TYPE_CONFIG: Record<DocumentType, { usesApprovalTrack: boolean }> = {
-  PROPOSAL: { usesApprovalTrack: true },
-  SLA: { usesApprovalTrack: true },
-  SOW: { usesApprovalTrack: true },
-  MSA: { usesApprovalTrack: true },
-  NDA: { usesApprovalTrack: true },
-  CO: { usesApprovalTrack: true },
-  DSA: { usesApprovalTrack: true },
-  HANDOVER: { usesApprovalTrack: false },
-  REPORT: { usesApprovalTrack: false },
-  BRIEF: { usesApprovalTrack: false },
-  OTHER: { usesApprovalTrack: false },
+export const DOC_TYPE_CONFIG: Record<DocumentType, { usesApprovalTrack: boolean; adminOnly: boolean }> = {
+  PROPOSAL: { usesApprovalTrack: true, adminOnly: true },
+  SLA: { usesApprovalTrack: true, adminOnly: true },
+  SOW: { usesApprovalTrack: true, adminOnly: true },
+  MSA: { usesApprovalTrack: true, adminOnly: true },
+  NDA: { usesApprovalTrack: true, adminOnly: true },
+  CO: { usesApprovalTrack: true, adminOnly: true },
+  DSA: { usesApprovalTrack: true, adminOnly: true },
+  HANDOVER: { usesApprovalTrack: false, adminOnly: false },
+  REPORT: { usesApprovalTrack: false, adminOnly: false },
+  BRIEF: { usesApprovalTrack: false, adminOnly: false },
+  OTHER: { usesApprovalTrack: false, adminOnly: false },
 };
+
+const ALL_DOC_TYPES = Object.keys(DOC_TYPE_CONFIG) as DocumentType[];
+
+/** Document types any role (incl. developers) may see/create. */
+export const LIGHTWEIGHT_DOC_TYPES: DocumentType[] = ALL_DOC_TYPES.filter(
+  (type) => !DOC_TYPE_CONFIG[type].adminOnly,
+);
+
+/** Admin/staff-only document types (proposals + contracts). */
+export const ADMIN_DOC_TYPES: DocumentType[] = ALL_DOC_TYPES.filter(
+  (type) => DOC_TYPE_CONFIG[type].adminOnly,
+);
+
+/**
+ * The document types a viewer may access. `canViewAdminTypes` (Super Admin, or the
+ * `docs.viewAdminTypes` permission) → all types; otherwise the lightweight types only.
+ */
+export function allowedDocTypes(canViewAdminTypes: boolean): DocumentType[] {
+  return canViewAdminTypes ? ALL_DOC_TYPES : LIGHTWEIGHT_DOC_TYPES;
+}
 
 /**
  * Resolve whether the internal review/sign-off track applies to a document: the per-document

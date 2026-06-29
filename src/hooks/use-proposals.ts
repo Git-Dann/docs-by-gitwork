@@ -58,6 +58,7 @@ export function useProposalList(filters: {
   search?: string;
   status?: string;
   sort?: string;
+  documentType?: string;
 }) {
   return useQuery({
     queryKey: ["proposals", filters],

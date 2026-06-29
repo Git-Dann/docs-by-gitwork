@@ -173,11 +173,13 @@ export async function listProposals(params: {
   search?: string;
   status?: string;
   sort?: string;
+  documentType?: string;
 }): Promise<ProposalListResponse> {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.status) query.set("status", params.status);
   if (params.sort) query.set("sort", params.sort);
+  if (params.documentType) query.set("documentType", params.documentType);
   const qs = query.toString();
   return apiFetch<ProposalListResponse>(`/api/proposals${qs ? `?${qs}` : ""}`);
 }

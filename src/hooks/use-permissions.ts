@@ -29,6 +29,8 @@ export function usePermissions() {
     canViewCosts: can("docs.viewCosts"),
     canViewRateCard: can("rateCard.view"),
     canViewClientFinancials: can("clients.viewFinancials"),
+    // Off → Docs is scoped to the lightweight types (no proposals/contracts). Default off for devs.
+    canViewAdminDocTypes: can("docs.viewAdminTypes"),
     // Action gates (view vs manage + high-risk)
     canRunFixAgent: can("pulse.fixAgent"),
     canManageCode: can("code.manage"),

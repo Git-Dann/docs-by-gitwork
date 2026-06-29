@@ -194,6 +194,13 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description: "Cost line-item totals and margins on the proposal Costing breakdown.",
       },
       {
+        id: "docs.viewAdminTypes",
+        category: "feature",
+        label: "See proposals & contracts",
+        description:
+          "Access the admin document types (proposals, SLA/SOW/MSA/NDA/CO/DSA). Off scopes Docs to the lightweight types (handover, status report, brief, blank) — the default for developers.",
+      },
+      {
         id: "rateCard.view",
         category: "field",
         label: "View rate card",
@@ -393,7 +400,7 @@ export type ModuleId = string;
 // Default-on feature ids — granted automatically to fresh roles + new auto-provisioned
 // members so the capability ships usable. Opt-in features (Backstage approve, task roll-up
 // publish, MCP connect) stay off by default and require an explicit Super Admin grant per role.
-const DEFAULT_ON_FEATURE_IDS = new Set<string>(["seeAllClients"]);
+const DEFAULT_ON_FEATURE_IDS = new Set<string>(["seeAllClients", "docs.viewAdminTypes"]);
 
 export const FEATURE_PERMISSIONS = ALL_PERMISSIONS.filter((p) => p.category === "feature").map(
   ({ id, label, description }) => ({
@@ -427,6 +434,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
     "seeAllClients",
     "code.viewRates",
     "docs.viewCosts",
+    "docs.viewAdminTypes",
     "rateCard.view",
     // Staff can manage (create/edit/delete) within their products by default — but NOT
     // the high-risk actions (fix-agent PRs, public sharing), which stay Admin-only.
@@ -437,7 +445,10 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
     "support.manage",
     "study.manage",
   ],
-  DEVELOPER: ["clients", "support", "pulse", "backstage"],
+  // DEVELOPER also gets the Docs module + manage, but WITHOUT docs.viewAdminTypes — so they can
+  // create/edit the lightweight docs (handover, status report, brief, blank) and never see or open
+  // proposals/contracts. The type boundary is enforced server-side (allowedDocTypesForUser).
+  DEVELOPER: ["clients", "support", "pulse", "backstage", "proposals", "docs.manage"],
 };
 
 /**

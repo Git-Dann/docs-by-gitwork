@@ -7,7 +7,12 @@ import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templ
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
-import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  allowedDocTypesForUser,
+  assertCan,
+  canManageDocs,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -30,27 +35,34 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const status = searchParams.get("status")?.trim();
     const sort = searchParams.get("sort")?.trim() ?? "updatedAt:desc";
-    // documentType: absent/"PROPOSAL" → proposals only (default; web unchanged),
-    // "ALL" → every type, a specific type → just that type. iOS passes ALL to
-    // populate the cross-type Docs library.
+
+    // Role-scope the doc types: developers (without docs.viewAdminTypes) see only the lightweight
+    // types; staff/admin/super-admin see all. The requested `documentType` is intersected with that
+    // allow-list. Absent/"ALL" → every type the viewer may see; a specific type → that one if
+    // allowed, else nothing (never leak admin docs).
+    const user = await getEffectiveUserOrNull(request);
+    const allowed = allowedDocTypesForUser(user);
+    const allowedSet = new Set<string>(allowed);
+    const enumTypes = new Set<string>(Object.values(DocumentType));
     const typeParam = searchParams.get("documentType")?.trim().toUpperCase();
-    const allowedTypes = new Set<string>(Object.values(DocumentType));
-    const typeFilter =
-      !typeParam || typeParam === "PROPOSAL"
-        ? "PROPOSAL"
-        : typeParam === "ALL"
-          ? undefined
-          : allowedTypes.has(typeParam)
-            ? (typeParam as DocumentType)
-            : null;
-    // Unknown type → 400 (not a leaked Prisma 500).
-    if (typeFilter === null) return apiError("Invalid documentType.", 400);
+
+    let documentTypeWhere: Prisma.DocumentWhereInput["documentType"];
+    if (!typeParam || typeParam === "ALL") {
+      documentTypeWhere = { in: allowed };
+    } else if (enumTypes.has(typeParam)) {
+      documentTypeWhere = allowedSet.has(typeParam)
+        ? (typeParam as DocumentType)
+        : { in: [] as DocumentType[] };
+    } else {
+      // Unknown type → 400 (not a leaked Prisma 500).
+      return apiError("Invalid documentType.", 400);
+    }
 
     const [sortField, sortDirectionRaw] = sort.split(":");
     const sortDirection = sortDirectionRaw === "asc" ? "asc" : "desc";
 
     const where: Prisma.DocumentWhereInput = {
-      ...(typeFilter ? { documentType: typeFilter } : {}),
+      documentType: documentTypeWhere,
       ...(status && status !== "ALL" ? { status: status as DocumentStatus } : {}),
       ...(search
         ? {
@@ -103,13 +115,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "create documents");
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "create documents");
     const body = proposalCreateSchema.parse(await request.json());
     const { workspace, user, template } = await ensureBaseRecords();
 
     // Resolve the document type for this new record. Defaults to PROPOSAL so existing callers
     // (the legacy "New document" flow that only knew about proposals) keep working unchanged.
     const documentType: DocumentType = (body.documentType as DocumentType) ?? "PROPOSAL";
+
+    // Role-gate: developers can only create the lightweight types, never proposals/contracts.
+    if (!allowedDocTypesForUser(actor).includes(documentType)) {
+      return apiError("You don't have permission to create that document type.", 403);
+    }
 
     // Pick the template: if the caller passed an explicit templateId, honour it; otherwise look
     // up the default template for this doc type (seeded by bootstrap), falling back to the

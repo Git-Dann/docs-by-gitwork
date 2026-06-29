@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalUpdateSchema } from "@/server/validators";
 import {
+  allowedDocTypesForUser,
   assertCan,
   canManageDocs,
   canViewCosts,
@@ -33,8 +34,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return apiError("Document not found", 404);
     }
 
-    // Field gate: blank costs/margins for users without docs.viewCosts (API-key → full).
     const user = await getEffectiveUserOrNull(request);
+    // Type gate: a developer must never open an admin doc type. 404 (not 403) so the doc's
+    // existence isn't leaked.
+    if (user && !allowedDocTypesForUser(user).includes(document.documentType)) {
+      return apiError("Document not found", 404);
+    }
+    // Field gate: blank costs/margins for users without docs.viewCosts (API-key → full).
     const showCosts = user ? canViewCosts(user) : true;
     return apiOk({ proposal: serializeProposal(document, { canViewCosts: showCosts }) });
   } catch (error) {
@@ -63,6 +69,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     });
 
     if (!existing) {
+      return apiError("Document not found", 404);
+    }
+
+    // Type gate: a developer must never edit an admin doc type (mirrors the GET 404).
+    if (actor && !allowedDocTypesForUser(actor).includes(existing.documentType)) {
       return apiError("Document not found", 404);
     }
 
