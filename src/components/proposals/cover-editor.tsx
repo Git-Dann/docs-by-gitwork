@@ -159,7 +159,14 @@ export function CoverEditor({
         </label>
       </section>
 
-      <section className="app-subtle-panel space-y-4 p-4">
+      <details className="app-subtle-panel overflow-hidden p-0">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-[var(--text-2)] [&::-webkit-details-marker]:hidden">
+          <span>Branding &amp; logos</span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            Optional
+          </span>
+        </summary>
+        <div className="space-y-4 px-4 pb-4">
         <div className="grid gap-4 md:grid-cols-2">
           <Input
             label="Product / project name"
@@ -236,7 +243,8 @@ export function CoverEditor({
           Template-owned branding and confidentiality defaults still come from Settings, while
           proposal metadata is controlled here in the builder.
         </p>
-      </section>
+        </div>
+      </details>
     </div>
   );
 }

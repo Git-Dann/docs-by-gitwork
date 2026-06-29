@@ -140,6 +140,15 @@ export const coverSection = defineSection<CoverSectionData>({
       [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
     const titleLine = data.proposalTitle || proposal.title || "Untitled document";
 
+    // Suppress a subtitle that just restates the prepared-by line — a common data smell on
+    // generated docs (e.g. subtitle "Prepared by Syed" shown above the "PREPARED BY: SYED" meta).
+    const rawSubtitle = data.subtitle?.trim() ?? "";
+    const subtitleEchoesAuthor =
+      !!authorLine &&
+      rawSubtitle.replace(/^prepared by\s*/i, "").trim().toLowerCase() ===
+        authorLine.trim().toLowerCase();
+    const coverSubtitle = subtitleEchoesAuthor ? "" : rawSubtitle;
+
     const docTypeLabel =
       DOC_TYPE_EYEBROW[proposal.documentType] ?? "DOCUMENT";
     const eyebrow = `FOUNDRY // ${docTypeLabel}`;
@@ -169,7 +178,7 @@ export const coverSection = defineSection<CoverSectionData>({
     const summary =
       intro?.statement?.trim() ||
       proposal.summary?.trim() ||
-      data.subtitle?.trim() ||
+      coverSubtitle ||
       "";
 
     // Lightweight docs (handover, report, brief, blank) live in DRAFT until shared — they have no
@@ -189,7 +198,7 @@ export const coverSection = defineSection<CoverSectionData>({
         <DocumentCover
           eyebrow={eyebrow}
           title={titleLine}
-          subtitle={data.subtitle?.trim() || undefined}
+          subtitle={coverSubtitle || undefined}
           meta={meta.length ? meta : undefined}
           rightSlot={
             <DocumentVersionChip

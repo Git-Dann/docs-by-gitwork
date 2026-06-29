@@ -742,7 +742,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           <span className="widget-header-label">01 // DOCUMENT</span>
           <span className="widget-header-right">
             {draft.documentNumber ? `${draft.documentNumber} · ` : ""}
-            {draft.version ? `V${draft.version} · ` : ""}
+            {draft.version ? `${draft.version} · ` : ""}
             {statusLabel(draft.status).toUpperCase()}
           </span>
         </div>
