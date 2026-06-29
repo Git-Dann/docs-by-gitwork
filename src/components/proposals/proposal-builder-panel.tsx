@@ -38,7 +38,7 @@ export function ProposalBuilderPanel({
     return (
       <article className="widget-card">
         <div className="widget-header">
-          <span className="widget-header-label">07 // BUILDER</span>
+          <span className="widget-header-label">03 // BUILDER</span>
           <span className="widget-header-right">IDLE</span>
         </div>
         <div className="widget-body">
@@ -175,7 +175,6 @@ export function ProposalBuilderPanel({
     }
   }
 
-  const moduleNumber = String((activeEntry?.order ?? sectionIndex + 1) || 1).padStart(2, "0");
   const moduleLabel = activeSection.title.toUpperCase();
   const sectionType = SECTION_REGISTRY[activeSection.key];
   const aiExpandable = sectionType?.aiExpandable === true;
@@ -183,7 +182,7 @@ export function ProposalBuilderPanel({
   return (
     <article className="proposal-form-theme widget-card overflow-hidden">
       <div className="widget-header">
-        <span className="widget-header-label">{moduleNumber} {"// "}{moduleLabel}</span>
+        <span className="widget-header-label">03 {"// "}{moduleLabel}</span>
         <span className="widget-header-right">BUILDER</span>
       </div>
       <div className="space-y-5 p-5 sm:p-6">

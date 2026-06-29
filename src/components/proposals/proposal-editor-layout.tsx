@@ -26,6 +26,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
+  DocumentTextIcon,
   EyeIcon,
   EyeSlashIcon,
   HomeIcon,
@@ -88,7 +89,7 @@ const ProposalBuilderPanel = dynamic(
     loading: () => (
       <article className="widget-card">
         <div className="widget-header">
-          <span className="widget-header-label">00 // BUILDER</span>
+          <span className="widget-header-label">03 // BUILDER</span>
           <span className="widget-header-right">LOADING</span>
         </div>
         <div className="widget-body">
@@ -1170,7 +1171,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               />
               <aside className="absolute inset-y-0 left-0 flex w-full max-w-[380px] flex-col bg-white shadow-[var(--shadow-lg)]">
                 <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
-                  <span className="widget-header-label">OUTLINE</span>
+                  <span className="widget-header-label">02 {"// "}OUTLINE</span>
                   <button
                     type="button"
                     onClick={() => setMobileOutlineOpen(false)}
@@ -1215,7 +1216,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 <div className="sticky top-4 flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                   <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
                     <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                      LIVE PREVIEW
+                      04 // LIVE PREVIEW
                     </span>
                     <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
                   </div>
@@ -1316,7 +1317,7 @@ function TableOfContentsCard({
   return (
     <aside className="widget-card overflow-hidden xl:sticky xl:top-6">
       <div className="widget-header">
-        <span className="widget-header-label">06 {"// "}OUTLINE</span>
+        <span className="widget-header-label">02 {"// "}OUTLINE</span>
         <span className="widget-header-right">
           {sections.length} BLOCK{sections.length === 1 ? "" : "S"}
         </span>
@@ -1407,7 +1408,9 @@ function SortableTableOfContentsItem({
     id: entry.id,
   });
   const sectionType = SECTION_REGISTRY[entry.section.key];
-  const Icon = sectionType?.icon;
+  // Fall back to a neutral icon for unregistered keys (e.g. Pulse's injected "audit_results")
+  // so every outline row stays visually aligned.
+  const Icon = sectionType?.icon ?? DocumentTextIcon;
   const isVisible = entry.section.isVisible !== false;
 
   return (
