@@ -81,17 +81,27 @@ export function ProposalSectionPreview({
     />
   );
 
-  // Non-inline blocks (costing, timeline, pricing…) in the editor: a quiet click-to-edit target
-  // that opens the inspector. Skipped entirely for inline-editing blocks and on the public view,
-  // so the public/print DOM stays byte-for-byte read-only.
+  // In the editor every block gets a `data-canvas-block` wrapper so the outline can scroll-spy the
+  // section in view. Non-inline blocks additionally become a quiet click-to-edit target that opens
+  // the inspector. Both are skipped on the public/print view → that DOM stays byte-for-byte read-only.
   const selectionId = section.id ?? section.key;
+  const editorMode = Boolean(editable) || Boolean(onSelectSection);
   const selectable = Boolean(onSelectSection) && !inlineEditing;
   const isActive = selectable && activeSectionId === selectionId;
 
   function wrapSelectable(content: ReactNode) {
-    if (!selectable) return content;
+    if (!editorMode) return content;
+    if (!selectable) {
+      // Inline-editable blocks: just the scroll-spy anchor — clicks fall through to the text fields.
+      return (
+        <div data-canvas-block={selectionId} className="scroll-mt-24">
+          {content}
+        </div>
+      );
+    }
     return (
       <div
+        data-canvas-block={selectionId}
         role="button"
         tabIndex={0}
         aria-label={`Edit ${section.title}`}
@@ -102,7 +112,7 @@ export function ProposalSectionPreview({
             onSelectSection?.(selectionId);
           }
         }}
-        className={`relative cursor-pointer rounded-[10px] outline-none transition-colors ${
+        className={`relative scroll-mt-24 cursor-pointer rounded-[10px] outline-none transition-colors ${
           isActive ? "bg-[var(--surface-brand)]/40" : "hover:bg-[var(--surface-1)]"
         }`}
       >

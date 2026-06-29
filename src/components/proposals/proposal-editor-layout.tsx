@@ -38,7 +38,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { DocumentAnalyticsPanel } from "@/components/proposals/document-analytics-panel";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
@@ -193,22 +193,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [railOpen, setRailOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
-  // Scroll-position preservation when switching active section. We capture window.scrollY in
-  // a ref *before* setActiveSectionId fires, then a useLayoutEffect restores it on the next
-  // paint so React's section-editor swap doesn't yank the page back to the top.
-  const scrollRestoreRef = useRef<number | null>(null);
+  // Select a block + scroll the canvas to it (used by the outline rail). Inspector-opening is
+  // decided by the caller (only non-inline blocks open it — text blocks edit inline on the canvas).
   const selectSection = useCallback((id: string) => {
-    scrollRestoreRef.current = typeof window !== "undefined" ? window.scrollY : null;
     setActiveSectionId(id);
-    // Selecting a block (from the canvas or the outline rail) opens its contextual inspector.
-    setInspectorOpen(true);
-  }, []);
-  useLayoutEffect(() => {
-    if (scrollRestoreRef.current != null && typeof window !== "undefined") {
-      window.scrollTo({ top: scrollRestoreRef.current, behavior: "instant" as ScrollBehavior });
-      scrollRestoreRef.current = null;
+    if (typeof document !== "undefined") {
+      document
+        .querySelector(`[data-canvas-block="${window.CSS.escape(id)}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [activeSectionId]);
+  }, []);
+
+  // Scroll-spy: the outline highlights whichever block is currently in view as you scroll.
+  const [viewingSectionId, setViewingSectionId] = useState<string | null>(null);
   const [approvalPos, setApprovalPos] = useState({ top: 0, right: 0 });
   const approvalButtonRef = useRef<HTMLButtonElement>(null);
   const approvalPanelRef = useRef<HTMLDivElement>(null);
@@ -268,6 +265,36 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     const resolvedActiveId = activeSectionId ?? defaultActiveSectionId;
     return sectionEntries.find((entry) => entry.id === resolvedActiveId) ?? sectionEntries[0];
   }, [sectionEntries, activeSectionId, defaultActiveSectionId]);
+
+  // Scroll-spy — highlight the block currently in view in the outline as the canvas scrolls.
+  // Keyed on the block-id list (not the array identity) so it doesn't rebuild on every keystroke.
+  const sectionIdsKey = sectionEntries.map((entry) => entry.id).join("|");
+  useEffect(() => {
+    if (activeTab === "overview" || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const blocks = Array.from(document.querySelectorAll<HTMLElement>("[data-canvas-block]"));
+    if (!blocks.length) {
+      return;
+    }
+    const order = blocks.map((block) => block.dataset.canvasBlock ?? "");
+    const visible = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.canvasBlock;
+          if (!id) continue;
+          if (entry.isIntersecting) visible.add(id);
+          else visible.delete(id);
+        }
+        const topmost = order.find((id) => visible.has(id));
+        if (topmost) setViewingSectionId(topmost);
+      },
+      { rootMargin: "-12% 0px -72% 0px", threshold: 0 },
+    );
+    blocks.forEach((block) => observer.observe(block));
+    return () => observer.disconnect();
+  }, [activeTab, sectionIdsKey]);
 
   // Public share is now token-gated under /docs/[token]. The token comes from the document
   // record (minted on first POST to /api/documents/[id]/share, persisted from then on). If no
@@ -632,6 +659,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       },
       { coalesce: true },
     );
+  }
+
+  // Outline-rail click: scroll to + select the block. Open the inspector only for structured
+  // (non-inline) blocks — text blocks are edited inline on the canvas, so they don't pop a panel.
+  function handleOutlineSelect(id: string) {
+    selectSection(id);
+    const entry = sectionEntries.find((section) => section.id === id);
+    const type = entry ? SECTION_REGISTRY[entry.section.key] : null;
+    if (type && !type.inlineEditable) {
+      setInspectorOpen(true);
+    } else {
+      setInspectorOpen(false);
+    }
   }
 
   async function handleShareLink() {
@@ -1168,9 +1208,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <div className="hidden xl:block">
                 <TableOfContentsCard
                   sections={sectionEntries}
-                  activeId={activeEntry?.id ?? null}
+                  activeId={viewingSectionId ?? activeEntry?.id ?? null}
                   editable
-                  onSelect={(id) => selectSection(id)}
+                  onSelect={handleOutlineSelect}
                   onInsertAt={(index) => setPaletteInsertAt(index)}
                   onDeleteSection={handleDeleteSection}
                   onReorder={updateSectionOrder}
@@ -1216,10 +1256,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   <div className="flex-1 overflow-y-auto">
                     <TableOfContentsCard
                       sections={sectionEntries}
-                      activeId={activeEntry?.id ?? null}
+                      activeId={viewingSectionId ?? activeEntry?.id ?? null}
                       editable
                       onSelect={(id) => {
-                        selectSection(id);
+                        handleOutlineSelect(id);
                         setMobileOutlineOpen(false);
                       }}
                       onInsertAt={(index) => {
@@ -1251,7 +1291,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     frame={false}
                     editable
                     activeSectionId={activeEntry?.id ?? null}
-                    onSelectSection={(id) => selectSection(id)}
+                    onSelectSection={(id) => {
+                      // Canvas onSelectSection only fires for non-inline blocks → open the inspector.
+                      selectSection(id);
+                      setInspectorOpen(true);
+                    }}
                     onSectionChange={handleSectionDataChange}
                   />
                 </div>
