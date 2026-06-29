@@ -49,7 +49,7 @@ function LoginForm() {
   const authError = searchParams.get("error");
 
   return (
-    <div className="flex min-h-screen bg-[#FAFAF9]">
+    <div data-theme="light" className="flex min-h-screen bg-[#FAFAF9]">
       {/* ── Left panel: branding ── */}
       <div
         className="relative hidden w-[480px] shrink-0 flex-col justify-between overflow-hidden px-12 py-12 lg:flex"
