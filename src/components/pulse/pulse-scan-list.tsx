@@ -10,8 +10,6 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   SignalIcon,
-  Squares2X2Icon,
-  TableCellsIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -26,7 +24,6 @@ import {
   HealthScorePill,
   MonitorDot,
 } from "@/components/pulse/pulse-shared";
-import { PulsePortfolioView } from "@/components/pulse/pulse-portfolio";
 import { Button } from "@/components/ui/button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,7 +34,6 @@ type InputFilter = PulseScanInputType | "ALL";
 type MonitorFilter = "ALL" | "MONITORED" | "ALERTING";
 type MoveFilter = "ALL" | "REGRESSED" | "IMPROVED";
 type SortKey = "NEWEST" | "OLDEST" | "SCORE_HIGH" | "SCORE_LOW";
-type ViewMode = "PORTFOLIO" | "ALL";
 
 type MonitorStatus = { active: boolean; alerting: boolean };
 
@@ -427,9 +423,9 @@ function ScanRow({
   );
 }
 
-// ── All-scans view (the flat list) ───────────────────────────────────────────
+// ── Scan list ────────────────────────────────────────────────────────────────
 
-function AllScansView() {
+export function PulseScanListView() {
   const { data, isLoading, error } = usePulseScans();
   const { data: monitorsData } = useMonitors();
   const { mutateAsync: bulkDelete, isPending: bulkDeleting } = useDeletePulseScan();
@@ -633,6 +629,12 @@ function AllScansView() {
             <option value="SCORE_HIGH">Score: high → low</option>
             <option value="SCORE_LOW">Score: low → high</option>
           </select>
+
+          <Link href="/app/pulse/new" className="shrink-0">
+            <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
+              New scan
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -757,45 +759,3 @@ function AllScansView() {
   );
 }
 
-// ── Container — Portfolio / All-scans toggle ─────────────────────────────────
-
-export function PulseScanListView() {
-  const [view, setView] = useState<ViewMode>("PORTFOLIO");
-
-  return (
-    <div className="space-y-4">
-      {/* View toggle + New scan */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="inline-flex rounded-full bg-[var(--surface-1)] p-1">
-          {([
-            { key: "PORTFOLIO" as ViewMode, label: "Portfolio", Icon: Squares2X2Icon },
-            { key: "ALL" as ViewMode, label: "All scans", Icon: TableCellsIcon },
-          ]).map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition",
-                view === key
-                  ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm"
-                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <Link href="/app/pulse/new" className="shrink-0">
-          <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
-            New scan
-          </Button>
-        </Link>
-      </div>
-
-      {view === "PORTFOLIO" ? <PulsePortfolioView /> : <AllScansView />}
-    </div>
-  );
-}

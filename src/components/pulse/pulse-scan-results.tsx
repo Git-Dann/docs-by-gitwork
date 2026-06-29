@@ -1044,11 +1044,13 @@ function PriorityActionPlan({
   onTabChange,
   clientId,
   scanId,
+  num,
 }: {
   llm: NonNullable<PulseScanRecord["llmAnalysis"]>;
   onTabChange: (tab: Tab) => void;
   clientId: string | null;
   scanId: string;
+  num: string;
 }) {
   const { mutateAsync: batchCreate, isPending: pushing } = useBatchCreateTasks();
   const [pushedTiers, setPushedTiers] = useState<Record<string, string>>({});
@@ -1146,7 +1148,7 @@ function PriorityActionPlan({
   return (
     <div className="widget-card">
       <div className="widget-header">
-        <span className="widget-header-label">{"11 // PRIORITY ACTION PLAN"}</span>
+        <span className="widget-header-label">{`${num} // PRIORITY ACTION PLAN`}</span>
         <span className="widget-header-right">{totalActions} action{totalActions !== 1 ? "s" : ""}</span>
       </div>
       <div className="widget-body">
@@ -1509,6 +1511,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     ...(scan.competitorData ? [{ id: "competitors" as Tab, label: "Competitors", count: scan.competitorData.scans.length }] : []),
     ...(scan.discoveryKit ? [{ id: "discovery" as Tab, label: "Discovery" }] : []),
   ];
+
+  // Sequential section numbering — increments only for sections that actually
+  // render, in source/display order, so hidden widgets (no deploy data, no repo)
+  // never leave a gap like "07 · 08 · 11". Reset every render.
+  let __sectionNo = 0;
+  const sectionNo = () => String(++__sectionNo).padStart(2, "0");
 
   return (
     <div className="space-y-6">
@@ -1898,7 +1906,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {/* 01 // PROJECT HEALTH */}
           <div className="widget-card">
             <div className="widget-header">
-              <span className="widget-header-label">01 // PROJECT HEALTH</span>
+              <span className="widget-header-label">{`${sectionNo()} // PROJECT HEALTH`}</span>
             </div>
             <div className="widget-body">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -2061,7 +2069,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {/* 02 // PRODUCTION BLOCKERS */}
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">02 // PRODUCTION BLOCKERS</span>
+                  <span className="widget-header-label">{`${sectionNo()} // PRODUCTION BLOCKERS`}</span>
                   {(llm.productionBlockers as ProductionBlocker[])?.filter((b) => b.urgency === "CRITICAL").length > 0 && (
                     <span className="widget-header-right" style={{ color: "#dc2626" }}>
                       {(llm.productionBlockers as ProductionBlocker[]).filter((b) => b.urgency === "CRITICAL").length} critical
@@ -2101,7 +2109,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {/* 03 // CRITICAL GAPS */}
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">03 // CRITICAL GAPS</span>
+                  <span className="widget-header-label">{`${sectionNo()} // CRITICAL GAPS`}</span>
                   {llm.criticalGaps.length > 0 && (
                     <span className="widget-header-right">{llm.criticalGaps.length} total</span>
                   )}
@@ -2139,7 +2147,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {/* 04 // QUICK WINS */}
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">04 // QUICK WINS</span>
+                  <span className="widget-header-label">{`${sectionNo()} // QUICK WINS`}</span>
                 </div>
                 <div className="widget-body-compact space-y-2.5">
                   {(() => {
@@ -2183,7 +2191,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {showTechStack && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">05 // TECH STACK</span>
+                <span className="widget-header-label">{`${sectionNo()} // TECH STACK`}</span>
                 <span className="widget-header-right">{techStackInfo.inferred ? "inferred" : `${techStackInfo.stack.length} detected`}</span>
               </div>
               <div className="widget-body-compact">
@@ -2221,7 +2229,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {showWebVitals && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">06 // WEB VITALS</span>
+                <span className="widget-header-label">{`${sectionNo()} // WEB VITALS`}</span>
                 {scan.browserInsights && <span className="widget-header-right">Lighthouse · mobile</span>}
               </div>
               <div className="widget-body-compact">
@@ -2259,7 +2267,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {llm && llm.scalingRoadmap.length > 0 && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">07 // BUILD ROADMAP</span>
+                <span className="widget-header-label">{`${sectionNo()} // BUILD ROADMAP`}</span>
                 <span className="widget-header-right">{llm.scalingRoadmap.length} phases</span>
               </div>
               <div className="widget-body">
@@ -2298,7 +2306,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {showCodeIntel && (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">08 // CODE INTELLIGENCE</span>
+                  <span className="widget-header-label">{`${sectionNo()} // CODE INTELLIGENCE`}</span>
                   {scan.codeInsights && <span className="widget-header-right">GitHub GraphQL</span>}
                 </div>
                 <div className="widget-body-compact">
@@ -2374,7 +2382,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               {showDeployIntel && (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">09 // DEPLOY INTELLIGENCE</span>
+                  <span className="widget-header-label">{`${sectionNo()} // DEPLOY INTELLIGENCE`}</span>
                   {scan.deployInsights?.platform && (
                     <span className="widget-header-right capitalize">{scan.deployInsights.platform}</span>
                   )}
@@ -2431,7 +2439,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 className="widget-header w-full text-left"
                 onClick={() => setDiscoveryExpanded((v) => !v)}
               >
-                <span className="widget-header-label">{"10 // DISCOVERY KIT"}</span>
+                <span className="widget-header-label">{`${sectionNo()} // DISCOVERY KIT`}</span>
                 <span className="widget-header-right flex items-center gap-1.5">
                   {scan.discoveryKit.questions.length} questions · £{scan.discoveryKit.pricingAnchor.low.toLocaleString()}–£{scan.discoveryKit.pricingAnchor.high.toLocaleString()}
                   <ChevronDownIcon className={cn("h-3 w-3 transition-transform", discoveryExpanded && "rotate-180")} />
@@ -2451,13 +2459,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 12 // PRIORITY ACTION PLAN */}
-          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} />}
+          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} num={sectionNo()} />}
 
           {/* 13 // SUGGESTED BENCHMARKS — AI-discovered competitors to scan against */}
           {!scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">{"12 // SUGGESTED BENCHMARKS"}</span>
+                <span className="widget-header-label">{`${sectionNo()} // SUGGESTED BENCHMARKS`}</span>
                 <span className="widget-header-right">AI-discovered</span>
               </div>
               <div className="widget-body space-y-3">
@@ -2488,7 +2496,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           {benchmark && (
             <div className="widget-card">
               <div className="widget-header">
-                <span className="widget-header-label">{"13 // INDUSTRY BENCHMARKS"}</span>
+                <span className="widget-header-label">{`${sectionNo()} // INDUSTRY BENCHMARKS`}</span>
                 <span className="widget-header-right">vs {benchmark.peerCount} {benchmark.projectType} scan{benchmark.peerCount !== 1 ? "s" : ""}</span>
               </div>
               <div className="widget-body">
@@ -2542,7 +2550,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"14 // VISUAL QUALITY"}</span>
+                  <span className="widget-header-label">{`${sectionNo()} // VISUAL QUALITY`}</span>
                   <span className="widget-header-right">AI vision · above the fold</span>
                 </div>
                 <div className="widget-body">
@@ -2605,7 +2613,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"15 // ENGAGEMENT ESTIMATE"}</span>
+                  <span className="widget-header-label">{`${sectionNo()} // ENGAGEMENT ESTIMATE`}</span>
                   <span className="widget-header-right">{e.confidence} confidence · indicative</span>
                 </div>
                 <div className="widget-body">
@@ -2690,7 +2698,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             return (
               <div className="widget-card">
                 <div className="widget-header">
-                  <span className="widget-header-label">{"16 // INTAKE & RISK"}</span>
+                  <span className="widget-header-label">{`${sectionNo()} // INTAKE & RISK`}</span>
                   {a.stage && (
                     <span className={cn("inline-flex items-center rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", stageTone[a.stage] ?? "bg-[var(--surface-1)] text-[var(--text-2)]")}>
                       {a.stage}
