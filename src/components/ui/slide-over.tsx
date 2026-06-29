@@ -23,6 +23,7 @@ export function SlideOver({
   children,
   panelClassName,
   labelledById,
+  dim = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,6 +32,9 @@ export function SlideOver({
   /** Width/extra classes for the panel. Defaults to a medium drawer. */
   panelClassName?: string;
   labelledById?: string;
+  /** Dim the page behind the drawer. Off for a non-modal contextual inspector (still
+   *  click-outside-to-close, but the page stays bright and usable). */
+  dim?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -83,7 +87,7 @@ export function SlideOver({
         type="button"
         aria-label="Close panel"
         tabIndex={-1}
-        className="app-dialog-backdrop absolute inset-0"
+        className={dim ? "app-dialog-backdrop absolute inset-0" : "absolute inset-0 bg-transparent"}
         onClick={onClose}
       />
       <div className="absolute inset-y-0 right-0 flex max-w-full">

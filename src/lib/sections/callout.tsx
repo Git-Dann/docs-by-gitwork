@@ -3,6 +3,7 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { FormInput, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { CalloutSectionData } from "@/types/proposal";
 
 const TONE_PALETTE: Record<CalloutSectionData["tone"], { border: string; bg: string; eyebrow: string }> = {
@@ -31,6 +32,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
   defaultTitle: "Callout",
   defaultDescription: "A highlighted note.",
   aiExpandable: true,
+  inlineEditable: true,
   Editor: ({ data, onChange }) => (
     <SimpleForm>
       <label className="block space-y-1.5">
@@ -70,8 +72,34 @@ export const calloutSection = defineSection<CalloutSectionData>({
       />
     </SimpleForm>
   ),
-  Preview: ({ data }) => {
+  Preview: ({ data, editable, onChange }) => {
     const palette = TONE_PALETTE[data.tone];
+    if (editable && onChange) {
+      return (
+        <div
+          className="proposal-block-avoid rounded-[10px] px-5 py-4"
+          style={{ background: palette.bg, borderLeft: `3px solid ${palette.border}` }}
+        >
+          <InlineTextArea
+            value={data.headline ?? ""}
+            onChange={(headline) => onChange({ ...data, headline })}
+            placeholder="Headline (optional)"
+            ariaLabel="Callout headline"
+            className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
+            style={{ color: palette.eyebrow }}
+          />
+          <div className="mt-2">
+            <InlineTextArea
+              value={data.body}
+              onChange={(body) => onChange({ ...data, body })}
+              placeholder="Callout body…"
+              ariaLabel="Callout body"
+              className="text-sm leading-7 text-[var(--text-1)]"
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <div
         className="proposal-block-avoid rounded-[10px] px-5 py-4"

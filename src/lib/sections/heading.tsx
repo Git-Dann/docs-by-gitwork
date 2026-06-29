@@ -3,6 +3,7 @@
 import { HashtagIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { FormInput, SimpleForm } from "@/lib/sections/_shared";
+import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { HeadingSectionData } from "@/types/proposal";
 
 const SIZE_LABEL: Record<HeadingSectionData["level"], string> = {
@@ -22,6 +23,7 @@ export const headingSection = defineSection<HeadingSectionData>({
   defaultDescription: "Visual heading break.",
   // Universally useful — no recommendedFor, shows for all doc types.
   aiExpandable: false,
+  inlineEditable: true,
   // Heading already provides its own visual title — opt out of the standard wrapper so it
   // doesn't render as "Section NN — Heading" with the actual heading underneath.
   renderShell: false,
@@ -63,8 +65,37 @@ export const headingSection = defineSection<HeadingSectionData>({
       />
     </SimpleForm>
   ),
-  Preview: ({ data }) => {
+  Preview: ({ data, editable, onChange }) => {
     const fontSize = data.level === "h1" ? 44 : data.level === "h2" ? 32 : 22;
+    const headingStyle = {
+      fontFamily: "var(--font-display), serif",
+      fontSize,
+      fontWeight: 400,
+      letterSpacing: "-0.025em",
+      lineHeight: 1.15,
+      color: "#0F172A",
+      margin: 0,
+    };
+    if (editable && onChange) {
+      return (
+        <div className="space-y-2">
+          <InlineTextArea
+            value={data.eyebrow ?? ""}
+            onChange={(eyebrow) => onChange({ ...data, eyebrow })}
+            placeholder="Eyebrow (optional)"
+            ariaLabel="Heading eyebrow"
+            className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+          />
+          <InlineTextArea
+            value={data.text}
+            onChange={(text) => onChange({ ...data, text })}
+            placeholder="Heading"
+            ariaLabel="Heading text"
+            style={headingStyle}
+          />
+        </div>
+      );
+    }
     return (
       <div className="space-y-2">
         {data.eyebrow ? (
@@ -72,19 +103,7 @@ export const headingSection = defineSection<HeadingSectionData>({
             {data.eyebrow}
           </p>
         ) : null}
-        <h2
-          style={{
-            fontFamily: "var(--font-display), serif",
-            fontSize,
-            fontWeight: 400,
-            letterSpacing: "-0.025em",
-            lineHeight: 1.15,
-            color: "#0F172A",
-            margin: 0,
-          }}
-        >
-          {data.text}
-        </h2>
+        <h2 style={headingStyle}>{data.text}</h2>
       </div>
     );
   },

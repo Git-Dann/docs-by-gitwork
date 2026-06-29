@@ -614,6 +614,23 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     }
   }
 
+  // Inline canvas editing: a text-first block wrote new data directly on the page. Route it
+  // through the coalesced autosave so undo/redo + save-state keep working.
+  function handleSectionDataChange(sectionId: string, next: ProposalSection["data"]) {
+    if (!draft) {
+      return;
+    }
+    updateDraft(
+      {
+        ...draft,
+        sections: draft.sections.map((section) =>
+          getSectionEntryId(section) === sectionId ? { ...section, data: next } : section,
+        ),
+      },
+      { coalesce: true },
+    );
+  }
+
   async function handleShareLink() {
     if (typeof window === "undefined" || !draft) {
       return;
@@ -1221,8 +1238,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     proposal={draft}
                     showTableOfContents={false}
                     frame={false}
+                    editable
                     activeSectionId={activeEntry?.id ?? null}
                     onSelectSection={(id) => selectSection(id)}
+                    onSectionChange={handleSectionDataChange}
                   />
                 </div>
               </div>
@@ -1234,6 +1253,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             open={inspectorOpen && Boolean(activeEntry)}
             onClose={() => setInspectorOpen(false)}
             title="Edit block"
+            dim={false}
             panelClassName="w-[460px] max-w-[94vw]"
           >
             <ProposalBuilderPanel

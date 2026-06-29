@@ -70,6 +70,14 @@ export interface SectionPreviewProps<TData = ProposalSectionData> {
   data: TData;
   proposal: ProposalDocument;
   section: ProposalSection;
+  /**
+   * Editor-only: when true, the Preview renders its text as inline editable fields (click into
+   * the doc and type) instead of static text. Omitted on the public/print views → read-only.
+   * Only blocks marked `inlineEditable` in the registry receive this.
+   */
+  editable?: boolean;
+  /** Editor-only: write this block's data back to the draft (paired with `editable`). */
+  onChange?: (next: TData) => void;
 }
 
 /**
@@ -106,6 +114,13 @@ export interface SectionType<TData = ProposalSectionData> {
   recommendedFor?: DocumentType[];
   /** Whether this section is prose-heavy enough to benefit from "Expand with AI". */
   aiExpandable?: boolean;
+  /**
+   * Whether this block's Preview supports inline canvas editing (renders its text as editable
+   * fields when passed `editable`). Text-first blocks (heading, prose, callout, introduction,
+   * cover) set this; structured blocks (costing, timeline…) leave it off and edit via the
+   * inspector instead.
+   */
+  inlineEditable?: boolean;
   /** Default data shape used when the palette inserts a fresh instance. */
   defaultData: TData;
   /** Default visibility when inserted. Almost always true; cover defaults to true too. */

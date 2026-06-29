@@ -42,14 +42,20 @@ export function ProposalSectionPreview({
   index,
   activeSectionId,
   onSelectSection,
+  editable,
+  onChange,
 }: {
   section: ProposalSection;
   proposal: ProposalDocument;
   index: number;
-  /** Editor-only: the currently-selected block's id (for the active ring). Absent on public view. */
+  /** Editor-only: the currently-selected block's id. Absent on public view. */
   activeSectionId?: string | null;
-  /** Editor-only: click a rendered block to select it (opens the inspector). Absent on public view. */
+  /** Editor-only: click a NON-inline block to open its inspector. Absent on public view. */
   onSelectSection?: (id: string) => void;
+  /** Editor-only: canvas is in edit mode (text-first blocks render inline-editable fields). */
+  editable?: boolean;
+  /** Editor-only: write this block's data back to the draft (for inline editing). */
+  onChange?: (next: ProposalSection["data"]) => void;
 }) {
   if (!section.isVisible) {
     return null;
@@ -60,13 +66,26 @@ export function ProposalSectionPreview({
     return null;
   }
 
+  // Inline editing: text-first blocks render their text as editable fields directly on the canvas
+  // (click in and type — no selection box, no drawer). Everything else stays static and, in the
+  // editor, gets a subtle click-to-open-inspector affordance.
+  const inlineEditing = Boolean(editable && sectionType.inlineEditable && onChange);
   const Preview = sectionType.Preview;
-  const previewElement = <Preview data={section.data} proposal={proposal} section={section} />;
+  const previewElement = (
+    <Preview
+      data={section.data}
+      proposal={proposal}
+      section={section}
+      editable={inlineEditing}
+      onChange={inlineEditing ? onChange : undefined}
+    />
+  );
 
-  // Editor-only: make the rendered block selectable. When onSelectSection is absent (public /docs
-  // and print), this wrapper is skipped entirely so the DOM stays byte-for-byte read-only.
+  // Non-inline blocks (costing, timeline, pricing…) in the editor: a quiet click-to-edit target
+  // that opens the inspector. Skipped entirely for inline-editing blocks and on the public view,
+  // so the public/print DOM stays byte-for-byte read-only.
   const selectionId = section.id ?? section.key;
-  const selectable = Boolean(onSelectSection);
+  const selectable = Boolean(onSelectSection) && !inlineEditing;
   const isActive = selectable && activeSectionId === selectionId;
 
   function wrapSelectable(content: ReactNode) {
@@ -83,10 +102,8 @@ export function ProposalSectionPreview({
             onSelectSection?.(selectionId);
           }
         }}
-        className={`group/select relative cursor-pointer rounded-[12px] outline-none transition ${
-          isActive
-            ? "ring-2 ring-[var(--brand-600)] ring-offset-2 ring-offset-[var(--surface-canvas)]"
-            : "ring-1 ring-transparent hover:ring-[var(--border-1)]"
+        className={`relative cursor-pointer rounded-[10px] outline-none transition-colors ${
+          isActive ? "bg-[var(--surface-brand)]/40" : "hover:bg-[var(--surface-1)]"
         }`}
       >
         {content}

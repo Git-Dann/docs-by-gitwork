@@ -1,7 +1,7 @@
 import { TableOfContents } from "@/components/proposals/table-of-contents";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
-import type { ProposalDocument } from "@/types/proposal";
+import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 export function ProposalPreview({
   proposal,
@@ -11,6 +11,8 @@ export function ProposalPreview({
   trackSections = false,
   activeSectionId,
   onSelectSection,
+  editable = false,
+  onSectionChange,
 }: {
   proposal: ProposalDocument;
   className?: string;
@@ -22,14 +24,19 @@ export function ProposalPreview({
    * editor and print DOM stay unchanged.
    */
   trackSections?: boolean;
-  /** Editor-only: id of the selected block (active ring). Omitted on public/print → read-only. */
+  /** Editor-only: id of the selected block (active highlight). Omitted on public/print. */
   activeSectionId?: string | null;
-  /** Editor-only: click a rendered block to select it. Omitted on public/print → read-only. */
+  /** Editor-only: click a non-inline block to open its inspector. Omitted on public/print. */
   onSelectSection?: (id: string) => void;
+  /** Editor-only: the canvas is editable — text-first blocks render inline-editable fields. */
+  editable?: boolean;
+  /** Editor-only: write a block's data back to the draft (inline editing). */
+  onSectionChange?: (sectionId: string, next: ProposalSection["data"]) => void;
 }) {
   // Substitute merge variables ({{client_name}}, {{total}}, …) for the rendered/exported view.
-  // The editor's section forms still show the raw tokens — only this render surface resolves them.
-  const resolved = resolveProposalMergeVariables(proposal);
+  // In editable mode we render the RAW proposal so inline edits bind to the real template text
+  // (and the operator sees the {{tokens}}), matching the old section forms.
+  const resolved = editable ? proposal : resolveProposalMergeVariables(proposal);
   const sortedSections = [...resolved.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
 
@@ -59,6 +66,12 @@ export function ProposalPreview({
               index={index}
               activeSectionId={activeSectionId}
               onSelectSection={onSelectSection}
+              editable={editable}
+              onChange={
+                onSectionChange
+                  ? (next) => onSectionChange(section.id ?? section.key, next)
+                  : undefined
+              }
             />
           ),
         )}
