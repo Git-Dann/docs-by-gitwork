@@ -44,6 +44,27 @@ const PLATFORMS = [
   { value: "OTHER", label: "Other" },
 ];
 
+/** Derive a friendly project name from the input so the user doesn't have to type one
+ *  up front: URL → hostname (minus www.), repo → repo name, free-text → first few words. */
+function deriveProjectName(inputType: PulseScanInputType, value: string): string {
+  const v = value.trim();
+  if (!v) return "";
+  if (inputType === "URL") {
+    try {
+      const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+      return u.hostname.replace(/^www\./i, "");
+    } catch {
+      return v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0] || v;
+    }
+  }
+  if (inputType === "GITHUB_REPO") {
+    const parts = v.replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").split("/").filter(Boolean);
+    return parts[parts.length - 1] || v;
+  }
+  const words = v.split(/\s+/).slice(0, 6).join(" ");
+  return words.length > 0 ? words : "Untitled idea";
+}
+
 type AiProviderId = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 type Provider = { id: AiProviderId; label: string; model: string };
 
@@ -168,14 +189,13 @@ export function PulseNewScanForm({
     event.preventDefault();
     setError(null);
 
-    if (!projectName.trim()) {
-      setError("Project name is required.");
-      return;
-    }
     if (!inputValue.trim()) {
-      setError(`${selectedType.label} is required.`);
+      setError(`Enter a ${selectedType.label.toLowerCase()} to scan.`);
       return;
     }
+    // Project name is no longer required up front — derive it from the input (the
+    // optional Advanced field overrides). Renamable on the scan afterward.
+    const resolvedName = projectName.trim() || deriveProjectName(inputType, inputValue);
 
     try {
       let resolvedUrl = inputType === "URL" ? inputValue.trim() : undefined;
@@ -189,7 +209,7 @@ export function PulseNewScanForm({
         .map((u) => (!/^https?:\/\//i.test(u) ? `https://${u}` : u));
 
       const result = await mutateAsync({
-        projectName: projectName.trim(),
+        projectName: resolvedName,
         inputType,
         inputUrl: resolvedUrl,
         inputGithubRepo: inputType === "GITHUB_REPO" ? inputValue.trim() : undefined,
@@ -211,77 +231,77 @@ export function PulseNewScanForm({
 
   const activeProviderLabel = configuredProviders.find((p) => p.id === activeProvider)?.label ?? activeProvider;
 
+  const derivedName = deriveProjectName(inputType, inputValue);
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-1.5">
-        <label className="app-field-label">Project name</label>
-        <input
-          className="app-input"
-          placeholder="e.g. Acme CRM Dashboard"
-          value={projectName}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setProjectName(e.target.value)}
-          disabled={isPending}
-        />
+    <form onSubmit={handleSubmit} className="app-card space-y-5 p-6 sm:p-7">
+      {/* Input type — pill segmented control */}
+      <div className="inline-flex w-full rounded-full bg-[var(--surface-1)] p-1">
+        {INPUT_TYPES.map((type) => (
+          <button
+            key={type.value}
+            type="button"
+            onClick={() => { setInputType(type.value); setInputValue(""); }}
+            disabled={isPending}
+            className={cn(
+              "flex-1 rounded-full px-3 py-1.5 text-sm font-medium transition",
+              inputType === type.value
+                ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm"
+                : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+            )}
+          >
+            {type.label}
+          </button>
+        ))}
       </div>
 
-      <div className="space-y-3">
-        <label className="app-field-label">Input type</label>
-        <div className="flex gap-2">
-          {INPUT_TYPES.map((type) => (
-            <button
-              key={type.value}
-              type="button"
-              onClick={() => {
-                setInputType(type.value);
-                setInputValue("");
-              }}
-              disabled={isPending}
-              className={
-                inputType === type.value
-                  ? "flex-1 rounded-[10px] border border-[var(--brand-500)] bg-[var(--brand-50)] px-3 py-2.5 text-sm font-medium text-[var(--brand-700)]"
-                  : "flex-1 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-              }
-            >
-              {type.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-[var(--text-4)]">{selectedType.description}</p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="app-field-label">{selectedType.label}</label>
+      {/* The hero — paste a URL / repo / description and go */}
+      <div className="space-y-2">
         {inputType === "FREE_TEXT" ? (
           <textarea
-            className="app-input min-h-[120px] resize-y"
+            className="app-input min-h-[140px] resize-y text-base"
             placeholder={selectedType.placeholder}
             value={inputValue}
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInputValue(e.target.value)}
             disabled={isPending}
+            autoFocus
           />
         ) : (
           <input
-            className="app-input"
+            className="app-input !h-14 text-lg"
             placeholder={selectedType.placeholder}
             value={inputValue}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value)}
             disabled={isPending}
+            autoFocus
+            inputMode="url"
           />
         )}
+        <p className="px-1 text-xs text-[var(--text-4)]">
+          {derivedName
+            ? <>We&apos;ll call this <span className="font-medium text-[var(--text-2)]">{derivedName}</span> — rename it any time.</>
+            : selectedType.description}
+        </p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="app-field-label">Platform</label>
-        <select
-          className="app-select"
-          value={platform}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
-          disabled={isPending}
-        >
-          {PLATFORMS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
-          ))}
-        </select>
+      {/* Platform (compact, secondary) + the primary CTA */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm text-[var(--text-3)]">
+          Scanning as
+          <select
+            className="app-select !h-9 !w-auto !py-0 pr-8 text-sm"
+            value={platform}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
+            disabled={isPending}
+          >
+            {PLATFORMS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+        <Button type="submit" variant="primary" size="lg" loading={isPending} className="min-w-[160px]">
+          {isPending ? "Starting scan…" : "Run Pulse scan"}
+        </Button>
       </div>
 
       {/* Advanced options — collapsed by default. Keeps the core form to four fields. */}
@@ -301,6 +321,18 @@ export function PulseNewScanForm({
 
         {showAdvanced && (
           <div className="space-y-5 border-t border-[var(--border-2)] p-4">
+            <div className="space-y-1.5">
+              <label className="app-field-label">Project name (optional)</label>
+              <input
+                className="app-input"
+                placeholder={derivedName ? `Defaults to “${derivedName}”` : "e.g. Acme CRM Dashboard"}
+                value={projectName}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setProjectName(e.target.value)}
+                disabled={isPending}
+              />
+              <p className="text-xs text-[var(--text-4)]">Leave blank to name it from the URL/repo — you can rename the scan later.</p>
+            </div>
+
             {clients.length > 0 && (
               <div className="space-y-1.5">
                 <label className="app-field-label">Client (optional)</label>
@@ -535,11 +567,9 @@ export function PulseNewScanForm({
         </p>
       )}
 
-      <div className="flex justify-end">
-        <Button type="submit" variant="primary" size="md" loading={isPending}>
-          {isPending ? "Starting scan…" : "Run Pulse scan"}
-        </Button>
-      </div>
+      <p className="text-center text-xs text-[var(--text-4)]">
+        500+ automated checks · security, compliance, performance & AI-app safety
+      </p>
     </form>
   );
 }

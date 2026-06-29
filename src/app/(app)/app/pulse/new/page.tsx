@@ -64,7 +64,7 @@ export default async function PulseNewScanPage() {
 
   return (
     <AppShell title="New scan" subtitle="Validate a client project with Gitwork Pulse.">
-      <div className="max-w-lg">
+      <div className="mx-auto w-full max-w-xl px-1 pt-2 sm:pt-6">
         <PulseNewScanForm
           clients={clients}
           configuredProviders={configuredProviders}
