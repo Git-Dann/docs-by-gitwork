@@ -33,6 +33,7 @@ import {
   saveEngagement,
   saveTimeline,
   setClientStatusApi,
+  setProposalFavorite,
   listClientTouchpoints,
   createClientTouchpoint,
   type LeadInput,
@@ -467,6 +468,41 @@ export function useDeleteProposal() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
       queryClient.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+/**
+ * Toggle a document's workspace favourite. Optimistic — flips the flag across every cached
+ * ["proposals", …] list immediately, then reconciles on settle. The star never blocks the UI.
+ */
+export function useToggleProposalFavorite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
+      setProposalFavorite(id, isFavorite),
+    onMutate: async ({ id, isFavorite }) => {
+      await queryClient.cancelQueries({ queryKey: ["proposals"] });
+      const snapshots = queryClient.getQueriesData<{ proposals: Array<{ id: string }> }>({
+        queryKey: ["proposals"],
+      });
+      for (const [key, value] of snapshots) {
+        if (!value?.proposals) continue;
+        queryClient.setQueryData(key, {
+          ...value,
+          proposals: value.proposals.map((p) =>
+            p.id === id ? { ...p, isFavorite } : p,
+          ),
+        });
+      }
+      return { snapshots };
+    },
+    onError: (_err, _vars, context) => {
+      context?.snapshots?.forEach(([key, value]) => queryClient.setQueryData(key, value));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
   });
 }

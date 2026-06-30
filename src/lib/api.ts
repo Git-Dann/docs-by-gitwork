@@ -236,6 +236,20 @@ export async function deleteProposal(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+export async function setProposalFavorite(
+  id: string,
+  isFavorite: boolean,
+): Promise<{ proposal: { id: string; isFavorite: boolean } }> {
+  return apiFetch<{ proposal: { id: string; isFavorite: boolean } }>(
+    `/api/proposals/${id}/favorite`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isFavorite }),
+    },
+  );
+}
+
 export async function fetchTemplates(): Promise<{ templates: TemplateSummary[] }> {
   return apiFetch<{ templates: TemplateSummary[] }>("/api/templates");
 }

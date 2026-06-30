@@ -20,6 +20,8 @@ export const sectionSchema = z.object({
   sortOrder: z.number().int().nonnegative(),
   isVisible: z.boolean(),
   data: z.record(z.string(), z.unknown()).or(z.array(z.unknown())),
+  // Presenter-only notes (presentation mode). Optional; empty/whitespace allowed.
+  speakerNotes: z.string().optional(),
 });
 
 export const costLineItemSchema = z.object({

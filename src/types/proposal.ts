@@ -498,6 +498,9 @@ export interface ProposalSection {
   sortOrder: number;
   isVisible: boolean;
   data: ProposalSectionData;
+  /** Presenter-only notes surfaced in presentation mode's notes panel. Never rendered in the
+   *  doc body, public share, or PDF. */
+  speakerNotes?: string;
 }
 
 export interface CostLineItemInput {
@@ -636,4 +639,8 @@ export interface ProposalListItem {
   documentType: DocumentType;
   labels?: string[];
   parentId?: string | null;
+  /** Workspace-level favourite — drives the dashboard star + Favorites collection. */
+  isFavorite?: boolean;
+  /** Count of visible blocks, for the card meta readout. */
+  sectionCount?: number;
 }

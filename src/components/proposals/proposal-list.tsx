@@ -2,25 +2,31 @@
 
 import {
   ArchiveBoxIcon,
+  ArrowUturnLeftIcon,
   ChartBarIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   DocumentDuplicateIcon,
   DocumentPlusIcon,
+  DocumentTextIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
+  RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
+  StarIcon,
+  TableCellsIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { StarIcon as StarIconSolid } from "@heroicons/react/24/solid";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { Modal } from "@/components/ui/modal";
@@ -32,7 +38,9 @@ import {
   useDeleteProposal,
   useDuplicateProposal,
   useProposalList,
+  useToggleProposalFavorite,
 } from "@/hooks/use-proposals";
+import type { ProposalListItem } from "@/types/proposal";
 import { usePermissions } from "@/hooks/use-permissions";
 import { allowedDocTypes } from "@/lib/templates";
 import { StatusBadge } from "@/components/status-badge";
@@ -142,11 +150,11 @@ export function ProposalList() {
   const queryClient = useQueryClient();
   const { data, isPending, error } = useProposalList({
     search,
-    status,
     sort,
-    // Fetch every type the viewer is allowed to see (server scopes by role); the chip row below
-    // filters client-side. This is also what surfaces the lightweight docs (handover/report/…),
-    // which the old PROPOSAL-only default hid.
+    // Fetch every type the viewer is allowed to see (server scopes by role). Status/scope/type
+    // are filtered client-side so the collections rail can show live counts without refetching,
+    // and so archived/favourite scopes stay in sync with the visible set. This is also what
+    // surfaces the lightweight docs (handover/report/…), which the old PROPOSAL-only default hid.
     documentType: "ALL",
   });
   const clientsQuery = useClientList();
@@ -154,33 +162,64 @@ export function ProposalList() {
   const duplicateMutation = useDuplicateProposal();
   const archiveMutation = useArchiveProposal();
   const deleteMutation = useDeleteProposal();
+  const favoriteMutation = useToggleProposalFavorite();
 
   const proposals = useMemo(() => data?.proposals ?? [], [data?.proposals]);
 
-  // Doc-type filter chip row. Affects the table only — stat tiles always reflect the full
-  // workspace so the operator sees the big picture even while scoped into a single type.
+  // Collections rail scope — the primary left-rail selector. `all`/`favorites` exclude archived;
+  // `archived` shows only archived. Drives the card grid, table, and grouped views alike.
+  const [scope, setScope] = useState<"all" | "favorites" | "archived">("all");
+  // Doc-type filter (rail's TYPE list). Scopes the visible set to one document type.
   const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">("ALL");
-  const docTypeFilteredProposals = useMemo(
-    () =>
-      docTypeFilter === "ALL"
-        ? proposals
-        : proposals.filter((p) => (p.documentType as DocumentType) === docTypeFilter),
-    [proposals, docTypeFilter],
-  );
 
-  const totalPages = Math.max(1, Math.ceil(docTypeFilteredProposals.length / rowsPerPage));
+  // Partition the full fetched set once: archived vs live, and favourites within live. The rail
+  // counts read straight off these so they never lie when a filter is applied.
+  const liveDocs = useMemo(() => proposals.filter((p) => p.status !== "ARCHIVED"), [proposals]);
+  const archivedDocs = useMemo(
+    () => proposals.filter((p) => p.status === "ARCHIVED"),
+    [proposals],
+  );
+  const favoriteDocs = useMemo(() => liveDocs.filter((p) => p.isFavorite), [liveDocs]);
+
+  const scopeDocs =
+    scope === "archived" ? archivedDocs : scope === "favorites" ? favoriteDocs : liveDocs;
+
+  // Per-type counts for the rail's TYPE list — over the current scope's non-archived universe so
+  // the chips reflect what selecting them would show.
+  const docTypeCounts = useMemo(() => {
+    const base = scope === "archived" ? archivedDocs : liveDocs;
+    return base.reduce<Record<string, number>>((acc, p) => {
+      const type = p.documentType ?? "OTHER";
+      acc[type] = (acc[type] ?? 0) + 1;
+      return acc;
+    }, {});
+  }, [scope, archivedDocs, liveDocs]);
+
+  // scope → type → status refine (the Filters dropdown, optional; ARCHIVED owned by scope).
+  const filteredProposals = useMemo(() => {
+    let list = scopeDocs;
+    if (docTypeFilter !== "ALL") {
+      list = list.filter((p) => (p.documentType as DocumentType) === docTypeFilter);
+    }
+    if (status !== "ALL" && scope !== "archived") {
+      list = list.filter((p) => p.status === status);
+    }
+    return list;
+  }, [scopeDocs, docTypeFilter, status, scope]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProposals.length / rowsPerPage));
   const currentPage = Math.min(page, totalPages);
   const pagedProposals = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return docTypeFilteredProposals.slice(start, start + rowsPerPage);
-  }, [currentPage, docTypeFilteredProposals, rowsPerPage]);
+    return filteredProposals.slice(start, start + rowsPerPage);
+  }, [currentPage, filteredProposals, rowsPerPage]);
 
   const allOnPageSelected =
     pagedProposals.length > 0 && pagedProposals.every((proposal) => selectedIds.includes(proposal.id));
 
   const [bulkBusy, setBulkBusy] = useState<null | "archive" | "unarchive" | "revoke-share" | "delete">(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"table" | "grouped">("table");
+  const [viewMode, setViewMode] = useState<"cards" | "table" | "grouped">("cards");
 
   // Onboarding hero — shown only when the workspace has zero docs ever AND the user hasn't
   // dismissed it. Lives in localStorage so it doesn't repeat across sessions.
@@ -222,10 +261,25 @@ export function ProposalList() {
     }
   }
 
+  // Restore a single archived doc — reuses the bulk endpoint's "unarchive" action for one id.
+  async function restoreOne(id: string) {
+    try {
+      const res = await fetch("/api/proposals/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id], action: "unarchive" }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? "Restore failed");
+      await queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    } catch (err) {
+      setBulkError((err as Error).message);
+    }
+  }
+
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [search, status, sort, rowsPerPage, docTypeFilter]);
+  }, [search, status, sort, rowsPerPage, docTypeFilter, scope]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -254,24 +308,11 @@ export function ProposalList() {
   }
 
   const totalCount = proposals.length;
-  const activeCount = proposals.filter(
-    (entry) =>
-      entry.status !== "ARCHIVED" &&
-      entry.status !== "APPROVED" &&
-      entry.status !== "SENT",
-  ).length;
-  const sentCount = proposals.filter((entry) => entry.status === "SENT").length;
-  const approvedCount = proposals.filter((entry) => entry.status === "APPROVED").length;
+  const liveCount = liveDocs.length;
+  const favoriteCount = favoriteDocs.length;
+  const archivedCount = archivedDocs.length;
 
-  // Doc-type breakdown for the filter row count chips. Always over the full workspace so the
-  // chips don't lie when a filter is already applied.
-  const docTypeCounts = proposals.reduce<Record<string, number>>((acc, p) => {
-    const type = p.documentType ?? "OTHER";
-    acc[type] = (acc[type] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const isWorkspaceEmpty = !isPending && totalCount === 0 && search === "" && status === "ALL";
+  const isWorkspaceEmpty = !isPending && totalCount === 0 && search === "" && scope === "all";
   const showOnboarding = isWorkspaceEmpty && !onboardingDismissed;
 
   return (
@@ -347,112 +388,18 @@ export function ProposalList() {
         </section>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          label="DOCUMENTS"
-          value={String(totalCount).padStart(2, "0")}
-          hint="ALL TYPES"
-          widgetNumber="01"
-        />
-        <StatTile
-          label="IN FLIGHT"
-          value={String(activeCount).padStart(2, "0")}
-          hint="DRAFT · REVIEW"
-          widgetNumber="02"
-        />
-        <StatTile
-          label="OUT FOR SIG"
-          value={String(sentCount).padStart(2, "0")}
-          hint="AWAITING SIGNERS"
-          widgetNumber="03"
-        />
-        <StatTile
-          label="SIGNED"
-          value={String(approvedCount).padStart(2, "0")}
-          hint="COMPLETE"
-          widgetNumber="04"
-          tone="success"
-        />
-      </section>
-
       <section className="widget-card overflow-hidden">
         <div className="widget-header">
-          <span className="widget-header-label">05 // DOCUMENT LIBRARY</span>
-          <span className="widget-header-right">{totalCount} TOTAL · {activeCount} ACTIVE</span>
-        </div>
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
-          <div>
-            <p className="text-sm leading-6 text-[var(--text-3)]">
-              Every proposal, SLA, SOW, MSA, NDA, change order, and data sharing agreement &mdash;
-              search, filter by type, and ship in one place.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
-            {canViewAdminDocTypes ? (
-              <Link
-                href="/app/docs/analytics"
-                className={buttonStyles({ variant: "secondary", size: "md" })}
-              >
-                <ChartBarIcon className="h-4 w-4" />
-                Analytics
-              </Link>
-            ) : null}
-            {canManageDocs ? (
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                onClick={() => setShowCreate(true)}
-                leadingIcon={<PlusIcon className="h-4 w-4" />}
-              >
-                New document
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Doc-type filter chip row. Scoped to the table only — stat tiles stay over the
-            whole workspace so the operator can see both views without losing context. */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-2)] px-4 py-3 sm:px-6">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-            FILTER BY TYPE
+          <span className="widget-header-label">01 // DOCUMENT LIBRARY</span>
+          <span className="widget-header-right">
+            {liveCount} DOCS · {favoriteCount} FAV · {archivedCount} ARCHIVED
           </span>
-          {(["ALL", "PROPOSAL", "HANDOVER", "REPORT", "BRIEF", "OTHER", "SLA", "SOW", "MSA", "NDA", "CO", "DSA"] as const).map((type) => {
-            // Role-gate: developers never see the admin doc-type chips.
-            if (type !== "ALL" && !allowedTypeSet.has(type)) return null;
-            const count = type === "ALL" ? totalCount : docTypeCounts[type] ?? 0;
-            if (type !== "ALL" && count === 0) return null;
-            const active = docTypeFilter === type;
-            return (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setDocTypeFilter(type as DocumentType | "ALL")}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-[6px] border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] transition",
-                  active
-                    ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
-                    : "border-[var(--border-2)] bg-white text-[var(--text-4)] hover:border-[var(--border-1)] hover:text-[var(--text-2)]",
-                )}
-              >
-                {type === "ALL" ? "All" : type === "CO" ? "Change Order" : type}
-                <span
-                  className={cn(
-                    "rounded-[3px] px-1 text-[9px]",
-                    active ? "bg-[var(--brand-700)] text-white" : "bg-[var(--surface-1)] text-[var(--text-3)]",
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
-          <label className="relative w-full max-w-[420px]">
+        {/* Toolbar — search · filters · view toggle · actions. The collections rail below owns
+            scope + type; this row stays for search, sort/status refine, view mode, and create. */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-2)] px-4 py-4 sm:px-6">
+          <label className="relative min-w-[200px] flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               value={search}
@@ -467,8 +414,7 @@ export function ProposalList() {
               className={buttonStyles({
                 variant: "secondary",
                 size: "md",
-                className:
-                  "list-none gap-2 [&::-webkit-details-marker]:hidden",
+                className: "list-none gap-2 [&::-webkit-details-marker]:hidden",
               })}
             >
               <FunnelIcon className="h-4 w-4" />
@@ -484,12 +430,16 @@ export function ProposalList() {
                     value={status}
                     onChange={(event) => setStatus(event.target.value as (typeof statusOptions)[number])}
                     className="app-select-compact"
+                    disabled={scope === "archived"}
                   >
-                    {statusOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option === "ALL" ? "All statuses" : statusLabel(option)}
-                      </option>
-                    ))}
+                    {/* ARCHIVED is owned by the Archived collection (rail), not this refine. */}
+                    {statusOptions
+                      .filter((option) => option !== "ARCHIVED")
+                      .map((option) => (
+                        <option key={option} value={option}>
+                          {option === "ALL" ? "All statuses" : statusLabel(option)}
+                        </option>
+                      ))}
                   </select>
                 </label>
 
@@ -528,26 +478,94 @@ export function ProposalList() {
             </div>
           </details>
 
-          <div className="ml-auto inline-flex items-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
-            {(["table", "grouped"] as const).map((mode) => (
+          {/* View toggle — Cards (default) · Table · By client. */}
+          <div className="inline-flex items-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+            {([
+              ["cards", "Cards", Squares2X2Icon],
+              ["table", "Table", TableCellsIcon],
+              ["grouped", "By client", RectangleStackIcon],
+            ] as const).map(([mode, label, Icon]) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setViewMode(mode)}
+                aria-label={label}
+                title={label}
                 className={cn(
-                  "h-7 rounded-[6px] px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] transition",
+                  "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] transition",
                   viewMode === mode
                     ? "bg-white text-[var(--text-1)] shadow-[var(--shadow-xs)]"
                     : "text-[var(--text-4)] hover:text-[var(--text-2)]",
                 )}
               >
-                {mode === "table" ? "Table" : "By client"}
+                <Icon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
+
+          <div className="flex items-center gap-2">
+            {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
+            {canViewAdminDocTypes ? (
+              <Link
+                href="/app/docs/analytics"
+                className={buttonStyles({ variant: "secondary", size: "md" })}
+              >
+                <ChartBarIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Analytics</span>
+              </Link>
+            ) : null}
+            {canManageDocs ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => setShowCreate(true)}
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                New document
+              </Button>
+            ) : null}
+          </div>
         </div>
 
-        {viewMode === "grouped" ? (
+        {/* Collections rail + the active view. Rail stacks above the content below lg. */}
+        <div className="lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">
+          <CollectionsRail
+            scope={scope}
+            onScope={setScope}
+            counts={{ all: liveCount, favorites: favoriteCount, archived: archivedCount }}
+            docTypeFilter={docTypeFilter}
+            onDocType={setDocTypeFilter}
+            docTypeCounts={docTypeCounts}
+            allowedTypeSet={allowedTypeSet}
+          />
+
+          <div className="min-w-0 border-t border-[var(--border-2)] lg:border-l lg:border-t-0">
+        {viewMode === "cards" ? (
+          <DocCardGrid
+            proposals={pagedProposals}
+            isPending={isPending}
+            error={error as Error | null}
+            isWorkspaceEmpty={isWorkspaceEmpty}
+            canManageDocs={canManageDocs}
+            scope={scope}
+            onCreate={() => setShowCreate(true)}
+            onToggleFavorite={(id, next) => favoriteMutation.mutate({ id, isFavorite: next })}
+            onDuplicate={(id) => duplicateMutation.mutate(id)}
+            onArchive={(id) => archiveMutation.mutate(id)}
+            onRestore={(id) => void restoreOne(id)}
+            onDelete={(id) => {
+              if (window.confirm("Delete this document permanently?")) deleteMutation.mutate(id);
+            }}
+            onClearFilters={() => {
+              setSearch("");
+              setStatus("ALL");
+              setDocTypeFilter("ALL");
+              setScope("all");
+            }}
+          />
+        ) : viewMode === "grouped" ? (
           <GroupedList
             proposals={pagedProposals}
             selectedIds={selectedIds}
@@ -836,6 +854,8 @@ export function ProposalList() {
             >
               <ChevronRightIcon className="h-4 w-4" />
             </button>
+          </div>
+        </div>
           </div>
         </div>
       </section>
@@ -1151,30 +1171,394 @@ function OnboardingStep({
   );
 }
 
-function StatTile({
-  widgetNumber,
-  label,
-  value,
-  hint,
-  tone = "default",
+// Doc types listed in the rail's TYPE section, in display order. Role-gated per viewer.
+const RAIL_TYPE_ORDER: DocumentType[] = [
+  "PROPOSAL",
+  "HANDOVER",
+  "REPORT",
+  "BRIEF",
+  "OTHER",
+  "SLA",
+  "SOW",
+  "MSA",
+  "NDA",
+  "CO",
+  "DSA",
+];
+
+const RAIL_TYPE_LABEL: Record<DocumentType, string> = {
+  PROPOSAL: "Proposals",
+  SLA: "SLAs",
+  SOW: "SOWs",
+  MSA: "MSAs",
+  NDA: "NDAs",
+  CO: "Change Orders",
+  DSA: "Data Sharing",
+  HANDOVER: "Handovers",
+  REPORT: "Status Reports",
+  BRIEF: "Briefs",
+  OTHER: "Blank Docs",
+};
+
+/** Left collections rail — scope (All/Favorites/Archived) over the doc-type filter list. */
+function CollectionsRail({
+  scope,
+  onScope,
+  counts,
+  docTypeFilter,
+  onDocType,
+  docTypeCounts,
+  allowedTypeSet,
 }: {
-  widgetNumber: string;
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "default" | "success";
+  scope: "all" | "favorites" | "archived";
+  onScope: (next: "all" | "favorites" | "archived") => void;
+  counts: { all: number; favorites: number; archived: number };
+  docTypeFilter: DocumentType | "ALL";
+  onDocType: (next: DocumentType | "ALL") => void;
+  docTypeCounts: Record<string, number>;
+  allowedTypeSet: Set<string>;
 }) {
-  const valueColor = tone === "success" ? "text-[var(--success-500)]" : "text-[var(--text-1)]";
+  const typesWithDocs = RAIL_TYPE_ORDER.filter(
+    (type) => allowedTypeSet.has(type) && (docTypeCounts[type] ?? 0) > 0,
+  );
   return (
-    <div className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header-label">{widgetNumber} {"// "}{label}</span>
+    <aside className="space-y-5 p-3 sm:p-4">
+      <nav className="space-y-1">
+        <RailItem
+          icon={DocumentTextIcon}
+          label="All Docs"
+          count={counts.all}
+          active={scope === "all"}
+          onClick={() => onScope("all")}
+        />
+        <RailItem
+          icon={StarIcon}
+          label="Favorites"
+          count={counts.favorites}
+          active={scope === "favorites"}
+          onClick={() => onScope("favorites")}
+        />
+        <RailItem
+          icon={ArchiveBoxIcon}
+          label="Archived"
+          count={counts.archived}
+          active={scope === "archived"}
+          onClick={() => onScope("archived")}
+        />
+      </nav>
+
+      <div className="space-y-1">
+        <p className="px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+          Type
+        </p>
+        <RailItem
+          label="All types"
+          active={docTypeFilter === "ALL"}
+          onClick={() => onDocType("ALL")}
+          dense
+        />
+        {typesWithDocs.map((type) => (
+          <RailItem
+            key={type}
+            label={RAIL_TYPE_LABEL[type]}
+            count={docTypeCounts[type] ?? 0}
+            active={docTypeFilter === type}
+            onClick={() => onDocType(type)}
+            dense
+          />
+        ))}
       </div>
-      <div className="widget-body">
-        <p className={cn("widget-stat-sm", valueColor)}>{value}</p>
-        <p className="widget-data-label mt-2">{hint}</p>
+    </aside>
+  );
+}
+
+function RailItem({
+  icon: Icon,
+  label,
+  count,
+  active,
+  onClick,
+  dense = false,
+}: {
+  icon?: ComponentType<{ className?: string }>;
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+  dense?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-[6px] px-2.5 text-left transition",
+        dense ? "py-1.5" : "py-2",
+        active
+          ? "border border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
+          : "border border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      {Icon ? <Icon className="h-4 w-4 shrink-0" /> : <span className="w-4 shrink-0" />}
+      <span className={cn("min-w-0 flex-1 truncate", dense ? "text-[13px]" : "text-sm font-medium")}>
+        {label}
+      </span>
+      {typeof count === "number" ? (
+        <span
+          className={cn(
+            "shrink-0 font-mono text-[10px] font-semibold tabular-nums",
+            active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** Card grid — the default Docs view. One widget-grammar card per document. */
+function DocCardGrid({
+  proposals,
+  isPending,
+  error,
+  isWorkspaceEmpty,
+  canManageDocs,
+  scope,
+  onCreate,
+  onToggleFavorite,
+  onDuplicate,
+  onArchive,
+  onRestore,
+  onDelete,
+  onClearFilters,
+}: {
+  proposals: ProposalListItem[];
+  isPending: boolean;
+  error: Error | null;
+  isWorkspaceEmpty: boolean;
+  canManageDocs: boolean;
+  scope: "all" | "favorites" | "archived";
+  onCreate: () => void;
+  onToggleFavorite: (id: string, next: boolean) => void;
+  onDuplicate: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+  onClearFilters: () => void;
+}) {
+  if (isPending) {
+    return <p className="px-5 py-12 text-sm text-[var(--text-4)]">Loading documents…</p>;
+  }
+  if (error) {
+    return <p className="px-5 py-12 text-sm text-rose-700">{error.message}</p>;
+  }
+  if (proposals.length === 0) {
+    return (
+      <div className="px-5 py-16 text-center">
+        {isWorkspaceEmpty ? (
+          <div className="mx-auto max-w-md space-y-3">
+            <DocumentPlusIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
+            <p className="text-sm text-[var(--text-2)]">
+              No documents yet — spin one up from a template.
+            </p>
+            {canManageDocs ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={onCreate}
+                leadingIcon={<PlusIcon className="h-4 w-4" />}
+              >
+                New document
+              </Button>
+            ) : null}
+          </div>
+        ) : scope === "favorites" ? (
+          <div className="mx-auto max-w-md space-y-2">
+            <StarIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
+            <p className="text-sm text-[var(--text-2)]">No favourites yet.</p>
+            <p className="text-[13px] text-[var(--text-4)]">
+              Star a document from any card to pin it here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-[var(--text-2)]">No documents match this filter.</p>
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="text-sm font-medium text-[var(--brand-700)] hover:underline"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3">
+      {proposals.map((proposal) => (
+        <DocCard
+          key={proposal.id}
+          proposal={proposal}
+          canManageDocs={canManageDocs}
+          scope={scope}
+          onToggleFavorite={onToggleFavorite}
+          onDuplicate={onDuplicate}
+          onArchive={onArchive}
+          onRestore={onRestore}
+          onDelete={onDelete}
+        />
+      ))}
     </div>
+  );
+}
+
+function DocCard({
+  proposal,
+  canManageDocs,
+  scope,
+  onToggleFavorite,
+  onDuplicate,
+  onArchive,
+  onRestore,
+  onDelete,
+}: {
+  proposal: ProposalListItem;
+  canManageDocs: boolean;
+  scope: "all" | "favorites" | "archived";
+  onToggleFavorite: (id: string, next: boolean) => void;
+  onDuplicate: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const fav = proposal.isFavorite ?? false;
+  const blocks = proposal.sectionCount ?? 0;
+  return (
+    <article className="group/card flex flex-col rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
+      {/* Top strip — doc-type pill + number · favourite star. */}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--border-3)] px-3.5 py-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex items-center rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
+            {proposal.documentType === "CO" ? "CO" : proposal.documentType}
+          </span>
+          {proposal.documentNumber ? (
+            <span className="truncate font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
+              {proposal.documentNumber}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggleFavorite(proposal.id, !fav)}
+          aria-label={fav ? "Unfavourite" : "Favourite"}
+          aria-pressed={fav}
+          title={fav ? "Unfavourite" : "Favourite"}
+          className={cn(
+            "inline-flex h-7 w-7 items-center justify-center rounded-[6px] transition",
+            fav
+              ? "text-[var(--brand-600)]"
+              : "text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+          )}
+        >
+          {fav ? <StarIconSolid className="h-4 w-4" /> : <StarIcon className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {/* Body — clickable to open the editor. */}
+      <Link href={`/app/docs/${proposal.id}`} className="flex flex-1 flex-col gap-1.5 px-4 py-3.5">
+        <h3 className="line-clamp-2 text-[15px] font-semibold leading-[1.35] text-[var(--text-1)] transition group-hover/card:text-[var(--brand-700)]">
+          {proposal.title}
+        </h3>
+        <p className="truncate text-[13px] text-[var(--text-3)]">
+          {proposal.clientName || "No client assigned"}
+        </p>
+        <p className="mt-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
+          {blocks} {blocks === 1 ? "block" : "blocks"} · {formatUpdatedAt(proposal.updatedAt)}
+        </p>
+      </Link>
+
+      {/* Footer — status + row actions. */}
+      <div className="flex items-center justify-between gap-2 border-t border-[var(--border-3)] px-3 py-2">
+        <StatusBadge status={proposal.status} />
+        <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
+          <Link
+            href={`/app/docs/${proposal.id}`}
+            className={buttonStyles({ variant: "utility", size: "icon-sm", className: "text-[var(--text-3)]" })}
+            aria-label="Edit"
+            title="Edit"
+          >
+            <PencilSquareIcon className="h-4 w-4" />
+          </Link>
+          {canManageDocs ? (
+            scope === "archived" ? (
+              <>
+                <Button
+                  type="button"
+                  onClick={() => onRestore(proposal.id)}
+                  variant="utility"
+                  size="icon-sm"
+                  aria-label="Restore"
+                  title="Restore"
+                >
+                  <ArrowUturnLeftIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => onDelete(proposal.id)}
+                  variant="utility"
+                  size="icon-sm"
+                  className="text-rose-600 hover:text-rose-700"
+                  aria-label="Delete"
+                  title="Delete"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  onClick={() => onDuplicate(proposal.id)}
+                  variant="utility"
+                  size="icon-sm"
+                  aria-label="Duplicate"
+                  title="Duplicate"
+                >
+                  <DocumentDuplicateIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => onArchive(proposal.id)}
+                  variant="utility"
+                  size="icon-sm"
+                  aria-label="Archive"
+                  title="Archive"
+                >
+                  <ArchiveBoxIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => onDelete(proposal.id)}
+                  variant="utility"
+                  size="icon-sm"
+                  className="text-rose-600 hover:text-rose-700"
+                  aria-label="Delete"
+                  title="Delete"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </Button>
+              </>
+            )
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 

@@ -470,6 +470,9 @@ model Document {
   documentNumber    String?            @unique // e.g. PROP-2026-014, SLA-2026-003
   // ── Organisation (P0) ───────────────────────────────────────────────
   labels            Json? // Array of workspace-defined label strings (["Q2", "Renewal", …])
+  // Workspace-level favourite (the Docs dashboard star + Favorites collection). One flag per
+  // doc, visible to the whole team — not per-user. Additive.
+  isFavorite        Boolean            @default(false)
   // ── Document relationships (P5) ─────────────────────────────────────
   parentId          String? // Self-ref: SOW under MSA, CO under SOW
   parent            Document?          @relation("DocumentChildren", fields: [parentId], references: [id], onDelete: SetNull)
@@ -1689,6 +1692,9 @@ model DocumentSection {
   sortOrder   Int
   isVisible   Boolean  @default(true)
   data        Json
+  // Presenter-only notes shown in presentation mode's notes panel — never rendered in the
+  // doc body, public share, or PDF. Optional, additive.
+  speakerNotes String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)

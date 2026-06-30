@@ -411,6 +411,46 @@ Checkbox clicks stop propagation so they never open the detail drawer.
 
 ---
 
+## Docs Dashboard (card library)
+
+The Docs list (`/app/docs`, `src/components/proposals/proposal-list.tsx`) is a **card library**, not
+a table-first screen — the clearer, scale-friendly model for a growing document set. It reuses the
+widget grammar; no new tokens.
+
+**One library widget.** The whole surface is a single `widget-card` headed `01 // DOCUMENT LIBRARY`,
+with a live readout on the right (`{n} DOCS · {n} FAV · {n} ARCHIVED` in `{typography.widget-header}`).
+The four standalone stat tiles were removed — those counts live in the header readout + rail instead,
+which reads cleaner and matches the card-first reference.
+
+**Two-pane body — `collections-rail` + content.** Inside the card, a `lg:grid-cols-[212px_1fr]`:
+- **`collections-rail`** (left, 212px; stacks above the grid below `lg`). A **scope** group —
+  *All Docs · Favorites · Archived*, each a `RailItem` (full-width 6px-radius button, leading
+  Heroicon, label, right-aligned mono count). Active item = `{colors.surface-brand}` fill +
+  `{colors.brand-300}` border + `{colors.brand-800}` text (the app-sidebar nav treatment). Below a
+  `TYPE` mono-caps eyebrow, the same `RailItem` (dense, no icon) lists *All types* + each doc type
+  that has docs, role-gated (developers never see admin types). Scope owns archived; `All/Favorites`
+  exclude archived.
+- **content** — the active view. Toolbar (above the pane split) carries search, a Filters popover
+  (sort + non-archived status refine), the **view toggle**, and the create/Analytics actions.
+
+**View toggle — Cards · Table · By client.** `Cards` is the default. Table (multi-select bulk
+actions) and By-client (grouped) are retained behind the toggle for power triage — nothing lost.
+
+**`doc-card`** — the unit of the Cards view (`grid sm:grid-cols-2 xl:grid-cols-3`, 12px gap).
+- A `{rounded.lg}` `{colors.surface-raised}` card, `{colors.hairline}` border, no shadow at rest;
+  hover lifts to Elevation-1 + `{colors.hairline-strong}` border.
+- **Top strip** (hairline-bottom): doc-type pill (`{colors.primary-soft}` bg, mono caps) +
+  document number (mono, muted) on the left; the **favourite star** on the right — filled
+  `{colors.primary}` when starred, outline + muted otherwise. The star toggles
+  `Document.isFavorite` (workspace-level, optimistic).
+- **Body** (a `<Link>` to the editor): title in `{typography.heading-5}` (Inter 15/600, 2-line
+  clamp, → `{colors.primary-deep}` on hover), client in `{typography.body-sm}`, then a mono
+  `{typography.data-label}` readout — `{n} blocks · {updated}`.
+- **Footer** (hairline-top): `StatusBadge` left; hover-revealed row actions right — Edit, then
+  Duplicate · Archive · Delete (or Restore · Delete in the Archived scope), gated by `canManageDocs`.
+
+---
+
 ## Do's and Don'ts
 
 ### Do

@@ -156,6 +156,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             description: section.description,
             sortOrder: section.sortOrder ?? index,
             isVisible: section.isVisible,
+            speakerNotes: section.speakerNotes ?? null,
             data:
               !showCosts && section.key === "costing" && existingCosting
                 ? (existingCosting.data as Prisma.InputJsonValue)

@@ -108,6 +108,7 @@ function normalizeSections(sections: DocumentSection[]): ProposalSection[] {
     sortOrder: section.sortOrder,
     isVisible: section.isVisible,
     data: section.data as unknown as ProposalSection["data"],
+    speakerNotes: section.speakerNotes ?? undefined,
   }));
 }
 
@@ -242,8 +243,11 @@ export const proposalListSelect = {
   documentType: true,
   labels: true,
   parentId: true,
+  isFavorite: true,
   template: { select: { name: true } },
   owner: { select: { name: true } },
+  // Visible-block count for the card meta readout. Cheap aggregate, no heavy JSON on the wire.
+  _count: { select: { sections: true } },
 } satisfies Prisma.DocumentSelect;
 
 export type ProposalListRow = Prisma.DocumentGetPayload<{ select: typeof proposalListSelect }>;
@@ -262,6 +266,8 @@ export function serializeProposalListItem(proposal: ProposalListRow): ProposalLi
     documentType: proposal.documentType,
     labels: asJson<string[]>(proposal.labels, []),
     parentId: proposal.parentId ?? null,
+    isFavorite: proposal.isFavorite,
+    sectionCount: proposal._count?.sections ?? 0,
   };
 }
 
