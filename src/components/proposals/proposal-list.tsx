@@ -316,7 +316,7 @@ export function ProposalList() {
   const showOnboarding = isWorkspaceEmpty && !onboardingDismissed;
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full min-h-0 flex-col gap-8">
       {showOnboarding ? (
         <section className="widget-card overflow-hidden">
           <div className="widget-header">
@@ -388,7 +388,7 @@ export function ProposalList() {
         </section>
       ) : null}
 
-      <section className="widget-card overflow-hidden">
+      <section className="widget-card flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="widget-header">
           <span className="widget-header-label">01 // DOCUMENT LIBRARY</span>
           <span className="widget-header-right">
@@ -530,7 +530,7 @@ export function ProposalList() {
         </div>
 
         {/* Collections rail + the active view. Rail stacks above the content below lg. */}
-        <div className="lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">
+        <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">
           <CollectionsRail
             scope={scope}
             onScope={setScope}
@@ -541,7 +541,8 @@ export function ProposalList() {
             allowedTypeSet={allowedTypeSet}
           />
 
-          <div className="min-w-0 border-t border-[var(--border-2)] lg:border-l lg:border-t-0">
+          <div className="flex min-h-0 flex-1 flex-col min-w-0 border-t border-[var(--border-2)] lg:border-l lg:border-t-0">
+            <div className="min-h-0 flex-1 overflow-auto">
         {viewMode === "cards" ? (
           <DocCardGrid
             proposals={pagedProposals}
@@ -775,6 +776,7 @@ export function ProposalList() {
           </table>
         </div>
         )}
+            </div>
 
         <div className="flex flex-col gap-3 border-t border-[var(--border-2)] px-4 py-3 text-sm text-[var(--text-3)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
