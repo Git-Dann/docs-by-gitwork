@@ -32,6 +32,11 @@ function catKey(t: TaskDTO): string {
   return t.featureBlock?.id ?? NO_CATEGORY_ID;
 }
 
+// Mirrors MAX_TASKS_PER_CARD in src/server/slack/blocks.ts — Slack caps each
+// group at 8 rows and folds the rest into a "+N more" line. The preview shows
+// the same so it matches what actually posts.
+const PREVIEW_CAP = 8;
+
 export function ProjectUpdateComposer({
   clientId,
   clientName,
@@ -139,20 +144,18 @@ export function ProjectUpdateComposer({
   }
 
   return (
-    <Modal open onClose={onClose} panelClassName="w-full max-w-3xl">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
-        <div>
-          <p className="widget-data-label">PUSH TO SLACK</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            Project update — {clientName}
-          </h3>
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            Posts the current board to this client&apos;s internal Slack channel.
-          </p>
-        </div>
+    <Modal open onClose={onClose} panelClassName="flex max-h-[85vh] w-full max-w-3xl flex-col">
+      <div className="shrink-0 border-b border-[var(--border-2)] px-6 py-4">
+        <p className="widget-data-label">PUSH TO SLACK</p>
+        <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          Project update — {clientName}
+        </h3>
+        <p className="mt-0.5 text-xs text-[var(--text-4)]">
+          Posts the current board to this client&apos;s internal Slack channel.
+        </p>
       </div>
 
-      <div className="grid max-h-[70vh] gap-0 overflow-hidden sm:grid-cols-2">
+      <div className="grid min-h-0 flex-1 gap-0 overflow-hidden sm:grid-cols-2">
         {/* ── Controls ── */}
         <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
           {/* Standup tie-in */}
@@ -259,36 +262,45 @@ export function ProjectUpdateComposer({
             </p>
           ) : (
             <div className="mt-3 space-y-4">
-              {preview.map(({ group, tasks: groupTasks }) => (
-                <div key={group}>
-                  <p className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">
-                    {PROJECT_UPDATE_GROUP_LABELS[group]}{" "}
-                    <span className="text-[var(--text-4)]">· {groupTasks.length}</span>
-                  </p>
-                  <div className="space-y-1.5">
-                    {groupTasks.map((t) => (
-                      <div
-                        key={t.id}
-                        className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
-                      >
-                        <p className="truncate text-sm text-[var(--text-1)]">{t.title}</p>
-                        {detail === "TITLES_AND_DESCRIPTIONS" && t.description?.trim() ? (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--text-4)]">
-                            {t.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
+              {preview.map(({ group, tasks: groupTasks }) => {
+                const visible = groupTasks.slice(0, PREVIEW_CAP);
+                const more = groupTasks.length - visible.length;
+                return (
+                  <div key={group}>
+                    <p className="mb-1.5 text-xs font-semibold text-[var(--text-1)]">
+                      {PROJECT_UPDATE_GROUP_LABELS[group]}{" "}
+                      <span className="text-[var(--text-4)]">· {groupTasks.length}</span>
+                    </p>
+                    <div className="space-y-1.5">
+                      {visible.map((t) => (
+                        <div
+                          key={t.id}
+                          className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
+                        >
+                          <p className="truncate text-sm text-[var(--text-1)]">{t.title}</p>
+                          {detail === "TITLES_AND_DESCRIPTIONS" && t.description?.trim() ? (
+                            <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--text-4)]">
+                              {t.description}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                      {more > 0 ? (
+                        <p className="px-1 pt-0.5 text-[11px] text-[var(--text-4)]">
+                          +{more} more in Foundry
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-2)] px-6 py-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[var(--border-2)] px-6 py-4">
         <div className="flex flex-wrap items-center gap-4">
           <CheckRow
             label="Save as my defaults"
@@ -296,7 +308,8 @@ export function ProjectUpdateComposer({
             onChange={() => setSaveDefaults((v) => !v)}
           />
           <CheckRow
-            label="Also post to roll-up"
+            label="Also post to team roll-up"
+            title="Sends a copy to the central DevOps roll-up channel, on top of this client's channel."
             checked={toRollup}
             onChange={() => setToRollup((v) => !v)}
           />
@@ -374,14 +387,19 @@ function CheckRow({
   checked,
   onChange,
   muted,
+  title,
 }: {
   label: string;
   checked: boolean;
   onChange: () => void;
   muted?: boolean;
+  title?: string;
 }) {
   return (
-    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--text-2)]">
+    <label
+      title={title}
+      className="inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--text-2)]"
+    >
       <input
         type="checkbox"
         checked={checked}
