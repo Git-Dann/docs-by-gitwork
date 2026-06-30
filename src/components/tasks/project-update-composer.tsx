@@ -144,7 +144,7 @@ export function ProjectUpdateComposer({
   }
 
   return (
-    <Modal open onClose={onClose} panelClassName="flex max-h-[85vh] w-full max-w-3xl flex-col">
+    <Modal open onClose={onClose} panelClassName="flex h-[80vh] max-h-[680px] min-h-[460px] w-full max-w-3xl flex-col">
       <div className="shrink-0 border-b border-[var(--border-2)] px-6 py-4">
         <p className="widget-data-label">PUSH TO SLACK</p>
         <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
