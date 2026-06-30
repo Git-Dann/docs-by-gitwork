@@ -187,9 +187,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
-  // Canvas editor (2026): the document IS the full-width working area. The outline is a toggled
-  // overlay (no reserved column), and structured blocks open a docked inspector for their settings.
-  const [outlineOpen, setOutlineOpen] = useState(false);
+  // Canvas editor (2026): the document IS the working area. The outline is a sticky rail that
+  // travels with the scroll (toggle it off to give the canvas the full width); structured blocks
+  // open a docked inspector for their settings.
+  const [outlineOpen, setOutlineOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
   // Mark a block active WITHOUT moving the page — clicking a block to edit it must retain your
@@ -1182,64 +1183,44 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               }`}
             >
               <QueueListIcon className="h-4 w-4" />
-              Overlay
+              {outlineOpen ? "Hide outline" : "Outline"}
             </button>
             <span className="hidden text-[11px] text-[var(--text-4)] sm:inline">
               Click any block on the page to edit it →
             </span>
           </div>
 
-          {/* Outline overlay — floating, toggled; never reserves a column, so opening/closing it
-              doesn't reflow the document. */}
-          {outlineOpen ? (
-            <div className="fixed inset-0 z-40" role="dialog" aria-label="Document outline">
-              <button
-                type="button"
-                aria-label="Close outline"
-                onClick={() => setOutlineOpen(false)}
-                className="absolute inset-0 bg-black/20"
-              />
-              <aside className="absolute inset-y-0 left-0 flex w-full max-w-[320px] flex-col bg-white shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-3">
-                  <span className="widget-header-label">02 {"// "}OUTLINE</span>
-                  <button
-                    type="button"
-                    onClick={() => setOutlineOpen(false)}
-                    aria-label="Close"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                  >
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  <TableOfContentsCard
-                    sections={sectionEntries}
-                    activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                    editable
-                    onSelect={(id) => {
-                      handleOutlineSelect(id);
-                      setOutlineOpen(false);
-                    }}
-                    onInsertAt={(index) => {
-                      setPaletteInsertAt(index);
-                      setOutlineOpen(false);
-                    }}
-                    onDeleteSection={handleDeleteSection}
-                    onReorder={updateSectionOrder}
-                    onToggleVisibility={handleToggleVisibility}
-                  />
-                </div>
-              </aside>
-            </div>
-          ) : null}
-
           <section
             className={`grid gap-4 ${
-              inspectorDocked ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]" : "xl:grid-cols-1"
+              outlineOpen
+                ? inspectorDocked
+                  ? "xl:grid-cols-[240px_minmax(0,1fr)_minmax(340px,400px)]"
+                  : "xl:grid-cols-[280px_minmax(0,1fr)]"
+                : inspectorDocked
+                  ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]"
+                  : "xl:grid-cols-1"
             }`}
           >
-            {/* Canvas — the live client document, full working width. Click a block to edit it
-                inline (text) or open its options (structured blocks). Selection never scrolls. */}
+            {/* Outline — a sticky in-flow rail. It travels with the scroll (TableOfContentsCard is
+                xl:sticky) and the scroll-spy highlight follows the block in view. Toggle hides it so
+                the canvas takes the full width. On mobile it stacks above the canvas. */}
+            {outlineOpen ? (
+              <div>
+                <TableOfContentsCard
+                  sections={sectionEntries}
+                  activeId={viewingSectionId ?? activeEntry?.id ?? null}
+                  editable
+                  onSelect={handleOutlineSelect}
+                  onInsertAt={(index) => setPaletteInsertAt(index)}
+                  onDeleteSection={handleDeleteSection}
+                  onReorder={updateSectionOrder}
+                  onToggleVisibility={handleToggleVisibility}
+                />
+              </div>
+            ) : null}
+
+            {/* Canvas — the live client document. Click a block to edit it inline (text) or open
+                its options (structured blocks). Selection never scrolls. */}
             <div className="min-w-0">
               <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                 <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
