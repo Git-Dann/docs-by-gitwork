@@ -1418,6 +1418,27 @@ function DocCardGrid({
   );
 }
 
+// Generated editorial cover for a doc card. Deterministic (hashed on client+title) so a doc keeps
+// the same look across renders. Reuses the documented Gantt/feature-block palette
+// (blue/violet/emerald/amber/rose/slate) as soft tints — no off-system hues, no image storage:
+// the gradient + serif title + client read like a little document cover.
+const DOC_COVER_PALETTE = [
+  { from: "#EFF6FF", to: "#DBEAFE", ink: "#1E3A8A" }, // blue
+  { from: "#F5F3FF", to: "#EDE9FE", ink: "#5B21B6" }, // violet
+  { from: "#ECFDF5", to: "#D1FAE5", ink: "#065F46" }, // emerald
+  { from: "#FFFBEB", to: "#FEF3C7", ink: "#92400E" }, // amber
+  { from: "#FFF1F2", to: "#FFE4E6", ink: "#9F1239" }, // rose
+  { from: "#F8FAFC", to: "#F1F5F9", ink: "#334155" }, // slate
+] as const;
+
+function docCoverPalette(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return DOC_COVER_PALETTE[Math.abs(hash) % DOC_COVER_PALETTE.length];
+}
+
 function DocCard({
   proposal,
   canManageDocs,
@@ -1439,20 +1460,40 @@ function DocCard({
 }) {
   const fav = proposal.isFavorite ?? false;
   const blocks = proposal.sectionCount ?? 0;
+  const palette = docCoverPalette(`${proposal.clientName ?? ""}|${proposal.title}`);
+  const typeLabel = proposal.documentType === "CO" ? "CO" : proposal.documentType;
   return (
-    <article className="group/card flex flex-col rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
-      {/* Top strip — doc-type pill + number · favourite star. */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border-3)] px-3.5 py-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="inline-flex items-center rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
-            {proposal.documentType === "CO" ? "CO" : proposal.documentType}
-          </span>
-          {proposal.documentNumber ? (
-            <span className="truncate font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-              {proposal.documentNumber}
+    <article className="group/card flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
+      {/* Generated cover — type eyebrow + serif title + client, clickable to open the editor. */}
+      <div className="relative">
+        <Link href={`/app/docs/${proposal.id}`} className="block">
+          <div
+            className="flex min-h-[136px] flex-col justify-between p-4"
+            style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
+          >
+            <span
+              className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
+              style={{ color: palette.ink, opacity: 0.7 }}
+            >
+              {typeLabel}
+              {proposal.documentNumber ? ` · ${proposal.documentNumber}` : ""}
             </span>
-          ) : null}
-        </div>
+            <div className="mt-3">
+              <h3
+                className="line-clamp-3 font-[family-name:var(--font-display)] text-[20px] font-normal leading-[1.18] tracking-[-0.3px]"
+                style={{ color: palette.ink }}
+              >
+                {proposal.title}
+              </h3>
+              <p
+                className="mt-1.5 truncate font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
+                style={{ color: palette.ink, opacity: 0.65 }}
+              >
+                {proposal.clientName || "No client"}
+              </p>
+            </div>
+          </div>
+        </Link>
         <button
           type="button"
           onClick={() => onToggleFavorite(proposal.id, !fav)}
@@ -1460,31 +1501,22 @@ function DocCard({
           aria-pressed={fav}
           title={fav ? "Unfavourite" : "Favourite"}
           className={cn(
-            "inline-flex h-7 w-7 items-center justify-center rounded-[6px] transition",
+            "absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-[6px] backdrop-blur-sm transition",
             fav
-              ? "text-[var(--brand-600)]"
-              : "text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+              ? "bg-white/70 text-[var(--brand-600)]"
+              : "bg-white/40 text-[var(--text-3)] hover:bg-white/85 hover:text-[var(--text-1)]",
           )}
         >
           {fav ? <StarIconSolid className="h-4 w-4" /> : <StarIcon className="h-4 w-4" />}
         </button>
       </div>
 
-      {/* Body — clickable to open the editor. */}
-      <Link href={`/app/docs/${proposal.id}`} className="flex flex-1 flex-col gap-1.5 px-4 py-3.5">
-        <h3 className="line-clamp-2 text-[15px] font-semibold leading-[1.35] text-[var(--text-1)] transition group-hover/card:text-[var(--brand-700)]">
-          {proposal.title}
-        </h3>
-        <p className="truncate text-[13px] text-[var(--text-3)]">
-          {proposal.clientName || "No client assigned"}
-        </p>
-        <p className="mt-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
+      {/* Body — meta readout, status + row actions. */}
+      <div className="flex flex-1 flex-col justify-between gap-2 px-3.5 py-2.5">
+        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
           {blocks} {blocks === 1 ? "block" : "blocks"} · {formatUpdatedAt(proposal.updatedAt)}
         </p>
-      </Link>
-
-      {/* Footer — status + row actions. */}
-      <div className="flex items-center justify-between gap-2 border-t border-[var(--border-3)] px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
         <StatusBadge status={proposal.status} />
         <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
           <Link
@@ -1556,6 +1588,7 @@ function DocCard({
               </>
             )
           ) : null}
+        </div>
         </div>
       </div>
     </article>

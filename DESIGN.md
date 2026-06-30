@@ -438,16 +438,18 @@ actions) and By-client (grouped) are retained behind the toggle for power triage
 
 **`doc-card`** — the unit of the Cards view (`grid sm:grid-cols-2 xl:grid-cols-3`, 12px gap).
 - A `{rounded.lg}` `{colors.surface-raised}` card, `{colors.hairline}` border, no shadow at rest;
-  hover lifts to Elevation-1 + `{colors.hairline-strong}` border.
-- **Top strip** (hairline-bottom): doc-type pill (`{colors.primary-soft}` bg, mono caps) +
-  document number (mono, muted) on the left; the **favourite star** on the right — filled
-  `{colors.primary}` when starred, outline + muted otherwise. The star toggles
+  hover lifts to Elevation-1 + `{colors.hairline-strong}` border. `overflow-hidden` so the cover
+  bleeds to the rounded corners.
+- **Generated cover** (a `<Link>` to the editor) — no image storage. A soft diagonal gradient
+  whose hue is **deterministic** (hashed on client + title) from the documented Gantt/feature-block
+  palette (blue/violet/emerald/amber/rose/slate) as light tints. On it: a doc-type + number mono
+  eyebrow, the **title in DM Serif Display** (editorial, 3-line clamp), and the client in a mono
+  caption — reading like a little document cover. The **favourite star** floats top-right on a
+  `bg-white/40` backdrop chip (filled `{colors.primary}` when starred); it toggles
   `Document.isFavorite` (workspace-level, optimistic).
-- **Body** (a `<Link>` to the editor): title in `{typography.heading-5}` (Inter 15/600, 2-line
-  clamp, → `{colors.primary-deep}` on hover), client in `{typography.body-sm}`, then a mono
-  `{typography.data-label}` readout — `{n} blocks · {updated}`.
-- **Footer** (hairline-top): `StatusBadge` left; hover-revealed row actions right — Edit, then
-  Duplicate · Archive · Delete (or Restore · Delete in the Archived scope), gated by `canManageDocs`.
+- **Body**: a mono `{typography.data-label}` readout — `{n} blocks · {updated}` — then a row with
+  `StatusBadge` left and hover-revealed actions right — Edit, then Duplicate · Archive · Delete
+  (or Restore · Delete in the Archived scope), gated by `canManageDocs`.
 
 ---
 
