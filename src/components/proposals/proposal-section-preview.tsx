@@ -41,7 +41,6 @@ export function ProposalSectionPreview({
   section,
   proposal,
   index,
-  activeSectionId,
   onSelectSection,
   editable,
   onChange,
@@ -90,16 +89,13 @@ export function ProposalSectionPreview({
   const editorMode = Boolean(editable) || Boolean(onSelectSection);
   const showOptions =
     Boolean(onSelectSection) && (sectionType.hasOptions ?? !sectionType.inlineEditable);
-  const isActive = activeSectionId === selectionId;
 
   function wrapSelectable(content: ReactNode) {
     if (!editorMode) return content;
     return (
       <div
         data-canvas-block={selectionId}
-        className={`group/block relative scroll-mt-24 rounded-[10px] transition-shadow ${
-          isActive ? "shadow-[0_0_0_2px_var(--brand-600)]" : ""
-        }`}
+        className="group/block relative scroll-mt-24 rounded-[10px]"
       >
         {showOptions ? (
           <button
