@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftIcon,
   ArrowTopRightOnSquareIcon,
+  PaperAirplaneIcon,
   PlusIcon,
   ArrowUpTrayIcon,
   Squares2X2Icon,
@@ -43,6 +44,7 @@ import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
 import { MilestoneFormModal } from "@/components/tasks/milestone-form";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
+import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 
 // The Gantt (day-scale axis, zoom, dependency rendering) is the heaviest of the
@@ -73,6 +75,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pushingToSlack, setPushingToSlack] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
   // Deep-link sync: lets Slack standup cards (and any other shared URL) jump
@@ -242,6 +245,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           <Button
             type="button"
             variant="secondary"
+            leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+            onClick={() => setPushingToSlack(true)}
+          >
+            Push to Slack
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
             leadingIcon={<ArrowUpTrayIcon className="h-4 w-4" />}
             onClick={() => setImporting(true)}
           >
@@ -346,6 +357,15 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           existingTitles={[...tasks, ...archivedTasks].map((t) => t.title)}
           onClose={() => setImporting(false)}
           onDone={() => setImporting(false)}
+        />
+      ) : null}
+      {pushingToSlack && clientId ? (
+        <ProjectUpdateComposer
+          clientId={clientId}
+          clientName={client.name}
+          blocks={blocks}
+          tasks={tasks}
+          onClose={() => setPushingToSlack(false)}
         />
       ) : null}
       {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={closeTaskDrawer} /> : null}

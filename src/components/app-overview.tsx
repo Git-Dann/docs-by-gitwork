@@ -11,6 +11,7 @@ import { DevOverview } from "@/components/dashboard/dev-overview";
 import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
 import { AgenticWorkflowCard } from "@/components/dashboard/agentic-workflow-card";
 import { DailyRollup } from "@/components/tasks/daily-rollup";
+import { BroadcastComposer } from "@/components/tasks/broadcast-composer";
 import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
@@ -136,6 +137,9 @@ export function AppOverview() {
   // resolved permissions (admins inherit the full set). Publishing the roll-up
   // is the DevOps lead's job (Shahab — explicit `tasks.publish`, non-admin).
   const canActuallyPublish = !isAdmin && resolvedPermissions.includes("tasks.publish");
+  // The DevOps broadcast composer — the lead's cross-client posting tool. Shown to
+  // the lead (explicit tasks.publish, non-admin) and the unrestricted owner.
+  const canBroadcast = showAll || canActuallyPublish;
   const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
@@ -147,6 +151,7 @@ export function AppOverview() {
   //    the roll-up follows; then the bento feeds, then the bento summaries. ──
   let counter = deskVisible ? 1 : 0;
   const rollupNumber = canPublishRollup ? (counter += 1) : 0;
+  const broadcastNumber = canBroadcast ? (counter += 1) : 0;
   const feeds = widgets
     .filter((w) => w.band === "feed")
     .map((w) => ({ ...w, number: (counter += 1) }));
@@ -154,9 +159,11 @@ export function AppOverview() {
     .filter((w) => w.band === "summary")
     .map((w) => ({ ...w, number: (counter += 1) }));
 
-  // The today band is two-up only when BOTH cards are actually present, else
-  // the lone card spans full width — no half-empty row.
-  const todayTwoUp = deskVisible && canPublishRollup;
+  // The today band is two-up only when the desk card AND a right-column card
+  // (roll-up and/or broadcast, stacked) are both present, else the lone card
+  // spans full width — no half-empty row.
+  const hasRightColumn = canPublishRollup || canBroadcast;
+  const todayTwoUp = deskVisible && hasRightColumn;
 
   return (
     <div className="space-y-5">
@@ -170,7 +177,7 @@ export function AppOverview() {
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
           render; otherwise the present card fills the row. */}
-      <div className={todayTwoUp ? "grid gap-3 lg:grid-cols-2" : ""}>
+      <div className={todayTwoUp ? "grid items-start gap-3 lg:grid-cols-2" : ""}>
         <OnYourDeskCard
           index={1}
           onVisibilityChange={setDeskVisible}
@@ -178,7 +185,12 @@ export function AppOverview() {
           canSeeTasks={canSeeTasks}
           canSeeSignoff={canSeeSignoff}
         />
-        {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
+        {hasRightColumn ? (
+          <div className="space-y-3">
+            {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
+            {canBroadcast ? <BroadcastComposer index={broadcastNumber} enabled /> : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Module bento — two gap-free bands, filtered to the user's access. */}

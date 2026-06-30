@@ -37,6 +37,11 @@ import {
   createMilestone,
   updateMilestone,
   deleteMilestone,
+  getSlackPushPrefs,
+  saveSlackPushPrefs,
+  pushProjectUpdate,
+  broadcastUpdate,
+  listRecentSlackUpdates,
 } from "@/lib/api";
 import type { TaskStatus, TaskDTO } from "@/types/tasks";
 
@@ -53,6 +58,8 @@ const QK = {
   blocks: (clientId: string) => ["tasks", "blocks", clientId] as const,
   milestones: (clientId: string) => ["tasks", "milestones", clientId] as const,
   share: (slug: string) => ["tasks", "share", slug] as const,
+  pushPrefs: ["tasks", "pushPrefs"] as const,
+  recentUpdates: ["tasks", "recentUpdates"] as const,
 };
 
 /** Invalidate every task-derived query after a write. */
@@ -272,6 +279,55 @@ export function usePublishRollup() {
   return useMutation({
     mutationFn: (override: boolean = false) => publishRollup(override),
     onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
+  });
+}
+
+// ─── Ad-hoc Slack pushes (Tasks-page composer + DevOps broadcast) ────────────
+
+export function useSlackPushPrefs() {
+  return useQuery({
+    queryKey: QK.pushPrefs,
+    queryFn: () => getSlackPushPrefs(),
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveSlackPushPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: Parameters<typeof saveSlackPushPrefs>[0]) => saveSlackPushPrefs(prefs),
+    onSuccess: (prefs) => qc.setQueryData(QK.pushPrefs, prefs),
+  });
+}
+
+export function usePushProjectUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof pushProjectUpdate>[0]) => pushProjectUpdate(input),
+    onSuccess: () => {
+      // saveAsDefaults may have changed prefs; markPhases may have moved the dot.
+      void qc.invalidateQueries({ queryKey: QK.pushPrefs });
+      void qc.invalidateQueries({ queryKey: ["tasks", "myday"] });
+      void qc.invalidateQueries({ queryKey: QK.roster });
+      void qc.invalidateQueries({ queryKey: QK.recentUpdates });
+    },
+  });
+}
+
+export function useBroadcastUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof broadcastUpdate>[0]) => broadcastUpdate(input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: QK.recentUpdates }),
+  });
+}
+
+export function useRecentSlackUpdates(enabled = true) {
+  return useQuery({
+    queryKey: QK.recentUpdates,
+    queryFn: () => listRecentSlackUpdates(),
+    enabled,
+    staleTime: 30_000,
   });
 }
 

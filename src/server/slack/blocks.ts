@@ -295,6 +295,146 @@ export function buildRollupCard(input: {
   return { text, blocks };
 }
 
+export interface ProjectUpdateGroup {
+  label: "In progress" | "Done" | "Up next";
+  tasks: StandupTaskCardInput[];
+}
+
+export interface BuildProjectUpdateCardInput {
+  clientName: string;
+  clientSlug: string;
+  who: string;
+  /** YYYY-MM-DD; reused for friendly date + overdue computation. */
+  dateLabel: string;
+  detail: "TITLES" | "TITLES_AND_DESCRIPTIONS";
+  note?: string | null;
+  groups: ProjectUpdateGroup[];
+}
+
+/**
+ * On-demand project update — posted from the per-client Tasks page to the
+ * client's internal channel. Header + Owner/Date + one labelled group per
+ * selected status group (each task a section block with the same overflow menu
+ * as the standup card, so Slack task actions work identically). `detail`
+ * controls whether the description preview is rendered.
+ */
+export function buildProjectUpdateCard(
+  input: BuildProjectUpdateCardInput,
+): { text: string; blocks: SlackBlock[] } {
+  const today = input.dateLabel.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  const friendlyDate = formatFriendlyDate(input.dateLabel);
+  const text = `Project update — ${input.clientName} (${friendlyDate})`;
+
+  const blocks: SlackBlock[] = [
+    { type: "header", text: { type: "plain_text", text: `:clipboard: Project update — ${input.clientName}` } },
+    {
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `*${escapeMrkdwn(input.who)}*  ·  ${escapeMrkdwn(friendlyDate)}` },
+      ],
+    },
+  ];
+
+  for (const group of input.groups) {
+    const visible = group.tasks.slice(0, MAX_TASKS_PER_CARD);
+    const overflowCount = Math.max(0, group.tasks.length - MAX_TASKS_PER_CARD);
+    if (visible.length === 0) continue;
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `*${group.label}* — ${group.tasks.length}${overflowCount > 0 ? ` · +${overflowCount} more` : ""}`,
+        },
+      ],
+    });
+    for (const t of visible) {
+      const status = t.status ?? "DOING";
+      const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
+      const metaParts: string[] = [];
+      if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
+      if (t.dueDate) {
+        const dueFriendly = formatFriendlyDue(t.dueDate, today);
+        metaParts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
+      }
+      const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
+      const descPreview =
+        input.detail === "TITLES_AND_DESCRIPTIONS" && t.description?.trim()
+          ? truncate(stripToPlain(t.description.trim()), 180)
+          : null;
+      const value = encodeActionValue(t.messageRefId, t.taskId);
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `<${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
+            (descPreview ? `\n_${escapeMrkdwn(descPreview)}_` : ""),
+        },
+        accessory: {
+          type: "overflow",
+          action_id: `task.menu.${t.taskId}`,
+          options: [
+            { text: { type: "plain_text", text: "Mark done" }, value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}` },
+            { text: { type: "plain_text", text: "Mark in review" }, value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}` },
+            { text: { type: "plain_text", text: "Add comment" }, value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}` },
+            { text: { type: "plain_text", text: "Show details" }, value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}` },
+            { text: { type: "plain_text", text: "Open in Foundry" }, url: taskDeepLink(t), value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}` },
+          ],
+        },
+      });
+    }
+  }
+
+  if (input.note?.trim()) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*Note*\n${escapeMrkdwn(input.note.trim())}` },
+    });
+  }
+
+  blocks.push({ type: "divider" });
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "View board" },
+        url: `${APP_BASE_URL}/app/portal/${encodeURIComponent(input.clientSlug)}/tasks`,
+        action_id: "projectUpdate.viewBoard",
+      },
+    ],
+  });
+  blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `Posted from Foundry` }] });
+
+  return { text, blocks };
+}
+
+/**
+ * Free-form broadcast — the DevOps lead's cross-client update. No tasks, no
+ * accessories; just the message and a quiet attribution line.
+ */
+export function buildBroadcastCard(input: {
+  who: string;
+  message: string;
+}): { text: string; blocks: SlackBlock[] } {
+  const text = `Update from ${input.who}`;
+  return {
+    text,
+    blocks: [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `:loudspeaker: ${truncate(escapeMrkdwn(input.message.trim()), 2900)}` },
+      },
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `*— ${escapeMrkdwn(input.who)}, via Foundry*` }],
+      },
+    ],
+  };
+}
+
 /**
  * "Show notes" modal — the accordion drill-down. Read-only.
  */

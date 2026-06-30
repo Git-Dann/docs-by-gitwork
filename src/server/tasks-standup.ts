@@ -322,13 +322,27 @@ async function postStandupToSlack(
 }
 
 /** Short random id for the placeholder messageTs — collision-resistant within the
- *  channel's row count. Replaced with the real Slack ts after chat.postMessage. */
-function cryptoRandomId(): string {
+ *  channel's row count. Replaced with the real Slack ts after chat.postMessage.
+ *  Exported so the ad-hoc Slack-push module (slack-updates.ts) reuses the same
+ *  placeholder scheme. */
+export function cryptoRandomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** One-off nudge to the roll-up channel the moment every dev's PM update is in. */
-async function maybePingAllIn(workspaceId: string, workDate: Date): Promise<void> {
+/** The DevOps roll-up channel: the routed "tasks.rollup" channel, falling back to
+ *  the legacy single summary channel. Shared by the standup nudge, publishRollup,
+ *  and the ad-hoc broadcast/project-update cross-post. */
+export function resolveRollupChannel(
+  ws: { channelRoutes: unknown; slackSummaryChannelId: string | null } | null,
+): string | null {
+  const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
+  return routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
+}
+
+/** One-off nudge to the roll-up channel the moment every dev's PM update is in.
+ *  Exported so an EOD push made via the Tasks-page composer (slack-updates.ts)
+ *  also fires the nudge when it completes the roster. */
+export async function maybePingAllIn(workspaceId: string, workDate: Date): Promise<void> {
   const devIds = await getDeveloperUserIds(workspaceId);
   if (devIds.length === 0) return;
   const pushed = await prisma.dailyUpdate.count({
@@ -346,8 +360,7 @@ async function maybePingAllIn(workspaceId: string, workDate: Date): Promise<void
     },
   });
   const botToken = getSlackBotToken(ws);
-  const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
-  const channel = routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
+  const channel = resolveRollupChannel(ws);
   if (!botToken || !channel) return;
   await postMessage(botToken, {
     channel,
@@ -464,8 +477,7 @@ export async function publishRollup(
     },
   });
   const botToken = getSlackBotToken(ws);
-  const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
-  const channel = routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
+  const channel = resolveRollupChannel(ws);
 
   // Everything completed today, grouped by client.
   const doneTasks = await prisma.task.findMany({

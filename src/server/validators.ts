@@ -1048,6 +1048,38 @@ export const dailyUpdatePushSchema = z.object({
   note: z.string().max(2000).optional(),
 });
 
+// ── Slack push (per-client "Push to Slack" composer + DevOps broadcast) ──────
+
+export const taskCardDetailSchema = z.enum(["TITLES", "TITLES_AND_DESCRIPTIONS"]);
+export const projectUpdateStatusGroupSchema = z.enum(["DOING", "DONE", "UPCOMING"]);
+
+export const slackPushPrefsSchema = z.object({
+  detail: taskCardDetailSchema,
+  statusGroups: z.array(projectUpdateStatusGroupSchema).min(1),
+  // Free strings, not cuids — the "none" sentinel (no feature block) is valid.
+  excludedCategoryIds: z.array(z.string().max(64)),
+  defaultNote: z.string().max(2000).nullable(),
+});
+
+export const projectUpdatePushSchema = z.object({
+  clientId: z.string().cuid(),
+  // Include-list of feature-block ids + the "none" sentinel → not .cuid().
+  categoryIds: z.array(z.string().max(64)).optional(),
+  statusGroups: z.array(projectUpdateStatusGroupSchema).min(1).optional(),
+  detail: taskCardDetailSchema.optional(),
+  note: z.string().max(2000).optional(),
+  markPhases: z.array(z.enum(["AM", "PM"])).optional(),
+  toRollup: z.boolean().optional(),
+  saveAsDefaults: z.boolean().optional(),
+});
+
+export const broadcastSchema = z.object({
+  clientIds: z.array(z.string().cuid()).min(1).max(50),
+  message: z.string().trim().min(1).max(4000),
+  perClientMessages: z.record(z.string(), z.string().trim().max(4000)).optional(),
+  toRollup: z.boolean().optional(),
+});
+
 export const clientAssignmentSchema = z.object({
   clientIds: z.array(z.string().cuid()),
 });

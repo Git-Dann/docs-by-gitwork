@@ -204,6 +204,7 @@ model User {
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   dailyUpdates              DailyUpdate[]
+  slackUpdateLogs           SlackUpdateLog[]
   // MCP / OAuth (Phase 3) — Foundry as an OAuth 2.1 authorization server.
   oauthAuthCodes            OAuthAuthCode[]
   oauthTokens               OAuthToken[]
@@ -357,6 +358,7 @@ model Workspace {
   contentSnippets             ContentSnippet[]
   mcpConnections              McpConnection[]
   slackMessageRefs            SlackMessageRef[]
+  slackUpdateLogs             SlackUpdateLog[]
 }
 
 /**
@@ -393,6 +395,11 @@ model WorkspaceMember {
   /// Lets a Super Admin make exceptions (e.g. give one developer code.viewRates)
   /// without changing the whole role. Empty object → pure role inheritance.
   permissionOverrides Json      @default("{}")
+  /// Per-dev defaults for the per-client "Push to Slack" composer (Tasks page).
+  /// Shape: { detail, statusGroups[], excludedCategoryIds[], defaultNote }. Null →
+  /// no saved defaults yet (composer falls back to DEFAULT_PUSH_PREFS). Tasks-page
+  /// only — does NOT affect the dashboard AM/PM standup.
+  slackPushPrefs      Json?
   // ── Backstage (internal ops) ───────────────────────────────────────
   countryCode         String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
   annualLeaveDays     Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
@@ -2836,6 +2843,29 @@ model SlackMessageRef {
   @@unique([channelId, messageTs])
   @@index([workspaceId, taskId])
   @@index([workspaceId, kind, createdAt])
+}
+
+/// Append-only log of ad-hoc Slack pushes from the Tasks page — on-demand project
+/// updates and the DevOps lead's cross-client broadcasts. Gives a lightweight
+/// history (and "who posted today" presence for a lead who has no tasks). One row
+/// per posted client; a broadcast also writes a summary row (clientId null).
+model SlackUpdateLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  /// Free-form: "PROJECT_UPDATE" | "BROADCAST". String (not enum) to mirror SlackMessageRef.kind.
+  kind        String
+  clientId    String? // posted client; null only for a broadcast-summary row
+  channelId   String?
+  taskCount   Int?
+  message     String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
 }
 
 /// Free-text notes on a task. A simple append-only thread (mirrors how Care

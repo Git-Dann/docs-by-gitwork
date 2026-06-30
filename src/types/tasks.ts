@@ -128,6 +128,89 @@ export type RollupRosterDTO = {
   devs: RollupDevStatus[];
 };
 
+// ─── Slack push (per-client "Push to Slack" composer + DevOps broadcast) ──────
+
+/** How much of each task to render in a project-update Slack card. */
+export type TaskCardDetail = "TITLES" | "TITLES_AND_DESCRIPTIONS";
+
+/** Which status groups a project update may include. Mirrors the standup
+ *  `partition()`: DOING = DOING|IN_REVIEW, DONE = status===DONE (point-in-time,
+ *  no done-today filter), UPCOMING = TODO|BACKLOG. */
+export const PROJECT_UPDATE_STATUS_GROUPS = ["DOING", "DONE", "UPCOMING"] as const;
+export type ProjectUpdateStatusGroup = (typeof PROJECT_UPDATE_STATUS_GROUPS)[number];
+
+export const PROJECT_UPDATE_GROUP_LABELS: Record<ProjectUpdateStatusGroup, string> = {
+  DOING: "In progress",
+  DONE: "Done",
+  UPCOMING: "Up next",
+};
+
+/** Per-dev saved defaults for the Tasks-page composer. Persisted on
+ *  WorkspaceMember.slackPushPrefs. Category filter is an EXCLUDE-list so a newly
+ *  created block is included by default rather than silently dropped; the
+ *  sentinel "none" excludes tasks with no feature block. */
+export type SlackPushPrefs = {
+  detail: TaskCardDetail;
+  statusGroups: ProjectUpdateStatusGroup[];
+  excludedCategoryIds: string[];
+  defaultNote: string | null;
+};
+
+export const DEFAULT_PUSH_PREFS: SlackPushPrefs = {
+  detail: "TITLES",
+  statusGroups: ["DOING", "DONE"],
+  excludedCategoryIds: [],
+  defaultNote: null,
+};
+
+/** Sentinel category id for tasks with no feature block (used in excludedCategoryIds
+ *  and the composer's include-list). */
+export const NO_CATEGORY_ID = "none";
+
+export type ProjectUpdateInput = {
+  clientId: string;
+  /** Include-list of feature-block ids (plus NO_CATEGORY_ID). Undefined = all. */
+  categoryIds?: string[];
+  statusGroups?: ProjectUpdateStatusGroup[];
+  detail?: TaskCardDetail;
+  note?: string;
+  /** Also stamp the dev's daily standup (shared green AM/PM dot). */
+  markPhases?: ("AM" | "PM")[];
+  /** Cross-post to the roll-up channel. */
+  toRollup?: boolean;
+  /** Persist the current selection as this dev's defaults. */
+  saveAsDefaults?: boolean;
+};
+
+export type ProjectUpdateResult = {
+  ok: boolean;
+  channel: string | null;
+  taskCount: number;
+};
+
+export type BroadcastInput = {
+  clientIds: string[];
+  message: string;
+  /** Optional per-client message overrides (clientId → message). */
+  perClientMessages?: Record<string, string>;
+  toRollup?: boolean;
+};
+
+export type BroadcastResult = {
+  ok: boolean;
+  postedCount: number;
+  channels: string[];
+};
+
+/** A recent ad-hoc Slack push, for the broadcast card's history line. */
+export type SlackUpdateLogDTO = {
+  id: string;
+  kind: "PROJECT_UPDATE" | "BROADCAST";
+  clientId: string | null;
+  taskCount: number | null;
+  createdAt: string;
+};
+
 /** Counts per status for the compact card on a client detail page. */
 export type ClientTaskSummary = {
   clientId: string;

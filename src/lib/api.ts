@@ -2505,6 +2505,12 @@ import type {
   FeatureBlockDTO,
   TimelineShareDTO,
   MilestoneDTO,
+  SlackPushPrefs,
+  ProjectUpdateInput,
+  ProjectUpdateResult,
+  BroadcastInput,
+  BroadcastResult,
+  SlackUpdateLogDTO,
 } from "@/types/tasks";
 
 export function listTasks(opts: {
@@ -2707,6 +2713,40 @@ export function publishRollup(
   override = false,
 ): Promise<{ ok: boolean; channel: string | null; clientCount: number; taskCount: number }> {
   return apiFetch(`/api/tasks/rollup${override ? "?override=true" : ""}`, { method: "POST" });
+}
+
+// ─── Ad-hoc Slack pushes (Tasks-page composer + DevOps broadcast) ────────────
+
+export function getSlackPushPrefs(): Promise<SlackPushPrefs> {
+  return apiFetch("/api/tasks/push-prefs");
+}
+
+export function saveSlackPushPrefs(prefs: SlackPushPrefs): Promise<SlackPushPrefs> {
+  return apiFetch("/api/tasks/push-prefs", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(prefs),
+  });
+}
+
+export function pushProjectUpdate(input: ProjectUpdateInput): Promise<ProjectUpdateResult> {
+  return apiFetch("/api/tasks/project-update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function broadcastUpdate(input: BroadcastInput): Promise<BroadcastResult> {
+  return apiFetch("/api/tasks/broadcast", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function listRecentSlackUpdates(): Promise<SlackUpdateLogDTO[]> {
+  return apiFetch("/api/tasks/broadcast");
 }
 
 export function listMemberClients(memberId: string): Promise<ClientAssignmentDTO[]> {
