@@ -147,6 +147,8 @@ export function loadClientBySlug(slug: string): Promise<ClientCardData | null> {
 // Reuse `resolvePublicWiki` so the precedence (whole-wiki then section) stays
 // in lockstep with the page itself.
 const WIKI_SECTION_LABEL: Record<string, string> = {
+  timeline: "Timeline",
+  "system-status": "System Status",
   ia: "IA",
   "dev-guide": "Dev Guide",
   "api-docs": "API Docs",
