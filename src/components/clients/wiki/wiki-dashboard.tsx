@@ -11,6 +11,7 @@ import {
   DocumentTextIcon,
   FlagIcon,
   ServerStackIcon,
+  SignalIcon,
   WrenchScrewdriverIcon,
   ArrowRightIcon,
   Squares2X2Icon,
@@ -21,6 +22,11 @@ import {
 } from "@heroicons/react/24/outline";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
+import {
+  parseSystemStatus,
+  overallSystemStatus,
+  SYSTEM_STATUS_META,
+} from "@/lib/wiki/system-status";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -32,6 +38,7 @@ const SECTION_META: Record<
   { label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }
 > = {
   timeline: { label: "Timeline", icon: CalendarDaysIcon },
+  "system-status": { label: "System Status", icon: SignalIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
   "dev-guide": { label: "Developer Guide", icon: CodeBracketIcon },
@@ -210,10 +217,18 @@ export function WikiDashboard({
   availableSections: WikiSection[];
   onSelect: (section: WikiSection) => void;
 }) {
-  const sections = availableSections.filter(
-    (s): s is Exclude<WikiSection, "dashboard" | "settings"> =>
-      s !== "dashboard" && s !== "settings",
-  );
+  const statusPage = wiki.pages.find((p) => p.type === "SYSTEM_STATUS");
+  const statusSystems = parseSystemStatus(statusPage?.content).systems;
+  const statusOverall = overallSystemStatus(statusSystems);
+
+  const sections = availableSections
+    .filter(
+      (s): s is Exclude<WikiSection, "dashboard" | "settings"> =>
+        s !== "dashboard" && s !== "settings",
+    )
+    // The status card only appears once at least one system is tracked — no
+    // page/content means the button stays hidden.
+    .filter((s) => s !== "system-status" || statusSystems.length > 0);
 
   const pct = overallProgress(wiki);
   const phase = activePhase(wiki);
@@ -328,6 +343,28 @@ export function WikiDashboard({
             ) : (
               <p className="text-[13px] text-[var(--text-4)]">Release notes.</p>
             )}
+          </div>
+        );
+      }
+      case "system-status": {
+        if (!statusOverall) {
+          return <p className="text-[13px] text-[var(--text-4)]">Live service status.</p>;
+        }
+        const meta = SYSTEM_STATUS_META[statusOverall];
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: meta.color }}
+              />
+              <span className="text-[14px] font-semibold" style={{ color: meta.color }}>
+                {meta.overall}
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--text-4)]">
+              {statusSystems.length} system{statusSystems.length === 1 ? "" : "s"} tracked
+            </p>
           </div>
         );
       }

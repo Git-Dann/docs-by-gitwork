@@ -15,6 +15,7 @@ const wikiPageTypeSchema = z.enum([
   "APP_STORE_IOS",
   "APP_STORE_ANDROID",
   "APP_STORE_FIRESTICK",
+  "SYSTEM_STATUS",
   "CUSTOM",
 ]);
 

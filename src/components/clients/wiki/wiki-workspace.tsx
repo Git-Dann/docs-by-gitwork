@@ -35,6 +35,7 @@ import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
+import { SystemStatusEditor } from "./system-status-editor";
 import { WikiAccessSettings } from "./wiki-access-settings";
 import {
   ApiDocsPageEditor,
@@ -67,6 +68,7 @@ type WikiPageType =
   | "ARCHITECTURE"
   | "RUNBOOK"
   | "DATA_MODEL"
+  | "SYSTEM_STATUS"
   | "CUSTOM";
 
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
@@ -76,6 +78,7 @@ const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   architecture: "ARCHITECTURE",
   runbook: "RUNBOOK",
   "data-model": "DATA_MODEL",
+  "system-status": "SYSTEM_STATUS",
 };
 
 const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
@@ -91,6 +94,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   dashboard: "Dashboard",
   settings: "Settings",
   timeline: "Timeline",
+  "system-status": "System Status",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -863,9 +867,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         return docsPageSectionSet.has(section);
       }),
   );
+  // System Status is a structured (non-markdown) page; it lives in the sidebar
+  // once its page exists, and is offered in Add New until then.
+  const hasSystemStatus = wiki.pages.some((p) => p.type === "SYSTEM_STATUS");
   const availableSections: WikiSection[] = [
     "dashboard",
     "timeline",
+    ...(hasSystemStatus ? (["system-status"] as const) : []),
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -878,11 +886,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
     "settings",
   ];
-  const addableSections = OPTIONAL_DOC_SECTIONS.filter(
-    (item) =>
-      hiddenSections.has(item.section) ||
-      (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
-  );
+  const addableSections = [
+    ...OPTIONAL_DOC_SECTIONS.filter(
+      (item) =>
+        hiddenSections.has(item.section) ||
+        (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
+    ),
+    ...(hasSystemStatus
+      ? []
+      : [{ section: "system-status" as WikiSection, label: "System Status" }]),
+  ];
 
   // Which sections are publicly shared (for the sidebar globe indicator):
   // the whole-wiki link covers every page; otherwise only per-page-shared ones.
@@ -906,20 +919,20 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   async function handleAddSection(section: WikiSection) {
-    if (!isDocsPageSection(section)) return;
+    if (!isDocsPageSection(section) && section !== "system-status") return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
     await upsertPage.mutateAsync({
       type,
       title: SECTION_TITLES[section],
-      content: getDefaultContent(section),
+      content: section === "system-status" ? { systems: [] } : getDefaultContent(section),
     });
     setActiveSection(section);
     setPageMode("edit");
   }
 
   async function handleDeletePage(section: WikiSection) {
-    if (!isDocsPageSection(section)) return;
+    if (!isDocsPageSection(section) && section !== "system-status") return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
     await deletePage.mutateAsync({ type });
@@ -928,7 +941,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function confirmDeletePage(section: WikiSection) {
-    if (!isDocsPageSection(section)) return;
+    if (!isDocsPageSection(section) && section !== "system-status") return;
     const ok = window.confirm(`Delete ${SECTION_TITLES[section]} from this wiki? You can add it back later from Add New.`);
     if (!ok) return;
     void handleDeletePage(section);
@@ -1100,6 +1113,18 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           </div>
           <WikiTimelineSection timeline={wiki!.timeline} />
         </>
+      );
+    }
+
+    // ── System Status — structured tracker (operational/degraded/down per system).
+    if (activeSection === "system-status") {
+      const page = getPage("system-status");
+      return (
+        <SystemStatusEditor
+          content={page?.content}
+          saving={upsertPage.isPending}
+          onSave={(c) => handleSavePage("system-status", "System Status", c)}
+        />
       );
     }
 
@@ -1459,7 +1484,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             addableSections={addableSections}
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}
-            deletableSections={availableSections.filter(isDocsPageSection)}
+            deletableSections={availableSections.filter(
+              (s) => isDocsPageSection(s) || s === "system-status",
+            )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}
           />
