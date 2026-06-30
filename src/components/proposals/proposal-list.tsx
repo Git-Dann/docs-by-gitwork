@@ -568,7 +568,7 @@ export function ProposalList() {
           />
         ) : viewMode === "grouped" ? (
           <GroupedList
-            proposals={pagedProposals}
+            proposals={filteredProposals}
             selectedIds={selectedIds}
             onToggleSelect={(id) =>
               setSelectedIds((current) =>
@@ -778,6 +778,7 @@ export function ProposalList() {
         )}
             </div>
 
+        {viewMode !== "grouped" ? (
         <div className="flex flex-col gap-3 border-t border-[var(--border-2)] px-4 py-3 text-sm text-[var(--text-3)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
             <span>
@@ -858,6 +859,7 @@ export function ProposalList() {
             </button>
           </div>
         </div>
+        ) : null}
           </div>
         </div>
       </section>
@@ -1074,6 +1076,18 @@ function GroupedList({
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
+  // Per-client folders are capped so a heavy client never renders a wall of rows; the rest are
+  // revealed per-folder on demand.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  function toggleGroup(key: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   // Group docs by clientName; "Unassigned" bucket at the end.
   const groups = new Map<string, typeof proposals>();
   for (const p of proposals) {
@@ -1099,6 +1113,10 @@ function GroupedList({
     <div className="space-y-4 px-4 py-4 sm:px-6">
       {orderedKeys.map((key) => {
         const docs = groups.get(key)!;
+        const expanded = expandedGroups.has(key);
+        // Cap each client folder so a heavy client can't render a super-long list — show the
+        // first GROUP_CAP, then a "Show all N" expander.
+        const visibleDocs = expanded ? docs : docs.slice(0, GROUP_CAP);
         return (
           <div key={key} className="rounded-[10px] border border-[var(--border-2)] bg-white">
             <div className="flex items-baseline justify-between border-b border-[var(--border-3)] px-4 py-3">
@@ -1110,7 +1128,7 @@ function GroupedList({
               </span>
             </div>
             <ul className="divide-y divide-[var(--border-3)]">
-              {docs.map((doc) => {
+              {visibleDocs.map((doc) => {
                 const checked = selectedIds.includes(doc.id);
                 return (
                   <li
@@ -1143,12 +1161,26 @@ function GroupedList({
                 );
               })}
             </ul>
+            {docs.length > GROUP_CAP ? (
+              <div className="border-t border-[var(--border-3)] px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(key)}
+                  className="text-xs font-medium text-[var(--brand-700)] transition hover:underline"
+                >
+                  {expanded ? "Show less" : `Show all ${docs.length}`}
+                </button>
+              </div>
+            ) : null}
           </div>
         );
       })}
     </div>
   );
 }
+
+// Max rows shown per client folder in the By-client view before the "Show all N" expander.
+const GROUP_CAP = 6;
 
 function OnboardingStep({
   num,
