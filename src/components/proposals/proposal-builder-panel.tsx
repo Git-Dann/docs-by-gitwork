@@ -209,6 +209,38 @@ export function ProposalBuilderPanel({
           ) : (
             <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
           )}
+
+          {/* Speaker notes — presenter-only, surfaced in presentation mode's notes panel. Never
+              rendered in the doc body, public share, or PDF. */}
+          {sectionIndex >= 0 ? (
+            <div className="border-t border-[var(--border-2)] pt-4">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                  Speaker notes
+                </span>
+                <textarea
+                  value={activeSection.speakerNotes ?? ""}
+                  onChange={(event) =>
+                    onProposalChange({
+                      ...proposal,
+                      sections: proposal.sections.map((entry, index) =>
+                        index === sectionIndex
+                          ? { ...entry, speakerNotes: event.target.value }
+                          : entry,
+                      ),
+                    })
+                  }
+                  rows={3}
+                  placeholder="Talking points shown only to you in presentation mode…"
+                  className="app-textarea"
+                />
+              </label>
+              <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">
+                Only visible in presentation mode (the Notes toggle) — never in the doc, share link, or PDF.
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-2)] pt-4">
             {aiExpandable ? (
               <AiExpandControl

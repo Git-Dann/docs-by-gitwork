@@ -451,6 +451,33 @@ actions) and By-client (grouped) are retained behind the toggle for power triage
 
 ---
 
+## Presentation Mode (Docs)
+
+Any document can be presented full-screen as a slide deck (`src/components/proposals/presentation-mode.tsx`,
+opened by the **Present** button in the editor header). It is a *presenter surface over the live
+doc* — not a separate slide artifact. v1; richer decks may come later.
+
+**Stage.** A `fixed inset-0 z-[200]` overlay on the navy stage (`{colors.surface-dark}` `#0F172A`,
+the sanctioned dark surface). One **slide per visible top-level block**, in document order
+(merge-variables resolved, read-only — it reuses `ProposalSectionPreview`). Each slide is a centred
+white card (`max-w-[1000px]`, `{rounded.xl}`, Elevation-3 shadow) so the doc reads exactly as shared.
+
+**Chrome (white-on-navy, thin).** Top bar: `Slide n / N` mono pill (left), doc title + **Exit**
+(right). Bottom bar: **Notes** toggle (left), prev/counter/next (centre), drawing tools + **Draw**
+toggle (right). Navigation: ← / → / Space / PageUp-Down, plus click the left/right edge of the
+stage; `N` toggles notes, `D` toggles draw, `Esc` drops drawing then exits.
+
+**Speaker notes.** Per-block, authored in the editor (a block's **Options & notes** drill-in —
+`DocumentSection.speakerNotes`). Presenter-only: shown in the bottom-left notes drawer in
+presentation mode, **never** in the doc body, public share, or PDF.
+
+**Drawing overlay (ephemeral).** A canvas over the stage with **Pen · Highlighter · Eraser**, the
+brand+semantic ink palette (red/amber/blue/green/ink), and a width slider. It is a transient
+visual aid — **never persisted**; cleared on slide change, on **Clear**, and on exit. Highlighter
+is a low-alpha wide stroke; the eraser is `destination-out`. DPR-aware for crisp lines.
+
+---
+
 ## Do's and Don'ts
 
 ### Do

@@ -32,6 +32,7 @@ import {
   HomeIcon,
   LinkIcon,
   PencilSquareIcon,
+  PlayIcon,
   PlusIcon,
   QueueListIcon,
   TrashIcon,
@@ -102,6 +103,13 @@ const ProposalBuilderPanel = dynamic(
   },
 );
 
+// Presentation mode is heavy (full-screen deck + canvas) and only mounts on demand — lazy-load it
+// client-side so it stays out of the editor's initial bundle.
+const PresentationMode = dynamic(
+  () => import("@/components/proposals/presentation-mode").then((mod) => ({ default: mod.PresentationMode })),
+  { ssr: false },
+);
+
 /**
  * Build a mailto: URL that pre-fills a sensible subject + body for sharing a doc. Used by the
  * "Email link" affordance on the share popover.
@@ -169,6 +177,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
+  const [presenting, setPresenting] = useState(false);
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -904,6 +913,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               </Link>
             </div>
 
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => setPresenting(true)}
+              leadingIcon={<PlayIcon className="h-4 w-4" />}
+            >
+              Present
+            </Button>
+
             {/* AI menu — Ask AI · Quick draft */}
             <div>
               <button
@@ -1267,6 +1286,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         </div>
       )}
 
+      {presenting ? (
+        <PresentationMode proposal={draft} onClose={() => setPresenting(false)} />
+      ) : null}
+
       <AiDraftModal
         open={aiDraftOpen}
         onClose={() => setAiDraftOpen(false)}
@@ -1455,9 +1478,6 @@ function SortableTableOfContentsItem({
   // so every outline row stays visually aligned.
   const Icon = sectionType?.icon ?? DocumentTextIcon;
   const isVisible = entry.section.isVisible !== false;
-  // Show the ✎ for blocks that have settings (non-content options). Content-only blocks (prose,
-  // introduction) are edited entirely inline and need no options.
-  const hasOptions = sectionType ? sectionType.hasOptions ?? !sectionType.inlineEditable : true;
 
   return (
     <li
@@ -1521,16 +1541,16 @@ function SortableTableOfContentsItem({
         </button>
 
         <div className="flex items-center gap-0.5 transition xl:opacity-0 xl:group-hover:opacity-100">
-          {onEditOptions && hasOptions ? (
+          {onEditOptions ? (
             <button
               type="button"
-              aria-label={`Edit ${entry.section.title} options`}
+              aria-label={`${entry.section.title} options and notes`}
               onClick={(event) => {
                 event.stopPropagation();
                 onEditOptions(entry.id);
               }}
               className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-[var(--brand-700)]"
-              title="Edit options"
+              title="Options & speaker notes"
             >
               <PencilSquareIcon className="h-3.5 w-3.5" />
             </button>
