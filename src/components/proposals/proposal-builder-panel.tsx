@@ -192,56 +192,13 @@ export function ProposalBuilderPanel({
           <span className="widget-header-right">BUILDER</span>
         </div>
       )}
-      <div className={embedded ? "space-y-5 p-5" : "space-y-5 p-5 sm:p-6"}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          {embedded ? (
-            // The docked inspector header already names the block; show just the description.
-            activeSection.description ? (
-              <p className="max-w-3xl text-sm leading-6 text-[var(--text-3)]">
-                {activeSection.description}
-              </p>
-            ) : (
-              <span />
-            )
-          ) : (
-            <div className="max-w-3xl">
-              <h3 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
-                {activeSection.title}
-              </h3>
-              {activeSection.description ? (
-                <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                  {activeSection.description}
-                </p>
-              ) : null}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 pt-1">
-            {aiExpandable ? (
-              <AiExpandControl
-                documentId={proposal.id}
-                sectionKey={activeSection.key}
-                onApplied={onProposalChange}
-              />
-            ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon-md"
-              aria-label="Save as snippet"
-              title="Save as snippet"
-              onClick={() => {
-                setSnippetName(activeSection.title);
-                setSnippetOpen(true);
-              }}
-            >
-              <BookmarkIcon className="h-4 w-4" />
-            </Button>
-            {headerAction}
-          </div>
-        </div>
-
-        <div className="pt-1">
+      {embedded ? (
+        // Outline drill-in: a clean top-to-bottom panel — subtitle, the settings form, then a
+        // tidy labelled footer action (no orphaned icon, roomy single-column rhythm).
+        <div className="space-y-5 p-5">
+          {activeSection.description ? (
+            <p className="text-sm leading-6 text-[var(--text-3)]">{activeSection.description}</p>
+          ) : null}
           {sectionIndex >= 0 ? (
             <ProposalSectionEditor
               proposal={proposal}
@@ -252,8 +209,81 @@ export function ProposalBuilderPanel({
           ) : (
             <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
           )}
+          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-2)] pt-4">
+            {aiExpandable ? (
+              <AiExpandControl
+                documentId={proposal.id}
+                sectionKey={activeSection.key}
+                onApplied={onProposalChange}
+              />
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              leadingIcon={<BookmarkIcon className="h-4 w-4" />}
+              onClick={() => {
+                setSnippetName(activeSection.title);
+                setSnippetOpen(true);
+              }}
+            >
+              Save as snippet
+            </Button>
+            {headerAction}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-5 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <h3 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
+                {activeSection.title}
+              </h3>
+              {activeSection.description ? (
+                <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                  {activeSection.description}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              {aiExpandable ? (
+                <AiExpandControl
+                  documentId={proposal.id}
+                  sectionKey={activeSection.key}
+                  onApplied={onProposalChange}
+                />
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-md"
+                aria-label="Save as snippet"
+                title="Save as snippet"
+                onClick={() => {
+                  setSnippetName(activeSection.title);
+                  setSnippetOpen(true);
+                }}
+              >
+                <BookmarkIcon className="h-4 w-4" />
+              </Button>
+              {headerAction}
+            </div>
+          </div>
+
+          <div className="pt-1">
+            {sectionIndex >= 0 ? (
+              <ProposalSectionEditor
+                proposal={proposal}
+                section={activeSection}
+                sectionIndex={sectionIndex}
+                onProposalChange={onProposalChange}
+              />
+            ) : (
+              <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <Modal
         open={snippetOpen}

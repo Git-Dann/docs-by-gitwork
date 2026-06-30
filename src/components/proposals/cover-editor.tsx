@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "@heroicons/react/20/solid";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
@@ -51,82 +52,109 @@ export function CoverEditor({
   const clientLogoOverride = (value.clientLogoUrl ?? "").trim();
   const inheritsPortalLogo = !clientLogoOverride && Boolean(linkedClientLogoUrl);
 
+  // Single-column throughout — this panel lives in the ~300px outline drill-in, so the old
+  // md:grid-cols-2 rows cramped badly. Generous vertical rhythm, fields grouped under quiet labels.
   return (
-    <div className="space-y-4">
+    <div className="space-y-7">
       {/* Linked client — attribute the doc to a real Portal client (drives the cover lockup,
           {{client_name}}, and per-client grouping). Falls back to free text for a prospect. */}
       {onLinkClient ? (
-        <section className="space-y-2">
-          <label className="space-y-1.5 block">
-            <span className="text-sm font-medium text-[var(--text-2)]">Client</span>
-            <select
-              value={linkedClientId ?? ""}
-              onChange={(event) => {
-                const id = event.target.value || null;
-                const picked = clients.find((c) => c.id === id);
-                // Linking clears the free-text override so the linked name shows; unlinking
-                // leaves the override field for a prospect name.
-                onLinkClient(id, picked?.name ?? "");
-                if (id) onChange({ ...value, clientName: "" });
-              }}
-              className="app-select w-full"
-            >
-              <option value="">— Not linked (prospect / free text) —</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <Field label="Client">
+          <select
+            value={linkedClientId ?? ""}
+            onChange={(event) => {
+              const id = event.target.value || null;
+              const picked = clients.find((c) => c.id === id);
+              // Linking clears the free-text override so the linked name shows; unlinking
+              // leaves the override field for a prospect name.
+              onLinkClient(id, picked?.name ?? "");
+              if (id) onChange({ ...value, clientName: "" });
+            }}
+            className="app-select w-full"
+          >
+            <option value="">— Not linked (prospect / free text) —</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </select>
           {!linkedClientId ? (
-            <Input
-              label="Display name (prospect)"
+            <input
               value={value.clientName}
-              onChange={(clientName) => onChange({ ...value, clientName })}
+              onChange={(event) => onChange({ ...value, clientName: event.target.value })}
+              placeholder="Display name (prospect)"
+              className="app-input mt-2"
             />
           ) : (
-            <p className="text-xs text-[var(--text-4)]">
-              Linked to <span className="font-medium text-[var(--text-2)]">{linkedClientName?.trim() || "a Portal client"}</span>.
-              The cover, sharing, and analytics now track this client.
+            <p className="mt-2 text-xs leading-5 text-[var(--text-4)]">
+              Linked to{" "}
+              <span className="font-medium text-[var(--text-2)]">
+                {linkedClientName?.trim() || "a Portal client"}
+              </span>
+              . The cover, sharing, and analytics now track this client.
             </p>
           )}
-        </section>
+        </Field>
       ) : null}
 
-      {/* Cover style — Light is the modern editorial default; Bold is the legacy blue hero. */}
-      <section className="space-y-1.5">
-        <span className="text-sm font-medium text-[var(--text-2)]">Cover style</span>
-        <div className="flex gap-2">
-          {COVER_STYLES.map((style) => (
-            <button
-              key={style.value}
-              type="button"
-              onClick={() => onChange({ ...value, coverStyle: style.value })}
-              className={cn(
-                "flex-1 rounded-[8px] border px-3 py-2 text-left transition-colors",
-                coverStyle === style.value
-                  ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
-                  : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
-              )}
-            >
-              <span className="block text-sm font-medium text-[var(--text-1)]">{style.label}</span>
-              <span className="block text-xs text-[var(--text-4)]">{style.hint}</span>
-            </button>
-          ))}
+      {/* Cover style — Light is the modern editorial default; Bold is the legacy blue hero.
+          Stacked full-width rows so the labels + hints breathe in a narrow panel. */}
+      <Field label="Cover style">
+        <div className="space-y-2">
+          {COVER_STYLES.map((style) => {
+            const active = coverStyle === style.value;
+            return (
+              <button
+                key={style.value}
+                type="button"
+                onClick={() => onChange({ ...value, coverStyle: style.value })}
+                aria-pressed={active}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-[10px] border px-4 py-3 text-left transition-colors",
+                  active
+                    ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
+                    : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
+                )}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-[var(--text-1)]">{style.label}</span>
+                  <span className="block text-xs text-[var(--text-4)]">{style.hint}</span>
+                </span>
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+                    active
+                      ? "border-[var(--brand-600)] bg-[var(--brand-600)] text-white"
+                      : "border-[var(--border-1)] text-transparent",
+                  )}
+                >
+                  <CheckIcon className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </section>
+      </Field>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <Input label="Prepared by" value={preparedBy} onChange={onPreparedByChange} />
-        <Input
-          label="Date"
-          value={value.date}
-          onChange={(date) => onChange({ ...value, date })}
-          type="date"
-        />
-        <label className="space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">Confidentiality</span>
+      {/* Document meta — stacked single column. */}
+      <div className="space-y-4">
+        <Field label="Prepared by">
+          <input
+            value={preparedBy}
+            onChange={(event) => onPreparedByChange(event.target.value)}
+            className="app-input"
+          />
+        </Field>
+        <Field label="Date">
+          <input
+            value={value.date}
+            onChange={(event) => onChange({ ...value, date: event.target.value })}
+            type="date"
+            className="app-input"
+          />
+        </Field>
+        <Field label="Confidentiality">
           <select
             value={confidentialityMode}
             onChange={(event) => {
@@ -146,8 +174,11 @@ export function CoverEditor({
             <option value="INTERNAL">Internal</option>
             <option value="EXTERNAL">External</option>
           </select>
-        </label>
-      </section>
+          {confidentialityText ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--text-4)]">{confidentialityText}</p>
+          ) : null}
+        </Field>
+      </div>
 
       <details className="app-subtle-panel overflow-hidden p-0">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-[var(--text-2)] [&::-webkit-details-marker]:hidden">
@@ -156,15 +187,16 @@ export function CoverEditor({
             Optional
           </span>
         </summary>
-        <div className="space-y-4 px-4 pb-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Input
-            label="Product / project name"
-            value={value.productName}
-            onChange={(productName) => onChange({ ...value, productName })}
-          />
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Cover lockup</span>
+        <div className="space-y-5 px-4 pb-5">
+          <Field label="Product / project name">
+            <input
+              value={value.productName}
+              onChange={(event) => onChange({ ...value, productName: event.target.value })}
+              className="app-input"
+            />
+          </Field>
+
+          <Field label="Cover lockup">
             <select
               value={value.brandLockup ?? "GITWORK"}
               onChange={(event) =>
@@ -178,32 +210,29 @@ export function CoverEditor({
               <option value="GITWORK">Gitwork only</option>
               <option value="CLIENT_X_GITWORK">Client x Gitwork</option>
             </select>
-          </label>
-        </div>
+          </Field>
 
-        {/* Cover logos — both editable here so you can swap the Foundry mark per-document and
-            supply a client logo even for a prospect that isn't in Portal yet. */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Brand logo</span>
+          {/* Cover logos — both editable here so you can swap the Foundry mark per-document and
+              supply a client logo even for a prospect that isn't in Portal yet. */}
+          <Field label="Brand logo">
             <ImagePicker
               value={value.brandLogoUrl ?? ""}
               onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
             />
-            <span className="block text-xs text-[var(--text-4)]">
+            <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
               Overrides the cover&rsquo;s Foundry mark for this document. Leave blank to use the
               Settings → Branding logo.
             </span>
-          </label>
+          </Field>
+
           {(value.brandLockup ?? "GITWORK") === "CLIENT_X_GITWORK" ? (
-            <label className="space-y-1.5">
-              <span className="text-sm font-medium text-[var(--text-2)]">Client logo</span>
+            <Field label="Client logo">
               <ImagePicker
                 value={value.clientLogoUrl ?? ""}
                 onChange={(clientLogoUrl) => onChange({ ...value, clientLogoUrl })}
               />
               {inheritsPortalLogo ? (
-                <span className="flex items-center gap-2 text-xs text-[var(--text-4)]">
+                <span className="mt-1.5 flex items-center gap-2 text-xs leading-5 text-[var(--text-4)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={linkedClientLogoUrl}
@@ -216,49 +245,31 @@ export function CoverEditor({
                   </span>
                 </span>
               ) : (
-                <span className="block text-xs text-[var(--text-4)]">
+                <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
                   Shown in the lockup beside the Foundry mark. Leave blank to show the client name as text.
                 </span>
               )}
-            </label>
+            </Field>
           ) : null}
-        </div>
 
-        <div className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4">
-          <p className="app-eyebrow">Resolved copy</p>
-          <p className="mt-2 text-sm leading-6 text-[var(--text-2)]">{confidentialityText}</p>
-        </div>
-
-        <p className="text-sm leading-6 text-[var(--text-3)]">
-          Template-owned branding and confidentiality defaults still come from Settings, while
-          proposal metadata is controlled here in the builder.
-        </p>
+          <p className="text-xs leading-5 text-[var(--text-4)]">
+            Template-owned branding and confidentiality defaults still come from Settings, while
+            document metadata is controlled here in the builder.
+          </p>
         </div>
       </details>
     </div>
   );
 }
 
-function Input({
-  label,
-  value,
-  onChange,
-  type,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-}) {
+/** A labelled field group — quiet label above its control(s), generous spacing for the narrow panel.
+ *  A plain <div> (not <label>) since some groups hold non-text controls (style buttons, ImagePicker)
+ *  where a wrapping label's control-association would be ambiguous. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="space-y-1.5">
-      <span className="text-sm font-medium text-[var(--text-2)]">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        type={type ?? "text"}
-        className="app-input"
-      />
-    </label>
+    <div>
+      <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">{label}</span>
+      {children}
+    </div>
   );
 }
