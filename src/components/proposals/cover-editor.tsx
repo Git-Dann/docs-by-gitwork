@@ -118,17 +118,7 @@ export function CoverEditor({
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <Input
-          label="Title"
-          value={value.proposalTitle}
-          onChange={(proposalTitle) => onChange({ ...value, proposalTitle })}
-        />
         <Input label="Prepared by" value={preparedBy} onChange={onPreparedByChange} />
-        <Input
-          label="Subtitle / version"
-          value={value.subtitle}
-          onChange={(subtitle) => onChange({ ...value, subtitle })}
-        />
         <Input
           label="Date"
           value={value.date}

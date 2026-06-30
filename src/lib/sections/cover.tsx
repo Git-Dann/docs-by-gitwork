@@ -73,6 +73,8 @@ export const coverSection = defineSection<CoverSectionData>({
   defaultTitle: "Cover",
   defaultDescription: "Front page and confidentiality metadata.",
   aiExpandable: false,
+  inlineEditable: true,
+  hasOptions: true,
   // Cover opts out of the section shell — DocumentCover provides its own full-page layout.
   renderShell: false,
   Editor: ({ data, onChange, proposal, onProposalChange }) => (
@@ -101,9 +103,10 @@ export const coverSection = defineSection<CoverSectionData>({
       }
     />
   ),
-  Preview: ({ data, proposal, section }) => {
+  Preview: ({ data, proposal, section, editable, onChange }) => {
     // Preview is a regular component rendered by the section dispatcher, so hook ordering is
     // stable within each render of this preview function.
+    const editing = Boolean(editable && onChange);
     const brandingQuery = useWorkspaceBranding();
     const branding = brandingQuery.data;
 
@@ -197,8 +200,10 @@ export const coverSection = defineSection<CoverSectionData>({
       <div id={sectionId} className="proposal-cover">
         <DocumentCover
           eyebrow={eyebrow}
-          title={titleLine}
-          subtitle={coverSubtitle || undefined}
+          title={editing ? data.proposalTitle || "" : titleLine}
+          subtitle={editing ? data.subtitle ?? "" : coverSubtitle || undefined}
+          onTitleChange={editing ? (next) => onChange!({ ...data, proposalTitle: next }) : undefined}
+          onSubtitleChange={editing ? (next) => onChange!({ ...data, subtitle: next }) : undefined}
           meta={meta.length ? meta : undefined}
           rightSlot={
             <DocumentVersionChip

@@ -34,6 +34,7 @@
  */
 
 import type { ReactNode } from "react";
+import { InlineTextArea } from "@/lib/sections/inline-text";
 
 export interface DocumentCoverStat {
   count: string | number;
@@ -101,6 +102,10 @@ export interface DocumentCoverProps {
   coverStyle?: "light" | "minimal" | "bold";
   /** Optional banner image shown across the top of light/minimal covers. */
   heroImage?: string;
+  /** Editor-only: when set, the title renders as an inline editable field on the canvas. */
+  onTitleChange?: (next: string) => void;
+  /** Editor-only: when set, the subtitle renders as an inline editable field on the canvas. */
+  onSubtitleChange?: (next: string) => void;
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
@@ -126,6 +131,8 @@ export function DocumentCover({
   coBrand,
   coverStyle = "bold",
   heroImage,
+  onTitleChange,
+  onSubtitleChange,
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
@@ -293,26 +300,55 @@ export function DocumentCover({
             ) : null}
           </div>
 
-          {/* Title */}
-          <h1
-            style={{
-              margin: 0,
-              fontFamily: serif,
-              fontSize: isPrint ? 54 : 40,
-              fontWeight: 400,
-              letterSpacing: "-0.025em",
-              lineHeight: 1.08,
-              color: hero.title,
-              maxWidth: "80%",
-            }}
-          >
-            {title}
-          </h1>
+          {/* Title — inline-editable on the canvas when onTitleChange is provided. */}
+          {onTitleChange ? (
+            <div style={{ maxWidth: "80%" }}>
+              <InlineTextArea
+                value={title}
+                onChange={onTitleChange}
+                placeholder="Document title"
+                ariaLabel="Document title"
+                style={{
+                  fontFamily: serif,
+                  fontSize: isPrint ? 54 : 40,
+                  fontWeight: 400,
+                  letterSpacing: "-0.025em",
+                  lineHeight: 1.08,
+                  color: hero.title,
+                }}
+              />
+            </div>
+          ) : (
+            <h1
+              style={{
+                margin: 0,
+                fontFamily: serif,
+                fontSize: isPrint ? 54 : 40,
+                fontWeight: 400,
+                letterSpacing: "-0.025em",
+                lineHeight: 1.08,
+                color: hero.title,
+                maxWidth: "80%",
+              }}
+            >
+              {title}
+            </h1>
+          )}
 
           {/* Subtitle + meta */}
-          {(subtitle || (meta && meta.length)) ? (
+          {(subtitle || onSubtitleChange || (meta && meta.length)) ? (
             <div style={{ marginTop: 22 }}>
-              {subtitle ? (
+              {onSubtitleChange ? (
+                <div style={{ marginBottom: 10, maxWidth: "80%" }}>
+                  <InlineTextArea
+                    value={subtitle ?? ""}
+                    onChange={onSubtitleChange}
+                    placeholder="Subtitle / version"
+                    ariaLabel="Subtitle"
+                    style={{ fontSize: 14, lineHeight: 1.5, color: hero.subtitle }}
+                  />
+                </div>
+              ) : subtitle ? (
                 <p
                   style={{
                     margin: "0 0 10px",

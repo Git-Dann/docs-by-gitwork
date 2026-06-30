@@ -10,7 +10,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -101,11 +101,11 @@ export function ProposalSectionPreview({
           <button
             type="button"
             onClick={() => onSelectSection?.(selectionId)}
-            aria-label={`Options for ${section.title}`}
-            className="absolute -top-2 right-2 z-10 inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)] opacity-0 shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)] focus-visible:opacity-100 group-hover/block:opacity-100"
+            aria-label={`Edit ${section.title} options`}
+            title="Edit options"
+            className="absolute -top-2.5 right-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] opacity-0 shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:text-[var(--brand-700)] focus-visible:opacity-100 group-hover/block:opacity-100"
           >
-            <Cog6ToothIcon className="h-3 w-3" />
-            Options
+            <PencilSquareIcon className="h-3.5 w-3.5" />
           </button>
         ) : null}
         {content}

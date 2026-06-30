@@ -31,10 +31,10 @@ import {
   EyeSlashIcon,
   HomeIcon,
   LinkIcon,
+  PencilSquareIcon,
   PlusIcon,
   QueueListIcon,
   TrashIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -187,17 +187,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
-  // Canvas editor (2026): the document IS the working area. The outline is a sticky rail that
-  // travels with the scroll (toggle it off to give the canvas the full width); structured blocks
-  // open a docked inspector for their settings.
+  // Canvas editor (2026): TWO panes only — the outline rail (left, sticky, travels with scroll)
+  // and the document canvas (right, all text edited inline). The outline is the hub: it lists the
+  // blocks AND, when you open a block's options (the edit ✎), drills into that block's settings
+  // in-place with a back button. No third inspector column.
   const [outlineOpen, setOutlineOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-
-  // Mark a block active WITHOUT moving the page — clicking a block to edit it must retain your
-  // scroll position. (Deliberate navigation from the outline overlay scrolls; see handleOutlineSelect.)
-  const selectSection = useCallback((id: string) => {
-    setActiveSectionId(id);
-  }, []);
+  const [optionsForId, setOptionsForId] = useState<string | null>(null);
 
   // Scroll-spy: the outline highlights whichever block is currently in view as you scroll.
   const [viewingSectionId, setViewingSectionId] = useState<string | null>(null);
@@ -307,8 +302,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     ? approvalTrackApplies(draft.documentType, draft.metadata)
     : false;
 
-  // Whether the contextual inspector is docked open (a non-inline block is selected for editing).
-  const inspectorDocked = inspectorOpen && Boolean(activeEntry);
+  // The block whose options are currently open inside the outline (drill-in), if any.
+  const optionsEntry = optionsForId
+    ? sectionEntries.find((entry) => entry.id === optionsForId) ?? null
+    : null;
 
   const handleTabChange = useCallback(
     (tab: EditorTab) => {
@@ -656,18 +653,26 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
   }
 
-  // Outline-overlay click: deliberate navigation, so scroll the canvas to the block. Open the
-  // inspector only for structured (non-inline) blocks — text blocks are edited inline.
-  function handleOutlineSelect(id: string) {
-    setActiveSectionId(id);
+  function scrollToBlock(id: string) {
     if (typeof document !== "undefined") {
       document
         .querySelector(`[data-canvas-block="${window.CSS.escape(id)}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    const entry = sectionEntries.find((section) => section.id === id);
-    const type = entry ? SECTION_REGISTRY[entry.section.key] : null;
-    setInspectorOpen(Boolean(type && !type.inlineEditable));
+  }
+
+  // Outline-row click: navigate — scroll the canvas to the block (text is edited inline there).
+  function handleOutlineSelect(id: string) {
+    setActiveSectionId(id);
+    scrollToBlock(id);
+  }
+
+  // Open a block's options/settings inside the outline (drill-in) and scroll to it on the canvas.
+  function openOptions(id: string) {
+    setActiveSectionId(id);
+    setOptionsForId(id);
+    setOutlineOpen(true);
+    scrollToBlock(id);
   }
 
   async function handleShareLink() {
@@ -1191,36 +1196,53 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <section
-            className={`grid gap-4 ${
-              outlineOpen
-                ? inspectorDocked
-                  ? "xl:grid-cols-[240px_minmax(0,1fr)_minmax(340px,400px)]"
-                  : "xl:grid-cols-[280px_minmax(0,1fr)]"
-                : inspectorDocked
-                  ? "xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]"
-                  : "xl:grid-cols-1"
-            }`}
+            className={`grid gap-4 ${outlineOpen ? "xl:grid-cols-[300px_minmax(0,1fr)]" : "xl:grid-cols-1"}`}
           >
-            {/* Outline — a sticky in-flow rail. It travels with the scroll (TableOfContentsCard is
-                xl:sticky) and the scroll-spy highlight follows the block in view. Toggle hides it so
-                the canvas takes the full width. On mobile it stacks above the canvas. */}
+            {/* Outline (02) — the hub. It travels with the scroll (sticky), lists the blocks, and
+                drills into a block's Options in-place (with a back to the list). No third column. */}
             {outlineOpen ? (
-              <div>
-                <TableOfContentsCard
-                  sections={sectionEntries}
-                  activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                  editable
-                  onSelect={handleOutlineSelect}
-                  onInsertAt={(index) => setPaletteInsertAt(index)}
-                  onDeleteSection={handleDeleteSection}
-                  onReorder={updateSectionOrder}
-                  onToggleVisibility={handleToggleVisibility}
-                />
+              <div className="xl:sticky xl:top-6 xl:self-start">
+                {optionsEntry ? (
+                  <section className="widget-card overflow-hidden">
+                    <div className="widget-header">
+                      <button
+                        type="button"
+                        onClick={() => setOptionsForId(null)}
+                        className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                      >
+                        <ChevronRightIcon className="h-3.5 w-3.5 rotate-180" />
+                        Outline
+                      </button>
+                      <span className="widget-header-right truncate">{optionsEntry.section.title}</span>
+                    </div>
+                    <div className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                      <ProposalBuilderPanel
+                        embedded
+                        proposal={draft}
+                        sections={sectionEntries}
+                        activeId={optionsEntry.id}
+                        onProposalChange={(next) => updateDraft(next, { coalesce: true })}
+                      />
+                    </div>
+                  </section>
+                ) : (
+                  <TableOfContentsCard
+                    sections={sectionEntries}
+                    activeId={viewingSectionId ?? activeEntry?.id ?? null}
+                    editable
+                    onSelect={handleOutlineSelect}
+                    onEditOptions={openOptions}
+                    onInsertAt={(index) => setPaletteInsertAt(index)}
+                    onDeleteSection={handleDeleteSection}
+                    onReorder={updateSectionOrder}
+                    onToggleVisibility={handleToggleVisibility}
+                  />
+                )}
               </div>
             ) : null}
 
-            {/* Canvas — the live client document. Click a block to edit it inline (text) or open
-                its options (structured blocks). Selection never scrolls. */}
+            {/* Canvas — the live document; ALL text edited inline. The ✎ on a block opens its
+                settings in the outline. */}
             <div className="min-w-0">
               <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
                 <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
@@ -1235,47 +1257,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     showTableOfContents={false}
                     frame={false}
                     editable
-                    activeSectionId={activeEntry?.id ?? null}
-                    onSelectSection={(id) => {
-                      // Canvas onSelectSection only fires for non-inline blocks → open options.
-                      // No scroll — clicking a block retains your position.
-                      selectSection(id);
-                      setInspectorOpen(true);
-                    }}
+                    onSelectSection={openOptions}
                     onSectionChange={handleSectionDataChange}
                   />
                 </div>
               </div>
             </div>
-
-            {/* Contextual inspector — a docked column that pushes the canvas (never overlays it),
-                for structured blocks (cover, costing, timeline). Text blocks edit inline. */}
-            {inspectorDocked ? (
-              <aside className="flex max-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] xl:sticky xl:top-4">
-                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
-                  <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                    OPTIONS · {activeEntry?.section.title}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setInspectorOpen(false)}
-                    aria-label="Close options"
-                    className="-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                  >
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <ProposalBuilderPanel
-                    embedded
-                    proposal={draft}
-                    sections={sectionEntries}
-                    activeId={activeEntry?.id ?? null}
-                    onProposalChange={(next) => updateDraft(next, { coalesce: true })}
-                  />
-                </div>
-              </aside>
-            ) : null}
           </section>
         </div>
       )}
@@ -1339,6 +1326,7 @@ function TableOfContentsCard({
   activeId,
   editable,
   onSelect,
+  onEditOptions,
   onInsertAt,
   onDeleteSection,
   onReorder,
@@ -1348,6 +1336,8 @@ function TableOfContentsCard({
   activeId: string | null;
   editable?: boolean;
   onSelect: (id: string) => void;
+  /** Open a block's options/settings (drill-in) — shown as a ✎ on blocks that have settings. */
+  onEditOptions?: (id: string) => void;
   /** Open the block palette to insert at the given index (0 = top, sections.length = end). */
   onInsertAt?: (index: number) => void;
   onDeleteSection?: (id: string) => void;
@@ -1365,7 +1355,7 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="widget-card overflow-hidden xl:sticky xl:top-6">
+    <aside className="widget-card overflow-hidden">
       <div className="widget-header">
         <span className="widget-header-label">02 {"// "}OUTLINE</span>
         <span className="widget-header-right">
@@ -1384,6 +1374,7 @@ function TableOfContentsCard({
                       entry={entry}
                       isActive={entry.id === activeId}
                       onSelect={onSelect}
+                      onEditOptions={onEditOptions}
                       onDelete={onDeleteSection}
                       onToggleVisibility={onToggleVisibility}
                       onInsertAt={onInsertAt}
@@ -1441,6 +1432,7 @@ function SortableTableOfContentsItem({
   isActive,
   insertIndex,
   onSelect,
+  onEditOptions,
   onDelete,
   onInsertAt,
   onToggleVisibility,
@@ -1450,6 +1442,7 @@ function SortableTableOfContentsItem({
   /** This row's index in the section list. Used by the hover-"+" to know where to insert. */
   insertIndex: number;
   onSelect: (id: string) => void;
+  onEditOptions?: (id: string) => void;
   onDelete?: (id: string) => void;
   onInsertAt?: (index: number) => void;
   onToggleVisibility?: (id: string, nextVisible: boolean) => void;
@@ -1462,6 +1455,9 @@ function SortableTableOfContentsItem({
   // so every outline row stays visually aligned.
   const Icon = sectionType?.icon ?? DocumentTextIcon;
   const isVisible = entry.section.isVisible !== false;
+  // Show the ✎ for blocks that have settings (non-content options). Content-only blocks (prose,
+  // introduction) are edited entirely inline and need no options.
+  const hasOptions = sectionType ? sectionType.hasOptions ?? !sectionType.inlineEditable : true;
 
   return (
     <li
@@ -1525,6 +1521,20 @@ function SortableTableOfContentsItem({
         </button>
 
         <div className="flex items-center gap-0.5 transition xl:opacity-0 xl:group-hover:opacity-100">
+          {onEditOptions && hasOptions ? (
+            <button
+              type="button"
+              aria-label={`Edit ${entry.section.title} options`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEditOptions(entry.id);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-white hover:text-[var(--brand-700)]"
+              title="Edit options"
+            >
+              <PencilSquareIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
           {onToggleVisibility ? (
             <button
               type="button"
