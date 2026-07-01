@@ -792,3 +792,46 @@ gated figures per client:
   string fields stay `string|null`) → `updateClientRecord`. Surfaced on the detail via
   `contactFieldsFromRecord` (so `ClientDetailFields` carries both).
 - **Deferred:** auto monthly reset / per-month history, and a real "days used" source (manual for now).
+
+## 21. Recent Changes (July 2026) — Docs → Google Drive backup (native Google Docs)
+
+Every document in Docs is now auto-mirrored to Google Drive as a **native, editable Google Doc**,
+so there's an off-platform copy that's searchable/editable in Drive (not just an opaque PDF).
+
+- **Google Doc conversion (no new deps).** `src/server/document-to-html.ts` (`renderDocumentToHtml`)
+  turns a `serializeProposal()` payload into clean semantic HTML (headings, paragraphs, lists,
+  tables — cost line items as a table, timeline phases as headed lists, assets/links/CTAs as
+  trailing sections). `src/server/google-drive-backup.ts` uploads it via `drive.files.create` with
+  `mimeType: "application/vnd.google-apps.document"` (Drive imports+converts HTML → a Doc). It is
+  **NOT** the styled `ProposalPreview`/PDF render — plain HTML converts far cleaner and works for
+  drafts (no share/token needed). XSS-safe: text is escaped and only the same Markdown subset as
+  `src/lib/markdown.tsx` is expanded (shares its `safeUrl`).
+- **Idempotent.** Each doc maps to one Google Doc via new **`Document.gdriveFileId`**; presence →
+  update in place (`files.update` with fresh HTML media), absence → create. **`Document.gdriveBackedUpAt`**
+  stamps the last sync; a doc is re-synced when `updatedAt > gdriveBackedUpAt`. A hand-deleted Doc
+  (404) is transparently recreated.
+- **Central destination.** All backups land in one **"Foundry Docs Backup"** Drive folder in the
+  backup account's Drive (the workspace owner — `owner@gitwork.io`/`dan@gitwork.co.uk` — else the
+  first connected member). Folder id cached on **`Workspace.docsBackupFolderId`**; created on first
+  run. `resolveBackupAuth()` picks the account via `googleClientForRefreshToken` (same helper Scribe's
+  cron uses).
+- **Triggers.** Daily cron **`GET /api/cron/docs-gdrive-backup`** (registered in `vercel.json` at
+  `0 2 * * *`; **daily** — Hobby-plan limit; `CRON_SECRET`-guarded; `maxDuration 60`) backs up
+  never-synced docs first (oldest first, cap 15/run so a backlog drains) then docs changed since
+  their last backup. Plus a **best-effort on-share hook** — `backupDocumentBestEffort()` fired
+  fire-and-forget from `POST /api/documents/[id]/share` so a *sent* doc lands in Drive immediately;
+  swallows errors (cron is the safety net).
+- **Master switch — `Workspace.docsBackupEnabled`** (new, **default-OFF**). Both the cron and the
+  on-share hook no-op until it's turned on. No Settings UI yet — flip the flag directly to enable
+  (the "minimal Settings surface" from the plan was deferred).
+- **New Drive write scope.** `src/auth.ts` now also requests **`drive.file`** (least-privilege — the
+  app only ever touches files it created: our folder + the docs in it). **`SESSION_VERSION` bumped
+  4 → 5** in `src/auth.config.ts` to force re-consent so the new scope is granted (existing refresh
+  tokens only carry the read scopes). The backup account must sign out/in once after deploy.
+- **Schema (additive → applies via the build's `prisma db push`):** `Document.gdriveFileId`,
+  `Document.gdriveBackedUpAt`, `Workspace.docsBackupEnabled`, `Workspace.docsBackupFolderId`.
+- **Deferred / caveats:** no Settings UI toggle or "backup account" picker yet (owner-by-default);
+  Google Doc conversion simplifies styling (no cream branding — editability/searchability over
+  pixel-fidelity; a PDF-snapshot path could be added alongside via `/api/proposals/[id]/pdf`);
+  backups live in the backup account's Drive (share the folder with the `gitwork.co.uk` domain if
+  the whole team should see them). Cron is daily on Hobby.

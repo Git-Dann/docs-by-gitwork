@@ -13,6 +13,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { disableDocumentShare, enableDocumentShare } from "@/server/documents";
+import { backupDocumentBestEffort } from "@/server/google-drive-backup";
 import { notifyDocumentEvent } from "@/server/slack-notify";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
@@ -50,6 +51,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         url,
       });
     }
+
+    // Best-effort: mirror the freshly-sent doc to Google Drive now (no-op unless backup is
+    // enabled). The daily cron remains the reliable safety net, so failures here are swallowed.
+    void backupDocumentBestEffort(existing.id);
 
     return apiOk({ shareToken, url, isShared: true });
   } catch (error) {

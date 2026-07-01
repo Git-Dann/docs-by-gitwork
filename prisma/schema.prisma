@@ -323,6 +323,13 @@ model Workspace {
   /// any user can connect Claude (or any other MCP client). When off, the
   /// authorize/token endpoints return 503 and no new tokens issue.
   mcpEnabled                  Boolean                    @default(false)
+  // ── Docs → Google Drive backup ──────────────────────────────────────
+  /// Master switch for the Docs Google Drive backup. Off by default; when on, the daily cron
+  /// (and the best-effort on-share hook) mirror documents into Drive as native Google Docs.
+  docsBackupEnabled           Boolean                    @default(false)
+  /// Cached id of the "Foundry Docs Backup" Drive folder (created by the backup account). All
+  /// backed-up Google Docs live under it. Null until the first backup run creates the folder.
+  docsBackupFolderId          String?
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
   members                     WorkspaceMember[]
@@ -477,6 +484,13 @@ model Document {
   parentId          String? // Self-ref: SOW under MSA, CO under SOW
   parent            Document?          @relation("DocumentChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children          Document[]         @relation("DocumentChildren")
+  // ── Google Drive backup ─────────────────────────────────────────────
+  // Backing Google Doc for this document (Docs → Drive backup). `gdriveFileId` is the created
+  // Doc's file id — its presence makes the backup idempotent (create when null, update in place
+  // otherwise). `gdriveBackedUpAt` stamps the last successful sync; a doc is re-backed-up when
+  // `updatedAt > gdriveBackedUpAt`. Both additive/nullable.
+  gdriveFileId      String?
+  gdriveBackedUpAt  DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   archivedAt        DateTime?
